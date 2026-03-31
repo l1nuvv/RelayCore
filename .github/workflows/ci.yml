@@ -17,6 +17,7 @@ env:
   VCPKG_DEFAULT_TRIPLET: x64-windows
   CMAKE_VERSION: 4.2.3
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  VCPKG_BINARY_CACHE_DIR: ${{ github.workspace }}\.vcpkg-bincache
 
 jobs:
   format-check:
@@ -63,6 +64,8 @@ jobs:
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
 
       - name: Set up MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@v1
@@ -75,20 +78,30 @@ jobs:
           ninja --version
           cl
 
-      - name: Cache vcpkg binary packages
+      - name: Cache vcpkg
         uses: actions/cache@v4
         with:
           path: |
-            ~\AppData\Local\vcpkg\archives
+            ${{ github.workspace }}\.vcpkg-bincache
             ~\AppData\Local\vcpkg\downloads
           key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
       - name: Configure
         run: cmake --preset msvc-debug
+        env:
+          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE_DIR }}
+          VCPKG_BINARY_SOURCES: clear;files,${{ env.VCPKG_BINARY_CACHE_DIR }},readwrite
 
       - name: Build
         run: cmake --build --preset build-msvc-debug
+        env:
+          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE_DIR }}
+          VCPKG_BINARY_SOURCES: clear;files,${{ env.VCPKG_BINARY_CACHE_DIR }},readwrite
 
       - name: Test
         run: ctest --preset test-msvc-debug --output-on-failure
+        env:
+          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
