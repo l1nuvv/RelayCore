@@ -30,15 +30,9 @@ jobs:
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          # Look for clang-format in x64 path first
-          $clangFormat = & $vswhere -latest -products * -find "**/x64/**/clang-format.exe" | Select-Object -First 1
-          # Fallback to any clang-format found
+          $clangFormat = & $vswhere -latest -products * -find **\Llvm\x64\bin\clang-format.exe | Select-Object -First 1
           if (-not $clangFormat) {
-            $clangFormat = & $vswhere -latest -products * -find **\clang-format.exe | Select-Object -First 1
-          }
-          # Last resort: check system PATH
-          if (-not $clangFormat) {
-            $clangFormat = (Get-Command clang-format -ErrorAction SilentlyContinue).Source
+          $clangFormat = (Get-Command clang-format -ErrorAction SilentlyContinue).Source
           }
           if (-not $clangFormat) {
             throw "clang-format.exe not found"
