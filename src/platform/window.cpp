@@ -1,9 +1,9 @@
 #include "platform/window.hpp"
 
+#include <SDL3/SDL.h>
+
 #include "core/log.hpp"
 #include "core/sdl_error.hpp"
-
-#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
@@ -15,12 +15,14 @@ namespace RelayCore
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6), "Failed to set GL minor version");
             core::require_sdl(
                 SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE),
-                "Failed to set GL profile mask");
+                "Failed to set GL profile mask"
+            );
 
 #ifndef NDEBUG
             core::require_sdl(
                 SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG),
-                "Failed to enable GL debug context");
+                "Failed to enable GL debug context"
+            );
 #else
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0), "Failed to clear GL context flags");
 #endif
@@ -108,15 +110,23 @@ namespace RelayCore
         }
 
         const char* profile = "unknown";
-        if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE) { profile = "core"; } else if (
-            profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) { profile = "compatibility"; } else if (
-            profile_mask == SDL_GL_CONTEXT_PROFILE_ES) { profile = "es"; }
+        if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE)
+        {
+            profile = "core";
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY)
+        {
+            profile = "compatibility";
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
+        {
+            profile = "es";
+        }
 
         log::info(
             "OpenGL context created: {}.{} | profile={} | flags=0x{:X}",
             major_version,
             minor_version,
             profile,
-            context_flags);
+            context_flags
+        );
     }
 } // namespace RelayCore

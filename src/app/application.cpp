@@ -1,10 +1,10 @@
 #include "app/application.hpp"
 
+#include <SDL3/SDL.h>
+
 #include "core/log.hpp"
 #include "core/paths.hpp"
 #include "core/profiling.hpp"
-
-#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
@@ -12,8 +12,7 @@ namespace RelayCore
     {
         class AppShutdownGuard {
         public:
-            explicit AppShutdownGuard(AppDelegate& delegate) :
-                delegate_(delegate) {}
+            explicit AppShutdownGuard(AppDelegate& delegate) : delegate_(delegate) {}
 
             ~AppShutdownGuard() noexcept { delegate_.on_shutdown(); }
 
@@ -58,19 +57,24 @@ namespace RelayCore
 
         while (is_running_)
         {
-            const FrameInfo frame = frame_timer_.begin_frame(); {
+            const FrameInfo frame = frame_timer_.begin_frame();
+            {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
                 process_events();
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("camera.update");
                 fly_camera_controller_.update(frame, renderer_.camera());
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("app_delegate.on_update");
                 app_delegate_->on_update(frame);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("renderer.render_frame");
                 renderer_.render_frame(frame, audio_system_);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_.swap_buffers();
             }
@@ -84,7 +88,10 @@ namespace RelayCore
     void Application::process_events()
     {
         SDL_Event event{};
-        while (SDL_PollEvent(&event)) { handle_event(event); }
+        while (SDL_PollEvent(&event))
+        {
+            handle_event(event);
+        }
     }
 
     void Application::handle_event(const SDL_Event& event)
@@ -93,10 +100,10 @@ namespace RelayCore
 
         switch (event.type)
         {
-            case SDL_EVENT_QUIT: is_running_ = false;
-                break;
+            case SDL_EVENT_QUIT: is_running_ = false; break;
 
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: renderer_.on_resize(event.window.data1, event.window.data2);
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                renderer_.on_resize(event.window.data1, event.window.data2);
                 log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 

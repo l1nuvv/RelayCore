@@ -1,11 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <glm/mat4x4.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-
-#include <glm/mat4x4.hpp>
 
 namespace RelayCore::render
 {
@@ -23,8 +22,9 @@ namespace RelayCore::render
 
         auto operator=(ShaderProgram&& other) noexcept -> ShaderProgram&;
 
-        void load_from_files(const std::filesystem::path& vertex_shader_path,
-                             const std::filesystem::path& fragment_shader_path);
+        void load_from_files(
+            const std::filesystem::path& vertex_shader_path, const std::filesystem::path& fragment_shader_path
+        );
 
         void bind() const;
 
@@ -38,9 +38,9 @@ namespace RelayCore::render
 
         [[nodiscard]] static auto read_text_file(const std::filesystem::path& path) -> std::string;
 
-        [[nodiscard]] static auto compile_shader(unsigned int                 shader_type,
-                                                 const std::string&           source,
-                                                 const std::filesystem::path& source_path) -> unsigned int;
+        [[nodiscard]] static auto
+        compile_shader(unsigned int shader_type, const std::string& source, const std::filesystem::path& source_path)
+            -> unsigned int;
 
         unsigned int                                 program_id_ = 0;
         mutable std::unordered_map<std::string, int> uniform_location_cache_{};

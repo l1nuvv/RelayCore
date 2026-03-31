@@ -9,7 +9,7 @@
 #define RELAYCORE_PROFILE_ZONE_N(name_literal) ZoneScopedN(name_literal)
 #define RELAYCORE_PROFILE_FRAME() FrameMark
 #else
-#define RELAYCORE_PROFILE_ZONE() ((void)0)
-#define RELAYCORE_PROFILE_ZONE_N(name_literal) ((void)0)
-#define RELAYCORE_PROFILE_FRAME() ((void)0)
+#define RELAYCORE_PROFILE_ZONE() ((void) 0)
+#define RELAYCORE_PROFILE_ZONE_N(name_literal) ((void) 0)
+#define RELAYCORE_PROFILE_FRAME() ((void) 0)
 #endif

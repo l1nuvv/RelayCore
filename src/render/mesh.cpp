@@ -1,9 +1,8 @@
 #include "render/mesh.hpp"
 
-#include <glad/gl.h>
-
 #include <array>
 #include <cstddef>
+#include <glad/gl.h>
 #include <utility>
 
 namespace RelayCore::render
@@ -74,7 +73,8 @@ namespace RelayCore::render
 
     ColorCubeMesh::ColorCubeMesh(ColorCubeMesh&& other) noexcept :
         vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
-        vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0)) {}
+        vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0))
+    {}
 
     auto ColorCubeMesh::operator=(ColorCubeMesh&& other) noexcept -> ColorCubeMesh&
     {
@@ -98,10 +98,8 @@ namespace RelayCore::render
         glBindVertexArray(vertex_array_id_);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_id_);
         glBufferData(
-            GL_ARRAY_BUFFER,
-            static_cast<GLsizeiptr>(sizeof(kCubeVertices)),
-            kCubeVertices.data(),
-            GL_STATIC_DRAW);
+            GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(kCubeVertices)), kCubeVertices.data(), GL_STATIC_DRAW
+        );
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(
@@ -110,7 +108,8 @@ namespace RelayCore::render
             GL_FLOAT,
             GL_FALSE,
             static_cast<GLsizei>(sizeof(Vertex)),
-            reinterpret_cast<const void*>(offsetof(Vertex, position_x)));
+            reinterpret_cast<const void*>(offsetof(Vertex, position_x))
+        );
 
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(
@@ -119,7 +118,8 @@ namespace RelayCore::render
             GL_FLOAT,
             GL_FALSE,
             static_cast<GLsizei>(sizeof(Vertex)),
-            reinterpret_cast<const void*>(offsetof(Vertex, color_r)));
+            reinterpret_cast<const void*>(offsetof(Vertex, color_r))
+        );
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);

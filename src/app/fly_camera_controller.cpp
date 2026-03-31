@@ -1,16 +1,15 @@
 #include "app/fly_camera_controller.hpp"
 
+#include <SDL3/SDL.h>
+#include <glm/geometric.hpp>
+
 #include "core/log.hpp"
 #include "platform/window.hpp"
 #include "render/camera.hpp"
 
-#include <SDL3/SDL.h>
-#include <glm/geometric.hpp>
-
 namespace RelayCore
 {
-    FlyCameraController::FlyCameraController(const FlyCameraControllerConfig& config) :
-        config_(config) {}
+    FlyCameraController::FlyCameraController(const FlyCameraControllerConfig& config) : config_(config) {}
 
     void FlyCameraController::enable_capture(Window& window) const
     {
@@ -24,17 +23,21 @@ namespace RelayCore
     {
         switch (event.type)
         {
-            case SDL_EVENT_MOUSE_MOTION: if (window.relative_mouse_mode())
+            case SDL_EVENT_MOUSE_MOTION:
+                if (window.relative_mouse_mode())
                 {
-                    pending_yaw_delta_   += event.motion.xrel * config_.mouse_sensitivity_radians;
+                    pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
                 }
                 break;
 
-            case SDL_EVENT_KEY_DOWN: if (event.key.repeat) { break; }
+            case SDL_EVENT_KEY_DOWN:
+                if (event.key.repeat) { break; }
 
-                if (event.key.scancode == SDL_SCANCODE_ESCAPE) { application_running = false; } else if (
-                    event.key.scancode == SDL_SCANCODE_F1)
+                if (event.key.scancode == SDL_SCANCODE_ESCAPE)
+                {
+                    application_running = false;
+                } else if (event.key.scancode == SDL_SCANCODE_F1)
                 {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);

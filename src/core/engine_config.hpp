@@ -1,12 +1,12 @@
 #pragma once
 
+#include <filesystem>
+
 #include "app/fly_camera_controller.hpp"
 #include "audio/audio_system.hpp"
 #include "debug/imgui_overlay.hpp"
 #include "platform/window.hpp"
 #include "render/camera.hpp"
-
-#include <filesystem>
 
 namespace RelayCore::render
 {
@@ -17,7 +17,7 @@ namespace RelayCore::render
         PerspectiveCameraConfig              camera{};
         RelayCore::debug::ImGuiOverlayConfig imgui{};
     };
-}
+} // namespace RelayCore::render
 
 namespace RelayCore::core
 {

@@ -1,12 +1,11 @@
 #include "render/camera.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <glm/common.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
-
-#include <algorithm>
-#include <cmath>
 
 namespace RelayCore::render
 {
@@ -20,7 +19,10 @@ namespace RelayCore::render
         world_up_(glm::normalize(config.world_up)),
         vertical_fov_radians_(config.vertical_fov_radians),
         near_plane_(config.near_plane),
-        far_plane_(config.far_plane) { initialize_orientation_from_target(config.target); }
+        far_plane_(config.far_plane)
+    {
+        initialize_orientation_from_target(config.target);
+    }
 
     void PerspectiveCamera::set_viewport(const int width, const int height) noexcept
     {
@@ -47,14 +49,14 @@ namespace RelayCore::render
 
     void PerspectiveCamera::add_yaw_pitch(const float yaw_delta_radians, const float pitch_delta_radians) noexcept
     {
-        yaw_radians_   += yaw_delta_radians;
+        yaw_radians_ += yaw_delta_radians;
         pitch_radians_ = glm::clamp(pitch_radians_ + pitch_delta_radians, -kPitchClamp, kPitchClamp);
         mark_transform_dirty();
     }
 
-    void PerspectiveCamera::translate_local(const float forward_delta,
-                                            const float right_delta,
-                                            const float up_delta) noexcept
+    void PerspectiveCamera::translate_local(
+        const float forward_delta, const float right_delta, const float up_delta
+    ) noexcept
     {
         update_basis_if_needed();
         position_ += forward_ * forward_delta;
@@ -118,11 +120,13 @@ namespace RelayCore::render
         if (!basis_dirty_) { return; }
 
         const float cos_pitch = std::cos(pitch_radians_);
-        forward_              = glm::normalize(glm::vec3{
-            std::cos(yaw_radians_) * cos_pitch,
-            std::sin(pitch_radians_),
-            std::sin(yaw_radians_) * cos_pitch,
-        });
+        forward_              = glm::normalize(
+            glm::vec3{
+                std::cos(yaw_radians_) * cos_pitch,
+                std::sin(pitch_radians_),
+                std::sin(yaw_radians_) * cos_pitch,
+            }
+        );
         right_       = glm::normalize(glm::cross(forward_, world_up_));
         up_          = glm::normalize(glm::cross(right_, forward_));
         basis_dirty_ = false;

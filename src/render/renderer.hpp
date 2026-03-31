@@ -11,7 +11,7 @@ namespace RelayCore
 {
     class Window;
     class AudioSystem;
-}
+} // namespace RelayCore
 
 namespace RelayCore
 {

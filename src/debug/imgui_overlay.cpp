@@ -1,18 +1,17 @@
 #include "debug/imgui_overlay.hpp"
 
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl3.h>
+
 #include "audio/audio_system.hpp"
 #include "core/log.hpp"
 #include "platform/window.hpp"
 #include "render/camera.hpp"
 
-#include <imgui.h>
-#include <imgui_impl_opengl3.h>
-#include <imgui_impl_sdl3.h>
-
 namespace RelayCore::debug
 {
-    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) :
-        config_(config) {}
+    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
 
     ImGuiOverlay::~ImGuiOverlay() noexcept { shutdown(); }
 
@@ -23,7 +22,7 @@ namespace RelayCore::debug
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
-        ImGuiIO& io    = ImGui::GetIO();
+        ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
@@ -62,9 +61,8 @@ namespace RelayCore::debug
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo&                 frame,
-        const render::PerspectiveCamera& camera,
-        const AudioSystem&               audio_system)
+        const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+    )
     {
         if (!initialized_) { return; }
 

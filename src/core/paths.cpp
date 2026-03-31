@@ -1,8 +1,8 @@
 #include "core/paths.hpp"
 
-#include "core/log.hpp"
-
 #include <SDL3/SDL_filesystem.h>
+
+#include "core/log.hpp"
 
 #ifndef RELAYCORE_ASSET_DIR
 #error "RELAYCORE_ASSET_DIR must be defined by the build system"

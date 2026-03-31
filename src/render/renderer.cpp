@@ -1,5 +1,10 @@
 #include "render/renderer.hpp"
 
+#include <glad/gl.h>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
+
 #include "audio/audio_system.hpp"
 #include "core/log.hpp"
 #include "core/paths.hpp"
@@ -8,17 +13,11 @@
 #include "render/gl_debug.hpp"
 #include "render/gl_loader.hpp"
 
-#include <glad/gl.h>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/vec3.hpp>
-
 namespace RelayCore
 {
     Renderer::Renderer(const render::RendererConfig& config) :
-        config_(config),
-        camera_(config.camera),
-        imgui_overlay_(config.imgui) {}
+        config_(config), camera_(config.camera), imgui_overlay_(config.imgui)
+    {}
 
     void Renderer::initialize(const Window& window)
     {
@@ -68,7 +67,8 @@ namespace RelayCore
 
     void Renderer::render_frame(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        RELAYCORE_PROFILE_ZONE_N("Renderer::render_frame"); {
+        RELAYCORE_PROFILE_ZONE_N("Renderer::render_frame");
+        {
             RELAYCORE_PROFILE_ZONE_N("clear");
             glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -85,7 +85,8 @@ namespace RelayCore
             model = glm::rotate(model, angle_b, glm::vec3(1.0F, 0.15F, 0.30F));
 
             return camera_.view_projection_matrix() * model;
-        }(); {
+        }();
+        {
             RELAYCORE_PROFILE_ZONE_N("draw_cube");
             shader_program_.bind();
             constexpr GLint kMvpLocation = 0;
@@ -97,10 +98,12 @@ namespace RelayCore
             {
                 RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
                 imgui_overlay_.begin_frame();
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
                 imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("imgui.render");
                 imgui_overlay_.render();
             }

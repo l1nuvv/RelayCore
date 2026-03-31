@@ -1,11 +1,10 @@
 #include "render/gl_loader.hpp"
 
-#include "core/log.hpp"
-
 #include <SDL3/SDL.h>
 #include <glad/gl.h>
-
 #include <stdexcept>
+
+#include "core/log.hpp"
 
 namespace RelayCore::render::gl
 {

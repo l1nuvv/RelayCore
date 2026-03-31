@@ -1,11 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-
-#include "render/camera.hpp"
-
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
+
+#include "render/camera.hpp"
 
 namespace
 {
@@ -18,10 +17,8 @@ namespace
 
     auto nearly_equal_vec3(const glm::vec3& lhs, const glm::vec3& rhs, const float epsilon = kEpsilon) -> bool
     {
-        return nearly_equal(lhs.x, rhs.x, epsilon) && nearly_equal(lhs.y, rhs.y, epsilon) && nearly_equal(
-                   lhs.z,
-                   rhs.z,
-                   epsilon);
+        return nearly_equal(lhs.x, rhs.x, epsilon) && nearly_equal(lhs.y, rhs.y, epsilon)
+               && nearly_equal(lhs.z, rhs.z, epsilon);
     }
 } // namespace
 
@@ -42,7 +39,7 @@ TEST_CASE("camera local translation moves in camera space")
     RelayCore::render::PerspectiveCamera camera{config};
     camera.translate_local(2.0F, 0.0F, 0.0F);
 
-    CHECK(nearly_equal_vec3(camera.position(), { 0.0F, 0.0F, -2.0F }));
+    CHECK(nearly_equal_vec3(camera.position(), {0.0F, 0.0F, -2.0F}));
 }
 
 TEST_CASE("camera pitch is clamped")

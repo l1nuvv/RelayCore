@@ -1,9 +1,9 @@
 #include "render/gl_debug.hpp"
 
-#include "core/log.hpp"
-
 #include <SDL3/SDL.h>
 #include <glad/gl.h>
+
+#include "core/log.hpp"
 
 namespace RelayCore::render::gl_debug
 {
@@ -27,13 +27,15 @@ namespace RelayCore::render::gl_debug
             }
         }
 
-        void APIENTRY debug_callback(GLenum /*source*/,
-                                     GLenum type,
-                                     GLuint id,
-                                     GLenum severity,
-                                     GLsizei /*length*/,
-                                     const GLchar* message,
-                                     const void* /*user_param*/)
+        void APIENTRY debug_callback(
+            GLenum /*source*/,
+            GLenum type,
+            GLuint id,
+            GLenum severity,
+            GLsizei /*length*/,
+            const GLchar* message,
+            const void* /*user_param*/
+        )
         {
             if (type == GL_DEBUG_TYPE_ERROR || severity == GL_DEBUG_SEVERITY_HIGH)
             {

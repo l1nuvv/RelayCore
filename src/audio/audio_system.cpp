@@ -1,23 +1,21 @@
 #include "audio/audio_system.hpp"
 
-#include "core/log.hpp"
-
-#include <miniaudio.h>
-
 #include <memory>
+#include <miniaudio.h>
 #include <stdexcept>
 #include <utility>
 
+#include "core/log.hpp"
+
 namespace RelayCore
 {
-    AudioSystem::AudioSystem(const AudioSystemConfig& config) :
-        config_(config) {}
+    AudioSystem::AudioSystem(const AudioSystemConfig& config) : config_(config) {}
 
     AudioSystem::~AudioSystem() noexcept { shutdown(); }
 
     AudioSystem::AudioSystem(AudioSystem&& other) noexcept :
-        config_(std::move(other.config_)),
-        engine_(std::move(other.engine_)) {}
+        config_(std::move(other.config_)), engine_(std::move(other.engine_))
+    {}
 
     auto AudioSystem::operator=(AudioSystem&& other) noexcept -> AudioSystem&
     {

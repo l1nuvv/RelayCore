@@ -1,10 +1,9 @@
-#include <SDL3/SDL_main.h>
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#include <exception>
 
 #include "app/application.hpp"
 #include "core/log.hpp"
-
-#include <exception>
 
 namespace
 {

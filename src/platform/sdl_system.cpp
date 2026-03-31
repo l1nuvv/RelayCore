@@ -1,9 +1,9 @@
 #include "platform/sdl_system.hpp"
 
+#include <SDL3/SDL.h>
+
 #include "core/log.hpp"
 #include "core/sdl_error.hpp"
-
-#include <SDL3/SDL.h>
 
 namespace RelayCore
 {

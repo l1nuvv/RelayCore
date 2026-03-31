@@ -1,32 +1,29 @@
 #include "core/engine_config.hpp"
 
-#include "core/log.hpp"
-#include "core/paths.hpp"
-
-#include <toml++/toml.hpp>
-
+#include <array>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
-
-#include <array>
 #include <string>
 #include <string_view>
+#include <toml++/toml.hpp>
+
+#include "core/log.hpp"
+#include "core/paths.hpp"
 
 namespace RelayCore::core
 {
     namespace
     {
         template<typename T>
-        void assign_if_present(const toml::node_view<const toml::node>& view,
-                               const std::string_view                   key,
-                               T&                                       destination)
+        void
+        assign_if_present(const toml::node_view<const toml::node>& view, const std::string_view key, T& destination)
         {
             if (const auto value = view[key].template value<T>()) { destination = *value; }
         }
 
-        auto read_vec3(const toml::node_view<const toml::node>& view,
-                       const std::string_view                   key,
-                       const glm::vec3&                         fallback) -> glm::vec3
+        auto
+        read_vec3(const toml::node_view<const toml::node>& view, const std::string_view key, const glm::vec3& fallback)
+            -> glm::vec3
         {
             const toml::node_view<const toml::node> node = view[key];
             if (const toml::array* array = node.as_array(); array != nullptr && array->size() >= 3)
@@ -101,7 +98,8 @@ namespace RelayCore::core
                 config_path.string(),
                 error.source().begin.line,
                 error.source().begin.column,
-                error.description());
+                error.description()
+            );
             throw;
         }
 

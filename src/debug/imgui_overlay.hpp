@@ -1,14 +1,14 @@
 #pragma once
 
-#include "app/frame_timer.hpp"
-
 #include <SDL3/SDL.h>
+
+#include "app/frame_timer.hpp"
 
 namespace RelayCore
 {
     class Window;
     class AudioSystem;
-}
+} // namespace RelayCore
 
 namespace RelayCore::render
 {
@@ -40,9 +40,9 @@ namespace RelayCore::debug
 
         void begin_frame();
 
-        void draw_diagnostics(const FrameInfo&                 frame,
-                              const render::PerspectiveCamera& camera,
-                              const AudioSystem&               audio_system);
+        void draw_diagnostics(
+            const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+        );
 
         void render() const;
 

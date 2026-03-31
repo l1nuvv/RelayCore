@@ -1,8 +1,8 @@
 #pragma once
 
-#include "app/frame_timer.hpp"
-
 #include <SDL3/SDL.h>
+
+#include "app/frame_timer.hpp"
 
 namespace RelayCore
 {

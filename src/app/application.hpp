@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "app/app_delegate.hpp"
 #include "app/fly_camera_controller.hpp"
 #include "app/frame_timer.hpp"
@@ -8,8 +10,6 @@
 #include "platform/sdl_system.hpp"
 #include "platform/window.hpp"
 #include "render/renderer.hpp"
-
-#include <memory>
 
 namespace RelayCore
 {
