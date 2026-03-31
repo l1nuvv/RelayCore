@@ -42,7 +42,7 @@ jobs:
       - name: Check formatting
         shell: pwsh
         run: |
-          $files = git ls-files '*.c' '*.cpp' '*.h' '*.hpp'
+          $files = git ls-files -- '*.c' '*.cpp' '*.h' '*.hpp' ':(exclude)extern/**'
           if (-not $files) {
             Write-Host 'No source files found.'
             exit 0
