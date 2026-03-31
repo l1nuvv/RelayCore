@@ -14,14 +14,15 @@ namespace
         ~LogLifetime() noexcept { RelayCore::log::shutdown(); }
 
         LogLifetime(const LogLifetime&) = delete;
+
         auto operator=(const LogLifetime&) -> LogLifetime& = delete;
     };
 } // namespace
 
 int main(int argc, char* argv[])
 {
-    (void)argc;
-    (void)argv;
+    (void) argc;
+    (void) argv;
 
     LogLifetime log_lifetime{};
 
@@ -29,8 +30,7 @@ int main(int argc, char* argv[])
     {
         RelayCore::Application app;
         return app.run();
-    }
-    catch (const std::exception& exception)
+    } catch (const std::exception& exception)
     {
         RelayCore::log::critical("Unhandled exception: {}", std::string_view{exception.what()});
         return 1;

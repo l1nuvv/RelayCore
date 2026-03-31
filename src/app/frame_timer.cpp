@@ -4,21 +4,21 @@
 
 namespace RelayCore
 {
-FrameTimer::FrameTimer() = default;
+    FrameTimer::FrameTimer() = default;
 
-auto FrameTimer::begin_frame() -> FrameInfo
-{
-    const auto now = Clock::now();
-    const auto raw_delta = now - previous_frame_time_;
-    const auto delta = std::min(raw_delta, std::chrono::duration_cast<Clock::duration>(kMaxDelta));
-    const auto elapsed = std::chrono::duration<double>(now - start_time_).count();
+    auto FrameTimer::begin_frame() -> FrameInfo
+    {
+        const auto now       = Clock::now();
+        const auto raw_delta = now - previous_frame_time_;
+        const auto delta     = std::min(raw_delta, std::chrono::duration_cast<Clock::duration>(kMaxDelta));
+        const auto elapsed   = std::chrono::duration<double>(now - start_time_).count();
 
-    previous_frame_time_ = now;
+        previous_frame_time_ = now;
 
-    return FrameInfo {
-        .delta_seconds = std::chrono::duration<double>(delta).count(),
-        .elapsed_seconds = elapsed,
-        .frame_index = frame_index_++,
-    };
-}
+        return FrameInfo{
+            .delta_seconds = std::chrono::duration<double>(delta).count(),
+            .elapsed_seconds = elapsed,
+            .frame_index = frame_index_++,
+        };
+    }
 } // namespace RelayCore

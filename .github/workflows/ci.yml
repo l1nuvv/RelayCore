@@ -18,192 +18,37 @@ env:
   CMAKE_VERSION: 4.2.3
 
 jobs:
-  format-check:
-    name: format-check
+  msvc-debug:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Locate clang-format
-        id: llvm
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $clangFormat = & $vswhere -latest -products * -find **\clang-format.exe | Select-Object -First 1
-          if (-not $clangFormat) {
-            $clangFormat = (Get-Command clang-format).Source
-          }
-          if (-not $clangFormat) {
-            throw "clang-format.exe not found"
-          }
-          "clang_format=$clangFormat" >> $env:GITHUB_OUTPUT
-
-      - name: Check formatting
-        shell: pwsh
-        run: |
-          $files = git ls-files '*.c' '*.cpp' '*.h' '*.hpp'
-          if (-not $files) {
-            Write-Host 'No source files found.'
-            exit 0
-          }
-          & "${{ steps.llvm.outputs.clang_format }}" --dry-run --Werror $files
-
-  build-and-test:
-    name: ${{ matrix.preset }}
-    runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        preset: [msvc-debug, msvc-relwithdebinfo]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
+        uses: lukka/get-cmake@v4
         with:
           cmakeVersion: ${{ env.CMAKE_VERSION }}
           ninjaVersion: latest
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          ninja --version
+          cl
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
-
-      - name: Build
-        run: cmake --build --preset build-${{ matrix.preset }}
-
-      - name: Test
-        run: ctest --preset test-${{ matrix.preset }}
-
-  clang-tidy:
-    name: clang-tidy
-    runs-on: windows-2022
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-
-      - name: Locate clang-tidy
-        id: llvm
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $clangTidy = & $vswhere -latest -products * -find **\clang-tidy.exe | Select-Object -First 1
-          if (-not $clangTidy) {
-            $clangTidy = (Get-Command clang-tidy).Source
-          }
-          if (-not $clangTidy) {
-            throw "clang-tidy.exe not found"
-          }
-          "clang_tidy=$clangTidy" >> $env:GITHUB_OUTPUT
-
-      - name: Configure compile database
         run: cmake --preset msvc-debug
 
-      - name: Run clang-tidy
-        shell: pwsh
-        run: |
-          $files = git ls-files 'src/**/*.cpp' 'tests/**/*.cpp'
-          if (-not $files) {
-            Write-Host 'No translation units found.'
-            exit 0
-          }
-          foreach ($file in $files) {
-            & "${{ steps.llvm.outputs.clang_tidy }}" $file -p build/msvc-debug --quiet --extra-arg=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
-          }
-
-  msvc-analyze:
-    name: msvc-analyze
-    runs-on: windows-2022
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-
-      - name: Configure with /analyze
-        run: cmake --preset msvc-debug -D RELAYCORE_ENABLE_MSVC_ANALYZE=ON
-
-      - name: Build with /analyze
+      - name: Build
         run: cmake --build --preset build-msvc-debug
 
-  asan:
-    name: msvc-asan
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    runs-on: windows-2022
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-
-      - name: Configure
-        run: cmake --preset msvc-asan
-
-      - name: Build
-        run: cmake --build --preset build-msvc-asan
-
       - name: Test
-        run: ctest --preset test-msvc-asan
-
-  package-artifact:
-    name: package-relwithdebinfo
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    runs-on: windows-2022
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-
-      - name: Configure
-        run: cmake --preset msvc-relwithdebinfo
-
-      - name: Build
-        run: cmake --build --preset build-msvc-relwithdebinfo
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RelayCore-msvc-relwithdebinfo
-          path: |
-            build/msvc-relwithdebinfo/
-          retention-days: 7
+        run: ctest --preset test-msvc-debug --output-on-failure

@@ -9,17 +9,20 @@
 
 namespace
 {
-constexpr float kEpsilon = 1.0e-4F;
+    constexpr float kEpsilon = 1.0e-4F;
 
-auto nearly_equal(const float lhs, const float rhs, const float epsilon = kEpsilon) -> bool
-{
-    return doctest::Approx(lhs).epsilon(epsilon) == rhs;
-}
+    auto nearly_equal(const float lhs, const float rhs, const float epsilon = kEpsilon) -> bool
+    {
+        return doctest::Approx(lhs).epsilon(epsilon) == rhs;
+    }
 
-auto nearly_equal_vec3(const glm::vec3& lhs, const glm::vec3& rhs, const float epsilon = kEpsilon) -> bool
-{
-    return nearly_equal(lhs.x, rhs.x, epsilon) && nearly_equal(lhs.y, rhs.y, epsilon) && nearly_equal(lhs.z, rhs.z, epsilon);
-}
+    auto nearly_equal_vec3(const glm::vec3& lhs, const glm::vec3& rhs, const float epsilon = kEpsilon) -> bool
+    {
+        return nearly_equal(lhs.x, rhs.x, epsilon) && nearly_equal(lhs.y, rhs.y, epsilon) && nearly_equal(
+                   lhs.z,
+                   rhs.z,
+                   epsilon);
+    }
 } // namespace
 
 TEST_CASE("camera basis vectors stay normalized")
@@ -32,11 +35,11 @@ TEST_CASE("camera basis vectors stay normalized")
 
 TEST_CASE("camera local translation moves in camera space")
 {
-    RelayCore::render::PerspectiveCameraConfig config {};
-    config.position = { 0.0F, 0.0F, 0.0F };
-    config.target = { 0.0F, 0.0F, -1.0F };
+    RelayCore::render::PerspectiveCameraConfig config{};
+    config.position = {0.0F, 0.0F, 0.0F};
+    config.target   = {0.0F, 0.0F, -1.0F};
 
-    RelayCore::render::PerspectiveCamera camera { config };
+    RelayCore::render::PerspectiveCamera camera{config};
     camera.translate_local(2.0F, 0.0F, 0.0F);
 
     CHECK(nearly_equal_vec3(camera.position(), { 0.0F, 0.0F, -2.0F }));

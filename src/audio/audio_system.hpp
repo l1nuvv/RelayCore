@@ -8,34 +8,38 @@ struct ma_engine;
 
 namespace RelayCore
 {
-struct AudioSystemConfig
-{
-    bool enabled = true;
-    float master_volume = 1.0F;
-    std::string startup_sound = "";
-};
+    struct AudioSystemConfig {
+        bool        enabled       = true;
+        float       master_volume = 1.0F;
+        std::string startup_sound = "";
+    };
 
-class AudioSystem
-{
-public:
-    explicit AudioSystem(const AudioSystemConfig& config = AudioSystemConfig {});
-    ~AudioSystem() noexcept;
+    class AudioSystem {
+    public:
+        explicit AudioSystem(const AudioSystemConfig& config = AudioSystemConfig{});
 
-    AudioSystem(const AudioSystem&) = delete;
-    auto operator=(const AudioSystem&) -> AudioSystem& = delete;
+        ~AudioSystem() noexcept;
 
-    AudioSystem(AudioSystem&&) noexcept;
-    auto operator=(AudioSystem&&) noexcept -> AudioSystem&;
+        AudioSystem(const AudioSystem&) = delete;
 
-    void initialize();
-    void shutdown() noexcept;
-    void play_one_shot(const std::filesystem::path& file_path) const;
+        auto operator=(const AudioSystem&) -> AudioSystem& = delete;
 
-    [[nodiscard]] auto is_initialized() const noexcept -> bool;
-    [[nodiscard]] auto config() const noexcept -> const AudioSystemConfig&;
+        AudioSystem(AudioSystem&&) noexcept;
 
-private:
-    AudioSystemConfig config_ {};
-    std::unique_ptr<ma_engine> engine_;
-};
+        auto operator=(AudioSystem&&) noexcept -> AudioSystem&;
+
+        void initialize();
+
+        void shutdown() noexcept;
+
+        void play_one_shot(const std::filesystem::path& file_path) const;
+
+        [[nodiscard]] auto is_initialized() const noexcept -> bool;
+
+        [[nodiscard]] auto config() const noexcept -> const AudioSystemConfig&;
+
+    private:
+        AudioSystemConfig          config_{};
+        std::unique_ptr<ma_engine> engine_;
+    };
 } // namespace RelayCore

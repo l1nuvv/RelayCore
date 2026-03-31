@@ -13,25 +13,25 @@
 
 namespace RelayCore
 {
-class Application
-{
-public:
-    explicit Application(std::unique_ptr<AppDelegate> app_delegate = std::make_unique<NullAppDelegate>());
+    class Application {
+    public:
+        explicit Application(std::unique_ptr<AppDelegate> app_delegate = std::make_unique<NullAppDelegate>());
 
-    [[nodiscard]] auto run() -> int;
+        [[nodiscard]] auto run() -> int;
 
-private:
-    void process_events();
-    void handle_event(const SDL_Event& event);
+    private:
+        void process_events();
 
-    std::unique_ptr<AppDelegate> app_delegate_;
-    bool is_running_ = true;
-    FrameTimer frame_timer_ {};
-    SdlSystem sdl_system_ {};
-    core::EngineConfig config_ {};
-    Window window_;
-    Renderer renderer_ {};
-    FlyCameraController fly_camera_controller_ {};
-    AudioSystem audio_system_ {};
-};
+        void handle_event(const SDL_Event& event);
+
+        std::unique_ptr<AppDelegate> app_delegate_;
+        bool                         is_running_ = true;
+        FrameTimer                   frame_timer_{};
+        SdlSystem                    sdl_system_{};
+        core::EngineConfig           config_{};
+        Window                       window_;
+        Renderer                     renderer_{};
+        FlyCameraController          fly_camera_controller_{};
+        AudioSystem                  audio_system_{};
+    };
 } // namespace RelayCore

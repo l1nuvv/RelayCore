@@ -4,27 +4,30 @@
 
 namespace RelayCore::render
 {
-class ColorCubeMesh
-{
-public:
-    ColorCubeMesh() = default;
-    ~ColorCubeMesh() noexcept;
+    class ColorCubeMesh {
+    public:
+        ColorCubeMesh() = default;
 
-    ColorCubeMesh(const ColorCubeMesh&) = delete;
-    auto operator=(const ColorCubeMesh&) -> ColorCubeMesh& = delete;
+        ~ColorCubeMesh() noexcept;
 
-    ColorCubeMesh(ColorCubeMesh&& other) noexcept;
-    auto operator=(ColorCubeMesh&& other) noexcept -> ColorCubeMesh&;
+        ColorCubeMesh(const ColorCubeMesh&) = delete;
 
-    void initialize();
-    void draw() const;
+        auto operator=(const ColorCubeMesh&) -> ColorCubeMesh& = delete;
 
-private:
-    static constexpr GLsizei kVertexCount = 36;
+        ColorCubeMesh(ColorCubeMesh&& other) noexcept;
 
-    void reset() noexcept;
+        auto operator=(ColorCubeMesh&& other) noexcept -> ColorCubeMesh&;
 
-    unsigned int vertex_array_id_ = 0;
-    unsigned int vertex_buffer_id_ = 0;
-};
+        void initialize();
+
+        void draw() const;
+
+    private:
+        static constexpr GLsizei kVertexCount = 36;
+
+        void reset() noexcept;
+
+        unsigned int vertex_array_id_  = 0;
+        unsigned int vertex_buffer_id_ = 0;
+    };
 } // namespace RelayCore::render

@@ -2,16 +2,18 @@
 
 namespace RelayCore
 {
-class SdlSystem
-{
-public:
-    SdlSystem();
-    ~SdlSystem() noexcept;
+    class SdlSystem {
+    public:
+        SdlSystem();
 
-    SdlSystem(const SdlSystem&) = delete;
-    auto operator=(const SdlSystem&) -> SdlSystem& = delete;
+        ~SdlSystem() noexcept;
 
-    SdlSystem(SdlSystem&&) = delete;
-    auto operator=(SdlSystem&&) -> SdlSystem& = delete;
-};
+        SdlSystem(const SdlSystem&) = delete;
+
+        auto operator=(const SdlSystem&) -> SdlSystem& = delete;
+
+        SdlSystem(SdlSystem&&) = delete;
+
+        auto operator=(SdlSystem&&) -> SdlSystem& = delete;
+    };
 } // namespace RelayCore

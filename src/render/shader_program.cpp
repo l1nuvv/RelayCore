@@ -10,182 +10,168 @@
 
 namespace RelayCore::render
 {
-namespace
-{
-auto build_shader_error_message(const std::filesystem::path& source_path,
-                                const std::string& stage,
-                                const std::string& info_log) -> std::string
-{
-    std::ostringstream stream;
-    stream << "Failed to compile " << stage << " shader '" << source_path.string() << "':\n"
-           << info_log;
-    return stream.str();
-}
+    namespace
+    {
+        auto build_shader_error_message(const std::filesystem::path& source_path,
+                                        const std::string&           stage,
+                                        const std::string&           info_log) -> std::string
+        {
+            std::ostringstream stream;
+            stream << "Failed to compile " << stage << " shader '" << source_path.string() << "':\n"
+                << info_log;
+            return stream.str();
+        }
 
-auto build_program_error_message(const std::filesystem::path& vertex_shader_path,
-                                 const std::filesystem::path& fragment_shader_path,
-                                 const std::string& info_log) -> std::string
-{
-    std::ostringstream stream;
-    stream << "Failed to link shader program ('" << vertex_shader_path.string() << "', '"
-           << fragment_shader_path.string() << "'):\n"
-           << info_log;
-    return stream.str();
-}
-} // namespace
+        auto build_program_error_message(const std::filesystem::path& vertex_shader_path,
+                                         const std::filesystem::path& fragment_shader_path,
+                                         const std::string&           info_log) -> std::string
+        {
+            std::ostringstream stream;
+            stream << "Failed to link shader program ('" << vertex_shader_path.string() << "', '"
+                << fragment_shader_path.string() << "'):\n"
+                << info_log;
+            return stream.str();
+        }
+    } // namespace
 
-ShaderProgram::~ShaderProgram() noexcept
-{
-    reset();
-}
+    ShaderProgram::~ShaderProgram() noexcept { reset(); }
 
-ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept
-    : program_id_(std::exchange(other.program_id_, 0))
-    , uniform_location_cache_(std::move(other.uniform_location_cache_))
-{
-}
+    ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept :
+        program_id_(std::exchange(other.program_id_, 0)),
+        uniform_location_cache_(std::move(other.uniform_location_cache_)) {}
 
-auto ShaderProgram::operator=(ShaderProgram&& other) noexcept -> ShaderProgram&
-{
-    if (this != &other)
+    auto ShaderProgram::operator=(ShaderProgram&& other) noexcept -> ShaderProgram&
+    {
+        if (this != &other)
+        {
+            reset();
+            program_id_             = std::exchange(other.program_id_, 0);
+            uniform_location_cache_ = std::move(other.uniform_location_cache_);
+        }
+
+        return *this;
+    }
+
+    void ShaderProgram::load_from_files(const std::filesystem::path& vertex_shader_path,
+                                        const std::filesystem::path& fragment_shader_path)
     {
         reset();
-        program_id_ = std::exchange(other.program_id_, 0);
-        uniform_location_cache_ = std::move(other.uniform_location_cache_);
-    }
 
-    return *this;
-}
+        const std::string vertex_source   = read_text_file(vertex_shader_path);
+        const std::string fragment_source = read_text_file(fragment_shader_path);
 
-void ShaderProgram::load_from_files(const std::filesystem::path& vertex_shader_path,
-                                    const std::filesystem::path& fragment_shader_path)
-{
-    reset();
+        const unsigned int vertex_shader   = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
+        const unsigned int fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path);
 
-    const std::string vertex_source = read_text_file(vertex_shader_path);
-    const std::string fragment_source = read_text_file(fragment_shader_path);
+        const unsigned int program = glCreateProgram();
+        if (program == 0)
+        {
+            glDeleteShader(vertex_shader);
+            glDeleteShader(fragment_shader);
+            throw std::runtime_error("glCreateProgram returned 0");
+        }
 
-    const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
-    const unsigned int fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path);
+        glAttachShader(program, vertex_shader);
+        glAttachShader(program, fragment_shader);
+        glBindAttribLocation(program, 0, "in_position");
+        glBindAttribLocation(program, 1, "in_color");
+        glLinkProgram(program);
 
-    const unsigned int program = glCreateProgram();
-    if (program == 0)
-    {
-        glDeleteShader(vertex_shader);
-        glDeleteShader(fragment_shader);
-        throw std::runtime_error("glCreateProgram returned 0");
-    }
+        GLint link_status = GL_FALSE;
+        glGetProgramiv(program, GL_LINK_STATUS, &link_status);
+        if (link_status != GL_TRUE)
+        {
+            GLint log_length = 0;
+            glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
 
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glBindAttribLocation(program, 0, "in_position");
-    glBindAttribLocation(program, 1, "in_color");
-    glLinkProgram(program);
+            std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
+            glGetProgramInfoLog(program, log_length, nullptr, info_log.data());
 
-    GLint link_status = GL_FALSE;
-    glGetProgramiv(program, GL_LINK_STATUS, &link_status);
-    if (link_status != GL_TRUE)
-    {
-        GLint log_length = 0;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
+            glDeleteShader(vertex_shader);
+            glDeleteShader(fragment_shader);
+            glDeleteProgram(program);
 
-        std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
-        glGetProgramInfoLog(program, log_length, nullptr, info_log.data());
+            throw std::runtime_error(build_program_error_message(vertex_shader_path, fragment_shader_path, info_log));
+        }
 
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
-        glDeleteProgram(program);
 
-        throw std::runtime_error(build_program_error_message(vertex_shader_path, fragment_shader_path, info_log));
+        program_id_ = program;
+        uniform_location_cache_.clear();
     }
 
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-
-    program_id_ = program;
-    uniform_location_cache_.clear();
-}
-
-void ShaderProgram::bind() const
-{
-    glUseProgram(program_id_);
-}
-
-void ShaderProgram::set_mat4(const std::string_view name, const glm::mat4& value) const
-{
-    const int location = uniform_location(name);
-    if (location >= 0)
+    void ShaderProgram::bind() const
     {
-        glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        glUseProgram(program_id_);
     }
-}
 
-void ShaderProgram::reset() noexcept
-{
-    if (program_id_ != 0)
+    void ShaderProgram::set_mat4(const std::string_view name, const glm::mat4& value) const
     {
-        glDeleteProgram(program_id_);
-        program_id_ = 0;
+        const int location = uniform_location(name);
+        if (location >= 0) { glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)); }
     }
 
-    uniform_location_cache_.clear();
-}
-
-auto ShaderProgram::uniform_location(const std::string_view name) const -> int
-{
-    const std::string key(name);
-    if (const auto cached = uniform_location_cache_.find(key); cached != uniform_location_cache_.end())
+    void ShaderProgram::reset() noexcept
     {
-        return cached->second;
+        if (program_id_ != 0)
+        {
+            glDeleteProgram(program_id_);
+            program_id_ = 0;
+        }
+
+        uniform_location_cache_.clear();
     }
 
-    const int location = glGetUniformLocation(program_id_, key.c_str());
-    uniform_location_cache_.emplace(key, location);
-    return location;
-}
-
-auto ShaderProgram::read_text_file(const std::filesystem::path& path) -> std::string
-{
-    std::ifstream input(path, std::ios::in | std::ios::binary);
-    if (!input)
+    auto ShaderProgram::uniform_location(const std::string_view name) const -> int
     {
-        throw std::runtime_error("Failed to open file: " + path.string());
+        const std::string key(name);
+        if (const auto cached = uniform_location_cache_.find(key); cached != uniform_location_cache_.end())
+        {
+            return cached->second;
+        }
+
+        const int location = glGetUniformLocation(program_id_, key.c_str());
+        uniform_location_cache_.emplace(key, location);
+        return location;
     }
 
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-    return buffer.str();
-}
-
-auto ShaderProgram::compile_shader(const unsigned int shader_type,
-                                   const std::string& source,
-                                   const std::filesystem::path& source_path) -> unsigned int
-{
-    const unsigned int shader = glCreateShader(shader_type);
-    if (shader == 0)
+    auto ShaderProgram::read_text_file(const std::filesystem::path& path) -> std::string
     {
-        throw std::runtime_error("glCreateShader returned 0");
+        std::ifstream input(path, std::ios::in | std::ios::binary);
+        if (!input) { throw std::runtime_error("Failed to open file: " + path.string()); }
+
+        std::ostringstream buffer;
+        buffer << input.rdbuf();
+        return buffer.str();
     }
 
-    const char* source_ptr = source.c_str();
-    glShaderSource(shader, 1, &source_ptr, nullptr);
-    glCompileShader(shader);
-
-    GLint compile_status = GL_FALSE;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
-    if (compile_status != GL_TRUE)
+    auto ShaderProgram::compile_shader(const unsigned int           shader_type,
+                                       const std::string&           source,
+                                       const std::filesystem::path& source_path) -> unsigned int
     {
-        GLint log_length = 0;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
+        const unsigned int shader = glCreateShader(shader_type);
+        if (shader == 0) { throw std::runtime_error("glCreateShader returned 0"); }
 
-        std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
-        glGetShaderInfoLog(shader, log_length, nullptr, info_log.data());
-        glDeleteShader(shader);
+        const char* source_ptr = source.c_str();
+        glShaderSource(shader, 1, &source_ptr, nullptr);
+        glCompileShader(shader);
 
-        const std::string stage = shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment";
-        throw std::runtime_error(build_shader_error_message(source_path, stage, info_log));
+        GLint compile_status = GL_FALSE;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
+        if (compile_status != GL_TRUE)
+        {
+            GLint log_length = 0;
+            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
+
+            std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
+            glGetShaderInfoLog(shader, log_length, nullptr, info_log.data());
+            glDeleteShader(shader);
+
+            const std::string stage = shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment";
+            throw std::runtime_error(build_shader_error_message(source_path, stage, info_log));
+        }
+
+        return shader;
     }
-
-    return shader;
-}
 } // namespace RelayCore::render
