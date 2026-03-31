@@ -16,8 +16,39 @@ concurrency:
 env:
   VCPKG_DEFAULT_TRIPLET: x64-windows
   CMAKE_VERSION: 4.2.3
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  format-check:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate clang-format
+        id: llvm
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $clangFormat = & $vswhere -latest -products * -find **\clang-format.exe | Select-Object -First 1
+          if (-not $clangFormat) {
+            $clangFormat = (Get-Command clang-format -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $clangFormat) {
+            throw "clang-format.exe not found"
+          }
+          "clang_format=$clangFormat" >> $env:GITHUB_OUTPUT
+
+      - name: Check formatting
+        shell: pwsh
+        run: |
+          $files = git ls-files '*.c' '*.cpp' '*.h' '*.hpp'
+          if (-not $files) {
+            Write-Host 'No source files found.'
+            exit 0
+          }
+          & "${{ steps.llvm.outputs.clang_format }}" --dry-run --Werror $files
+
   msvc-debug:
     runs-on: windows-2022
 
