@@ -68,25 +68,42 @@ namespace RelayCore
 
     void Renderer::render_frame(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        RELAYCORE_PROFILE_ZONE_N("Renderer::render_frame");
-        glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        RELAYCORE_PROFILE_ZONE_N("Renderer::render_frame"); {
+            RELAYCORE_PROFILE_ZONE_N("clear");
+            glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
 
-        const float angle_a = static_cast<float>(frame.elapsed_seconds) * 0.85F;
-        const float angle_b = static_cast<float>(frame.elapsed_seconds) * 0.45F;
+        const glm::mat4 mvp = [&]() {
+            RELAYCORE_PROFILE_ZONE_N("update_matrices");
 
-        glm::mat4 model(1.0F);
-        model = glm::rotate(model, angle_a, glm::vec3(0.25F, 1.0F, 0.10F));
-        model = glm::rotate(model, angle_b, glm::vec3(1.0F, 0.15F, 0.30F));
+            const float angle_a = static_cast<float>(frame.elapsed_seconds) * 0.85F;
+            const float angle_b = static_cast<float>(frame.elapsed_seconds) * 0.45F;
 
-        const glm::mat4 mvp = camera_.view_projection_matrix() * model;
+            glm::mat4 model(1.0F);
+            model = glm::rotate(model, angle_a, glm::vec3(0.25F, 1.0F, 0.10F));
+            model = glm::rotate(model, angle_b, glm::vec3(1.0F, 0.15F, 0.30F));
 
-        shader_program_.bind();
-        shader_program_.set_mat4("u_mvp", mvp);
-        cube_mesh_.draw();
-
-        imgui_overlay_.begin_frame();
-        imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
-        imgui_overlay_.render();
+            return camera_.view_projection_matrix() * model;
+        }(); {
+            RELAYCORE_PROFILE_ZONE_N("draw_cube");
+            shader_program_.bind();
+            constexpr GLint kMvpLocation = 0;
+            shader_program_.set_mat4(kMvpLocation, mvp);
+            cube_mesh_.draw();
+        }
+        if (imgui_overlay_.enabled())
+        {
+            {
+                RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
+                imgui_overlay_.begin_frame();
+            } {
+                RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
+                imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
+            } {
+                RELAYCORE_PROFILE_ZONE_N("imgui.render");
+                imgui_overlay_.render();
+            }
+        }
     }
 } // namespace RelayCore

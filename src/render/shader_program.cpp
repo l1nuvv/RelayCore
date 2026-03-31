@@ -106,9 +106,8 @@ namespace RelayCore::render
         glUseProgram(program_id_);
     }
 
-    void ShaderProgram::set_mat4(const std::string_view name, const glm::mat4& value) const
+    void ShaderProgram::set_mat4(const int location, const glm::mat4& value) const
     {
-        const int location = uniform_location(name);
         if (location >= 0) { glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)); }
     }
 

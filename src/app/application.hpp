@@ -25,7 +25,6 @@ namespace RelayCore
         void handle_event(const SDL_Event& event);
 
         std::unique_ptr<AppDelegate> app_delegate_;
-        bool                         is_running_ = true;
         FrameTimer                   frame_timer_{};
         SdlSystem                    sdl_system_{};
         core::EngineConfig           config_{};
@@ -33,5 +32,6 @@ namespace RelayCore
         Renderer                     renderer_{};
         FlyCameraController          fly_camera_controller_{};
         AudioSystem                  audio_system_{};
+        bool                         is_running_ = true;
     };
 } // namespace RelayCore

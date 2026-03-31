@@ -58,12 +58,23 @@ namespace RelayCore
 
         while (is_running_)
         {
-            const FrameInfo frame = frame_timer_.begin_frame();
-            process_events();
-            fly_camera_controller_.update(frame, renderer_.camera());
-            app_delegate_->on_update(frame);
-            renderer_.render_frame(frame, audio_system_);
-            window_.swap_buffers();
+            const FrameInfo frame = frame_timer_.begin_frame(); {
+                RELAYCORE_PROFILE_ZONE_N("process_events");
+                process_events();
+            } {
+                RELAYCORE_PROFILE_ZONE_N("camera.update");
+                fly_camera_controller_.update(frame, renderer_.camera());
+            } {
+                RELAYCORE_PROFILE_ZONE_N("app_delegate.on_update");
+                app_delegate_->on_update(frame);
+            } {
+                RELAYCORE_PROFILE_ZONE_N("renderer.render_frame");
+                renderer_.render_frame(frame, audio_system_);
+            } {
+                RELAYCORE_PROFILE_ZONE_N("swap_buffers");
+                window_.swap_buffers();
+            }
+
             RELAYCORE_PROFILE_FRAME();
         }
 

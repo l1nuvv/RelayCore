@@ -29,6 +29,7 @@ namespace RelayCore::render
         void bind() const;
 
         void set_mat4(std::string_view name, const glm::mat4& value) const;
+        void set_mat4(int location, const glm::mat4& value) const;
 
     private:
         void reset() noexcept;
