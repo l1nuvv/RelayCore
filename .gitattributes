@@ -1,0 +1,46 @@
+* text=auto
+
+# Source and config files should stay LF in the working tree too.
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.cxx text eol=lf
+*.h text eol=lf
+*.hh text eol=lf
+*.hpp text eol=lf
+*.hxx text eol=lf
+*.inl text eol=lf
+*.ipp text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.vert text eol=lf
+*.frag text eol=lf
+*.glsl text eol=lf
+
+# Windows-native scripts keep CRLF on checkout.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets and archives must never be normalized.
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.ico -text
+*.wav -text
+*.ogg -text
+*.mp3 -text
+*.ttf -text
+*.otf -text
+*.zip -text
+*.7z -text
+*.exe -text
+*.dll -text
+*.lib -text

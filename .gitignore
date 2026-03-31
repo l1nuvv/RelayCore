@@ -1,0 +1,42 @@
+# Help tools that honor .gitignore, and keep per-user presets out of VCS
+/.git/
+/CMakeUserPresets.json
+
+# Build trees and generated buildsystem state
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/install_manifest.txt
+/CTestTestfile.cmake
+/Testing/
+/compile_commands.json
+/.cmake/
+
+# Package manager and local caches
+/vcpkg_installed/
+/.cache/
+/.clangd/
+
+# IDEs and editors
+/.idea/
+/.vs/
+/.vscode/
+/.fleet/
+
+# Runtime, profiling and crash artifacts
+*.log
+*.dmp
+*.stackdump
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.pdb
+
+# OS noise
+.DS_Store
+Thumbs.db

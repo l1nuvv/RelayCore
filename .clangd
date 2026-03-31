@@ -1,0 +1,45 @@
+CompileFlags:
+  CompilationDatabase: Ancestors
+  Add:
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+  Remove:
+    - /analyze
+    - /external:*
+    - /fsanitize=address
+    - -fsanitize=address
+Index:
+  Background: Build
+  StandardLibrary: true
+Style:
+  QuotedHeaders:
+    - "src/.*"
+    - "tests/.*"
+  AngledHeaders:
+    - "extern/.*"
+Diagnostics:
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - clang-analyzer-*
+      - performance-*
+      - modernize-*
+      - readability-*
+    Remove:
+      - modernize-use-trailing-return-type
+      - readability-identifier-length
+      - readability-magic-numbers
+    FastCheckFilter: Strict
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+Completion:
+  HeaderInsertion: IWYU
+---
+If:
+  PathMatch:
+    - extern/.*
+Index:
+  Background: Skip
+Diagnostics:
+  Suppress: '*'

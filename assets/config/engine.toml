@@ -1,0 +1,31 @@
+[window]
+title = "RelayCore"
+width = 1280
+height = 720
+high_dpi = true
+vsync = true
+
+[render]
+clear_r = 0.10
+clear_g = 0.11
+clear_b = 0.14
+fov_degrees = 60.0
+near_plane = 0.1
+far_plane = 100.0
+camera_position = [1.7, 1.2, 2.8]
+camera_target = [0.0, 0.0, 0.0]
+
+[imgui]
+enabled = true
+show_demo_window = false
+
+[input]
+move_speed = 3.5
+sprint_multiplier = 3.0
+mouse_sensitivity_radians = 0.0022
+capture_mouse_on_start = true
+
+[audio]
+enabled = true
+master_volume = 1.0
+startup_sound = ""

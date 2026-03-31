@@ -1,0 +1,137 @@
+# =============================================================================
+# BASIC SETTINGS
+# =============================================================================
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+ColumnLimit: 120
+IndentWidth: 4
+ContinuationIndentWidth: 4
+TabWidth: 4
+InsertNewlineAtEOF: true
+MaxEmptyLinesToKeep: 2
+
+# =============================================================================
+# INDENTATION AND ALIGNMENT
+# =============================================================================
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: All
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignOperands: true
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 2
+
+# =============================================================================
+# SHORT CONSTRUCTS
+# =============================================================================
+AllowShortBlocksOnASingleLine: Always
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: false
+
+# =============================================================================
+# POINTERS AND REFERENCES
+# =============================================================================
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# =============================================================================
+# BRACES
+# =============================================================================
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: false
+  AfterControlStatement: true
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+
+# =============================================================================
+# FUNCTION ARGUMENTS AND CONSTRUCTORS
+# =============================================================================
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+BreakConstructorInitializers: AfterColon
+BreakConstructorInitializersBeforeComma: false
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 4
+AlwaysBreakTemplateDeclarations: Yes
+Cpp11BracedListStyle: true
+AlignAfterOpenBracket: BlockIndent
+
+# =============================================================================
+# LINE BREAKS
+# =============================================================================
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeTernaryOperators: true
+BreakStringLiterals: true
+
+# =============================================================================
+# INITIALIZERS
+# =============================================================================
+BreakBeforeInheritanceComma: false
+BreakInheritanceList: BeforeColon
+
+# =============================================================================
+# INCLUDES
+# =============================================================================
+IncludeBlocks: Regroup
+SortIncludes: CaseSensitive
+SortUsingDeclarations: true
+IncludeCategories:
+  - Regex: '^<.*'
+    Priority: 1
+  - Regex: '^".*'
+    Priority: 2
+  - Regex: '.*'
+    Priority: 3
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+
+# =============================================================================
+# SPACES
+# =============================================================================
+SpaceAfterCStyleCast: true
+SpaceAfterTemplateKeyword: false
+SpaceBeforeRangeBasedForLoopColon: false
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInConditionalStatement: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpaceBeforeAssignmentOperators: true
+SpaceAfterLogicalNot: false
+
+# =============================================================================
+# COMMENT HANDLING
+# =============================================================================
+PenaltyBreakComment: 100
+
+# =============================================================================
+# ADDITIONAL USEFUL OPTIONS
+# =============================================================================
+FixNamespaceComments: true
+IndentPPDirectives: None
+KeepEmptyLinesAtTheStartOfBlocks: false
+ReflowComments: true
+SeparateDefinitionBlocks: Leave
+SpaceInEmptyBlock: false

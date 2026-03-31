@@ -1,0 +1,17 @@
+{
+  "name": "relaycore",
+  "version-string": "0.1.0",
+  "builtin-baseline":"9eb6e4b60ea5bdd60a87e8d2353d53882a32a3f3",
+  "description": "Starter project for a small retro-FPS / GoldSrc-like engine prototype using SDL3, OpenGL, GLM, spdlog, ImGui, miniaudio, doctest and toml++.",
+  "license": "MIT",
+  "dependencies": [
+    { "name": "sdl3" },
+    { "name": "spdlog" },
+    { "name": "glm" },
+    { "name": "imgui", "default-features": false, "features": ["opengl3-binding", "sdl3-binding"] },
+    { "name": "doctest" },
+    { "name": "miniaudio" },
+    { "name": "tomlplusplus" },
+    { "name": "tracy" }
+  ]
+}
