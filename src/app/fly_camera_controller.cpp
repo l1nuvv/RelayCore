@@ -37,8 +37,7 @@ namespace RelayCore
                 if (event.key.scancode == SDL_SCANCODE_ESCAPE)
                 {
                     application_running = false;
-                } else if (event.key.scancode == SDL_SCANCODE_F1)
-                {
+                } else if (event.key.scancode == SDL_SCANCODE_F1) {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
                     log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");

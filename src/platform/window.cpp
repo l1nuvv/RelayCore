@@ -113,11 +113,9 @@ namespace RelayCore
         if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE)
         {
             profile = "core";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY)
-        {
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) {
             profile = "compatibility";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
-        {
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
             profile = "es";
         }
 

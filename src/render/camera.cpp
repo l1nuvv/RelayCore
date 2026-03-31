@@ -120,16 +120,14 @@ namespace RelayCore::render
         if (!basis_dirty_) { return; }
 
         const float cos_pitch = std::cos(pitch_radians_);
-        forward_              = glm::normalize(
-            glm::vec3{
-                std::cos(yaw_radians_) * cos_pitch,
-                std::sin(pitch_radians_),
-                std::sin(yaw_radians_) * cos_pitch,
-            }
-        );
-        right_       = glm::normalize(glm::cross(forward_, world_up_));
-        up_          = glm::normalize(glm::cross(right_, forward_));
-        basis_dirty_ = false;
+        forward_              = glm::normalize(glm::vec3{
+            std::cos(yaw_radians_) * cos_pitch,
+            std::sin(pitch_radians_),
+            std::sin(yaw_radians_) * cos_pitch,
+        });
+        right_                = glm::normalize(glm::cross(forward_, world_up_));
+        up_                   = glm::normalize(glm::cross(right_, forward_));
+        basis_dirty_          = false;
     }
 
     void PerspectiveCamera::update_matrices_if_needed() const noexcept
