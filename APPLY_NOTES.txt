@@ -1,0 +1,17 @@
+This archive is a full updated snapshot with the recommended clean split applied and then refactored further.
+
+Included here:
+- updated runtime seam via AppDelegate + EngineServices
+- renderer split into frame primitives instead of a hardcoded demo scene
+- game-side ownership of fly-camera control and cube rendering
+- updated root CMakeLists.txt, presets and helper modules
+- clean physical split into `src/relaycore` and `src/relaygame`
+- updated README + architecture notes
+
+Main intent:
+- remove the confusing duplicate `app` concepts
+- keep one engine root and one game root
+- make the engine/game split real at runtime, not only in target layout
+- prepare the project for `world/`, `collision/` and `player_motor`
+
+After unpacking, verify locally with your normal MSVC/vcpkg setup.

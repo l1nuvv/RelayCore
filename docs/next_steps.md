@@ -2,37 +2,36 @@
 
 ## Current state
 
-RelayCore now renders a real 3D object instead of a triangle in clip space:
+RelayCore now has a **real engine/game runtime seam** instead of only a launcher split:
 
-- OpenGL is loaded through `glad`
-- the renderer enables depth testing and back-face culling
-- shaders are read from `assets/shaders`
-- a perspective camera builds view/projection matrices
-- the frame loop feeds time into the renderer for model animation
+- the engine owns the app loop, window/context, renderer bootstrap, audio and config
+- the game/demo owns camera input updates and scene rendering through `AppDelegate`
+- the renderer no longer hardcodes the rotating cube inside the engine frame loop
+- the demo now renders the cube from `src/relaygame/`
 
 ## Recommended order from here
 
-### 1. Vendor generated glad2
-Remove network dependence from configure/build and keep the GL loader inside the repository.
+### 1. Add `world/` and `collision/` to the engine
+Introduce static room/blockout data, traces and sweeps on the engine side.
 
-### 2. Add camera controls
-Introduce keyboard + mouse driven movement and keep the camera as a small self-contained render-side object.
+### 2. Add a real player motor on the game side
+Replace the free-fly demo camera with a gameplay controller built on top of engine queries.
 
 ### 3. Split mesh abstractions
-Move from `ColorCubeMesh` to reusable `VertexArray`, `VertexBuffer`, and `Mesh` classes.
+Move from `ColorCubeMesh` to reusable `VertexArray`, `VertexBuffer`, `Mesh` and later static-world mesh batches.
 
-### 4. Add textures
-Load one texture, bind it in a material/shader path, and move from colored geometry to textured test geometry.
+### 4. Add textures and materials
+Load one texture, bind it through a small material path and move from vertex-colored geometry to authored surfaces.
 
-### 5. Add a scene delegate or render world
-At that point the renderer should stop owning a hardcoded cube and start consuming scene data.
-
+### 5. Add a level/bootstrap path
+Let the game spawn a small room/corridor blockout from data instead of hand-coded demo primitives.
 
 ## Build pipeline
 
 - [x] vendored glad2
 - [x] first 3D camera and cube
 - [x] basic CI on GitHub Actions
+- [x] real engine/game delegate seam for update + render
 - [ ] room geometry and player collision
 - [ ] input abstraction layer
 - [ ] texture/material pipeline
