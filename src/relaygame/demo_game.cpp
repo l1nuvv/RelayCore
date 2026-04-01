@@ -6,6 +6,7 @@
 
 #include "relaycore/app/engine_services.hpp"
 #include "relaycore/core/log.hpp"
+#include "relaycore/render/renderer.hpp"
 
 namespace RelayGame
 {
