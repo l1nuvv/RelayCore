@@ -4,6 +4,7 @@
 
 #include "relaycore/app/app_delegate.hpp"
 #include "relaycore/app/fly_camera_controller.hpp"
+#include "relaycore/world/blockout_level.hpp"
 
 namespace RelayGame
 {
@@ -17,6 +18,7 @@ namespace RelayGame
 
     private:
         RelayCore::FlyCameraController fly_camera_{};
+        RelayCore::BlockoutLevel level_{};
         float                          cube_angle_a_ = 0.0F;
         float                          cube_angle_b_ = 0.0F;
     };

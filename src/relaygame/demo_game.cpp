@@ -6,15 +6,23 @@
 
 #include "relaycore/app/engine_services.hpp"
 #include "relaycore/core/log.hpp"
+#include "relaycore/core/paths.hpp"
 #include "relaycore/render/renderer.hpp"
+#include "relaycore/world/blockout_loader.hpp"
 
 namespace RelayGame
 {
     void DemoGame::on_startup(RelayCore::EngineServices& services)
     {
-        fly_camera_ = RelayCore::FlyCameraController{services.config().input};
         fly_camera_.enable_capture(services.window());
-        RelayCore::log::info("DemoGame startup");
+
+        const auto level_path = RelayCore::core::asset_path("levels/test_room.toml");
+        level_ = RelayCore::load_blockout_level(level_path);
+
+        RelayCore::log::info(
+            "DemoGame loaded level: {} solids, {} entities",
+            level_.solids.size(),
+            level_.entities.size());
     }
 
     void DemoGame::on_event(const SDL_Event& event, RelayCore::EngineServices& services)

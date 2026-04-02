@@ -2,8 +2,8 @@ add_library(relaycore_engine STATIC)
 add_library(RelayCore::engine ALIAS relaycore_engine)
 
 target_sources(
-    relaycore_engine
-    PRIVATE
+        relaycore_engine
+        PRIVATE
         app/application.cpp
         app/engine_services.cpp
         app/fly_camera_controller.cpp
@@ -23,7 +23,8 @@ target_sources(
         render/mesh.cpp
         render/renderer.cpp
         render/shader_program.cpp
-    PUBLIC
+        world/blockout_loader.cpp
+        PUBLIC
         FILE_SET HEADERS
         BASE_DIRS ${PROJECT_SOURCE_DIR}/src
         FILES
@@ -48,11 +49,13 @@ target_sources(
         render/mesh.hpp
         render/renderer.hpp
         render/shader_program.hpp
+        world/blockout_level.hpp
+        world/blockout_loader.hpp
 )
 
 target_include_directories(
-    relaycore_engine
-    PUBLIC
+        relaycore_engine
+        PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/extern/glad/include>
         $<INSTALL_INTERFACE:include>
@@ -60,21 +63,21 @@ target_include_directories(
 
 target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
 
-if(NOT RELAYCORE_ENABLE_AUDIO)
+if (NOT RELAYCORE_ENABLE_AUDIO)
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_AUDIO_DISABLED)
-endif()
+endif ()
 
-if(NOT RELAYCORE_ENABLE_CONFIG)
+if (NOT RELAYCORE_ENABLE_CONFIG)
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_CONFIG_DISABLED)
-endif()
+endif ()
 
-if(NOT RELAYCORE_ENABLE_IMGUI)
+if (NOT RELAYCORE_ENABLE_IMGUI)
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_IMGUI_DISABLED)
-endif()
+endif ()
 
 target_link_libraries(
-    relaycore_engine
-    PUBLIC
+        relaycore_engine
+        PUBLIC
         RelayCore::project_options
         RelayCore::warnings
         RelayCore::toml_headers
@@ -82,19 +85,19 @@ target_link_libraries(
         spdlog::spdlog
         glm::glm
         RelayCore::glad
-    PRIVATE
+        PRIVATE
         RelayCore::miniaudio_headers
 )
 
-if(RELAYCORE_ENABLE_IMGUI)
+if (RELAYCORE_ENABLE_IMGUI)
     target_link_libraries(relaycore_engine PRIVATE ${RELAYCORE_IMGUI_TARGET})
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ENABLE_IMGUI=1)
-endif()
+endif ()
 
-if(RELAYCORE_ENABLE_TRACY)
+if (RELAYCORE_ENABLE_TRACY)
     target_link_libraries(relaycore_engine PRIVATE Tracy::TracyClient)
     target_compile_definitions(relaycore_engine PRIVATE TRACY_ENABLE)
-endif()
+endif ()
 
 set_target_properties(relaycore_engine PROPERTIES FOLDER "engine")
 relaycore_apply_standard_target_settings(relaycore_engine)

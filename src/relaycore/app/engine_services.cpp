@@ -18,8 +18,7 @@ namespace RelayCore
         window_(&window),
         renderer_(&renderer),
         audio_system_(&audio_system),
-        is_running_(&is_running)
-    {}
+        is_running_(&is_running) {}
 
     auto EngineServices::config() const noexcept -> const core::EngineConfig& { return *config_; }
 
