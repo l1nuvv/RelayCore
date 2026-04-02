@@ -1,29 +1,45 @@
-#include "relaycore/app/application.hpp"
+/**
+ * @file src/relaycore/app/application.cpp
+ * @brief Application main-loop implementation.
+ */
+
+#include "relaycore/app/application.h"
 
 #include <SDL3/SDL.h>
 
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/paths.hpp"
-#include "relaycore/core/profiling.hpp"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 
 namespace RelayCore
 {
     namespace
     {
+        /**
+         * @brief Ensures the active delegate receives on_shutdown() exactly once.
+         */
         class AppShutdownGuard {
         public:
+            /**
+             * @brief Stores the delegate and services that must be shut down together.
+             * @param delegate Delegate that will receive the shutdown callback.
+             * @param services Runtime services passed to the delegate.
+             */
             AppShutdownGuard(AppDelegate& delegate, EngineServices& services) noexcept :
                 delegate_(delegate), services_(services)
             {}
 
+            /**
+             * @brief Invokes the delegate shutdown callback.
+             */
             ~AppShutdownGuard() noexcept { delegate_.on_shutdown(services_); }
 
             AppShutdownGuard(const AppShutdownGuard&) = delete;
             auto operator=(const AppShutdownGuard&) -> AppShutdownGuard& = delete;
 
         private:
-            AppDelegate&     delegate_;
-            EngineServices&  services_;
+            AppDelegate&     delegate_; ///< Delegate that owns shutdown behaviour.
+            EngineServices&  services_; ///< Runtime services forwarded to the delegate.
         };
     } // namespace
 

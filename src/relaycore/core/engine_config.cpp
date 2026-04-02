@@ -1,4 +1,9 @@
-#include "relaycore/core/engine_config.hpp"
+/**
+ * @file src/relaycore/core/engine_config.cpp
+ * @brief Engine configuration loading and TOML parsing helpers.
+ */
+
+#include "relaycore/core/engine_config.h"
 
 #include <array>
 #include <glm/trigonometric.hpp>
@@ -7,13 +12,20 @@
 #include <string_view>
 #include <toml++/toml.hpp>
 
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/paths.hpp"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
 
 namespace RelayCore::core
 {
     namespace
     {
+        /**
+         * @brief Assigns a TOML value to a destination if the key exists and matches the type.
+         * @tparam T Value type to read.
+         * @param view TOML table or node view that owns the key.
+         * @param key Key to read from the node view.
+         * @param destination Destination updated on success.
+         */
         template<typename T>
         void
         assign_if_present(const toml::node_view<const toml::node>& view, const std::string_view key, T& destination)
@@ -21,6 +33,13 @@ namespace RelayCore::core
             if (const auto value = view[key].template value<T>()) { destination = *value; }
         }
 
+        /**
+         * @brief Reads a three-component vector from a TOML array.
+         * @param view TOML table or node view that owns the key.
+         * @param key Key to read from the node view.
+         * @param fallback Value returned when parsing fails.
+         * @return Parsed vector or the fallback value.
+         */
         auto
         read_vec3(const toml::node_view<const toml::node>& view, const std::string_view key, const glm::vec3& fallback)
             -> glm::vec3

@@ -1,18 +1,23 @@
-#include "relaycore/render/gl_loader.hpp"
+/**
+ * @file src/relaycore/render/gl_loader.cpp
+ * @brief glad loader bootstrap implementation.
+ */
+
+#include "relaycore/render/gl_loader.h"
 
 #include <SDL3/SDL.h>
 #include <glad/gl.h>
 #include <stdexcept>
 
-#include "relaycore/core/log.hpp"
+#include "relaycore/core/log.h"
 
 namespace RelayCore::render::gl
 {
     namespace
     {
-        bool g_loaded        = false;
-        int  g_major_version = 0;
-        int  g_minor_version = 0;
+        bool g_loaded        = false; ///< True after glad has loaded OpenGL entry points.
+        int  g_major_version = 0; ///< Loaded OpenGL major version.
+        int  g_minor_version = 0; ///< Loaded OpenGL minor version.
     } // namespace
 
     void load()

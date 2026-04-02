@@ -1,12 +1,17 @@
-#include "relaycore/app/fly_camera_controller.hpp"
+/**
+ * @file src/relaycore/app/fly_camera_controller.cpp
+ * @brief Fly-camera input processing implementation.
+ */
+
+#include "relaycore/app/fly_camera_controller.h"
 
 #include <SDL3/SDL.h>
 #include <glm/geometric.hpp>
 
-#include "relaycore/app/engine_services.hpp"
-#include "relaycore/core/log.hpp"
-#include "relaycore/platform/window.hpp"
-#include "relaycore/render/camera.hpp"
+#include "relaycore/app/engine_services.h"
+#include "relaycore/core/log.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/camera.h"
 
 namespace RelayCore
 {

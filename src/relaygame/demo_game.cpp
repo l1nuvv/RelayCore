@@ -1,4 +1,9 @@
-#include "relaygame/demo_game.hpp"
+/**
+ * @file src/relaygame/demo_game.cpp
+ * @brief Demo game implementation.
+ */
+
+#include "relaygame/demo_game.h"
 
 #include <type_traits>
 #include <utility>
@@ -7,19 +12,34 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
-#include "relaycore/app/engine_services.hpp"
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/paths.hpp"
-#include "relaycore/render/renderer.hpp"
-#include "relaycore/world/blockout_loader.hpp"
+#include "relaycore/app/engine_services.h"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+#include "relaycore/render/renderer.h"
+#include "relaycore/world/blockout_loader.h"
 
 namespace
 {
+    /**
+     * @brief Helper constant used to trigger a dependent static_assert in templates.
+     * @tparam Type Type participating in the dependent false value.
+     */
     template<typename>
     inline constexpr bool always_false_v = false;
 
+    /**
+     * @brief Passes through an existing glm::vec3 value.
+     * @param v Source vector.
+     * @return The same vector.
+     */
     inline auto to_vec3(const glm::vec3& v) -> glm::vec3 { return v; }
 
+    /**
+     * @brief Converts any x/y/z-like vector object to glm::vec3.
+     * @tparam T Source vector-like type.
+     * @param v Source value exposing x, y, and z members.
+     * @return Converted glm::vec3 value.
+     */
     template<typename T>
         requires requires(const T& v)
         {
@@ -35,6 +55,10 @@ namespace
             static_cast<float>(v.z));
     }
 
+    /**
+     * @brief Detects blockout solids that expose min and max members.
+     * @tparam T Candidate solid type.
+     */
     template<typename T>
     concept HasMinMax = requires(const T& s)
     {
@@ -42,6 +66,10 @@ namespace
         s.max;
     };
 
+    /**
+     * @brief Detects blockout solids that expose mins and maxs members.
+     * @tparam T Candidate solid type.
+     */
     template<typename T>
     concept HasMinsMaxs = requires(const T& s)
     {
@@ -49,6 +77,10 @@ namespace
         s.maxs;
     };
 
+    /**
+     * @brief Detects solids described by center and size members.
+     * @tparam T Candidate solid type.
+     */
     template<typename T>
     concept HasCenterSize = requires(const T& s)
     {
@@ -56,6 +88,10 @@ namespace
         s.size;
     };
 
+    /**
+     * @brief Detects solids described by position and size members.
+     * @tparam T Candidate solid type.
+     */
     template<typename T>
     concept HasPositionSize = requires(const T& s)
     {
@@ -63,6 +99,10 @@ namespace
         s.size;
     };
 
+    /**
+     * @brief Detects solids described by origin and extents members.
+     * @tparam T Candidate solid type.
+     */
     template<typename T>
     concept HasOriginExtents = requires(const T& s)
     {
@@ -70,6 +110,12 @@ namespace
         s.extents;
     };
 
+    /**
+     * @brief Extracts a common center/size representation from several solid layouts.
+     * @tparam SolidT Solid type to adapt.
+     * @param solid Solid instance to inspect.
+     * @return Pair containing the solid center and size vectors.
+     */
     template<typename SolidT>
     auto solid_center_and_size(const SolidT& solid) -> std::pair<glm::vec3, glm::vec3>
     {

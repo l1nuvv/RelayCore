@@ -1,4 +1,9 @@
-#include "relaycore/render/mesh.hpp"
+/**
+ * @file src/relaycore/render/mesh.cpp
+ * @brief Debug cube mesh GPU upload and draw implementation.
+ */
+
+#include "relaycore/render/mesh.h"
 
 #include <array>
 #include <cstddef>
@@ -9,15 +14,21 @@ namespace RelayCore::render
 {
     namespace
     {
+        /**
+         * @brief Interleaved vertex format used by the debug cube mesh.
+         */
         struct Vertex {
-            float position_x;
-            float position_y;
-            float position_z;
-            float color_r;
-            float color_g;
-            float color_b;
+            float position_x; ///< X component of the vertex position.
+            float position_y; ///< Y component of the vertex position.
+            float position_z; ///< Z component of the vertex position.
+            float color_r; ///< Red vertex color component.
+            float color_g; ///< Green vertex color component.
+            float color_b; ///< Blue vertex color component.
         };
 
+        /**
+         * @brief CPU-side vertex data for a unit-sized color cube.
+         */
         constexpr std::array<Vertex, 36> kCubeVertices{
             // front
             Vertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},

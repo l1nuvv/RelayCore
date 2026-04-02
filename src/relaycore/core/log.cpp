@@ -1,4 +1,9 @@
-#include "relaycore/core/log.hpp"
+/**
+ * @file src/relaycore/core/log.cpp
+ * @brief Shared logger initialization and access.
+ */
+
+#include "relaycore/core/log.h"
 
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -8,7 +13,7 @@ namespace RelayCore::log
 {
     namespace
     {
-        std::shared_ptr<spdlog::logger> g_logger;
+        std::shared_ptr<spdlog::logger> g_logger; ///< Shared engine logger instance.
     }
 
     void init()

@@ -1,6 +1,11 @@
-#include "relaycore/world/blockout_loader.hpp"
+/**
+ * @file src/relaycore/world/blockout_loader.cpp
+ * @brief Blockout-level TOML loader implementation.
+ */
 
-#include "relaycore/core/log.hpp"
+#include "relaycore/world/blockout_loader.h"
+
+#include "relaycore/core/log.h"
 
 #include <toml++/toml.hpp>
 
@@ -13,6 +18,13 @@ namespace RelayCore
 {
 namespace
 {
+/**
+ * @brief Returns a required TOML field or throws if it is missing.
+ * @param table TOML table that should contain the field.
+ * @param key Field name to look up.
+ * @param table_name Human-readable table name used for diagnostics.
+ * @return Referenced TOML node.
+ */
 [[nodiscard]] const toml::node& get_required_node(
     const toml::table& table,
     std::string_view key,
@@ -28,6 +40,12 @@ namespace
     return *node;
 }
 
+/**
+ * @brief Parses a three-component vector from a TOML array.
+ * @param node TOML node to parse.
+ * @param field_name Human-readable field name used for diagnostics.
+ * @return Parsed vector.
+ */
 [[nodiscard]] glm::vec3 parse_vec3(const toml::node& node, std::string_view field_name)
 {
     const auto* array = node.as_array();
@@ -52,6 +70,11 @@ namespace
     return result;
 }
 
+/**
+ * @brief Converts a material name string into a SurfaceMaterial value.
+ * @param value Material name read from TOML.
+ * @return Parsed surface-material enum value.
+ */
 [[nodiscard]] SurfaceMaterial parse_surface_material(std::string_view value)
 {
     if (value == "Concrete") return SurfaceMaterial::Concrete;

@@ -5,7 +5,7 @@ target_sources(
     PRIVATE
         main.cpp
         demo_game.cpp
-        demo_game.hpp
+        demo_game.h
 )
 
 target_include_directories(relaycore_demo PRIVATE ${PROJECT_SOURCE_DIR}/src)

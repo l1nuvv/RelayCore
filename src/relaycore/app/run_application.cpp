@@ -1,16 +1,31 @@
-#include "relaycore/app/run_application.hpp"
+/**
+ * @file src/relaycore/app/run_application.cpp
+ * @brief Top-level application bootstrap helper.
+ */
+
+#include "relaycore/app/run_application.h"
 
 #include <exception>
 #include <string_view>
 
-#include "relaycore/app/application.hpp"
-#include "relaycore/core/log.hpp"
+#include "relaycore/app/application.h"
+#include "relaycore/core/log.h"
 
 namespace
 {
+    /**
+     * @brief Initializes logging for the duration of run_application().
+     */
     class LogLifetime final {
     public:
+        /**
+         * @brief Initializes the shared engine logger.
+         */
         LogLifetime() { RelayCore::log::init(); }
+
+        /**
+         * @brief Shuts down the shared engine logger.
+         */
         ~LogLifetime() noexcept { RelayCore::log::shutdown(); }
 
         LogLifetime(const LogLifetime&) = delete;

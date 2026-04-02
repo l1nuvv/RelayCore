@@ -1,4 +1,9 @@
-#include "relaycore/render/shader_program.hpp"
+/**
+ * @file src/relaycore/render/shader_program.cpp
+ * @brief ShaderProgram implementation.
+ */
+
+#include "relaycore/render/shader_program.h"
 
 #include <fstream>
 #include <glad/gl.h>
@@ -11,6 +16,13 @@ namespace RelayCore::render
 {
     namespace
     {
+        /**
+         * @brief Builds a shader-compilation error message.
+         * @param source_path Path to the shader source file.
+         * @param stage Human-readable shader stage name.
+         * @param info_log Compiler output from OpenGL.
+         * @return Formatted exception message.
+         */
         auto build_shader_error_message(
             const std::filesystem::path& source_path, const std::string& stage, const std::string& info_log
         ) -> std::string
@@ -20,6 +32,13 @@ namespace RelayCore::render
             return stream.str();
         }
 
+        /**
+         * @brief Builds a shader-linking error message.
+         * @param vertex_shader_path Path to the vertex shader source.
+         * @param fragment_shader_path Path to the fragment shader source.
+         * @param info_log Linker output from OpenGL.
+         * @return Formatted exception message.
+         */
         auto build_program_error_message(
             const std::filesystem::path& vertex_shader_path,
             const std::filesystem::path& fragment_shader_path,

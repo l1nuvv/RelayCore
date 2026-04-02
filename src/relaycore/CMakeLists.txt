@@ -28,29 +28,29 @@ target_sources(
         FILE_SET HEADERS
         BASE_DIRS ${PROJECT_SOURCE_DIR}/src
         FILES
-        app/app_delegate.hpp
-        app/application.hpp
-        app/engine_services.hpp
-        app/fly_camera_controller.hpp
-        app/frame_timer.hpp
-        app/run_application.hpp
-        audio/audio_system.hpp
-        core/engine_config.hpp
-        core/log.hpp
-        core/paths.hpp
-        core/profiling.hpp
-        core/sdl_error.hpp
-        debug/imgui_overlay.hpp
-        platform/sdl_system.hpp
-        platform/window.hpp
-        render/camera.hpp
-        render/gl_debug.hpp
-        render/gl_loader.hpp
-        render/mesh.hpp
-        render/renderer.hpp
-        render/shader_program.hpp
-        world/blockout_level.hpp
-        world/blockout_loader.hpp
+        app/app_delegate.h
+        app/application.h
+        app/engine_services.h
+        app/fly_camera_controller.h
+        app/frame_timer.h
+        app/run_application.h
+        audio/audio_system.h
+        core/engine_config.h
+        core/log.h
+        core/paths.h
+        core/profiling.h
+        core/sdl_error.h
+        debug/imgui_overlay.h
+        platform/sdl_system.h
+        platform/window.h
+        render/camera.h
+        render/gl_debug.h
+        render/gl_loader.h
+        render/mesh.h
+        render/renderer.h
+        render/shader_program.h
+        world/blockout_level.h
+        world/blockout_loader.h
 )
 
 target_include_directories(

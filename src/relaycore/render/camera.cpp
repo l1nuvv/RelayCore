@@ -1,4 +1,9 @@
-#include "relaycore/render/camera.hpp"
+/**
+ * @file src/relaycore/render/camera.cpp
+ * @brief PerspectiveCamera implementation.
+ */
+
+#include "relaycore/render/camera.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,6 +16,9 @@ namespace RelayCore::render
 {
     namespace
     {
+        /**
+         * @brief Maximum allowed absolute pitch angle in radians.
+         */
         constexpr float kPitchClamp = 1.55334306F; // ~89 degrees
     } // namespace
 

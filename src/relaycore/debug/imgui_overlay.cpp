@@ -1,13 +1,18 @@
-#include "relaycore/debug/imgui_overlay.hpp"
+/**
+ * @file src/relaycore/debug/imgui_overlay.cpp
+ * @brief Dear ImGui overlay implementation.
+ */
+
+#include "relaycore/debug/imgui_overlay.h"
 
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
 
-#include "relaycore/audio/audio_system.hpp"
-#include "relaycore/core/log.hpp"
-#include "relaycore/platform/window.hpp"
-#include "relaycore/render/camera.hpp"
+#include "relaycore/audio/audio_system.h"
+#include "relaycore/core/log.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/camera.h"
 
 namespace RelayCore::debug
 {

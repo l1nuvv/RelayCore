@@ -1,15 +1,20 @@
-#include "relaycore/render/renderer.hpp"
+/**
+ * @file src/relaycore/render/renderer.cpp
+ * @brief Renderer implementation.
+ */
+
+#include "relaycore/render/renderer.h"
 
 #include <glad/gl.h>
 #include <glm/mat4x4.hpp>
 
-#include "relaycore/audio/audio_system.hpp"
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/paths.hpp"
-#include "relaycore/core/profiling.hpp"
-#include "relaycore/platform/window.hpp"
-#include "relaycore/render/gl_debug.hpp"
-#include "relaycore/render/gl_loader.hpp"
+#include "relaycore/audio/audio_system.h"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/gl_debug.h"
+#include "relaycore/render/gl_loader.h"
 
 namespace RelayCore
 {
@@ -70,6 +75,7 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_ZONE_N("Renderer::draw_color_cube");
         shader_program_.bind();
+        /** @brief Hard-coded MVP uniform location used by the debug shader. */
         constexpr GLint kMvpLocation = 0;
         const glm::mat4 mvp = camera_.view_projection_matrix() * model_matrix;
         shader_program_.set_mat4(kMvpLocation, mvp);

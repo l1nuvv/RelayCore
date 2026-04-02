@@ -1,8 +1,13 @@
-#include "relaycore/core/paths.hpp"
+/**
+ * @file src/relaycore/core/paths.cpp
+ * @brief Runtime asset-path resolution implementation.
+ */
+
+#include "relaycore/core/paths.h"
 
 #include <SDL3/SDL_filesystem.h>
 
-#include "relaycore/core/log.hpp"
+#include "relaycore/core/log.h"
 
 #ifndef RELAYCORE_ASSET_DIR
 #error "RELAYCORE_ASSET_DIR must be defined by the build system"

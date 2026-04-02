@@ -1,4 +1,9 @@
-#include "relaycore/app/frame_timer.hpp"
+/**
+ * @file src/relaycore/app/frame_timer.cpp
+ * @brief FrameTimer implementation.
+ */
+
+#include "relaycore/app/frame_timer.h"
 
 #include <algorithm>
 

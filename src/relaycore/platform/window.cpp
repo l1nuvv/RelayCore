@@ -1,14 +1,22 @@
-#include "relaycore/platform/window.hpp"
+/**
+ * @file src/relaycore/platform/window.cpp
+ * @brief SDL window and OpenGL context implementation.
+ */
+
+#include "relaycore/platform/window.h"
 
 #include <SDL3/SDL.h>
 
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/sdl_error.hpp"
+#include "relaycore/core/log.h"
+#include "relaycore/core/sdl_error.h"
 
 namespace RelayCore
 {
     namespace
     {
+        /**
+         * @brief Configures the SDL OpenGL attributes required by RelayCore.
+         */
         void set_gl_attributes()
         {
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4), "Failed to set GL major version");
