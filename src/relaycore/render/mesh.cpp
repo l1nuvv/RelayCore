@@ -20,47 +20,29 @@ namespace RelayCore::render
         };
 
         constexpr std::array<CubeVertex, 36> kCubeVertices{
-            CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
+            CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},  CubeVertex{0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
+            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},    CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
+            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},    CubeVertex{-0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
 
-            CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
+            CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{-0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
+            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
+            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
 
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, -0.5F, 0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
+            CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F}, CubeVertex{-0.5F, -0.5F, 0.5F, 0.20F, 0.55F, 0.95F},
+            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},   CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
+            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},   CubeVertex{-0.5F, 0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
 
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, -0.5F, -0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
+            CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, -0.5F, -0.5F, 0.98F, 0.82F, 0.30F},
+            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
+            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, 0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
 
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},
+            CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
+            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
+            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{-0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},
 
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{-0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},
+            CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F}, CubeVertex{0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
+            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},   CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
+            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},   CubeVertex{-0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},
         };
 
         void configure_color_vertex_layout()
@@ -93,7 +75,8 @@ namespace RelayCore::render
         vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
         vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0)),
         index_buffer_id_(std::exchange(other.index_buffer_id_, 0)),
-        index_count_(std::exchange(other.index_count_, 0)) {}
+        index_count_(std::exchange(other.index_count_, 0))
+    {}
 
     auto StaticColorMesh::operator=(StaticColorMesh&& other) noexcept -> StaticColorMesh&
     {
@@ -183,7 +166,8 @@ namespace RelayCore::render
 
     ColorCubeMesh::ColorCubeMesh(ColorCubeMesh&& other) noexcept :
         vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
-        vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0)) {}
+        vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0))
+    {}
 
     auto ColorCubeMesh::operator=(ColorCubeMesh&& other) noexcept -> ColorCubeMesh&
     {
@@ -207,10 +191,7 @@ namespace RelayCore::render
         glBindVertexArray(vertex_array_id_);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_id_);
         glBufferData(
-            GL_ARRAY_BUFFER,
-            static_cast<GLsizeiptr>(sizeof(kCubeVertices)),
-            kCubeVertices.data(),
-            GL_STATIC_DRAW
+            GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(kCubeVertices)), kCubeVertices.data(), GL_STATIC_DRAW
         );
 
         glEnableVertexAttribArray(0);

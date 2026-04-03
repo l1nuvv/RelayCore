@@ -1,7 +1,7 @@
 add_executable(relaycore_tests)
 set_target_properties(relaycore_tests PROPERTIES FOLDER "tests")
 
-target_sources(relaycore_tests PRIVATE camera_tests.cpp)
+target_sources(relaycore_tests PRIVATE camera_tests.cpp blockout_mesh_tests.cpp)
 
 target_link_libraries(
     relaycore_tests

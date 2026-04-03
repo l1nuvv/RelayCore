@@ -49,7 +49,8 @@ namespace RelayCore::render
             const glm::vec3&  b,
             const glm::vec3&  c,
             const glm::vec3&  d,
-            const glm::vec3&  color)
+            const glm::vec3&  color
+        )
         {
             const auto base_index = static_cast<std::uint32_t>(mesh.vertices.size());
 
@@ -164,29 +165,30 @@ namespace RelayCore::render
             return 1.0F;
         }
 
-        [[nodiscard]] auto face_cover_rect(const BlockoutSolid& solid,
-                                           const BlockoutSolid& other,
-                                           const FaceAxis       face)
+        [[nodiscard]] auto face_cover_rect(const BlockoutSolid& solid, const BlockoutSolid& other, const FaceAxis face)
             -> Rect2D
         {
             switch (face)
             {
                 case FaceAxis::PosX:
-                case FaceAxis::NegX: return {
+                case FaceAxis::NegX:
+                    return {
                         std::max(solid.mins.z, other.mins.z),
                         std::min(solid.maxs.z, other.maxs.z),
                         std::max(solid.mins.y, other.mins.y),
                         std::min(solid.maxs.y, other.maxs.y),
                     };
                 case FaceAxis::PosY:
-                case FaceAxis::NegY: return {
+                case FaceAxis::NegY:
+                    return {
                         std::max(solid.mins.x, other.mins.x),
                         std::min(solid.maxs.x, other.maxs.x),
                         std::max(solid.mins.z, other.mins.z),
                         std::min(solid.maxs.z, other.maxs.z),
                     };
                 case FaceAxis::PosZ:
-                case FaceAxis::NegZ: return {
+                case FaceAxis::NegZ:
+                    return {
                         std::max(solid.mins.x, other.mins.x),
                         std::min(solid.maxs.x, other.maxs.x),
                         std::max(solid.mins.y, other.mins.y),
@@ -197,10 +199,9 @@ namespace RelayCore::render
             throw std::runtime_error("Unsupported face axis");
         }
 
-        [[nodiscard]] auto solid_covers_face_from_outside(
-            const BlockoutSolid& solid,
-            const BlockoutSolid& other,
-            const FaceAxis       face) -> bool
+        [[nodiscard]] auto
+        solid_covers_face_from_outside(const BlockoutSolid& solid, const BlockoutSolid& other, const FaceAxis face)
+            -> bool
         {
             const float  plane      = face_plane(solid, face);
             const Rect2D cover_rect = face_cover_rect(solid, other, face);
@@ -220,61 +221,70 @@ namespace RelayCore::render
         }
 
         void append_face_rect(
-            CpuColorMeshData& mesh,
-            const FaceAxis    face,
-            const float       plane,
-            const Rect2D&     rect,
-            const glm::vec3&  color)
+            CpuColorMeshData& mesh, const FaceAxis face, const float plane, const Rect2D& rect, const glm::vec3& color
+        )
         {
             switch (face)
             {
-                case FaceAxis::PosZ: append_quad(
+                case FaceAxis::PosZ:
+                    append_quad(
                         mesh,
                         {rect.u0, rect.v0, plane},
                         {rect.u1, rect.v0, plane},
                         {rect.u1, rect.v1, plane},
                         {rect.u0, rect.v1, plane},
-                        color);
+                        color
+                    );
                     return;
-                case FaceAxis::NegZ: append_quad(
+                case FaceAxis::NegZ:
+                    append_quad(
                         mesh,
                         {rect.u1, rect.v0, plane},
                         {rect.u0, rect.v0, plane},
                         {rect.u0, rect.v1, plane},
                         {rect.u1, rect.v1, plane},
-                        color);
+                        color
+                    );
                     return;
-                case FaceAxis::NegX: append_quad(
+                case FaceAxis::NegX:
+                    append_quad(
                         mesh,
                         {plane, rect.v0, rect.u0},
                         {plane, rect.v0, rect.u1},
                         {plane, rect.v1, rect.u1},
                         {plane, rect.v1, rect.u0},
-                        color);
+                        color
+                    );
                     return;
-                case FaceAxis::PosX: append_quad(
+                case FaceAxis::PosX:
+                    append_quad(
                         mesh,
                         {plane, rect.v0, rect.u1},
                         {plane, rect.v0, rect.u0},
                         {plane, rect.v1, rect.u0},
                         {plane, rect.v1, rect.u1},
-                        color);
+                        color
+                    );
                     return;
-                case FaceAxis::PosY: append_quad(
+                case FaceAxis::PosY:
+                    append_quad(
                         mesh,
                         {rect.u0, plane, rect.v1},
                         {rect.u1, plane, rect.v1},
                         {rect.u1, plane, rect.v0},
                         {rect.u0, plane, rect.v0},
-                        color);
+                        color
+                    );
                     return;
-                case FaceAxis::NegY: append_quad(
+                case FaceAxis::NegY:
+                    append_quad(
                         mesh,
                         {rect.u0, plane, rect.v0},
                         {rect.u1, plane, rect.v0},
                         {rect.u1, plane, rect.v1},
                         {rect.u0, plane, rect.v1},
-                        color);
+                        color
+                    );
                     return;
             }
         }
@@ -285,7 +295,8 @@ namespace RelayCore::render
             const std::vector<BlockoutSolid>& solids,
             const std::size_t                 solid_index,
             const FaceAxis                    face,
-            const glm::vec3&                  color)
+            const glm::vec3&                  color
+        )
         {
             std::vector<Rect2D> visible_rects{face_rect(solid, face)};
 
@@ -301,7 +312,10 @@ namespace RelayCore::render
             }
 
             const float plane = face_plane(solid, face);
-            for (const Rect2D& rect: visible_rects) { append_face_rect(mesh, face, plane, rect, color); }
+            for (const Rect2D& rect: visible_rects)
+            {
+                append_face_rect(mesh, face, plane, rect, color);
+            }
         }
     } // namespace
 
@@ -327,42 +341,48 @@ namespace RelayCore::render
                 level.solids,
                 solid_index,
                 FaceAxis::PosZ,
-                shade(base_color, face_shade_factor(FaceAxis::PosZ)));
+                shade(base_color, face_shade_factor(FaceAxis::PosZ))
+            );
             append_visible_face(
                 mesh,
                 solid,
                 level.solids,
                 solid_index,
                 FaceAxis::NegZ,
-                shade(base_color, face_shade_factor(FaceAxis::NegZ)));
+                shade(base_color, face_shade_factor(FaceAxis::NegZ))
+            );
             append_visible_face(
                 mesh,
                 solid,
                 level.solids,
                 solid_index,
                 FaceAxis::NegX,
-                shade(base_color, face_shade_factor(FaceAxis::NegX)));
+                shade(base_color, face_shade_factor(FaceAxis::NegX))
+            );
             append_visible_face(
                 mesh,
                 solid,
                 level.solids,
                 solid_index,
                 FaceAxis::PosX,
-                shade(base_color, face_shade_factor(FaceAxis::PosX)));
+                shade(base_color, face_shade_factor(FaceAxis::PosX))
+            );
             append_visible_face(
                 mesh,
                 solid,
                 level.solids,
                 solid_index,
                 FaceAxis::PosY,
-                shade(base_color, face_shade_factor(FaceAxis::PosY)));
+                shade(base_color, face_shade_factor(FaceAxis::PosY))
+            );
             append_visible_face(
                 mesh,
                 solid,
                 level.solids,
                 solid_index,
                 FaceAxis::NegY,
-                shade(base_color, face_shade_factor(FaceAxis::NegY)));
+                shade(base_color, face_shade_factor(FaceAxis::NegY))
+            );
         }
 
         return mesh;

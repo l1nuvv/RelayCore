@@ -13,7 +13,7 @@ namespace RelayCore
 {
     class EngineServices;
     class Window;
-}
+} // namespace RelayCore
 
 namespace RelayCore::render
 {
@@ -26,10 +26,10 @@ namespace RelayCore
      * @brief Tuning parameters for a free-flight debug camera.
      */
     struct FlyCameraControllerConfig {
-        float move_speed                = 3.5F; ///< Base movement speed in world units per second.
-        float sprint_multiplier         = 3.0F; ///< Multiplier applied while sprint is held.
+        float move_speed                = 3.5F;    ///< Base movement speed in world units per second.
+        float sprint_multiplier         = 3.0F;    ///< Multiplier applied while sprint is held.
         float mouse_sensitivity_radians = 0.0022F; ///< Mouse delta to radians conversion factor.
-        bool  capture_mouse_on_start    = true; ///< Enables relative mouse mode during startup.
+        bool  capture_mouse_on_start    = true;    ///< Enables relative mouse mode during startup.
     };
 
     /**
@@ -71,7 +71,7 @@ namespace RelayCore
         [[nodiscard]] auto config() const noexcept -> const FlyCameraControllerConfig&;
 
     private:
-        FlyCameraControllerConfig config_{}; ///< Current controller tuning.
+        FlyCameraControllerConfig config_{};                   ///< Current controller tuning.
         float                     pending_yaw_delta_   = 0.0F; ///< Mouse yaw accumulated since the previous update.
         float                     pending_pitch_delta_ = 0.0F; ///< Mouse pitch accumulated since the previous update.
     };

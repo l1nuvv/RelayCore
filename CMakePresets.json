@@ -3,8 +3,8 @@
   "version": 10,
   "cmakeMinimumRequired": {
     "major": 4,
-    "minor": 0,
-    "patch": 0
+    "minor": 3,
+    "patch": 1
   },
   "configurePresets": [
     {
@@ -15,8 +15,8 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "RELAYCORE_ENABLE_IPO": "ON",
-        "RELAYCORE_ENABLE_ASAN": "ON",
+        "RELAYCORE_ENABLE_IPO": "OFF",
+        "RELAYCORE_ENABLE_ASAN": "OFF",
         "RELAYCORE_ENABLE_PCH": "OFF",
         "RELAYCORE_ENABLE_TRACY": "OFF",
         "RELAYCORE_ENABLE_MSVC_ANALYZE": "OFF"
@@ -58,6 +58,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_UNITY_BUILD": "ON",
+        "RELAYCORE_ENABLE_IPO": "ON",
         "RELAYCORE_ENABLE_PCH": "ON",
         "RELAYCORE_ENABLE_TRACY": "ON"
       }
@@ -70,6 +71,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_UNITY_BUILD": "ON",
+        "RELAYCORE_ENABLE_IPO": "ON",
         "RELAYCORE_ENABLE_PCH": "ON"
       }
     },
@@ -79,7 +81,8 @@
       "description": "ASan build mapped to Debug dependencies.",
       "inherits": "msvc-base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Asan"
+        "CMAKE_BUILD_TYPE": "Asan",
+        "RELAYCORE_ENABLE_ASAN": "ON"
       }
     }
   ],
@@ -143,5 +146,24 @@
         "outputOnFailure": true
       }
     }
+  ],
+  "workflowPresets": [
+    {
+      "name": "tests-relwithdebinfo-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-relwithdebinfo" },
+        { "type": "build", "name": "tests-relwithdebinfo" },
+        { "type": "test", "name": "test-relwithdebinfo" }
+      ]
+    },
+    {
+      "name": "demo-relwithdebinfo-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-relwithdebinfo" },
+        { "type": "build", "name": "demo-relwithdebinfo" }
+      ]
+    }
   ]
 }
+
+

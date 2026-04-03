@@ -12,7 +12,7 @@ namespace RelayCore
     class AudioSystem;
     class Renderer;
     class Window;
-}
+} // namespace RelayCore
 
 namespace RelayCore::render
 {

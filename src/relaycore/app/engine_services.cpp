@@ -19,11 +19,8 @@ namespace RelayCore
         AudioSystem&              audio_system,
         bool&                     is_running
     ) noexcept :
-        config_(&config),
-        window_(&window),
-        renderer_(&renderer),
-        audio_system_(&audio_system),
-        is_running_(&is_running) {}
+        config_(&config), window_(&window), renderer_(&renderer), audio_system_(&audio_system), is_running_(&is_running)
+    {}
 
     auto EngineServices::config() const noexcept -> const core::EngineConfig& { return *config_; }
 

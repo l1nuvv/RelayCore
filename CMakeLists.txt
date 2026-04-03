@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0...4.3)
+cmake_minimum_required(VERSION 4.3.1)
 
 project(
     RelayCore
@@ -6,6 +6,34 @@ project(
     DESCRIPTION "Retro FPS engine prototype"
     LANGUAGES C CXX
 )
+
+if (MSVC)
+    cmake_policy(SET CMP0091 NEW)
+    cmake_policy(SET CMP0141 NEW)
+
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
+            "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>")
+
+    add_compile_options(
+            /permissive-
+            /Zc:preprocessor
+            /Zc:__cplusplus
+            /utf-8
+    )
+
+    add_compile_options(
+            $<$<CONFIG:RelWithDebInfo,Release>:/Gy>
+            $<$<CONFIG:RelWithDebInfo,Release>:/Gw>
+            $<$<CONFIG:RelWithDebInfo>:/Zo>
+    )
+
+    add_link_options(
+            $<$<CONFIG:RelWithDebInfo,Release>:/OPT:REF>
+            $<$<CONFIG:RelWithDebInfo,Release>:/OPT:ICF>
+            $<$<CONFIG:RelWithDebInfo,Release>:/INCREMENTAL:NO>
+    )
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

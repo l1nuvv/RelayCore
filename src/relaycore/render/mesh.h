@@ -1,10 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
-
 #include <glad/gl.h>
 #include <glm/vec3.hpp>
+#include <vector>
 
 namespace RelayCore::render
 {

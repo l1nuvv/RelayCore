@@ -16,8 +16,8 @@ namespace RelayCore::render::gl
     namespace
     {
         bool g_loaded        = false; ///< True after glad has loaded OpenGL entry points.
-        int  g_major_version = 0; ///< Loaded OpenGL major version.
-        int  g_minor_version = 0; ///< Loaded OpenGL minor version.
+        int  g_major_version = 0;     ///< Loaded OpenGL major version.
+        int  g_minor_version = 0;     ///< Loaded OpenGL minor version.
     } // namespace
 
     void load()

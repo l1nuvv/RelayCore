@@ -21,9 +21,9 @@ namespace RelayCore
         previous_frame_time_ = now;
 
         return FrameInfo{
-            .delta_seconds = std::chrono::duration<double>(delta).count(),
+            .delta_seconds   = std::chrono::duration<double>(delta).count(),
             .elapsed_seconds = elapsed,
-            .frame_index = frame_index_++,
+            .frame_index     = frame_index_++,
         };
     }
 } // namespace RelayCore
