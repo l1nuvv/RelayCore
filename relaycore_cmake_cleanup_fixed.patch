@@ -1,0 +1,203 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ab188d3..31dedb4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 4.0...4.3)
++cmake_minimum_required(VERSION 4.3.1)
+ 
+ project(
+     RelayCore
+@@ -19,6 +19,6 @@ relaycore_create_dependency_targets()
+ add_subdirectory(src/relaycore)
+ add_subdirectory(src/relaygame)
+ 
+-if(BUILD_TESTING)
++if (BUILD_TESTING)
+     add_subdirectory(tests)
+-endif()
++endif ()
+diff --git a/src/relaygame/CMakeLists.txt b/src/relaygame/CMakeLists.txt
+index ca97357..88c7dbd 100644
+--- a/src/relaygame/CMakeLists.txt
++++ b/src/relaygame/CMakeLists.txt
+@@ -18,7 +18,6 @@ target_link_libraries(
+         RelayCore::engine
+         RelayCore::project_options
+         RelayCore::warnings
+-        SDL3::SDL3
+ )
+ 
+ set_target_properties(
+diff --git a/CMakePresets.json b/CMakePresets.json
+index eb61b2f..0542d21 100644
+--- a/CMakePresets.json
++++ b/CMakePresets.json
+@@ -16,7 +16,7 @@
+         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+         "RELAYCORE_ENABLE_IPO": "ON",
+-        "RELAYCORE_ENABLE_ASAN": "ON",
++        "RELAYCORE_ENABLE_ASAN": "OFF",
+         "RELAYCORE_ENABLE_PCH": "OFF",
+         "RELAYCORE_ENABLE_TRACY": "OFF",
+         "RELAYCORE_ENABLE_MSVC_ANALYZE": "OFF"
+@@ -79,7 +79,8 @@
+       "description": "ASan build mapped to Debug dependencies.",
+       "inherits": "msvc-base",
+       "cacheVariables": {
+-        "CMAKE_BUILD_TYPE": "Asan"
++        "CMAKE_BUILD_TYPE": "Asan",
++        "RELAYCORE_ENABLE_ASAN": "ON"
+       }
+     }
+   ],
+@@ -88,37 +89,57 @@
+       "name": "demo-debug",
+       "displayName": "Build Demo (Debug)",
+       "configurePreset": "msvc-debug",
+-      "targets": ["relaycore_demo"]
++      "targets": [
++        "relaycore_demo"
++      ]
+     },
+     {
+       "name": "demo-relwithdebinfo",
+       "displayName": "Build Demo (RelWithDebInfo)",
+       "configurePreset": "msvc-relwithdebinfo",
+-      "targets": ["relaycore_demo"]
++      "targets": [
++        "relaycore_demo"
++      ]
+     },
+     {
+       "name": "demo-release",
+       "displayName": "Build Demo (Release)",
+       "configurePreset": "msvc-release",
+-      "targets": ["relaycore_demo"]
++      "targets": [
++        "relaycore_demo"
++      ]
+     },
+     {
+       "name": "demo-asan",
+       "displayName": "Build Demo (ASan)",
+       "configurePreset": "msvc-asan",
+-      "targets": ["relaycore_demo"]
++      "targets": [
++        "relaycore_demo"
++      ]
+     },
+     {
+       "name": "tests-debug",
+       "displayName": "Build Tests (Debug)",
+       "configurePreset": "msvc-debug",
+-      "targets": ["relaycore_tests"]
++      "targets": [
++        "relaycore_tests"
++      ]
+     },
+     {
+       "name": "tests-relwithdebinfo",
+       "displayName": "Build Tests (RelWithDebInfo)",
+       "configurePreset": "msvc-relwithdebinfo",
+-      "targets": ["relaycore_tests"]
++      "targets": [
++        "relaycore_tests"
++      ]
++    },
++    {
++      "name": "tests-asan",
++      "displayName": "Build Tests (ASan)",
++      "configurePreset": "msvc-asan",
++      "targets": [
++        "relaycore_tests"
++      ]
+     }
+   ],
+   "testPresets": [
+@@ -143,5 +164,84 @@
+         "outputOnFailure": true
+       }
+     }
++  ],
++  "workflowPresets": [
++    {
++      "name": "demo-debug-workflow",
++      "steps": [
++        {
++          "type": "configure",
++          "name": "msvc-debug"
++        },
++        {
++          "type": "build",
++          "name": "demo-debug"
++        }
++      ]
++    },
++    {
++      "name": "tests-debug-workflow",
++      "steps": [
++        {
++          "type": "configure",
++          "name": "msvc-debug"
++        },
++        {
++          "type": "build",
++          "name": "tests-debug"
++        },
++        {
++          "type": "test",
++          "name": "test-debug"
++        }
++      ]
++    },
++    {
++      "name": "demo-relwithdebinfo-workflow",
++      "steps": [
++        {
++          "type": "configure",
++          "name": "msvc-relwithdebinfo"
++        },
++        {
++          "type": "build",
++          "name": "demo-relwithdebinfo"
++        }
++      ]
++    },
++    {
++      "name": "tests-relwithdebinfo-workflow",
++      "steps": [
++        {
++          "type": "configure",
++          "name": "msvc-relwithdebinfo"
++        },
++        {
++          "type": "build",
++          "name": "tests-relwithdebinfo"
++        },
++        {
++          "type": "test",
++          "name": "test-relwithdebinfo"
++        }
++      ]
++    },
++    {
++      "name": "tests-asan-workflow",
++      "steps": [
++        {
++          "type": "configure",
++          "name": "msvc-asan"
++        },
++        {
++          "type": "build",
++          "name": "tests-asan"
++        },
++        {
++          "type": "test",
++          "name": "test-asan"
++        }
++      ]
++    }
+   ]
+ }

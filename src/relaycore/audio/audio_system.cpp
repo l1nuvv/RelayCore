@@ -14,14 +14,13 @@
 
 namespace RelayCore
 {
-    AudioSystem::AudioSystem(const AudioSystemConfig& config) :
-        config_(config) {}
+    AudioSystem::AudioSystem(const AudioSystemConfig& config) : config_(config) {}
 
     AudioSystem::~AudioSystem() noexcept { shutdown(); }
 
     AudioSystem::AudioSystem(AudioSystem&& other) noexcept :
-        config_(std::move(other.config_)),
-        engine_(std::move(other.engine_)) {}
+        config_(std::move(other.config_)), engine_(std::move(other.engine_))
+    {}
 
     auto AudioSystem::operator=(AudioSystem&& other) noexcept -> AudioSystem&
     {

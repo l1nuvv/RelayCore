@@ -5,14 +5,13 @@
 
 #include "relaycore/world/blockout_loader.h"
 
-#include "relaycore/core/log.h"
-
-#include <toml++/toml.hpp>
-
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <toml++/toml.hpp>
 #include <utility>
+
+#include "relaycore/core/log.h"
 
 namespace RelayCore
 {
@@ -25,16 +24,15 @@ namespace RelayCore
          * @param table_name Human-readable table name used for diagnostics.
          * @return Referenced TOML node.
          */
-        [[nodiscard]] const toml::node& get_required_node(
-            const toml::table& table,
-            std::string_view   key,
-            std::string_view   table_name)
+        [[nodiscard]] const toml::node&
+        get_required_node(const toml::table& table, std::string_view key, std::string_view table_name)
         {
             const toml::node* node = table.get(key);
             if (node == nullptr)
             {
                 throw std::runtime_error(
-                    "Missing required field '" + std::string(table_name) + "." + std::string(key) + "'");
+                    "Missing required field '" + std::string(table_name) + "." + std::string(key) + "'"
+                );
             }
 
             return *node;
@@ -163,7 +161,8 @@ namespace RelayCore
             "Loaded blockout level '{}' ({} solids, {} entities)",
             path.string(),
             level.solids.size(),
-            level.entities.size());
+            level.entities.size()
+        );
 
         return level;
     }

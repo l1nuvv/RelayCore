@@ -14,9 +14,8 @@
 namespace RelayCore
 {
     Renderer::Renderer(const render::RendererConfig& config) :
-        config_(config),
-        camera_(config.camera),
-        imgui_overlay_(config.imgui) {}
+        config_(config), camera_(config.camera), imgui_overlay_(config.imgui)
+    {}
 
     void Renderer::initialize(const Window& window)
     {
@@ -89,13 +88,16 @@ namespace RelayCore
 
     void Renderer::draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        if (!imgui_overlay_.enabled()) { return; } {
+        if (!imgui_overlay_.enabled()) { return; }
+        {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
-        } {
+        }
+        {
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
             imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
-        } {
+        }
+        {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             imgui_overlay_.render();
         }

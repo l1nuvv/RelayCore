@@ -7,11 +7,10 @@
 
 #include <ctime>
 #include <filesystem>
-#include <stdexcept>
-#include <vector>
-
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <stdexcept>
+#include <vector>
 
 #ifndef RELAYCORE_ASSET_DIR
 #define RELAYCORE_ASSET_DIR ""
@@ -69,29 +68,32 @@ namespace RelayCore::log
 
     MessageBuffer::~MessageBuffer()
     {
-        std::size_t pending_count = 0; {
+        std::size_t pending_count = 0;
+        {
             std::lock_guard<std::mutex> lock(mutex_);
             pending_count = messages_.size();
         }
 
         if (pending_count > 0 && spdlog::default_logger_raw() != nullptr)
         {
-            spdlog::default_logger_raw()->warn(
-                "MessageBuffer destroyed with {} pending message(s)",
-                pending_count);
+            spdlog::default_logger_raw()->warn("MessageBuffer destroyed with {} pending message(s)", pending_count);
         }
     }
 
     void MessageBuffer::flush_info(const std::string_view title)
     {
-        std::vector<std::string> pending; {
+        std::vector<std::string> pending;
+        {
             std::lock_guard<std::mutex> lock(mutex_);
             if (messages_.empty()) { return; }
             pending.swap(messages_);
         }
 
         log::info("{}: {}", title, pending.size());
-        for (const auto& message: pending) { log::info("  {}", message); }
+        for (const auto& message: pending)
+        {
+            log::info("  {}", message);
+        }
     }
 
     void MessageBuffer::clear()
@@ -138,10 +140,8 @@ namespace RelayCore::log
 
             if (config.enable_timestamped_log)
             {
-                const auto run_path      = resolved_logs_dir / make_run_filename();
-                auto       run_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-                    run_path.string(),
-                    false);
+                const auto run_path = resolved_logs_dir / make_run_filename();
+                auto run_file_sink  = std::make_shared<spdlog::sinks::basic_file_sink_mt>(run_path.string(), false);
                 run_file_sink->set_level(spdlog::level::trace);
                 run_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
                 sinks.push_back(run_file_sink);
@@ -151,10 +151,8 @@ namespace RelayCore::log
 
             if (config.enable_latest_log)
             {
-                const auto latest_path      = resolved_logs_dir / config.latest_filename;
-                auto       latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-                    latest_path.string(),
-                    true);
+                const auto latest_path = resolved_logs_dir / config.latest_filename;
+                auto latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(latest_path.string(), true);
                 latest_file_sink->set_level(spdlog::level::trace);
                 latest_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
                 sinks.push_back(latest_file_sink);
@@ -164,10 +162,7 @@ namespace RelayCore::log
 
             if (sinks.empty()) { throw std::runtime_error("Logger initialization failed: no sinks configured"); }
 
-            auto created_logger = std::make_shared<spdlog::logger>(
-                config.logger_name,
-                sinks.begin(),
-                sinks.end());
+            auto created_logger = std::make_shared<spdlog::logger>(config.logger_name, sinks.begin(), sinks.end());
 
             created_logger->set_level(config.level);
             created_logger->flush_on(spdlog::level::warn);
@@ -210,7 +205,10 @@ namespace RelayCore::log
         return *g_logger;
     }
 
-    void flush() { if (g_logger) { g_logger->flush(); } }
+    void flush()
+    {
+        if (g_logger) { g_logger->flush(); }
+    }
 
     void set_level(const spdlog::level::level_enum level_value)
     {

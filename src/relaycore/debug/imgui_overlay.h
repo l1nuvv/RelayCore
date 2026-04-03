@@ -48,9 +48,8 @@ namespace RelayCore::debug
         void begin_frame();
 
         void draw_diagnostics(
-            const FrameInfo&                 frame,
-            const render::PerspectiveCamera& camera,
-            const AudioSystem&               audio_system);
+            const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+        );
 
         void render() const;
 

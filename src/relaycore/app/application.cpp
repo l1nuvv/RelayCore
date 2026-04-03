@@ -26,8 +26,8 @@ namespace RelayCore
              * @param services Runtime services passed to the delegate.
              */
             AppShutdownGuard(AppDelegate& delegate, EngineServices& services) noexcept :
-                delegate_(delegate),
-                services_(services) {}
+                delegate_(delegate), services_(services)
+            {}
 
             /**
              * @brief Invokes the delegate shutdown callback.
@@ -76,22 +76,28 @@ namespace RelayCore
 
         while (is_running_)
         {
-            const FrameInfo frame = frame_timer_.begin_frame(); {
+            const FrameInfo frame = frame_timer_.begin_frame();
+            {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
                 process_events(services);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("app_delegate.on_update");
                 app_delegate_->on_update(frame, services);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("renderer.begin_frame");
                 renderer_.begin_frame();
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("app_delegate.on_render");
                 app_delegate_->on_render(frame, services);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("renderer.draw_debug_overlay");
                 renderer_.draw_debug_overlay(frame, audio_system_);
-            } {
+            }
+            {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_.swap_buffers();
             }
@@ -105,7 +111,10 @@ namespace RelayCore
     void Application::process_events(EngineServices& services)
     {
         SDL_Event event{};
-        while (SDL_PollEvent(&event)) { handle_event(event, services); }
+        while (SDL_PollEvent(&event))
+        {
+            handle_event(event, services);
+        }
     }
 
     void Application::handle_event(const SDL_Event& event, EngineServices& services)
@@ -114,10 +123,10 @@ namespace RelayCore
 
         switch (event.type)
         {
-            case SDL_EVENT_QUIT: services.request_quit();
-                break;
+            case SDL_EVENT_QUIT: services.request_quit(); break;
 
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: renderer_.on_resize(event.window.data1, event.window.data2);
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                renderer_.on_resize(event.window.data1, event.window.data2);
                 log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 

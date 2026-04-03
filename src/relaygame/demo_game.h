@@ -3,9 +3,9 @@
 #include <memory>
 
 #include "relaycore/app/app_delegate.h"
-#include "relaygame/player_controller.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/player_controller.h"
 
 namespace RelayGame
 {
@@ -23,8 +23,8 @@ namespace RelayGame
 
     private:
         RelayGame::GroundedPlayerController player_controller_{};
-        RelayCore::BlockoutLevel           level_{};
-        RelayCore::render::StaticColorMesh blockout_mesh_{};
+        RelayCore::BlockoutLevel            level_{};
+        RelayCore::render::StaticColorMesh  blockout_mesh_{};
     };
 
     [[nodiscard]] auto make_demo_game() -> std::unique_ptr<RelayCore::AppDelegate>;

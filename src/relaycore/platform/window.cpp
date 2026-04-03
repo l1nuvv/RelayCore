@@ -118,9 +118,14 @@ namespace RelayCore
         }
 
         const char* profile = "unknown";
-        if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE) { profile = "core"; } else if (
-            profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) { profile = "compatibility"; } else if (
-            profile_mask == SDL_GL_CONTEXT_PROFILE_ES) { profile = "es"; }
+        if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE)
+        {
+            profile = "core";
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) {
+            profile = "compatibility";
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+            profile = "es";
+        }
 
         log::info(
             "OpenGL context created: {}.{} | profile={} | flags=0x{:X}",

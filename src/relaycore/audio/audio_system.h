@@ -19,7 +19,7 @@ namespace RelayCore
     struct AudioSystemConfig {
         bool        enabled       = true; ///< Enables or disables audio initialization entirely.
         float       master_volume = 1.0F; ///< Initial master volume applied to the audio engine.
-        std::string startup_sound = ""; ///< Optional startup sound path relative to the asset root.
+        std::string startup_sound = "";   ///< Optional startup sound path relative to the asset root.
     };
 
     /**
@@ -89,6 +89,6 @@ namespace RelayCore
 
     private:
         AudioSystemConfig          config_{}; ///< Stored audio configuration.
-        std::unique_ptr<ma_engine> engine_; ///< Owned miniaudio engine instance.
+        std::unique_ptr<ma_engine> engine_;   ///< Owned miniaudio engine instance.
     };
 } // namespace RelayCore

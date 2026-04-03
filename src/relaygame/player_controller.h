@@ -10,7 +10,7 @@ namespace RelayCore
     class EngineServices;
     class Window;
     struct BlockoutLevel;
-}
+} // namespace RelayCore
 
 namespace RelayCore::render
 {
@@ -37,7 +37,8 @@ namespace RelayGame
     class GroundedPlayerController {
     public:
         explicit GroundedPlayerController(
-            const GroundedPlayerControllerConfig& config = GroundedPlayerControllerConfig{});
+            const GroundedPlayerControllerConfig& config = GroundedPlayerControllerConfig{}
+        );
 
         void initialize(const glm::vec3& spawn_position) noexcept;
 
@@ -59,12 +60,12 @@ namespace RelayGame
         [[nodiscard]] auto eye_position() const noexcept -> glm::vec3;
 
         GroundedPlayerControllerConfig config_{};
-        glm::vec3                     position_{0.0F, 0.0F, 0.0F};
-        glm::vec3                     velocity_{0.0F, 0.0F, 0.0F};
-        float                         yaw_radians_         = -1.5707963268F;
-        float                         pitch_radians_       = 0.0F;
-        float                         pending_yaw_delta_   = 0.0F;
-        float                         pending_pitch_delta_ = 0.0F;
-        bool                          grounded_            = false;
+        glm::vec3                      position_{0.0F, 0.0F, 0.0F};
+        glm::vec3                      velocity_{0.0F, 0.0F, 0.0F};
+        float                          yaw_radians_         = -1.5707963268F;
+        float                          pitch_radians_       = 0.0F;
+        float                          pending_yaw_delta_   = 0.0F;
+        float                          pending_pitch_delta_ = 0.0F;
+        bool                           grounded_            = false;
     };
 } // namespace RelayGame

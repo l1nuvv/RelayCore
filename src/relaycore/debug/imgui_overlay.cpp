@@ -17,8 +17,7 @@
 
 namespace RelayCore::debug
 {
-    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) :
-        config_(config) {}
+    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
 
     ImGuiOverlay::~ImGuiOverlay() noexcept { shutdown(); }
 
@@ -29,7 +28,7 @@ namespace RelayCore::debug
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
-        ImGuiIO& io    = ImGui::GetIO();
+        ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
@@ -71,26 +70,21 @@ namespace RelayCore::debug
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo&                 frame,
-        const render::PerspectiveCamera& camera,
-        const AudioSystem&               audio_system)
+        const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+    )
     {
         if (!initialized_) { return; }
 
         ImGuiIO& io = ImGui::GetIO();
 
         const float fps           = io.Framerate;
-        const float frame_time_ms =
-            fps > 0.0F ? (1000.0F / fps) : static_cast<float>(frame.delta_seconds * 1000.0);
+        const float frame_time_ms = fps > 0.0F ? (1000.0F / fps) : static_cast<float>(frame.delta_seconds * 1000.0);
 
         if (config_.log_fps_to_console)
         {
             fps_log_accumulator_ += io.DeltaTime;
 
-            const float interval =
-                config_.fps_log_interval_seconds > 0.1F
-                    ? config_.fps_log_interval_seconds
-                    : 0.1F;
+            const float interval = config_.fps_log_interval_seconds > 0.1F ? config_.fps_log_interval_seconds : 0.1F;
 
             if (fps_log_accumulator_ >= interval)
             {

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
@@ -29,13 +28,14 @@ namespace RelayGame
             bool  hit           = false;
         };
 
-        [[nodiscard]] auto make_player_aabb(
-            const glm::vec3&                     position,
-            const GroundedPlayerControllerConfig& config) -> Aabb
+        [[nodiscard]] auto make_player_aabb(const glm::vec3& position, const GroundedPlayerControllerConfig& config)
+            -> Aabb
         {
             return {
                 {position.x - config.collider_radius, position.y, position.z - config.collider_radius},
-                {position.x + config.collider_radius, position.y + config.collider_height, position.z + config.collider_radius},
+                {position.x + config.collider_radius,
+                 position.y + config.collider_height,
+                 position.z + config.collider_radius},
             };
         }
 
@@ -47,13 +47,12 @@ namespace RelayGame
         [[nodiscard]] auto overlaps(const Aabb& a, const Aabb& b) -> bool
         {
             return a.mins.x < b.maxs.x - kEpsilon && a.maxs.x > b.mins.x + kEpsilon && a.mins.y < b.maxs.y - kEpsilon
-                   && a.maxs.y > b.mins.y + kEpsilon && a.mins.z < b.maxs.z - kEpsilon && a.maxs.z > b.mins.z + kEpsilon;
+                   && a.maxs.y > b.mins.y + kEpsilon && a.mins.z < b.maxs.z - kEpsilon
+                   && a.maxs.z > b.mins.z + kEpsilon;
         }
 
-        [[nodiscard]] auto accelerate_towards(
-            const glm::vec3& current,
-            const glm::vec3& target,
-            const float      max_delta) -> glm::vec3
+        [[nodiscard]] auto accelerate_towards(const glm::vec3& current, const glm::vec3& target, const float max_delta)
+            -> glm::vec3
         {
             const glm::vec3 delta        = target - current;
             const float     delta_length = glm::length(delta);
@@ -64,7 +63,7 @@ namespace RelayGame
 
         void apply_ground_friction(glm::vec3& velocity, const float friction, const float dt)
         {
-            glm::vec2 planar{velocity.x, velocity.z};
+            glm::vec2   planar{velocity.x, velocity.z};
             const float speed = glm::length(planar);
             if (speed <= kEpsilon)
             {
@@ -88,11 +87,12 @@ namespace RelayGame
         }
 
         [[nodiscard]] auto move_axis(
-            const RelayCore::BlockoutLevel&     level,
-            const glm::vec3&                    start_position,
+            const RelayCore::BlockoutLevel&       level,
+            const glm::vec3&                      start_position,
             const GroundedPlayerControllerConfig& config,
-            const int                           axis,
-            const float                         delta) -> AxisMoveResult
+            const int                             axis,
+            const float                           delta
+        ) -> AxisMoveResult
         {
             glm::vec3 candidate = start_position;
             candidate[axis] += delta;
@@ -114,9 +114,7 @@ namespace RelayGame
                 if (delta > 0.0F)
                 {
                     result.position_axis = std::min(result.position_axis, solid_aabb.mins[axis] - player_max_offset);
-                }
-                else if (delta < 0.0F)
-                {
+                } else if (delta < 0.0F) {
                     result.position_axis = std::max(result.position_axis, solid_aabb.maxs[axis] - player_min_offset);
                 }
 
@@ -127,8 +125,8 @@ namespace RelayGame
         }
     } // namespace
 
-    GroundedPlayerController::GroundedPlayerController(const GroundedPlayerControllerConfig& config) :
-        config_(config) {}
+    GroundedPlayerController::GroundedPlayerController(const GroundedPlayerControllerConfig& config) : config_(config)
+    {}
 
     void GroundedPlayerController::initialize(const glm::vec3& spawn_position) noexcept
     {
@@ -143,20 +141,20 @@ namespace RelayGame
 
         window.set_relative_mouse_mode(true);
         RelayCore::log::info(
-            "Grounded player capture enabled (WASD move, Space jump, Shift sprint, F1 toggle mouse, Esc quit)");
+            "Grounded player capture enabled (WASD move, Space jump, Shift sprint, F1 toggle mouse, Esc quit)"
+        );
     }
 
     void GroundedPlayerController::on_event(
-        const SDL_Event&               event,
-        RelayCore::Window&             window,
-        RelayCore::EngineServices& services)
+        const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services
+    )
     {
         switch (event.type)
         {
             case SDL_EVENT_MOUSE_MOTION:
                 if (window.relative_mouse_mode())
                 {
-                    pending_yaw_delta_   += event.motion.xrel * config_.mouse_sensitivity_radians;
+                    pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
                 }
                 break;
@@ -167,35 +165,29 @@ namespace RelayGame
                 if (event.key.scancode == SDL_SCANCODE_ESCAPE)
                 {
                     services.request_quit();
-                }
-                else if (event.key.scancode == SDL_SCANCODE_F1)
-                {
+                } else if (event.key.scancode == SDL_SCANCODE_F1) {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
                     RelayCore::log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");
                 }
                 break;
 
-            default:
-                break;
+            default: break;
         }
     }
 
     void GroundedPlayerController::update(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
     {
         yaw_radians_ += pending_yaw_delta_;
-        pitch_radians_ = glm::clamp(pitch_radians_ + pending_pitch_delta_, -kPitchClamp, kPitchClamp);
+        pitch_radians_       = glm::clamp(pitch_radians_ + pending_pitch_delta_, -kPitchClamp, kPitchClamp);
         pending_yaw_delta_   = 0.0F;
         pending_pitch_delta_ = 0.0F;
 
-        const float dt = static_cast<float>(frame.delta_seconds);
+        const float dt         = static_cast<float>(frame.delta_seconds);
         const bool* key_states = SDL_GetKeyboardState(nullptr);
 
         float speed = config_.move_speed;
-        if (key_states[SDL_SCANCODE_LSHIFT] || key_states[SDL_SCANCODE_RSHIFT])
-        {
-            speed *= config_.sprint_multiplier;
-        }
+        if (key_states[SDL_SCANCODE_LSHIFT] || key_states[SDL_SCANCODE_RSHIFT]) { speed *= config_.sprint_multiplier; }
 
         float forward_axis = 0.0F;
         float right_axis   = 0.0F;
@@ -220,11 +212,12 @@ namespace RelayGame
         }
 
         const glm::vec3 desired_planar_velocity = desired_direction * speed;
-        glm::vec3 current_planar_velocity{velocity_.x, 0.0F, velocity_.z};
+        glm::vec3       current_planar_velocity{velocity_.x, 0.0F, velocity_.z};
         current_planar_velocity = accelerate_towards(
             current_planar_velocity,
             desired_planar_velocity,
-            (grounded_ ? config_.ground_acceleration : config_.air_acceleration) * dt);
+            (grounded_ ? config_.ground_acceleration : config_.air_acceleration) * dt
+        );
         velocity_.x = current_planar_velocity.x;
         velocity_.z = current_planar_velocity.z;
 
@@ -237,23 +230,21 @@ namespace RelayGame
         velocity_.y -= config_.gravity * dt;
 
         const AxisMoveResult move_x = move_axis(level, position_, config_, 0, velocity_.x * dt);
-        position_.x = move_x.position_axis;
+        position_.x                 = move_x.position_axis;
         if (move_x.hit) { velocity_.x = 0.0F; }
 
         const AxisMoveResult move_z = move_axis(level, position_, config_, 2, velocity_.z * dt);
-        position_.z = move_z.position_axis;
+        position_.z                 = move_z.position_axis;
         if (move_z.hit) { velocity_.z = 0.0F; }
 
-        const bool moving_down = velocity_.y <= 0.0F;
-        const AxisMoveResult move_y = move_axis(level, position_, config_, 1, velocity_.y * dt);
-        position_.y = move_y.position_axis;
+        const bool           moving_down = velocity_.y <= 0.0F;
+        const AxisMoveResult move_y      = move_axis(level, position_, config_, 1, velocity_.y * dt);
+        position_.y                      = move_y.position_axis;
         if (move_y.hit)
         {
             velocity_.y = 0.0F;
             grounded_   = moving_down;
-        }
-        else
-        {
+        } else {
             grounded_ = false;
         }
     }

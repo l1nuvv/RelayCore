@@ -22,8 +22,8 @@ namespace RelayCore::render
         float                                clear_r = 0.10F; ///< Red clear-channel value.
         float                                clear_g = 0.11F; ///< Green clear-channel value.
         float                                clear_b = 0.14F; ///< Blue clear-channel value.
-        PerspectiveCameraConfig              camera{}; ///< Camera startup configuration.
-        RelayCore::debug::ImGuiOverlayConfig imgui{}; ///< ImGui overlay configuration.
+        PerspectiveCameraConfig              camera{};        ///< Camera startup configuration.
+        RelayCore::debug::ImGuiOverlayConfig imgui{};         ///< ImGui overlay configuration.
     };
 } // namespace RelayCore::render
 
@@ -33,10 +33,10 @@ namespace RelayCore::core
      * @brief Aggregate configuration consumed by the engine runtime.
      */
     struct EngineConfig {
-        WindowConfig              window{}; ///< Window-system settings.
+        WindowConfig              window{};   ///< Window-system settings.
         render::RendererConfig    renderer{}; ///< Renderer settings.
-        FlyCameraControllerConfig input{}; ///< Fly-camera input settings.
-        AudioSystemConfig         audio{}; ///< Audio-system settings.
+        FlyCameraControllerConfig input{};    ///< Fly-camera input settings.
+        AudioSystemConfig         audio{};    ///< Audio-system settings.
     };
 
     /**

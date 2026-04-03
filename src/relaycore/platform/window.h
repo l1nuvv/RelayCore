@@ -15,10 +15,10 @@ namespace RelayCore
      */
     struct WindowConfig {
         std::string title    = "RelayCore"; ///< Window title text.
-        int         width    = 1280; ///< Requested window width in logical units.
-        int         height   = 720; ///< Requested window height in logical units.
-        bool        high_dpi = true; ///< Requests a high-DPI-capable window.
-        bool        vsync    = true; ///< Enables swap-interval synchronization.
+        int         width    = 1280;        ///< Requested window width in logical units.
+        int         height   = 720;         ///< Requested window height in logical units.
+        bool        high_dpi = true;        ///< Requests a high-DPI-capable window.
+        bool        vsync    = true;        ///< Enables swap-interval synchronization.
     };
 
     /**
