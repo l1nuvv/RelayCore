@@ -1,5 +1,5 @@
 /**
-* @file src/relaycore/debug/imgui_overlay.h
+ * @file src/relaycore/debug/imgui_overlay.h
  * @brief Dear ImGui debug overlay wrapper.
  */
 
@@ -22,19 +22,13 @@ namespace RelayCore::render
 
 namespace RelayCore::debug
 {
-    /**
-     * @brief Configuration options for the debug ImGui overlay.
-     */
     struct ImGuiOverlayConfig {
-        bool  enabled                  = true; ///< Enables overlay initialization and rendering.
-        bool  show_demo_window         = false; ///< Requests that the built-in ImGui demo window be shown.
-        bool  log_fps_to_console       = true; ///< Writes FPS to the engine log periodically.
-        float fps_log_interval_seconds = 1.0F; ///< Interval between FPS log entries.
+        bool  enabled                  = true;
+        bool  show_demo_window         = false;
+        bool  log_fps_to_console       = true;
+        float fps_log_interval_seconds = 1.0F;
     };
 
-    /**
-     * @brief Owns Dear ImGui state and renders the engine diagnostics overlay.
-     */
     class ImGuiOverlay {
     public:
         explicit ImGuiOverlay(const ImGuiOverlayConfig& config = ImGuiOverlayConfig{});
@@ -56,8 +50,7 @@ namespace RelayCore::debug
         void draw_diagnostics(
             const FrameInfo&                 frame,
             const render::PerspectiveCamera& camera,
-            const AudioSystem&               audio_system
-        );
+            const AudioSystem&               audio_system);
 
         void render() const;
 

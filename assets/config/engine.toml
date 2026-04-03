@@ -3,7 +3,7 @@ title = "RelayCore"
 width = 1280
 height = 720
 high_dpi = true
-vsync = false
+vsync = true
 
 [render]
 clear_r = 0.10

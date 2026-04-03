@@ -22,7 +22,7 @@ namespace RelayCore::log
 {
     struct Config {
         std::string          logger_name            = "engine";
-        std::string          logs_directory         = "logs";
+        std::string logs_directory = R"(E:\Code\C++\RelayCore\logs)";
         std::string          latest_filename        = "RelayCore_latest.log";
         bool                 enable_console_sink    = true;
         bool                 enable_timestamped_log = true;

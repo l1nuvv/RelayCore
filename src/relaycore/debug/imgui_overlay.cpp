@@ -5,6 +5,7 @@
 
 #include "relaycore/debug/imgui_overlay.h"
 
+#include <cmath>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
@@ -57,7 +58,6 @@ namespace RelayCore::debug
     void ImGuiOverlay::process_event(const SDL_Event& event)
     {
         if (!initialized_) { return; }
-
         ImGui_ImplSDL3_ProcessEvent(&event);
     }
 
@@ -73,8 +73,7 @@ namespace RelayCore::debug
     void ImGuiOverlay::draw_diagnostics(
         const FrameInfo&                 frame,
         const render::PerspectiveCamera& camera,
-        const AudioSystem&               audio_system
-    )
+        const AudioSystem&               audio_system)
     {
         if (!initialized_) { return; }
 
@@ -95,7 +94,7 @@ namespace RelayCore::debug
 
             if (fps_log_accumulator_ >= interval)
             {
-                fps_log_accumulator_ -= interval;
+                fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
                 log::info("FPS: {:.1f} | Frame time: {:.3f} ms", fps, frame_time_ms);
             }
         }

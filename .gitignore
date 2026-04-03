@@ -44,3 +44,4 @@ Thumbs.db
 docs/doxygen/*
 !docs/doxygen/.gitkeep
 !docs/doxygen/README.md
+logs/

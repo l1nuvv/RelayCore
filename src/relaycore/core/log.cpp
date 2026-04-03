@@ -13,6 +13,10 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#ifndef RELAYCORE_ASSET_DIR
+#define RELAYCORE_ASSET_DIR ""
+#endif
+
 namespace RelayCore::log
 {
     namespace
@@ -45,6 +49,22 @@ namespace RelayCore::log
         }
 
         auto make_run_filename() -> std::string { return "RelayCore_" + make_run_stamp() + ".log"; }
+
+        auto resolve_logs_directory(const std::string& configured_path) -> std::filesystem::path
+        {
+            const std::filesystem::path requested_path(configured_path);
+
+            if (requested_path.is_absolute()) { return requested_path; }
+
+            const std::filesystem::path asset_dir(RELAYCORE_ASSET_DIR);
+            if (!asset_dir.empty())
+            {
+                const auto project_root = std::filesystem::weakly_canonical(asset_dir).parent_path();
+                return project_root / requested_path;
+            }
+
+            return std::filesystem::absolute(requested_path);
+        }
     } // namespace
 
     MessageBuffer::~MessageBuffer()
@@ -99,9 +119,9 @@ namespace RelayCore::log
 
         try
         {
-            const std::filesystem::path logs_dir =
-                std::filesystem::absolute(std::filesystem::path(config.logs_directory));
+            const std::filesystem::path logs_dir = std::filesystem::path(config.logs_directory);
             std::filesystem::create_directories(logs_dir);
+            const std::filesystem::path resolved_logs_dir = std::filesystem::weakly_canonical(logs_dir);
 
             std::vector<spdlog::sink_ptr> sinks;
             g_run_log_path.clear();
@@ -118,7 +138,7 @@ namespace RelayCore::log
 
             if (config.enable_timestamped_log)
             {
-                const auto run_path      = logs_dir / make_run_filename();
+                const auto run_path      = resolved_logs_dir / make_run_filename();
                 auto       run_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
                     run_path.string(),
                     false);
@@ -131,7 +151,7 @@ namespace RelayCore::log
 
             if (config.enable_latest_log)
             {
-                const auto latest_path      = logs_dir / config.latest_filename;
+                const auto latest_path      = resolved_logs_dir / config.latest_filename;
                 auto       latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
                     latest_path.string(),
                     true);
@@ -158,6 +178,7 @@ namespace RelayCore::log
             g_logger = std::move(created_logger);
 
             log::info("Logger initialized");
+            log::info("Resolved logs directory: {}", resolved_logs_dir.string());
             log::info("Logger name: {}", config.logger_name);
             log::info("Log level: {}", spdlog::level::to_string_view(config.level));
             if (!g_run_log_path.empty()) { log::info("Run log: {}", g_run_log_path); }
@@ -186,7 +207,6 @@ namespace RelayCore::log
     auto logger() -> spdlog::logger&
     {
         if (!g_logger) { throw std::runtime_error("RelayCore logger is not initialized"); }
-
         return *g_logger;
     }
 
