@@ -15,7 +15,7 @@ concurrency:
 
 env:
   VCPKG_DEFAULT_TRIPLET: x64-windows
-  CMAKE_VERSION: 4.2.3
+  CMAKE_VERSION: 4.3.1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   VCPKG_BINARY_CACHE_DIR: ${{ github.workspace }}\.vcpkg-bincache
 
