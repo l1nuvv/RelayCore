@@ -63,6 +63,7 @@ jobs:
           ninjaVersion: latest
 
       - name: Set up vcpkg
+        id: runvcpkg
         uses: lukka/run-vcpkg@v11
         with:
           doNotCache: false
@@ -88,20 +89,19 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
       - name: Configure
-        run: cmake --preset msvc-debug
-        env:
-          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
-          VCPKG_DEFAULT_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE_DIR }}
-          VCPKG_BINARY_SOURCES: clear;files,${{ env.VCPKG_BINARY_CACHE_DIR }},readwrite
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --preset msvc-debug
 
-      - name: Build
-        run: cmake --build --preset build-msvc-debug
-        env:
-          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
-          VCPKG_DEFAULT_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE_DIR }}
-          VCPKG_BINARY_SOURCES: clear;files,${{ env.VCPKG_BINARY_CACHE_DIR }},readwrite
+      - name: Build tests
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --build --preset tests-debug --parallel
 
       - name: Test
-        run: ctest --preset test-msvc-debug --output-on-failure
-        env:
-          VCPKG_ROOT: ${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          ctest --preset test-debug --output-on-failure
