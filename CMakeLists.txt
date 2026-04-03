@@ -44,6 +44,16 @@ relaycore_initialize_project()
 relaycore_find_dependencies()
 relaycore_create_dependency_targets()
 
+find_program(CLANG_FORMAT_EXE NAMES clang-format clang-format.exe)
+
+if (CLANG_FORMAT_EXE)
+    add_custom_target(format
+            COMMAND pwsh -NoProfile -ExecutionPolicy Bypass -Command
+            "$files = git ls-files -- '*.c' '*.cpp' '*.h' '*.hpp' ':(exclude)extern/**'; if (-not $files) { exit 0 }; & '${CLANG_FORMAT_EXE}' -i $files"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Running clang-format on tracked source files")
+endif()
+
 add_subdirectory(src/relaycore)
 add_subdirectory(src/relaygame)
 
