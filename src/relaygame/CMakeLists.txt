@@ -3,7 +3,7 @@ add_executable(relaycore_demo)
 target_sources(
     relaycore_demo
     PRIVATE
-        main.cpp
+        ../relaycore/render/main.cpp
         demo_game.cpp
         demo_game.h
 )

@@ -41,7 +41,9 @@ namespace RelayCore::core
          * @return Parsed vector or the fallback value.
          */
         auto
-        read_vec3(const toml::node_view<const toml::node>& view, const std::string_view key, const glm::vec3& fallback)
+        read_vec3(const toml::node_view<const toml::node>& view,
+                  const std::string_view                   key,
+                  const glm::vec3&                         fallback)
             -> glm::vec3
         {
             const toml::node_view<const toml::node> node = view[key];

@@ -55,7 +55,8 @@ namespace RelayCore::render
          * @param fragment_shader_path Path to the fragment shader source.
          */
         void load_from_files(
-            const std::filesystem::path& vertex_shader_path, const std::filesystem::path& fragment_shader_path
+            const std::filesystem::path& vertex_shader_path,
+            const std::filesystem::path& fragment_shader_path
         );
 
         /**
@@ -105,7 +106,9 @@ namespace RelayCore::render
          * @return Compiled shader object identifier.
          */
         [[nodiscard]] static auto
-        compile_shader(unsigned int shader_type, const std::string& source, const std::filesystem::path& source_path)
+        compile_shader(unsigned int                 shader_type,
+                       const std::string&           source,
+                       const std::filesystem::path& source_path)
             -> unsigned int;
 
         unsigned int                                 program_id_ = 0; ///< Owned OpenGL program identifier.

@@ -24,7 +24,9 @@ namespace RelayCore::render
          * @return Formatted exception message.
          */
         auto build_shader_error_message(
-            const std::filesystem::path& source_path, const std::string& stage, const std::string& info_log
+            const std::filesystem::path& source_path,
+            const std::string&           stage,
+            const std::string&           info_log
         ) -> std::string
         {
             std::ostringstream stream;
@@ -47,8 +49,8 @@ namespace RelayCore::render
         {
             std::ostringstream stream;
             stream << "Failed to link shader program ('" << vertex_shader_path.string() << "', '"
-                   << fragment_shader_path.string() << "'):\n"
-                   << info_log;
+                << fragment_shader_path.string() << "'):\n"
+                << info_log;
             return stream.str();
         }
     } // namespace
@@ -57,8 +59,7 @@ namespace RelayCore::render
 
     ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept :
         program_id_(std::exchange(other.program_id_, 0)),
-        uniform_location_cache_(std::move(other.uniform_location_cache_))
-    {}
+        uniform_location_cache_(std::move(other.uniform_location_cache_)) {}
 
     auto ShaderProgram::operator=(ShaderProgram&& other) noexcept -> ShaderProgram&
     {
@@ -73,7 +74,8 @@ namespace RelayCore::render
     }
 
     void ShaderProgram::load_from_files(
-        const std::filesystem::path& vertex_shader_path, const std::filesystem::path& fragment_shader_path
+        const std::filesystem::path& vertex_shader_path,
+        const std::filesystem::path& fragment_shader_path
     )
     {
         reset();
@@ -122,7 +124,10 @@ namespace RelayCore::render
         uniform_location_cache_.clear();
     }
 
-    void ShaderProgram::bind() const { glUseProgram(program_id_); }
+    void ShaderProgram::bind() const
+    {
+        glUseProgram(program_id_);
+    }
 
     void ShaderProgram::set_mat4(const int location, const glm::mat4& value) const
     {
@@ -164,7 +169,9 @@ namespace RelayCore::render
     }
 
     auto ShaderProgram::compile_shader(
-        const unsigned int shader_type, const std::string& source, const std::filesystem::path& source_path
+        const unsigned int           shader_type,
+        const std::string&           source,
+        const std::filesystem::path& source_path
     ) -> unsigned int
     {
         const unsigned int shader = glCreateShader(shader_type);

@@ -15,7 +15,8 @@
 
 namespace RelayCore
 {
-    FlyCameraController::FlyCameraController(const FlyCameraControllerConfig& config) : config_(config) {}
+    FlyCameraController::FlyCameraController(const FlyCameraControllerConfig& config) :
+        config_(config) {}
 
     void FlyCameraController::enable_capture(Window& window) const
     {
@@ -29,22 +30,17 @@ namespace RelayCore
     {
         switch (event.type)
         {
-            case SDL_EVENT_MOUSE_MOTION:
-                if (window.relative_mouse_mode())
+            case SDL_EVENT_MOUSE_MOTION: if (window.relative_mouse_mode())
                 {
-                    pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
+                    pending_yaw_delta_   += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
                 }
                 break;
 
-            case SDL_EVENT_KEY_DOWN:
-                if (event.key.repeat) { break; }
+            case SDL_EVENT_KEY_DOWN: if (event.key.repeat) { break; }
 
-                if (event.key.scancode == SDL_SCANCODE_ESCAPE)
-                {
-                    services.request_quit();
-                }
-                else if (event.key.scancode == SDL_SCANCODE_F1)
+                if (event.key.scancode == SDL_SCANCODE_ESCAPE) { services.request_quit(); } else if (
+                    event.key.scancode == SDL_SCANCODE_F1)
                 {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
@@ -52,8 +48,7 @@ namespace RelayCore
                 }
                 break;
 
-            default:
-                break;
+            default: break;
         }
     }
 

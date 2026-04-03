@@ -29,6 +29,7 @@ namespace
         ~LogLifetime() noexcept { RelayCore::log::shutdown(); }
 
         LogLifetime(const LogLifetime&) = delete;
+
         auto operator=(const LogLifetime&) -> LogLifetime& = delete;
     };
 } // namespace

@@ -17,6 +17,7 @@ target_sources(
         debug/imgui_overlay.cpp
         platform/sdl_system.cpp
         platform/window.cpp
+        render/blockout_mesh_builder.cpp
         render/camera.cpp
         render/gl_debug.cpp
         render/gl_loader.cpp
@@ -26,7 +27,7 @@ target_sources(
         world/blockout_loader.cpp
         PUBLIC
         FILE_SET HEADERS
-        BASE_DIRS ${PROJECT_SOURCE_DIR}/src
+        BASE_DIRS ..
         FILES
         app/app_delegate.h
         app/application.h
@@ -43,6 +44,7 @@ target_sources(
         debug/imgui_overlay.h
         platform/sdl_system.h
         platform/window.h
+        render/blockout_mesh_builder.h
         render/camera.h
         render/gl_debug.h
         render/gl_loader.h
@@ -61,7 +63,7 @@ target_include_directories(
         $<INSTALL_INTERFACE:include>
 )
 
-target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ASSET_DIR="../../assets")
 
 if (NOT RELAYCORE_ENABLE_AUDIO)
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_AUDIO_DISABLED)

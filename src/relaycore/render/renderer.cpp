@@ -1,8 +1,3 @@
-/**
- * @file src/relaycore/render/renderer.cpp
- * @brief Renderer implementation.
- */
-
 #include "relaycore/render/renderer.h"
 
 #include <glad/gl.h>
@@ -19,8 +14,9 @@
 namespace RelayCore
 {
     Renderer::Renderer(const render::RendererConfig& config) :
-        config_(config), camera_(config.camera), imgui_overlay_(config.imgui)
-    {}
+        config_(config),
+        camera_(config.camera),
+        imgui_overlay_(config.imgui) {}
 
     void Renderer::initialize(const Window& window)
     {
@@ -75,26 +71,31 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_ZONE_N("Renderer::draw_color_cube");
         shader_program_.bind();
-        /** @brief Hard-coded MVP uniform location used by the debug shader. */
         constexpr GLint kMvpLocation = 0;
-        const glm::mat4 mvp = camera_.view_projection_matrix() * model_matrix;
+        const glm::mat4 mvp          = camera_.view_projection_matrix() * model_matrix;
         shader_program_.set_mat4(kMvpLocation, mvp);
         cube_mesh_.draw();
     }
 
+    void Renderer::draw_color_mesh(const render::StaticColorMesh& mesh, const glm::mat4& model_matrix)
+    {
+        RELAYCORE_PROFILE_ZONE_N("Renderer::draw_color_mesh");
+        shader_program_.bind();
+        constexpr GLint kMvpLocation = 0;
+        const glm::mat4 mvp          = camera_.view_projection_matrix() * model_matrix;
+        shader_program_.set_mat4(kMvpLocation, mvp);
+        mesh.draw();
+    }
+
     void Renderer::draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        if (!imgui_overlay_.enabled()) { return; }
-
-        {
+        if (!imgui_overlay_.enabled()) { return; } {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
-        }
-        {
+        } {
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
             imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
-        }
-        {
+        } {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             imgui_overlay_.render();
         }

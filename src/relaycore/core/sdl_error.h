@@ -26,8 +26,5 @@ namespace RelayCore::core
      * @param ok Result returned by the SDL API call.
      * @param what Human-readable operation description.
      */
-    inline void require_sdl(const bool ok, const std::string_view what)
-    {
-        if (!ok) { throw_sdl_error(what); }
-    }
+    inline void require_sdl(const bool ok, const std::string_view what) { if (!ok) { throw_sdl_error(what); } }
 } // namespace RelayCore::core
