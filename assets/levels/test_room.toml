@@ -1,0 +1,38 @@
+[[solid]]
+mins = [-4.0, 0.0, -4.0]
+maxs = [4.0, 0.2, 4.0]
+material = "Concrete"
+
+[[solid]]
+mins = [-4.0, 2.8, -4.0]
+maxs = [4.0, 3.0, 4.0]
+material = "Concrete"
+
+[[solid]]
+mins = [-4.0, 0.0, -4.0]
+maxs = [-3.8, 3.0, 4.0]
+material = "Concrete"
+
+[[solid]]
+mins = [3.8, 0.0, -4.0]
+maxs = [4.0, 3.0, 4.0]
+material = "Concrete"
+
+[[solid]]
+mins = [-4.0, 0.0, -4.0]
+maxs = [4.0, 3.0, -3.8]
+material = "Concrete"
+
+[[solid]]
+mins = [-4.0, 0.0, 3.8]
+maxs = [-1.0, 3.0, 4.0]
+material = "Concrete"
+
+[[solid]]
+mins = [1.0, 0.0, 3.8]
+maxs = [4.0, 3.0, 4.0]
+material = "Concrete"
+
+[[entity]]
+classname = "player_spawn"
+origin = [0.0, 1.0, 0.0]

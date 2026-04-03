@@ -1,20 +1,30 @@
-#include "relaycore/render/gl_debug.hpp"
+/**
+ * @file src/relaycore/render/gl_debug.cpp
+ * @brief OpenGL debug callback and setup implementation.
+ */
+
+#include "relaycore/render/gl_debug.h"
 
 #include <SDL3/SDL.h>
 #include <glad/gl.h>
 
-#include "relaycore/core/log.hpp"
+#include "relaycore/core/log.h"
 
 namespace RelayCore::render::gl_debug
 {
     namespace
     {
-        bool g_available = false;
+        bool g_available = false; ///< True after the debug callback has been installed.
 
 #ifndef APIENTRY
 #define APIENTRY __stdcall
 #endif
 
+        /**
+         * @brief Converts an OpenGL debug severity enum to text.
+         * @param severity OpenGL debug severity enum.
+         * @return String representation of the severity.
+         */
         [[nodiscard]] auto to_text(const GLenum severity) -> const char*
         {
             switch (severity)
@@ -27,6 +37,16 @@ namespace RelayCore::render::gl_debug
             }
         }
 
+        /**
+         * @brief Receives OpenGL debug messages and routes them into the logger.
+         * @param source OpenGL debug source enum.
+         * @param type OpenGL debug message type enum.
+         * @param id Driver-supplied message identifier.
+         * @param severity OpenGL debug severity enum.
+         * @param length Length of the message string.
+         * @param message Null-terminated debug message text.
+         * @param user_param User data pointer supplied when installing the callback.
+         */
         void APIENTRY debug_callback(
             GLenum /*source*/,
             GLenum type,

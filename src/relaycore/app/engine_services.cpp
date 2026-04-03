@@ -1,9 +1,14 @@
-#include "relaycore/app/engine_services.hpp"
+/**
+ * @file src/relaycore/app/engine_services.cpp
+ * @brief EngineServices accessors and control helpers.
+ */
 
-#include "relaycore/audio/audio_system.hpp"
-#include "relaycore/platform/window.hpp"
-#include "relaycore/render/camera.hpp"
-#include "relaycore/render/renderer.hpp"
+#include "relaycore/app/engine_services.h"
+
+#include "relaycore/audio/audio_system.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/camera.h"
+#include "relaycore/render/renderer.h"
 
 namespace RelayCore
 {
@@ -18,8 +23,7 @@ namespace RelayCore
         window_(&window),
         renderer_(&renderer),
         audio_system_(&audio_system),
-        is_running_(&is_running)
-    {}
+        is_running_(&is_running) {}
 
     auto EngineServices::config() const noexcept -> const core::EngineConfig& { return *config_; }
 

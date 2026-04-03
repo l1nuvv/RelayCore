@@ -40,3 +40,8 @@
 # OS noise
 .DS_Store
 Thumbs.db
+
+docs/doxygen/*
+!docs/doxygen/.gitkeep
+!docs/doxygen/README.md
+logs/

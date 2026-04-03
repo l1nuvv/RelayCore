@@ -1,4 +1,9 @@
-#include "relaycore/app/frame_timer.hpp"
+/**
+ * @file src/relaycore/app/frame_timer.cpp
+ * @brief FrameTimer implementation.
+ */
+
+#include "relaycore/app/frame_timer.h"
 
 #include <algorithm>
 
@@ -16,9 +21,9 @@ namespace RelayCore
         previous_frame_time_ = now;
 
         return FrameInfo{
-            .delta_seconds   = std::chrono::duration<double>(delta).count(),
+            .delta_seconds = std::chrono::duration<double>(delta).count(),
             .elapsed_seconds = elapsed,
-            .frame_index     = frame_index_++,
+            .frame_index = frame_index_++,
         };
     }
 } // namespace RelayCore

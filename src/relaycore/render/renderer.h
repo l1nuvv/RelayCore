@@ -2,12 +2,12 @@
 
 #include <glm/mat4x4.hpp>
 
-#include "relaycore/app/frame_timer.hpp"
-#include "relaycore/core/engine_config.hpp"
-#include "relaycore/debug/imgui_overlay.hpp"
-#include "relaycore/render/camera.hpp"
-#include "relaycore/render/mesh.hpp"
-#include "relaycore/render/shader_program.hpp"
+#include "relaycore/app/frame_timer.h"
+#include "relaycore/core/engine_config.h"
+#include "relaycore/debug/imgui_overlay.h"
+#include "relaycore/render/camera.h"
+#include "relaycore/render/mesh.h"
+#include "relaycore/render/shader_program.h"
 
 namespace RelayCore
 {
@@ -30,6 +30,8 @@ namespace RelayCore
         void begin_frame();
 
         void draw_color_cube(const glm::mat4& model_matrix);
+
+        void draw_color_mesh(const render::StaticColorMesh& mesh, const glm::mat4& model_matrix);
 
         void draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system);
 

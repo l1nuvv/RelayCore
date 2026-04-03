@@ -1,17 +1,24 @@
-#include "relaycore/debug/imgui_overlay.hpp"
+/**
+ * @file src/relaycore/debug/imgui_overlay.cpp
+ * @brief Dear ImGui overlay implementation.
+ */
 
+#include "relaycore/debug/imgui_overlay.h"
+
+#include <cmath>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
 
-#include "relaycore/audio/audio_system.hpp"
-#include "relaycore/core/log.hpp"
-#include "relaycore/platform/window.hpp"
-#include "relaycore/render/camera.hpp"
+#include "relaycore/audio/audio_system.h"
+#include "relaycore/core/log.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/camera.h"
 
 namespace RelayCore::debug
 {
-    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
+    ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) :
+        config_(config) {}
 
     ImGuiOverlay::~ImGuiOverlay() noexcept { shutdown(); }
 
@@ -22,7 +29,7 @@ namespace RelayCore::debug
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO& io    = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
@@ -30,7 +37,9 @@ namespace RelayCore::debug
         ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context());
         ImGui_ImplOpenGL3_Init("#version 460 core");
 
-        initialized_ = true;
+        fps_log_accumulator_ = 0.0F;
+        initialized_         = true;
+
         log::info("ImGui overlay initialized");
     }
 
@@ -41,13 +50,14 @@ namespace RelayCore::debug
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
-        initialized_ = false;
+
+        fps_log_accumulator_ = 0.0F;
+        initialized_         = false;
     }
 
     void ImGuiOverlay::process_event(const SDL_Event& event)
     {
         if (!initialized_) { return; }
-
         ImGui_ImplSDL3_ProcessEvent(&event);
     }
 
@@ -61,14 +71,37 @@ namespace RelayCore::debug
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
-    )
+        const FrameInfo&                 frame,
+        const render::PerspectiveCamera& camera,
+        const AudioSystem&               audio_system)
     {
         if (!initialized_) { return; }
 
+        ImGuiIO& io = ImGui::GetIO();
+
+        const float fps           = io.Framerate;
+        const float frame_time_ms =
+            fps > 0.0F ? (1000.0F / fps) : static_cast<float>(frame.delta_seconds * 1000.0);
+
+        if (config_.log_fps_to_console)
+        {
+            fps_log_accumulator_ += io.DeltaTime;
+
+            const float interval =
+                config_.fps_log_interval_seconds > 0.1F
+                    ? config_.fps_log_interval_seconds
+                    : 0.1F;
+
+            if (fps_log_accumulator_ >= interval)
+            {
+                fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
+                log::info("FPS: {:.1f} | Frame time: {:.3f} ms", fps, frame_time_ms);
+            }
+        }
+
         ImGui::Begin("RelayCore Diagnostics");
-        ImGui::Text("Frame time: %.3f ms", frame.delta_seconds * 1000.0);
-        ImGui::Text("FPS: %.1f", frame.delta_seconds > 0.0 ? 1.0 / frame.delta_seconds : 0.0);
+        ImGui::Text("Frame time: %.3f ms", frame_time_ms);
+        ImGui::Text("FPS: %.1f", fps);
 
         const auto& position = camera.position();
         ImGui::SeparatorText("Camera");

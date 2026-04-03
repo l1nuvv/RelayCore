@@ -1,90 +1,143 @@
 # RelayCore
 
-Small C++20 retro-FPS / engine-programming starter built around SDL3, OpenGL and a clean incremental architecture.
+**RelayCore** — небольшой C++20-проект про разработку игрового движка и ретро-FPS на современном, но достаточно простом стеке. Это не "готовый движок для всего", а аккуратная база, на которой можно поэтапно собирать свой runtime: окно, рендер, ввод, звук, загрузку данных, игровую логику и отладочные инструменты.
 
-## Current milestone
+Проект делается как учебный и инженерный полигон: с понятной структурой, явным разделением движка и игры, нормальной отладкой и постепенным ростом без хаоса.
 
-- SDL3 window + OpenGL 4.6 core context
-- vendored glad2 loader
-- explicit **engine/game split**
-- spdlog logging
+## Идея и вдохновение
+
+RelayCore вдохновляется старыми PC-шутерами и движками конца 90-х – начала 2000-х:
+
+- **GoldSrc / Half-Life 1 / Counter-Strike 1.6**
+- **Quake-линейкой** и классическим подходом к FPS-архитектуре
+- эстетикой ретро-3D, индустриального sci-fi и "технических" пространств
+
+При этом сам проект не пытается буквально копировать GoldSrc. Скорее это современная, компактная основа, на которой можно изучать engine programming и собирать собственный движок с похожим духом: простая геометрия, читаемый пайплайн, контролируемая сложность и постепенное развитие систем.
+
+## Что есть сейчас
+
+На текущем этапе в проекте уже есть:
+
+- окно на **SDL3**
+- **OpenGL 4.6 Core** контекст
+- загрузка OpenGL через **glad2**
+- разделение на **engine** и **game** слои
+- логирование через **spdlog**
 - OpenGL debug output
-- shader loading from `assets/`
-- rotating 3D color cube with depth testing
-- perspective camera + MVP matrix path
-- Dear ImGui diagnostics overlay
-- TOML engine config (`assets/config/engine.toml`)
-- miniaudio-backed audio system foundation
-- doctest-based unit tests
-- game-side update/render hook through `AppDelegate + EngineServices`
+- загрузка шейдеров и ассетов из `assets/`
+- базовый 3D-рендер путь
+- камера и игровой update/render hook через `AppDelegate + EngineServices`
+- отладочный overlay на **Dear ImGui**
+- конфиг движка в **TOML**
+- базовая аудиосистема на **miniaudio**
+- unit-тесты на **doctest**
+- загрузка blockout-уровня из `test_room.toml`
+
+## Стек
+
+Основной стек проекта:
+
+- **C++20**
+- **SDL3**
+- **OpenGL 4.6 Core**
+- **glad2**
+- **GLM**
+- **spdlog**
+- **Dear ImGui**
+- **toml++**
+- **miniaudio**
+- **doctest**
+- **CMake**
+
+## Структура проекта
+
+Код разделён на две основные части:
+
+- `src/relaycore/` — код движка и общие runtime-системы
+- `src/relaygame/` — игровая/демо-часть, которая использует движок
+
+Внутри `src/relaycore/`:
+
+- `app/` — жизненный цикл приложения, frame loop, bootstrap, engine services
+- `audio/` — аудиосистема
+- `core/` — логирование, конфиг, пути, вспомогательная инфраструктура
+- `debug/` — отладочный overlay
+- `platform/` — SDL, окно, OpenGL context
+- `render/` — камера, шейдеры, меши, renderer
+- `world/` — загрузка и представление blockout-уровней
+
+Внутри `src/relaygame/`:
+
+- `main.cpp` — точка входа приложения
+- `demo_game.*` — текущая игровая логика и sandbox-сцена
+
+## Граница между движком и игрой
+
+**Движок** отвечает за:
+
+- цикл приложения
+- окно и lifetime платформы
+- рендер-инфраструктуру
+- runtime-сервисы, конфиг, bootstrap, звук
+
+**Игра** отвечает за:
+
+- поведение камеры и ввод на уровне gameplay
+- сцену и её логику
+- правила игры
+- будущие сущности, игрока, триггеры, двери, загрузку уровня как gameplay-слой
+
+Это один из главных принципов проекта: движок не должен знать про конкретную игру больше, чем ему действительно нужно.
+
+## Цели проекта
+
+RelayCore делается как база для дальнейшего роста в сторону небольшого ретро-FPS / immersive sandbox с упором на:
+
+- понятную архитектуру
+- поэтапное развитие систем
+- удобную отладку
+- минимальную магию
+- инженерный контроль над тем, что происходит в кадре и в runtime
 
 ## Targets
 
-- `relaycore_engine` — reusable engine library
-- `relaycore_demo` — runnable sandbox/demo application (binary name remains `RelayCore`)
-- `relaycore_tests` — unit tests
-
-## Architecture
-
-The codebase is split physically and semantically:
-
-- `src/relaycore/` — engine code and reusable runtime systems
-- `src/relaygame/` — demo/game entrypoint and game-side delegate
-- `cmake/` — shared CMake helpers, options and dependency discovery
-
-Inside `src/relaycore/`:
-
-- `app/` — application runtime, frame loop, delegate seam, bootstrap runner, engine services
-- `audio/` — audio system and miniaudio integration
-- `core/` — config, logging, paths, profiling helpers
-- `debug/` — ImGui debug overlay
-- `platform/` — SDL system and window/context lifetime
-- `render/` — camera, GL setup, mesh, shader, renderer
-
-Inside `src/relaygame/`:
-
-- `main.cpp` — demo executable entrypoint
-- `demo_game.*` — current game-side delegate and demo scene logic
-- future gameplay systems like player motor, doors, triggers and level bootstrap
-
-## Boundary rule
-
-The engine owns:
-
-- the application loop
-- platform/window/context lifetime
-- rendering infrastructure
-- audio/config/bootstrap/runtime services
-
-The game owns:
-
-- camera control policy
-- scene submission
-- gameplay rules
-- future entities / player logic / level bootstrap
-
-That means the split is no longer only “library + exe” on paper: the demo now actually drives input/update/render through the delegate seam.
+- `relaycore_engine` — библиотека движка
+- `relaycore_demo` — демо/игровое приложение
+- `relaycore_tests` — unit-тесты
 
 ## Presets
 
-Recommended configure presets:
+Рекомендуемые configure presets:
 
 - `msvc-debug`
 - `msvc-relwithdebinfo`
 - `msvc-release`
 - `msvc-asan`
 
-Recommended build presets:
+Рекомендуемые build presets:
 
 - `demo-debug`
 - `demo-relwithdebinfo`
 - `tests-debug`
 
-## Notes
+## Conventional Commits
 
-This snapshot keeps one clear engine root and one clear game root:
+Для истории проекта используются **Conventional Commits**:
 
-- `src/relaycore`
-- `src/relaygame`
+- **feat** — новая функциональность
+- **fix** — исправление бага
+- **docs** — изменения в документации
+- **style** — правки оформления кода без изменения логики
+- **refactor** — переработка кода без новой функциональности и без исправления багов
+- **perf** — оптимизация производительности
+- **test** — добавление или обновление тестов
+- **build** — изменения в сборке, зависимостях, CMake, CI
+- **chore** — служебные и вспомогательные изменения
+- **revert** — откат предыдущего коммита
 
-That keeps target names, folder names and include paths aligned.
+Примеры:
+
+- `feat(renderer): add blockout level rendering`
+- `fix(input): restore mouse capture on startup`
+- `refactor(world): simplify blockout loader`
+- `build(cmake): clean up preset configuration`

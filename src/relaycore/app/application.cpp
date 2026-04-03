@@ -1,29 +1,46 @@
-#include "relaycore/app/application.hpp"
+/**
+ * @file src/relaycore/app/application.cpp
+ * @brief Application main-loop implementation.
+ */
+
+#include "relaycore/app/application.h"
 
 #include <SDL3/SDL.h>
 
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/paths.hpp"
-#include "relaycore/core/profiling.hpp"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 
 namespace RelayCore
 {
     namespace
     {
+        /**
+         * @brief Ensures the active delegate receives on_shutdown() exactly once.
+         */
         class AppShutdownGuard {
         public:
+            /**
+             * @brief Stores the delegate and services that must be shut down together.
+             * @param delegate Delegate that will receive the shutdown callback.
+             * @param services Runtime services passed to the delegate.
+             */
             AppShutdownGuard(AppDelegate& delegate, EngineServices& services) noexcept :
-                delegate_(delegate), services_(services)
-            {}
+                delegate_(delegate),
+                services_(services) {}
 
+            /**
+             * @brief Invokes the delegate shutdown callback.
+             */
             ~AppShutdownGuard() noexcept { delegate_.on_shutdown(services_); }
 
             AppShutdownGuard(const AppShutdownGuard&) = delete;
+
             auto operator=(const AppShutdownGuard&) -> AppShutdownGuard& = delete;
 
         private:
-            AppDelegate&     delegate_;
-            EngineServices&  services_;
+            AppDelegate&    delegate_; ///< Delegate that owns shutdown behaviour.
+            EngineServices& services_; ///< Runtime services forwarded to the delegate.
         };
     } // namespace
 
@@ -52,35 +69,29 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_ZONE_N("Application::run");
 
-        EngineServices services{config_, window_, renderer_, audio_system_, is_running_};
+        EngineServices   services{config_, window_, renderer_, audio_system_, is_running_};
         AppShutdownGuard shutdown_guard(*app_delegate_, services);
 
         app_delegate_->on_startup(services);
 
         while (is_running_)
         {
-            const FrameInfo frame = frame_timer_.begin_frame();
-            {
+            const FrameInfo frame = frame_timer_.begin_frame(); {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
                 process_events(services);
-            }
-            {
+            } {
                 RELAYCORE_PROFILE_ZONE_N("app_delegate.on_update");
                 app_delegate_->on_update(frame, services);
-            }
-            {
+            } {
                 RELAYCORE_PROFILE_ZONE_N("renderer.begin_frame");
                 renderer_.begin_frame();
-            }
-            {
+            } {
                 RELAYCORE_PROFILE_ZONE_N("app_delegate.on_render");
                 app_delegate_->on_render(frame, services);
-            }
-            {
+            } {
                 RELAYCORE_PROFILE_ZONE_N("renderer.draw_debug_overlay");
                 renderer_.draw_debug_overlay(frame, audio_system_);
-            }
-            {
+            } {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_.swap_buffers();
             }
@@ -94,10 +105,7 @@ namespace RelayCore
     void Application::process_events(EngineServices& services)
     {
         SDL_Event event{};
-        while (SDL_PollEvent(&event))
-        {
-            handle_event(event, services);
-        }
+        while (SDL_PollEvent(&event)) { handle_event(event, services); }
     }
 
     void Application::handle_event(const SDL_Event& event, EngineServices& services)
@@ -106,17 +114,14 @@ namespace RelayCore
 
         switch (event.type)
         {
-            case SDL_EVENT_QUIT:
-                services.request_quit();
+            case SDL_EVENT_QUIT: services.request_quit();
                 break;
 
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                renderer_.on_resize(event.window.data1, event.window.data2);
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: renderer_.on_resize(event.window.data1, event.window.data2);
                 log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 
-            default:
-                break;
+            default: break;
         }
 
         app_delegate_->on_event(event, services);

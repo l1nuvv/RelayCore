@@ -1,9 +1,14 @@
-#include "relaycore/platform/sdl_system.hpp"
+/**
+ * @file src/relaycore/platform/sdl_system.cpp
+ * @brief SDL lifetime wrapper implementation.
+ */
+
+#include "relaycore/platform/sdl_system.h"
 
 #include <SDL3/SDL.h>
 
-#include "relaycore/core/log.hpp"
-#include "relaycore/core/sdl_error.hpp"
+#include "relaycore/core/log.h"
+#include "relaycore/core/sdl_error.h"
 
 namespace RelayCore
 {

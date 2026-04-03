@@ -1,8 +1,13 @@
+/**
+ * @file src/relaycore/debug/imgui_overlay.h
+ * @brief Dear ImGui debug overlay wrapper.
+ */
+
 #pragma once
 
 #include <SDL3/SDL.h>
 
-#include "relaycore/app/frame_timer.hpp"
+#include "relaycore/app/frame_timer.h"
 
 namespace RelayCore
 {
@@ -18,8 +23,10 @@ namespace RelayCore::render
 namespace RelayCore::debug
 {
     struct ImGuiOverlayConfig {
-        bool enabled          = true;
-        bool show_demo_window = false;
+        bool  enabled                  = true;
+        bool  show_demo_window         = false;
+        bool  log_fps_to_console       = true;
+        float fps_log_interval_seconds = 1.0F;
     };
 
     class ImGuiOverlay {
@@ -41,8 +48,9 @@ namespace RelayCore::debug
         void begin_frame();
 
         void draw_diagnostics(
-            const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
-        );
+            const FrameInfo&                 frame,
+            const render::PerspectiveCamera& camera,
+            const AudioSystem&               audio_system);
 
         void render() const;
 
@@ -52,6 +60,7 @@ namespace RelayCore::debug
 
     private:
         ImGuiOverlayConfig config_{};
-        bool               initialized_ = false;
+        bool               initialized_         = false;
+        float              fps_log_accumulator_ = 0.0F;
     };
 } // namespace RelayCore::debug
