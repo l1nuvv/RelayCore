@@ -6,6 +6,8 @@ target_sources(
         ../relaycore/render/main.cpp
         demo_game.cpp
         demo_game.h
+        player_controller.cpp
+        player_controller.h
 )
 
 target_include_directories(relaycore_demo PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -16,7 +18,6 @@ target_link_libraries(
         RelayCore::engine
         RelayCore::project_options
         RelayCore::warnings
-        SDL3::SDL3
 )
 
 set_target_properties(

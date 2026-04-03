@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "relaycore/app/app_delegate.h"
-#include "relaycore/app/fly_camera_controller.h"
+#include "relaygame/player_controller.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/world/blockout_level.h"
 
@@ -22,7 +22,7 @@ namespace RelayGame
         void on_shutdown(RelayCore::EngineServices& services) noexcept override;
 
     private:
-        RelayCore::FlyCameraController     fly_camera_{};
+        RelayGame::GroundedPlayerController player_controller_{};
         RelayCore::BlockoutLevel           level_{};
         RelayCore::render::StaticColorMesh blockout_mesh_{};
     };
