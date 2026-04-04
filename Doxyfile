@@ -7,23 +7,24 @@ ALLOW_UNICODE_NAMES    = YES
 OUTPUT_LANGUAGE        = English
 
 INPUT                  = README.md src
-FILE_PATTERNS          = *.h *.hpp *.hh *.c *.cc *.cpp *.cxx *.inl *.ipp *.tpp *.toml
+FILE_PATTERNS          = *.h *.hpp *.hh *.c *.cc *.cpp *.cxx *.inl *.ipp *.tpp
 RECURSIVE              = YES
-EXCLUDE                = build external .git .idea .vs cmake-build-debug cmake-build-release cmake-build-relwithdebinfo
+EXCLUDE                = build docs/doxygen external extern .git .idea .vs vcpkg_installed
+EXCLUDE_PATTERNS       = */CMakeFiles/* */cmake-build-*/* */_deps/*
 EXCLUDE_SYMLINKS       = NO
 
 USE_MDFILE_AS_MAINPAGE = README.md
 MARKDOWN_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 3
 
-EXTRACT_ALL            = YES
-EXTRACT_PRIVATE        = YES
-EXTRACT_PRIV_VIRTUAL   = YES
-EXTRACT_PACKAGE        = YES
-EXTRACT_STATIC         = YES
-EXTRACT_LOCAL_CLASSES  = YES
-EXTRACT_LOCAL_METHODS  = YES
-HIDE_UNDOC_MEMBERS     = NO
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_PRIV_VIRTUAL   = NO
+EXTRACT_PACKAGE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = NO
+EXTRACT_LOCAL_METHODS  = NO
+HIDE_UNDOC_MEMBERS     = YES
 HIDE_UNDOC_CLASSES     = NO
 HIDE_FRIEND_COMPOUNDS  = NO
 HIDE_IN_BODY_DOCS      = NO
@@ -51,9 +52,9 @@ REFERENCED_BY_RELATION = YES
 REFERENCES_RELATION    = YES
 VERBATIM_HEADERS       = YES
 
-STRIP_FROM_PATH        =
-STRIP_FROM_INC_PATH    =
-FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = .
+STRIP_FROM_INC_PATH    = .
+FULL_PATH_NAMES        = NO
 
 JAVADOC_AUTOBRIEF      = YES
 QT_AUTOBRIEF           = NO
@@ -65,8 +66,6 @@ OPTIMIZE_OUTPUT_JAVA   = NO
 OPTIMIZE_FOR_FORTRAN   = NO
 OPTIMIZE_OUTPUT_VHDL   = NO
 OPTIMIZE_OUTPUT_SLICE  = NO
-
-EXTENSION_MAPPING      = toml=C++
 
 BUILTIN_STL_SUPPORT    = YES
 CPP_CLI_SUPPORT        = NO

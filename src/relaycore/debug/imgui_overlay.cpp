@@ -5,16 +5,17 @@
 
 #include "relaycore/debug/imgui_overlay.h"
 
-#include <cmath>
-#include <imgui.h>
-#include <imgui_impl_opengl3.h>
-#include <imgui_impl_sdl3.h>
-
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/camera.h"
+
+#include <cmath>
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl3.h>
+#include <string>
 
 namespace RelayCore::debug
 {
@@ -24,21 +25,36 @@ namespace RelayCore::debug
         {
             switch (movement_mode)
             {
-                case 0: return "grounded";
-                case 1: return "air";
-                case 2: return "noclip";
-                default: return "unknown";
+                case 0:
+                    return "grounded";
+                case 1:
+                    return "air";
+                case 2:
+                    return "noclip";
+                default:
+                    return "unknown";
             }
+        }
+
+        [[nodiscard]] auto has_interaction_prompt(const render::InteractionDiagnostics& interaction) -> bool
+        {
+            return interaction.has_focused_usable && !interaction.focused_label.empty();
         }
     } // namespace
 
     ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
 
-    ImGuiOverlay::~ImGuiOverlay() noexcept { shutdown(); }
+    ImGuiOverlay::~ImGuiOverlay() noexcept
+    {
+        shutdown();
+    }
 
     void ImGuiOverlay::initialize(const Window& window)
     {
-        if (initialized_ || !config_.enabled) { return; }
+        if (initialized_ || !config_.enabled)
+        {
+            return;
+        }
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -51,9 +67,9 @@ namespace RelayCore::debug
         ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context());
         ImGui_ImplOpenGL3_Init("#version 460 core");
 
-        window_                   = &window;
-        fps_log_accumulator_      = 0.0F;
-        frame_time_sample_count_  = 0;
+        window_ = &window;
+        fps_log_accumulator_ = 0.0F;
+        frame_time_sample_count_ = 0;
         frame_time_sample_cursor_ = 0;
         frame_time_samples_.fill(0.0F);
         initialized_ = true;
@@ -63,15 +79,18 @@ namespace RelayCore::debug
 
     void ImGuiOverlay::shutdown() noexcept
     {
-        if (!initialized_) { return; }
+        if (!initialized_)
+        {
+            return;
+        }
 
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
 
-        window_                   = nullptr;
-        fps_log_accumulator_      = 0.0F;
-        frame_time_sample_count_  = 0;
+        window_ = nullptr;
+        fps_log_accumulator_ = 0.0F;
+        frame_time_sample_count_ = 0;
         frame_time_sample_cursor_ = 0;
         frame_time_samples_.fill(0.0F);
         initialized_ = false;
@@ -79,13 +98,19 @@ namespace RelayCore::debug
 
     void ImGuiOverlay::process_event(const SDL_Event& event)
     {
-        if (!initialized_) { return; }
+        if (!initialized_)
+        {
+            return;
+        }
         ImGui_ImplSDL3_ProcessEvent(&event);
     }
 
     void ImGuiOverlay::begin_frame()
     {
-        if (!initialized_) { return; }
+        if (!initialized_)
+        {
+            return;
+        }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
@@ -95,14 +120,20 @@ namespace RelayCore::debug
     void ImGuiOverlay::push_frame_time_sample(const float frame_time_ms) noexcept
     {
         frame_time_samples_[frame_time_sample_cursor_] = frame_time_ms;
-        frame_time_sample_cursor_                      = (frame_time_sample_cursor_ + 1) % frame_time_samples_.size();
+        frame_time_sample_cursor_ = (frame_time_sample_cursor_ + 1) % frame_time_samples_.size();
 
-        if (frame_time_sample_count_ < frame_time_samples_.size()) { ++frame_time_sample_count_; }
+        if (frame_time_sample_count_ < frame_time_samples_.size())
+        {
+            ++frame_time_sample_count_;
+        }
     }
 
     auto ImGuiOverlay::average_frame_time_ms() const noexcept -> float
     {
-        if (frame_time_sample_count_ == 0) { return 0.0F; }
+        if (frame_time_sample_count_ == 0)
+        {
+            return 0.0F;
+        }
 
         float sum = 0.0F;
         for (std::size_t i = 0; i < frame_time_sample_count_; ++i)
@@ -117,31 +148,37 @@ namespace RelayCore::debug
     {
         switch (swap_interval)
         {
-            case -1: return "adaptive";
-            case 1: return "on";
-            default: return "off";
+            case -1:
+                return "adaptive";
+            case 1:
+                return "on";
+            default:
+                return "off";
         }
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo&                 frame,
+        const FrameInfo& frame,
         const render::PerspectiveCamera& camera,
-        const AudioSystem&               audio_system,
-        const render::WorldDiagnostics&  world,
-        const render::PlayerDiagnostics& player
+        const AudioSystem& audio_system,
+        const render::WorldDiagnostics& world,
+        const render::PlayerDiagnostics& player,
+        const render::InteractionDiagnostics& interaction
     )
     {
         (void) frame;
 
-        if (!initialized_ || !diagnostics_visible_) { return; }
+        if (!initialized_ || !diagnostics_visible_)
+        {
+            return;
+        }
 
         const float refresh_rate_hz = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
-        const int   swap_interval   = window_ != nullptr ? window_->swap_interval() : 0;
+        const int swap_interval = window_ != nullptr ? window_->swap_interval() : 0;
 
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 12.0F, viewport->WorkPos.y + 12.0F), ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.92F);
-
         constexpr ImGuiWindowFlags kWindowFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
 
         ImGui::Begin("RelayCore Diagnostics", nullptr, kWindowFlags);
@@ -178,17 +215,68 @@ namespace RelayCore::debug
         ImGui::Text("Mode: %s", movement_mode_label(player.movement_mode));
         ImGui::Text("Collision: %s", player.collision_enabled ? "on" : "off");
 
+        ImGui::SeparatorText("Interaction");
+        ImGui::Text("Focused usable: %s", interaction.has_focused_usable ? "yes" : "no");
+        ImGui::Text("Focused label: %s", interaction.focused_label.c_str());
+        ImGui::Text("Focus distance: %.2f", interaction.focused_distance);
+        ImGui::Text("Last target: %s", interaction.last_target.c_str());
+        ImGui::Text("Doors: %u active / %u total", interaction.active_doors, interaction.total_doors);
+        ImGui::Text("Triggers: %u fired / %u total", interaction.fired_triggers, interaction.total_triggers);
+        ImGui::Text("Use pressed: %s", interaction.use_pressed ? "yes" : "no");
+
         ImGui::SeparatorText("Audio");
         ImGui::Text("Initialized: %s", audio_system.is_initialized() ? "yes" : "no");
         ImGui::Text("Master volume: %.2f", audio_system.config().master_volume);
         ImGui::End();
 
-        if (config_.show_demo_window) { ImGui::ShowDemoWindow(&config_.show_demo_window); }
+        if (config_.show_demo_window)
+        {
+            ImGui::ShowDemoWindow(&config_.show_demo_window);
+        }
+    }
+
+    void ImGuiOverlay::draw_interaction_prompt(const render::InteractionDiagnostics& interaction) const
+    {
+        if (!initialized_ || !has_interaction_prompt(interaction))
+        {
+            return;
+        }
+
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const std::string binding_label = interaction.use_binding_label.empty() ? "E" : interaction.use_binding_label;
+        const std::string prompt_label = "[" + binding_label + "] " + interaction.focused_label;
+
+        ImGui::SetNextWindowPos(
+            ImVec2(
+                viewport->WorkPos.x + (viewport->WorkSize.x * 0.5F),
+                viewport->WorkPos.y + viewport->WorkSize.y - 56.0F
+            ),
+            ImGuiCond_Always,
+            ImVec2(0.5F, 1.0F)
+        );
+        ImGui::SetNextWindowBgAlpha(0.82F);
+
+        constexpr ImGuiWindowFlags kPromptFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs
+                                                  | ImGuiWindowFlags_AlwaysAutoResize
+                                                  | ImGuiWindowFlags_NoSavedSettings;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0F, 8.0F));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06F, 0.07F, 0.08F, 0.82F));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96F, 0.93F, 0.72F, 1.0F));
+        ImGui::Begin("RelayCore Interaction Prompt", nullptr, kPromptFlags);
+        ImGui::TextUnformatted(prompt_label.c_str());
+        ImGui::End();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(2);
     }
 
     void ImGuiOverlay::render() const
     {
-        if (!initialized_) { return; }
+        if (!initialized_)
+        {
+            return;
+        }
         {
             RELAYCORE_PROFILE_ZONE_N("ImGui::Render");
             ImGui::Render();
@@ -199,15 +287,36 @@ namespace RelayCore::debug
         }
     }
 
-    auto ImGuiOverlay::is_initialized() const noexcept -> bool { return initialized_; }
+    auto ImGuiOverlay::is_initialized() const noexcept -> bool
+    {
+        return initialized_;
+    }
 
-    auto ImGuiOverlay::enabled() const noexcept -> bool { return config_.enabled; }
+    auto ImGuiOverlay::enabled() const noexcept -> bool
+    {
+        return config_.enabled;
+    }
 
-    auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool { return diagnostics_visible_; }
+    auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool
+    {
+        return diagnostics_visible_;
+    }
 
-    void ImGuiOverlay::set_diagnostics_visible(bool visible) noexcept { diagnostics_visible_ = visible; }
+    void ImGuiOverlay::set_diagnostics_visible(bool visible) noexcept
+    {
+        diagnostics_visible_ = visible;
+    }
 
-    void ImGuiOverlay::toggle_diagnostics_visible() noexcept { diagnostics_visible_ = !diagnostics_visible_; }
+    void ImGuiOverlay::toggle_diagnostics_visible() noexcept
+    {
+        diagnostics_visible_ = !diagnostics_visible_;
+    }
+
+    auto ImGuiOverlay::should_render(const render::InteractionDiagnostics& interaction) const noexcept -> bool
+    {
+        return initialized_
+               && (diagnostics_visible_ || has_interaction_prompt(interaction) || config_.show_demo_window);
+    }
 
     void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept
     {
@@ -215,8 +324,8 @@ namespace RelayCore::debug
         push_frame_time_sample(frame_time_ms_);
 
         avg_frame_time_ms_ = average_frame_time_ms();
-        fps_               = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0F;
-        avg_fps_           = avg_frame_time_ms_ > 0.0F ? (1000.0F / avg_frame_time_ms_) : 0.0F;
+        fps_ = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0F;
+        avg_fps_ = avg_frame_time_ms_ > 0.0F ? (1000.0F / avg_frame_time_ms_) : 0.0F;
 
         if (config_.log_fps_to_console)
         {

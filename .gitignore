@@ -29,6 +29,7 @@
 
 # Runtime, profiling and crash artifacts
 *.log
+imgui.ini
 *.dmp
 *.stackdump
 *.profraw

@@ -5,14 +5,14 @@
 
 #include "relaycore/render/shader_program.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <fstream>
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
-
-#include "relaycore/core/profiling.h"
 
 namespace RelayCore::render
 {
@@ -26,7 +26,9 @@ namespace RelayCore::render
          * @return Formatted exception message.
          */
         auto build_shader_error_message(
-            const std::filesystem::path& source_path, const std::string& stage, const std::string& info_log
+            const std::filesystem::path& source_path,
+            const std::string& stage,
+            const std::string& info_log
         ) -> std::string
         {
             std::ostringstream stream;
@@ -44,7 +46,7 @@ namespace RelayCore::render
         auto build_program_error_message(
             const std::filesystem::path& vertex_shader_path,
             const std::filesystem::path& fragment_shader_path,
-            const std::string&           info_log
+            const std::string& info_log
         ) -> std::string
         {
             std::ostringstream stream;
@@ -55,7 +57,10 @@ namespace RelayCore::render
         }
     } // namespace
 
-    ShaderProgram::~ShaderProgram() noexcept { reset(); }
+    ShaderProgram::~ShaderProgram() noexcept
+    {
+        reset();
+    }
 
     ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept :
         program_id_(std::exchange(other.program_id_, 0)),
@@ -67,7 +72,7 @@ namespace RelayCore::render
         if (this != &other)
         {
             reset();
-            program_id_             = std::exchange(other.program_id_, 0);
+            program_id_ = std::exchange(other.program_id_, 0);
             uniform_location_cache_ = std::move(other.uniform_location_cache_);
         }
 
@@ -75,15 +80,16 @@ namespace RelayCore::render
     }
 
     void ShaderProgram::load_from_files(
-        const std::filesystem::path& vertex_shader_path, const std::filesystem::path& fragment_shader_path
+        const std::filesystem::path& vertex_shader_path,
+        const std::filesystem::path& fragment_shader_path
     )
     {
         reset();
 
-        const std::string vertex_source   = read_text_file(vertex_shader_path);
+        const std::string vertex_source = read_text_file(vertex_shader_path);
         const std::string fragment_source = read_text_file(fragment_shader_path);
 
-        const unsigned int vertex_shader   = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
+        const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
         const unsigned int fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path);
 
         const unsigned int program = glCreateProgram();
@@ -133,7 +139,28 @@ namespace RelayCore::render
     void ShaderProgram::set_mat4(const int location, const glm::mat4& value) const
     {
         RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_mat4");
-        if (location >= 0) { glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)); }
+        if (location >= 0)
+        {
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        }
+    }
+
+    void ShaderProgram::set_vec3(const int location, const glm::vec3& value) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_vec3");
+        if (location >= 0)
+        {
+            glUniform3fv(location, 1, glm::value_ptr(value));
+        }
+    }
+
+    void ShaderProgram::set_float(const int location, const float value) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_float");
+        if (location >= 0)
+        {
+            glUniform1f(location, value);
+        }
     }
 
     void ShaderProgram::reset() noexcept
@@ -163,7 +190,10 @@ namespace RelayCore::render
     auto ShaderProgram::read_text_file(const std::filesystem::path& path) -> std::string
     {
         std::ifstream input(path, std::ios::in | std::ios::binary);
-        if (!input) { throw std::runtime_error("Failed to open file: " + path.string()); }
+        if (!input)
+        {
+            throw std::runtime_error("Failed to open file: " + path.string());
+        }
 
         std::ostringstream buffer;
         buffer << input.rdbuf();
@@ -171,11 +201,16 @@ namespace RelayCore::render
     }
 
     auto ShaderProgram::compile_shader(
-        const unsigned int shader_type, const std::string& source, const std::filesystem::path& source_path
+        const unsigned int shader_type,
+        const std::string& source,
+        const std::filesystem::path& source_path
     ) -> unsigned int
     {
         const unsigned int shader = glCreateShader(shader_type);
-        if (shader == 0) { throw std::runtime_error("glCreateShader returned 0"); }
+        if (shader == 0)
+        {
+            throw std::runtime_error("glCreateShader returned 0");
+        }
 
         const char* source_ptr = source.c_str();
         glShaderSource(shader, 1, &source_ptr, nullptr);

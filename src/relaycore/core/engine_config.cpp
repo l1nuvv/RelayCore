@@ -5,15 +5,15 @@
 
 #include "relaycore/core/engine_config.h"
 
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+
 #include <array>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 #include <string>
 #include <string_view>
 #include <toml++/toml.hpp>
-
-#include "relaycore/core/log.h"
-#include "relaycore/core/paths.h"
 
 namespace RelayCore::core
 {
@@ -30,7 +30,10 @@ namespace RelayCore::core
         void
         assign_if_present(const toml::node_view<const toml::node>& view, const std::string_view key, T& destination)
         {
-            if (const auto value = view[key].template value<T>()) { destination = *value; }
+            if (const auto value = view[key].template value<T>())
+            {
+                destination = *value;
+            }
         }
 
         /**
@@ -85,6 +88,10 @@ namespace RelayCore::core
             assign_if_present(render, "clear_r", config.renderer.clear_r);
             assign_if_present(render, "clear_g", config.renderer.clear_g);
             assign_if_present(render, "clear_b", config.renderer.clear_b);
+            assign_if_present(render, "fog_enabled", config.renderer.fog_enabled);
+            assign_if_present(render, "fog_start", config.renderer.fog_start);
+            assign_if_present(render, "fog_end", config.renderer.fog_end);
+            config.renderer.fog_color = read_vec3(render, "fog_color", config.renderer.fog_color);
             assign_if_present(render, "near_plane", config.renderer.camera.near_plane);
             assign_if_present(render, "far_plane", config.renderer.camera.far_plane);
             if (const auto fov_degrees = render["fov_degrees"].value<double>())
@@ -92,7 +99,7 @@ namespace RelayCore::core
                 config.renderer.camera.vertical_fov_radians = glm::radians(static_cast<float>(*fov_degrees));
             }
             config.renderer.camera.position = read_vec3(render, "camera_position", config.renderer.camera.position);
-            config.renderer.camera.target   = read_vec3(render, "camera_target", config.renderer.camera.target);
+            config.renderer.camera.target = read_vec3(render, "camera_target", config.renderer.camera.target);
 
             const auto imgui = document["imgui"];
             assign_if_present(imgui, "enabled", config.renderer.imgui.enabled);
@@ -108,6 +115,28 @@ namespace RelayCore::core
             assign_if_present(audio, "enabled", config.audio.enabled);
             assign_if_present(audio, "master_volume", config.audio.master_volume);
             assign_if_present(audio, "startup_sound", config.audio.startup_sound);
+
+            const auto game = document["game"];
+            assign_if_present(game, "level_path", config.gameplay.level_path);
+            assign_if_present(game, "spawn_classname", config.gameplay.spawn_classname);
+
+            const auto controls = game["controls"];
+            assign_if_present(controls, "move_forward", config.gameplay.controls.move_forward);
+            assign_if_present(controls, "move_backward", config.gameplay.controls.move_backward);
+            assign_if_present(controls, "move_right", config.gameplay.controls.move_right);
+            assign_if_present(controls, "move_left", config.gameplay.controls.move_left);
+            assign_if_present(controls, "jump", config.gameplay.controls.jump);
+            assign_if_present(controls, "sprint", config.gameplay.controls.sprint);
+            assign_if_present(controls, "sprint_alt", config.gameplay.controls.sprint_alt);
+            assign_if_present(controls, "slow", config.gameplay.controls.slow);
+            assign_if_present(controls, "slow_alt", config.gameplay.controls.slow_alt);
+            assign_if_present(controls, "noclip_down", config.gameplay.controls.noclip_down);
+            assign_if_present(controls, "noclip_down_alt", config.gameplay.controls.noclip_down_alt);
+            assign_if_present(controls, "use", config.gameplay.controls.use);
+            assign_if_present(controls, "toggle_capture", config.gameplay.controls.toggle_capture);
+            assign_if_present(controls, "toggle_vsync", config.gameplay.controls.toggle_vsync);
+            assign_if_present(controls, "toggle_noclip", config.gameplay.controls.toggle_noclip);
+            assign_if_present(controls, "quit", config.gameplay.controls.quit);
 
             log::info("Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)
@@ -125,5 +154,8 @@ namespace RelayCore::core
         return config;
     }
 
-    auto load_default_engine_config() -> EngineConfig { return load_engine_config(asset_path("config/engine.toml")); }
+    auto load_default_engine_config() -> EngineConfig
+    {
+        return load_engine_config(asset_path("config/engine.toml"));
+    }
 } // namespace RelayCore::core

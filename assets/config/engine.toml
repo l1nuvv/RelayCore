@@ -6,9 +6,13 @@ high_dpi = true
 vsync = true
 
 [render]
-clear_r = 0.10
-clear_g = 0.11
-clear_b = 0.14
+clear_r = 0.05
+clear_g = 0.06
+clear_b = 0.08
+fog_enabled = true
+fog_color = [0.07, 0.08, 0.10]
+fog_start = 4.5
+fog_end = 16.0
 fov_degrees = 60.0
 near_plane = 0.1
 far_plane = 100.0
@@ -29,3 +33,25 @@ capture_mouse_on_start = true
 enabled = true
 master_volume = 1.0
 startup_sound = ""
+
+[game]
+level_path = "levels/test_room.toml"
+spawn_classname = "player_spawn"
+
+[game.controls]
+move_forward = "W"
+move_backward = "S"
+move_right = "D"
+move_left = "A"
+jump = "Space"
+sprint = "Left Shift"
+sprint_alt = "Right Shift"
+slow = "Left Alt"
+slow_alt = "Right Alt"
+noclip_down = "Left Ctrl"
+noclip_down_alt = "Right Ctrl"
+use = "E"
+toggle_capture = "F1"
+toggle_vsync = "V"
+toggle_noclip = "F3"
+quit = "Escape"

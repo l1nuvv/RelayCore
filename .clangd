@@ -1,5 +1,6 @@
 CompileFlags:
   CompilationDatabase: Ancestors
+  Compiler: clang-cl
   Add:
     - -Wall
     - -Wextra
@@ -9,36 +10,54 @@ CompileFlags:
     - /external:*
     - /fsanitize=address
     - -fsanitize=address
+    - -Werror
+
 Index:
   Background: Build
   StandardLibrary: true
+
 Style:
   QuotedHeaders:
     - "src/.*"
     - "tests/.*"
   AngledHeaders:
     - "extern/.*"
+
 Diagnostics:
   ClangTidy:
     Add:
       - bugprone-*
       - clang-analyzer-*
       - performance-*
-      - modernize-*
-      - readability-*
+      - modernize-use-nullptr
+      - modernize-use-override
+      - modernize-use-using
+      - readability-avoid-const-params-in-decls
+      - readability-redundant-*
     Remove:
+      - bugprone-easily-swappable-parameters
       - modernize-use-trailing-return-type
       - readability-identifier-length
       - readability-magic-numbers
     FastCheckFilter: Strict
   UnusedIncludes: Strict
-  MissingIncludes: Strict
+  MissingIncludes: None
+
 Completion:
   HeaderInsertion: IWYU
+
+InlayHints:
+  Enabled: true
+  DeducedTypes: true
+  ParameterNames: true
+  DefaultArguments: false
+
 ---
 If:
   PathMatch:
     - extern/.*
+    - build/.*
+    - cmake-build-.*/.*
 Index:
   Background: Skip
 Diagnostics:

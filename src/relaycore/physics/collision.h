@@ -41,11 +41,7 @@ namespace RelayCore::physics
     [[nodiscard]] auto overlaps(const Aabb& a, const Aabb& b, float epsilon) -> bool;
 
     [[nodiscard]] auto move_axis(
-        CollisionWorld         world,
-        const glm::vec3&       start_position,
-        const CollisionConfig& config,
-        std::size_t            axis,
-        float                  delta
+        CollisionWorld world, const glm::vec3& start_position, const CollisionConfig& config, int axis, float delta
     ) -> AxisMoveResult;
 
     [[nodiscard]] auto probe_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config)

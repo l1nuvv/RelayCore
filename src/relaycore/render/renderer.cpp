@@ -1,8 +1,5 @@
 #include "relaycore/render/renderer.h"
 
-#include <glad/gl.h>
-#include <glm/mat4x4.hpp>
-
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
@@ -10,6 +7,9 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/gl_debug.h"
 #include "relaycore/render/gl_loader.h"
+
+#include <glad/gl.h>
+#include <glm/mat4x4.hpp>
 
 namespace RelayCore
 {
@@ -19,7 +19,10 @@ namespace RelayCore
 
     void Renderer::initialize(const Window& window)
     {
-        if (initialized_) { return; }
+        if (initialized_)
+        {
+            return;
+        }
 
         render::gl::load();
         render::gl_debug::initialize();
@@ -30,9 +33,9 @@ namespace RelayCore
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
 
-        const char* vendor       = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
-        const char* renderer     = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-        const char* version      = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+        const char* vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+        const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+        const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
         const char* glsl_version = reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION));
 
         log::info("GL vendor: {}", vendor != nullptr ? vendor : "unknown");
@@ -42,21 +45,26 @@ namespace RelayCore
         log::debug("Asset root: {}", core::asset_root_path().string());
 
         shader_program_.load_from_files(core::asset_path("shaders/basic.vert"), core::asset_path("shaders/basic.frag"));
-        cube_mesh_.initialize();
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window);
 
         initialized_ = true;
     }
 
-    void Renderer::process_event(const SDL_Event& event) { imgui_overlay_.process_event(event); }
+    void Renderer::process_event(const SDL_Event& event)
+    {
+        imgui_overlay_.process_event(event);
+    }
 
     void Renderer::on_resize(const int width, const int height) noexcept
     {
-        viewport_width_  = width;
+        viewport_width_ = width;
         viewport_height_ = height;
         camera_.set_viewport(width, height);
-        if (initialized_) { glViewport(0, 0, width, height); }
+        if (initialized_)
+        {
+            glViewport(0, 0, width, height);
+        }
     }
 
     void Renderer::begin_frame()
@@ -72,41 +80,73 @@ namespace RelayCore
         }
     }
 
-    void Renderer::draw_color_cube(const glm::mat4& model_matrix)
+    void Renderer::draw_render_queue(const std::span<const render::RenderItem> items)
     {
-        RELAYCORE_PROFILE_ZONE_N("Renderer::draw_color_cube");
-        shader_program_.bind();
-        constexpr GLint kMvpLocation = 0;
-        const glm::mat4 mvp          = camera_.view_projection_matrix() * model_matrix;
-        shader_program_.set_mat4(kMvpLocation, mvp);
-        cube_mesh_.draw();
-    }
+        RELAYCORE_PROFILE_ZONE_N("Renderer::draw_render_queue");
+        if (items.empty())
+        {
+            return;
+        }
 
-    void Renderer::draw_color_mesh(const render::StaticColorMesh& mesh, const glm::mat4& model_matrix)
-    {
-        RELAYCORE_PROFILE_ZONE_N("Renderer::draw_color_mesh");
         shader_program_.bind();
         constexpr GLint kMvpLocation = 0;
-        const glm::mat4 mvp          = camera_.view_projection_matrix() * model_matrix;
-        shader_program_.set_mat4(kMvpLocation, mvp);
-        mesh.draw();
+        constexpr GLint kModelLocation = 1;
+        constexpr GLint kCameraPositionLocation = 2;
+        constexpr GLint kFogColorLocation = 3;
+        constexpr GLint kFogStartLocation = 4;
+        constexpr GLint kFogEndLocation = 5;
+        const glm::mat4 view_projection = camera_.view_projection_matrix();
+        shader_program_.set_vec3(kCameraPositionLocation, camera_.position());
+        shader_program_.set_vec3(kFogColorLocation, config_.fog_color);
+        shader_program_.set_float(
+            kFogStartLocation,
+            config_.fog_enabled ? config_.fog_start : config_.camera.far_plane
+        );
+        shader_program_.set_float(kFogEndLocation, config_.fog_enabled ? config_.fog_end : config_.camera.far_plane);
+
+        for (const render::RenderItem& item : items)
+        {
+            if (item.mesh == nullptr)
+            {
+                continue;
+            }
+            const glm::mat4 mvp = view_projection * item.model_matrix;
+            shader_program_.set_mat4(kMvpLocation, mvp);
+            shader_program_.set_mat4(kModelLocation, item.model_matrix);
+            item.mesh->draw();
+        }
     }
 
     void Renderer::draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        if (!imgui_overlay_.enabled()) { return; }
+        if (!imgui_overlay_.enabled())
+        {
+            return;
+        }
 
         imgui_overlay_.update_diagnostics(frame);
 
-        if (!imgui_overlay_.diagnostics_visible()) { return; }
+        if (!imgui_overlay_.should_render(interaction_diagnostics_))
+        {
+            return;
+        }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
         }
+        if (imgui_overlay_.diagnostics_visible())
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
-            imgui_overlay_.draw_diagnostics(frame, camera_, audio_system, world_diagnostics_, player_diagnostics_);
+            imgui_overlay_.draw_diagnostics(
+                frame,
+                camera_,
+                audio_system,
+                world_diagnostics_,
+                player_diagnostics_,
+                interaction_diagnostics_
+            );
         }
+        imgui_overlay_.draw_interaction_prompt(interaction_diagnostics_);
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             imgui_overlay_.render();
@@ -118,7 +158,10 @@ namespace RelayCore
         world_diagnostics_ = diagnostics;
     }
 
-    auto Renderer::world_diagnostics() const noexcept -> const render::WorldDiagnostics& { return world_diagnostics_; }
+    auto Renderer::world_diagnostics() const noexcept -> const render::WorldDiagnostics&
+    {
+        return world_diagnostics_;
+    }
 
     void Renderer::set_player_diagnostics(const render::PlayerDiagnostics& diagnostics) noexcept
     {
@@ -130,16 +173,38 @@ namespace RelayCore
         return player_diagnostics_;
     }
 
-    auto Renderer::camera() noexcept -> render::PerspectiveCamera& { return camera_; }
+    void Renderer::set_interaction_diagnostics(const render::InteractionDiagnostics& diagnostics) noexcept
+    {
+        interaction_diagnostics_ = diagnostics;
+    }
 
-    auto Renderer::camera() const noexcept -> const render::PerspectiveCamera& { return camera_; }
+    auto Renderer::interaction_diagnostics() const noexcept -> const render::InteractionDiagnostics&
+    {
+        return interaction_diagnostics_;
+    }
 
-    auto Renderer::diagnostics_visible() const noexcept -> bool { return imgui_overlay_.diagnostics_visible(); }
+    auto Renderer::camera() noexcept -> render::PerspectiveCamera&
+    {
+        return camera_;
+    }
+
+    auto Renderer::camera() const noexcept -> const render::PerspectiveCamera&
+    {
+        return camera_;
+    }
+
+    auto Renderer::diagnostics_visible() const noexcept -> bool
+    {
+        return imgui_overlay_.diagnostics_visible();
+    }
 
     void Renderer::set_diagnostics_visible(const bool visible) noexcept
     {
         imgui_overlay_.set_diagnostics_visible(visible);
     }
 
-    void Renderer::toggle_diagnostics_visible() noexcept { imgui_overlay_.toggle_diagnostics_visible(); }
+    void Renderer::toggle_diagnostics_visible() noexcept
+    {
+        imgui_overlay_.toggle_diagnostics_visible();
+    }
 } // namespace RelayCore

@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include <memory>
-
 #include "relaycore/app/app_delegate.h"
 #include "relaycore/app/engine_services.h"
 #include "relaycore/app/frame_timer.h"
@@ -15,6 +13,9 @@
 #include "relaycore/platform/sdl_system.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
+
+#include <memory>
+#include <optional>
 
 namespace RelayCore
 {
@@ -52,13 +53,13 @@ namespace RelayCore
          */
         void handle_event(const SDL_Event& event, EngineServices& services);
 
-        std::unique_ptr<AppDelegate> app_delegate_;      ///< Active game delegate.
-        FrameTimer                   frame_timer_{};     ///< Frame timing helper.
-        SdlSystem                    sdl_system_{};      ///< SDL lifetime guard.
-        core::EngineConfig           config_{};          ///< Loaded engine configuration.
-        Window                       window_;            ///< Native window and GL context owner.
-        Renderer                     renderer_{};        ///< Rendering subsystem.
-        AudioSystem                  audio_system_{};    ///< Audio subsystem.
-        bool                         is_running_ = true; ///< Main-loop running flag.
+        std::unique_ptr<AppDelegate> app_delegate_;  ///< Active game delegate.
+        FrameTimer frame_timer_{};                   ///< Frame timing helper.
+        SdlSystem sdl_system_{};                     ///< SDL lifetime guard.
+        std::optional<core::EngineConfig> config_{}; ///< Loaded engine configuration after SDL is ready.
+        std::optional<Window> window_{};             ///< Native window and GL context owner.
+        std::optional<Renderer> renderer_{};         ///< Rendering subsystem.
+        std::optional<AudioSystem> audio_system_{};  ///< Audio subsystem.
+        bool is_running_ = true;                     ///< Main-loop running flag.
     };
 } // namespace RelayCore
