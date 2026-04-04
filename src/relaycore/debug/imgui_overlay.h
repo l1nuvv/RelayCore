@@ -10,6 +10,7 @@
 #include <cstddef>
 
 #include "relaycore/app/frame_timer.h"
+#include "relaycore/render/render_diagnostics.h"
 
 namespace RelayCore
 {
@@ -50,7 +51,11 @@ namespace RelayCore::debug
         void begin_frame();
 
         void draw_diagnostics(
-            const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+            const FrameInfo&                 frame,
+            const render::PerspectiveCamera& camera,
+            const AudioSystem&               audio_system,
+            const render::WorldDiagnostics&  world,
+            const render::PlayerDiagnostics& player
         );
 
         void render() const;

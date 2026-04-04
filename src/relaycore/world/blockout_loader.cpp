@@ -5,6 +5,8 @@
 
 #include "relaycore/world/blockout_loader.h"
 
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -54,7 +56,7 @@ namespace RelayCore
 
             glm::vec3 result{};
 
-            for (std::size_t i = 0; i < 3; ++i)
+            for (glm::length_t i = 0; i < 3; ++i)
             {
                 const auto value = (*array)[i].value<double>();
                 if (!value.has_value())
@@ -75,11 +77,49 @@ namespace RelayCore
          */
         [[nodiscard]] SurfaceMaterial parse_surface_material(std::string_view value)
         {
-            if (value == "Concrete") return SurfaceMaterial::Concrete;
-            if (value == "Metal") return SurfaceMaterial::Metal;
-            if (value == "Tile") return SurfaceMaterial::Tile;
-            if (value == "Glass") return SurfaceMaterial::Glass;
-            if (value == "Hazard") return SurfaceMaterial::Hazard;
+            std::string normalized{value};
+            std::ranges::transform(normalized, normalized.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            // Generic names
+            if (normalized == "concrete") return SurfaceMaterial::Concrete;
+            if (normalized == "metal") return SurfaceMaterial::Metal;
+            if (normalized == "tile") return SurfaceMaterial::Tile;
+            if (normalized == "glass") return SurfaceMaterial::Glass;
+            if (normalized == "hazard") return SurfaceMaterial::Hazard;
+
+            // New direct names
+            if (normalized == "floor") return SurfaceMaterial::Floor;
+            if (normalized == "ceiling") return SurfaceMaterial::Ceiling;
+            if (normalized == "wall") return SurfaceMaterial::Wall;
+            if (normalized == "corridor") return SurfaceMaterial::Corridor;
+            if (normalized == "platform") return SurfaceMaterial::Platform;
+            if (normalized == "platformtop" || normalized == "platform_top") return SurfaceMaterial::PlatformTop;
+            if (normalized == "platformtop2" || normalized == "platform_top2") return SurfaceMaterial::PlatformTop2;
+            if (normalized == "pillar") return SurfaceMaterial::Pillar;
+            if (normalized == "cover") return SurfaceMaterial::Cover;
+            if (normalized == "block") return SurfaceMaterial::Block;
+            if (normalized == "beam") return SurfaceMaterial::Beam;
+            if (normalized == "divider") return SurfaceMaterial::Divider;
+            if (normalized == "crate") return SurfaceMaterial::Crate;
+            if (normalized == "post") return SurfaceMaterial::Post;
+
+            // Dev-material aliases
+            if (normalized == "dev/floor") return SurfaceMaterial::Floor;
+            if (normalized == "dev/ceiling") return SurfaceMaterial::Ceiling;
+            if (normalized == "dev/wall") return SurfaceMaterial::Wall;
+            if (normalized == "dev/corridor") return SurfaceMaterial::Corridor;
+            if (normalized == "dev/platform") return SurfaceMaterial::Platform;
+            if (normalized == "dev/platform_top") return SurfaceMaterial::PlatformTop;
+            if (normalized == "dev/platform_top2") return SurfaceMaterial::PlatformTop2;
+            if (normalized == "dev/pillar") return SurfaceMaterial::Pillar;
+            if (normalized == "dev/cover") return SurfaceMaterial::Cover;
+            if (normalized == "dev/block") return SurfaceMaterial::Block;
+            if (normalized == "dev/beam") return SurfaceMaterial::Beam;
+            if (normalized == "dev/divider") return SurfaceMaterial::Divider;
+            if (normalized == "dev/crate") return SurfaceMaterial::Crate;
+            if (normalized == "dev/post") return SurfaceMaterial::Post;
 
             throw std::runtime_error("Unknown surface material: " + std::string(value));
         }

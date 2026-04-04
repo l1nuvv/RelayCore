@@ -1,15 +1,20 @@
 #include "relaycore/render/blockout_mesh_builder.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
+
+#include "relaycore/core/profiling.h"
 
 namespace RelayCore::render
 {
     namespace
     {
         constexpr float kEpsilon = 0.0001F;
+
+        [[nodiscard]] auto nearly_equal(const float a, const float b) -> bool { return std::abs(a - b) <= kEpsilon; }
 
         enum class FaceAxis : std::uint8_t {
             PosX,
@@ -36,6 +41,23 @@ namespace RelayCore::render
                 case SurfaceMaterial::Tile: return {0.73F, 0.76F, 0.78F};
                 case SurfaceMaterial::Glass: return {0.45F, 0.72F, 0.84F};
                 case SurfaceMaterial::Hazard: return {0.92F, 0.78F, 0.18F};
+
+                case SurfaceMaterial::Floor: return {0.36F, 0.36F, 0.38F};
+                case SurfaceMaterial::Ceiling: return {0.30F, 0.31F, 0.33F};
+                case SurfaceMaterial::Wall: return {0.56F, 0.58F, 0.62F};
+                case SurfaceMaterial::Corridor: return {0.42F, 0.46F, 0.52F};
+
+                case SurfaceMaterial::Platform: return {0.52F, 0.52F, 0.58F};
+                case SurfaceMaterial::PlatformTop: return {0.78F, 0.72F, 0.30F};
+                case SurfaceMaterial::PlatformTop2: return {0.92F, 0.52F, 0.22F};
+
+                case SurfaceMaterial::Pillar: return {0.50F, 0.54F, 0.58F};
+                case SurfaceMaterial::Cover: return {0.28F, 0.44F, 0.34F};
+                case SurfaceMaterial::Block: return {0.58F, 0.48F, 0.36F};
+                case SurfaceMaterial::Beam: return {0.67F, 0.42F, 0.18F};
+                case SurfaceMaterial::Divider: return {0.32F, 0.76F, 0.88F};
+                case SurfaceMaterial::Crate: return {0.55F, 0.39F, 0.22F};
+                case SurfaceMaterial::Post: return {0.82F, 0.82F, 0.86F};
             }
 
             return {1.0F, 0.0F, 1.0F};
@@ -220,6 +242,26 @@ namespace RelayCore::render
             return false;
         }
 
+        [[nodiscard]] auto
+        solid_has_coplanar_face(const BlockoutSolid& solid, const BlockoutSolid& other, const FaceAxis face) -> bool
+        {
+            const float  plane      = face_plane(solid, face);
+            const Rect2D cover_rect = face_cover_rect(solid, other, face);
+            if (!rect_valid(cover_rect)) { return false; }
+
+            switch (face)
+            {
+                case FaceAxis::PosX: return nearly_equal(other.maxs.x, plane) && other.mins.x < plane - kEpsilon;
+                case FaceAxis::NegX: return nearly_equal(other.mins.x, plane) && other.maxs.x > plane + kEpsilon;
+                case FaceAxis::PosY: return nearly_equal(other.maxs.y, plane) && other.mins.y < plane - kEpsilon;
+                case FaceAxis::NegY: return nearly_equal(other.mins.y, plane) && other.maxs.y > plane + kEpsilon;
+                case FaceAxis::PosZ: return nearly_equal(other.maxs.z, plane) && other.mins.z < plane - kEpsilon;
+                case FaceAxis::NegZ: return nearly_equal(other.mins.z, plane) && other.maxs.z > plane + kEpsilon;
+            }
+
+            return false;
+        }
+
         void append_face_rect(
             CpuColorMeshData& mesh, const FaceAxis face, const float plane, const Rect2D& rect, const glm::vec3& color
         )
@@ -305,7 +347,15 @@ namespace RelayCore::render
                 if (other_index == solid_index) { continue; }
 
                 const BlockoutSolid& other = solids[other_index];
-                if (!solid_covers_face_from_outside(solid, other, face)) { continue; }
+
+                const bool covered_from_outside = solid_covers_face_from_outside(solid, other, face);
+
+                // Для копланарных дубликатов нужен детерминированный "владелец" overlap.
+                // Иначе два solids вычтут друг друга и можно получить дырку.
+                const bool covered_by_coplanar_face =
+                    other_index < solid_index && solid_has_coplanar_face(solid, other, face);
+
+                if (!covered_from_outside && !covered_by_coplanar_face) { continue; }
 
                 subtract_rect(visible_rects, face_cover_rect(solid, other, face));
                 if (visible_rects.empty()) { return; }
@@ -319,72 +369,90 @@ namespace RelayCore::render
         }
     } // namespace
 
+    [[nodiscard]] auto build_blockout_mesh_for_solid(const BlockoutLevel& level, const std::size_t solid_index)
+        -> CpuColorMeshData
+    {
+        const BlockoutSolid& solid = level.solids[solid_index];
+        if (solid.mins.x >= solid.maxs.x || solid.mins.y >= solid.maxs.y || solid.mins.z >= solid.maxs.z)
+        {
+            throw std::runtime_error("Blockout solid has invalid bounds");
+        }
+
+        CpuColorMeshData mesh{};
+        mesh.vertices.reserve(24);
+        mesh.indices.reserve(36);
+
+        const glm::vec3 base_color = material_base_color(solid.material);
+
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::PosZ, shade(base_color, face_shade_factor(FaceAxis::PosZ))
+        );
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::NegZ, shade(base_color, face_shade_factor(FaceAxis::NegZ))
+        );
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::NegX, shade(base_color, face_shade_factor(FaceAxis::NegX))
+        );
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::PosX, shade(base_color, face_shade_factor(FaceAxis::PosX))
+        );
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::PosY, shade(base_color, face_shade_factor(FaceAxis::PosY))
+        );
+        append_visible_face(
+            mesh, solid, level.solids, solid_index, FaceAxis::NegY, shade(base_color, face_shade_factor(FaceAxis::NegY))
+        );
+
+        return mesh;
+    }
+
     auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
     {
+        RELAYCORE_PROFILE_ZONE_N("build_blockout_mesh");
+
         CpuColorMeshData mesh{};
         mesh.vertices.reserve(level.solids.size() * 24);
         mesh.indices.reserve(level.solids.size() * 36);
 
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
-            const BlockoutSolid& solid = level.solids[solid_index];
-            if (solid.mins.x >= solid.maxs.x || solid.mins.y >= solid.maxs.y || solid.mins.z >= solid.maxs.z)
+            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index);
+
+            const std::uint32_t base_index = static_cast<std::uint32_t>(mesh.vertices.size());
+            mesh.vertices.insert(mesh.vertices.end(), solid_mesh.vertices.begin(), solid_mesh.vertices.end());
+
+            for (const std::uint32_t index: solid_mesh.indices)
             {
-                throw std::runtime_error("Blockout solid has invalid bounds");
+                mesh.indices.push_back(base_index + index);
             }
-
-            const glm::vec3 base_color = material_base_color(solid.material);
-
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::PosZ,
-                shade(base_color, face_shade_factor(FaceAxis::PosZ))
-            );
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::NegZ,
-                shade(base_color, face_shade_factor(FaceAxis::NegZ))
-            );
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::NegX,
-                shade(base_color, face_shade_factor(FaceAxis::NegX))
-            );
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::PosX,
-                shade(base_color, face_shade_factor(FaceAxis::PosX))
-            );
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::PosY,
-                shade(base_color, face_shade_factor(FaceAxis::PosY))
-            );
-            append_visible_face(
-                mesh,
-                solid,
-                level.solids,
-                solid_index,
-                FaceAxis::NegY,
-                shade(base_color, face_shade_factor(FaceAxis::NegY))
-            );
         }
 
         return mesh;
+    }
+
+    auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
+    {
+        RELAYCORE_PROFILE_ZONE_N("build_blockout_render_data");
+
+        BlockoutRenderData render_data{};
+        render_data.chunks.reserve(level.solids.size());
+
+        for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
+        {
+            const BlockoutSolid& solid = level.solids[solid_index];
+
+            BlockoutRenderChunkData chunk{};
+            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index);
+            if (chunk.mesh.indices.empty()) { continue; }
+
+            chunk.mins           = solid.mins;
+            chunk.maxs           = solid.maxs;
+            chunk.triangle_count = static_cast<std::uint32_t>(chunk.mesh.indices.size() / 3);
+
+            render_data.total_triangles += chunk.triangle_count;
+            render_data.chunks.push_back(std::move(chunk));
+        }
+
+        return render_data;
     }
 } // namespace RelayCore::render

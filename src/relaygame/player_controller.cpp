@@ -1,12 +1,12 @@
 #include "relaygame/player_controller.h"
 
-#include <algorithm>
 #include <cmath>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/world/blockout_level.h"
@@ -16,114 +16,6 @@ namespace RelayGame
     namespace
     {
         constexpr float kPitchClamp = 1.55334306F;
-        constexpr float kEpsilon    = 0.0001F;
-
-        struct Aabb {
-            glm::vec3 mins{};
-            glm::vec3 maxs{};
-        };
-
-        struct AxisMoveResult {
-            float position_axis = 0.0F;
-            bool  hit           = false;
-        };
-
-        [[nodiscard]] auto make_player_aabb(const glm::vec3& position, const GroundedPlayerControllerConfig& config)
-            -> Aabb
-        {
-            return {
-                {position.x - config.collider_radius, position.y, position.z - config.collider_radius},
-                {position.x + config.collider_radius,
-                 position.y + config.collider_height,
-                 position.z + config.collider_radius},
-            };
-        }
-
-        [[nodiscard]] auto make_solid_aabb(const RelayCore::BlockoutSolid& solid) -> Aabb
-        {
-            return {solid.mins, solid.maxs};
-        }
-
-        [[nodiscard]] auto overlaps(const Aabb& a, const Aabb& b) -> bool
-        {
-            return a.mins.x < b.maxs.x - kEpsilon && a.maxs.x > b.mins.x + kEpsilon && a.mins.y < b.maxs.y - kEpsilon
-                   && a.maxs.y > b.mins.y + kEpsilon && a.mins.z < b.maxs.z - kEpsilon
-                   && a.maxs.z > b.mins.z + kEpsilon;
-        }
-
-        [[nodiscard]] auto accelerate_towards(const glm::vec3& current, const glm::vec3& target, const float max_delta)
-            -> glm::vec3
-        {
-            const glm::vec3 delta        = target - current;
-            const float     delta_length = glm::length(delta);
-            if (delta_length <= kEpsilon) { return target; }
-            if (delta_length <= max_delta) { return target; }
-            return current + (delta / delta_length) * max_delta;
-        }
-
-        void apply_ground_friction(glm::vec3& velocity, const float friction, const float dt)
-        {
-            glm::vec2   planar{velocity.x, velocity.z};
-            const float speed = glm::length(planar);
-            if (speed <= kEpsilon)
-            {
-                velocity.x = 0.0F;
-                velocity.z = 0.0F;
-                return;
-            }
-
-            const float drop      = speed * friction * dt;
-            const float new_speed = std::max(speed - drop, 0.0F);
-            if (new_speed <= kEpsilon)
-            {
-                velocity.x = 0.0F;
-                velocity.z = 0.0F;
-                return;
-            }
-
-            planar *= new_speed / speed;
-            velocity.x = planar.x;
-            velocity.z = planar.y;
-        }
-
-        [[nodiscard]] auto move_axis(
-            const RelayCore::BlockoutLevel&       level,
-            const glm::vec3&                      start_position,
-            const GroundedPlayerControllerConfig& config,
-            const int                             axis,
-            const float                           delta
-        ) -> AxisMoveResult
-        {
-            glm::vec3 candidate = start_position;
-            candidate[axis] += delta;
-
-            AxisMoveResult result{};
-            result.position_axis = candidate[axis];
-
-            for (const RelayCore::BlockoutSolid& solid: level.solids)
-            {
-                const Aabb player_aabb = make_player_aabb(candidate, config);
-                const Aabb solid_aabb  = make_solid_aabb(solid);
-                if (!overlaps(player_aabb, solid_aabb)) { continue; }
-
-                result.hit = true;
-
-                const float player_min_offset = player_aabb.mins[axis] - candidate[axis];
-                const float player_max_offset = player_aabb.maxs[axis] - candidate[axis];
-
-                if (delta > 0.0F)
-                {
-                    result.position_axis = std::min(result.position_axis, solid_aabb.mins[axis] - player_max_offset);
-                } else if (delta < 0.0F)
-                {
-                    result.position_axis = std::max(result.position_axis, solid_aabb.maxs[axis] - player_min_offset);
-                }
-
-                candidate[axis] = result.position_axis;
-            }
-
-            return result;
-        }
     } // namespace
 
     GroundedPlayerController::GroundedPlayerController(const GroundedPlayerControllerConfig& config) : config_(config)
@@ -131,9 +23,13 @@ namespace RelayGame
 
     void GroundedPlayerController::initialize(const glm::vec3& spawn_position) noexcept
     {
-        position_ = spawn_position;
-        velocity_ = glm::vec3{0.0F};
-        grounded_ = false;
+        position_              = spawn_position;
+        velocity_              = glm::vec3{0.0F};
+        motion_state_.position = spawn_position;
+        motion_state_.velocity = glm::vec3{0.0F};
+        motion_state_.grounded = false;
+        grounded_              = false;
+        movement_mode_         = MovementMode::Air;
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
@@ -142,8 +38,26 @@ namespace RelayGame
 
         window.set_relative_mouse_mode(true);
         RelayCore::log::info(
-            "Grounded player capture enabled (WASD move, Space jump, Shift sprint, F1 toggle mouse, Esc quit)"
+            "Player capture enabled (WASD move, Space jump/up, Ctrl down in noclip, Shift sprint, F1 mouse, F3 noclip, "
+            "Esc quit)"
         );
+    }
+
+    void GroundedPlayerController::toggle_noclip() noexcept
+    {
+        if (movement_mode_ == MovementMode::Noclip)
+        {
+            movement_mode_ = MovementMode::Air;
+            grounded_      = false;
+        } else
+        {
+            movement_mode_ = MovementMode::Noclip;
+            grounded_      = false;
+        }
+
+        velocity_              = glm::vec3{0.0F};
+        motion_state_.velocity = glm::vec3{0.0F};
+        motion_state_.grounded = false;
     }
 
     void GroundedPlayerController::on_event(
@@ -176,7 +90,19 @@ namespace RelayGame
                     RelayCore::log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");
                 } else if (event.key.scancode == SDL_SCANCODE_V)
                 {
-                    window.toggle_vsync();
+                    (void) window.toggle_vsync();
+                } else if (event.key.scancode == SDL_SCANCODE_F3)
+                {
+                    toggle_noclip();
+                    const char* label = "grounded";
+                    if (movement_mode_ == MovementMode::Air)
+                    {
+                        label = "air";
+                    } else if (movement_mode_ == MovementMode::Noclip)
+                    {
+                        label = "noclip";
+                    }
+                    RelayCore::log::info("Movement mode: {}", label);
                 }
 
                 break;
@@ -188,76 +114,137 @@ namespace RelayGame
 
     void GroundedPlayerController::update(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
     {
+        RELAYCORE_PROFILE_ZONE_N("GroundedPlayerController::update");
+
         yaw_radians_ += pending_yaw_delta_;
         pitch_radians_       = glm::clamp(pitch_radians_ + pending_pitch_delta_, -kPitchClamp, kPitchClamp);
         pending_yaw_delta_   = 0.0F;
         pending_pitch_delta_ = 0.0F;
 
-        const float dt         = static_cast<float>(frame.delta_seconds);
+        if (movement_mode_ == MovementMode::Noclip)
+        {
+            update_noclip(frame);
+            return;
+        }
+
+        update_grounded(frame, level);
+    }
+
+    void
+    GroundedPlayerController::update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
+    {
+        RELAYCORE_PROFILE_ZONE_N("physics::update_grounded");
+
+        const auto world  = build_collision_world(level);
+        const auto input  = poll_move_input();
+        const auto config = build_motion_config();
+
+        motion_state_.position = position_;
+        motion_state_.velocity = velocity_;
+        motion_state_.grounded = grounded_;
+
+        RelayCore::physics::update_grounded(
+            motion_state_,
+            input,
+            yaw_radians_,
+            static_cast<float>(frame.delta_seconds),
+            RelayCore::physics::CollisionWorld{world},
+            config
+        );
+
+        position_ = motion_state_.position;
+        velocity_ = motion_state_.velocity;
+
+        grounded_      = motion_state_.grounded;
+        movement_mode_ = grounded_ ? MovementMode::Grounded : MovementMode::Air;
+    }
+
+    void GroundedPlayerController::update_noclip(const RelayCore::FrameInfo& frame)
+    {
+        const auto input  = poll_move_input();
+        const auto config = build_motion_config();
+
+        motion_state_.position = position_;
+        motion_state_.velocity = glm::vec3{0.0F};
+        motion_state_.grounded = false;
+
+        RelayCore::physics::update_noclip(
+            motion_state_, input, yaw_radians_, pitch_radians_, static_cast<float>(frame.delta_seconds), config
+        );
+
+        position_      = motion_state_.position;
+        velocity_      = glm::vec3{0.0F};
+        grounded_      = false;
+        movement_mode_ = MovementMode::Noclip;
+    }
+
+    auto GroundedPlayerController::poll_move_input() const -> RelayCore::physics::MoveInput
+    {
         const bool* key_states = SDL_GetKeyboardState(nullptr);
 
-        float speed = config_.move_speed;
-        if (key_states[SDL_SCANCODE_LSHIFT] || key_states[SDL_SCANCODE_RSHIFT]) { speed *= config_.sprint_multiplier; }
+        RelayCore::physics::MoveInput input{};
+        if (key_states[SDL_SCANCODE_W]) { input.forward_axis += 1.0F; }
+        if (key_states[SDL_SCANCODE_S]) { input.forward_axis -= 1.0F; }
+        if (key_states[SDL_SCANCODE_D]) { input.right_axis += 1.0F; }
+        if (key_states[SDL_SCANCODE_A]) { input.right_axis -= 1.0F; }
+        if (key_states[SDL_SCANCODE_SPACE]) { input.jump_pressed = true; }
+        if (key_states[SDL_SCANCODE_LSHIFT] || key_states[SDL_SCANCODE_RSHIFT]) { input.sprint = true; }
+        if (key_states[SDL_SCANCODE_LALT] || key_states[SDL_SCANCODE_RALT]) { input.slow = true; }
 
-        float forward_axis = 0.0F;
-        float right_axis   = 0.0F;
-
-        if (key_states[SDL_SCANCODE_W]) { forward_axis += 1.0F; }
-        if (key_states[SDL_SCANCODE_S]) { forward_axis -= 1.0F; }
-        if (key_states[SDL_SCANCODE_D]) { right_axis += 1.0F; }
-        if (key_states[SDL_SCANCODE_A]) { right_axis -= 1.0F; }
-
-        const glm::vec3 forward = glm::normalize(glm::vec3{std::cos(yaw_radians_), 0.0F, std::sin(yaw_radians_)});
-        const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3{0.0F, 1.0F, 0.0F}));
-
-        glm::vec3 desired_direction = forward * forward_axis + right * right_axis;
-        if (glm::dot(desired_direction, desired_direction) > 0.0F)
+        if (movement_mode_ == MovementMode::Noclip)
         {
-            desired_direction = glm::normalize(desired_direction);
+            input.up_axis = 0.0F;
+            if (key_states[SDL_SCANCODE_SPACE]) { input.up_axis += 1.0F; }
+            if (key_states[SDL_SCANCODE_LCTRL] || key_states[SDL_SCANCODE_RCTRL]) { input.up_axis -= 1.0F; }
+            input.jump_pressed = false;
         }
 
-        if (grounded_ && glm::dot(desired_direction, desired_direction) <= 0.0F)
+        return input;
+    }
+
+    auto GroundedPlayerController::build_collision_world(const RelayCore::BlockoutLevel& level) const
+        -> std::vector<RelayCore::physics::Aabb>
+    {
+        std::vector<RelayCore::physics::Aabb> world;
+        world.reserve(level.solids.size());
+
+        for (const RelayCore::BlockoutSolid& solid: level.solids)
         {
-            apply_ground_friction(velocity_, config_.ground_friction, dt);
+            world.push_back({solid.mins, solid.maxs});
         }
 
-        const glm::vec3 desired_planar_velocity = desired_direction * speed;
-        glm::vec3       current_planar_velocity{velocity_.x, 0.0F, velocity_.z};
-        current_planar_velocity = accelerate_towards(
-            current_planar_velocity,
-            desired_planar_velocity,
-            (grounded_ ? config_.ground_acceleration : config_.air_acceleration) * dt
-        );
-        velocity_.x = current_planar_velocity.x;
-        velocity_.z = current_planar_velocity.z;
+        return world;
+    }
 
-        if (grounded_ && key_states[SDL_SCANCODE_SPACE])
-        {
-            velocity_.y = config_.jump_speed;
-            grounded_   = false;
-        }
+    auto GroundedPlayerController::build_motion_config() const -> RelayCore::physics::PlayerMotionConfig
+    {
+        RelayCore::physics::PlayerMotionConfig motion_config{};
+        motion_config.max_speed              = config_.move_speed;
+        motion_config.sprint_multiplier      = config_.sprint_multiplier;
+        motion_config.ground_accelerate      = config_.ground_acceleration;
+        motion_config.air_accelerate         = config_.air_acceleration;
+        motion_config.ground_friction        = config_.ground_friction;
+        motion_config.stop_speed             = config_.stop_speed;
+        motion_config.gravity                = config_.gravity;
+        motion_config.jump_speed             = config_.jump_speed;
+        motion_config.air_wishspeed_cap      = config_.move_speed * 0.30F;
+        motion_config.collision              = build_collision_config();
+        motion_config.noclip_speed           = noclip_speed_;
+        motion_config.noclip_fast_multiplier = noclip_fast_multiplier_;
+        motion_config.noclip_slow_multiplier = noclip_slow_multiplier_;
+        return motion_config;
+    }
 
-        velocity_.y -= config_.gravity * dt;
-
-        const AxisMoveResult move_x = move_axis(level, position_, config_, 0, velocity_.x * dt);
-        position_.x                 = move_x.position_axis;
-        if (move_x.hit) { velocity_.x = 0.0F; }
-
-        const AxisMoveResult move_z = move_axis(level, position_, config_, 2, velocity_.z * dt);
-        position_.z                 = move_z.position_axis;
-        if (move_z.hit) { velocity_.z = 0.0F; }
-
-        const bool           moving_down = velocity_.y <= 0.0F;
-        const AxisMoveResult move_y      = move_axis(level, position_, config_, 1, velocity_.y * dt);
-        position_.y                      = move_y.position_axis;
-        if (move_y.hit)
-        {
-            velocity_.y = 0.0F;
-            grounded_   = moving_down;
-        } else
-        {
-            grounded_ = false;
-        }
+    auto GroundedPlayerController::build_collision_config() const -> RelayCore::physics::CollisionConfig
+    {
+        RelayCore::physics::CollisionConfig collision_config{};
+        collision_config.radius                   = config_.collider_radius;
+        collision_config.height                   = config_.collider_height;
+        collision_config.epsilon                  = config_.collision_epsilon;
+        collision_config.step_height              = config_.step_height;
+        collision_config.ground_probe_distance    = config_.ground_probe_distance;
+        collision_config.max_ground_snap_distance = config_.max_ground_snap_distance;
+        return collision_config;
     }
 
     void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
@@ -271,6 +258,8 @@ namespace RelayGame
     auto GroundedPlayerController::velocity() const noexcept -> const glm::vec3& { return velocity_; }
 
     auto GroundedPlayerController::grounded() const noexcept -> bool { return grounded_; }
+
+    auto GroundedPlayerController::movement_mode() const noexcept -> MovementMode { return movement_mode_; }
 
     auto GroundedPlayerController::eye_position() const noexcept -> glm::vec3
     {

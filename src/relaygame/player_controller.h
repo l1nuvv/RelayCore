@@ -1,9 +1,13 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <cstdint>
 #include <glm/vec3.hpp>
+#include <vector>
 
 #include "relaycore/app/frame_timer.h"
+#include "relaycore/physics/collision.h"
+#include "relaycore/physics/player_motion.h"
 
 namespace RelayCore
 {
@@ -19,18 +23,29 @@ namespace RelayCore::render
 
 namespace RelayGame
 {
+    enum class MovementMode : std::uint8_t {
+        Grounded = 0,
+        Air      = 1,
+        Noclip   = 2,
+    };
+
     struct GroundedPlayerControllerConfig {
         float move_speed                = 4.5F;
         float sprint_multiplier         = 1.65F;
         float ground_acceleration       = 42.0F;
-        float air_acceleration          = 12.0F;
+        float air_acceleration          = 8.0F;
         float ground_friction           = 10.0F;
+        float stop_speed                = 4.5F;
         float gravity                   = 24.0F;
         float jump_speed                = 8.5F;
         float mouse_sensitivity_radians = 0.0022F;
         float collider_radius           = 0.30F;
         float collider_height           = 1.80F;
         float eye_height                = 1.62F;
+        float step_height               = 0.35F;
+        float ground_probe_distance     = 0.08F;
+        float max_ground_snap_distance  = 0.10F;
+        float collision_epsilon         = 0.001F;
         bool  capture_mouse_on_start    = true;
     };
 
@@ -56,16 +71,38 @@ namespace RelayGame
 
         [[nodiscard]] auto grounded() const noexcept -> bool;
 
+        [[nodiscard]] auto movement_mode() const noexcept -> MovementMode;
+
     private:
+        void toggle_noclip() noexcept;
+
+        void update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level);
+
+        void update_noclip(const RelayCore::FrameInfo& frame);
+
+        [[nodiscard]] auto poll_move_input() const -> RelayCore::physics::MoveInput;
+
+        [[nodiscard]] auto build_collision_world(const RelayCore::BlockoutLevel& level) const
+            -> std::vector<RelayCore::physics::Aabb>;
+
+        [[nodiscard]] auto build_motion_config() const -> RelayCore::physics::PlayerMotionConfig;
+
+        [[nodiscard]] auto build_collision_config() const -> RelayCore::physics::CollisionConfig;
+
         [[nodiscard]] auto eye_position() const noexcept -> glm::vec3;
 
-        GroundedPlayerControllerConfig config_{};
-        glm::vec3                      position_{0.0F, 0.0F, 0.0F};
-        glm::vec3                      velocity_{0.0F, 0.0F, 0.0F};
-        float                          yaw_radians_         = -1.5707963268F;
-        float                          pitch_radians_       = 0.0F;
-        float                          pending_yaw_delta_   = 0.0F;
-        float                          pending_pitch_delta_ = 0.0F;
-        bool                           grounded_            = false;
+        GroundedPlayerControllerConfig        config_{};
+        glm::vec3                             position_{0.0F, 0.0F, 0.0F};
+        glm::vec3                             velocity_{0.0F, 0.0F, 0.0F};
+        RelayCore::physics::PlayerMotionState motion_state_{};
+        float                                 yaw_radians_            = -1.5707963268F;
+        float                                 pitch_radians_          = 0.0F;
+        float                                 pending_yaw_delta_      = 0.0F;
+        float                                 pending_pitch_delta_    = 0.0F;
+        bool                                  grounded_               = false;
+        MovementMode                          movement_mode_          = MovementMode::Air;
+        float                                 noclip_speed_           = 8.0F;
+        float                                 noclip_fast_multiplier_ = 3.0F;
+        float                                 noclip_slow_multiplier_ = 0.35F;
     };
 } // namespace RelayGame

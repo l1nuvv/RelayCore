@@ -105,12 +105,29 @@ namespace RelayCore
         }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_diagnostics");
-            imgui_overlay_.draw_diagnostics(frame, camera_, audio_system);
+            imgui_overlay_.draw_diagnostics(frame, camera_, audio_system, world_diagnostics_, player_diagnostics_);
         }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             imgui_overlay_.render();
         }
+    }
+
+    void Renderer::set_world_diagnostics(const render::WorldDiagnostics& diagnostics) noexcept
+    {
+        world_diagnostics_ = diagnostics;
+    }
+
+    auto Renderer::world_diagnostics() const noexcept -> const render::WorldDiagnostics& { return world_diagnostics_; }
+
+    void Renderer::set_player_diagnostics(const render::PlayerDiagnostics& diagnostics) noexcept
+    {
+        player_diagnostics_ = diagnostics;
+    }
+
+    auto Renderer::player_diagnostics() const noexcept -> const render::PlayerDiagnostics&
+    {
+        return player_diagnostics_;
     }
 
     auto Renderer::camera() noexcept -> render::PerspectiveCamera& { return camera_; }

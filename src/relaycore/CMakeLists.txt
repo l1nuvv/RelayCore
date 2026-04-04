@@ -25,6 +25,8 @@ target_sources(
         render/shader_program.cpp
         render/blockout_mesh_builder.cpp
         world/blockout_loader.cpp
+        physics/player_motion.cpp
+        physics/collision.cpp
         PUBLIC
         FILE_SET HEADERS
         BASE_DIRS ${PROJECT_SOURCE_DIR}/src
@@ -51,8 +53,11 @@ target_sources(
         render/renderer.h
         render/shader_program.h
         render/blockout_mesh_builder.h
+        render/render_diagnostics.h
         world/blockout_level.h
         world/blockout_loader.h
+        physics/collision.h
+        physics/player_motion.h
 )
 
 target_include_directories(
