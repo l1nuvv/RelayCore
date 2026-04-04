@@ -1,7 +1,10 @@
 #include "relaygame/demo_game.h"
 
 #include <algorithm>
+#include <array>
+#include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
+#include <glm/vec4.hpp>
 
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/log.h"
@@ -13,11 +16,95 @@
 
 namespace RelayGame
 {
+    namespace
+    {
+        struct FrustumPlane {
+            glm::vec3 normal{0.0F, 0.0F, 1.0F};
+            float     distance = 0.0F;
+        };
+
+        struct ViewFrustum {
+            std::array<FrustumPlane, 6> planes{};
+        };
+
+        [[nodiscard]] auto normalize_plane(const glm::vec4& plane) -> FrustumPlane
+        {
+            const glm::vec3 normal{plane.x, plane.y, plane.z};
+            const float     length = glm::length(normal);
+            if (length <= 0.0001F) { return {}; }
+
+            return {normal / length, plane.w / length};
+        }
+
+        [[nodiscard]] auto extract_frustum(const glm::mat4& view_projection) -> ViewFrustum
+        {
+            const glm::vec4 row0{
+                view_projection[0][0], view_projection[1][0], view_projection[2][0], view_projection[3][0]
+            };
+            const glm::vec4 row1{
+                view_projection[0][1], view_projection[1][1], view_projection[2][1], view_projection[3][1]
+            };
+            const glm::vec4 row2{
+                view_projection[0][2], view_projection[1][2], view_projection[2][2], view_projection[3][2]
+            };
+            const glm::vec4 row3{
+                view_projection[0][3], view_projection[1][3], view_projection[2][3], view_projection[3][3]
+            };
+
+            ViewFrustum frustum{};
+            frustum.planes[0] = normalize_plane(row3 + row0); // left
+            frustum.planes[1] = normalize_plane(row3 - row0); // right
+            frustum.planes[2] = normalize_plane(row3 + row1); // bottom
+            frustum.planes[3] = normalize_plane(row3 - row1); // top
+            frustum.planes[4] = normalize_plane(row3 + row2); // near
+            frustum.planes[5] = normalize_plane(row3 - row2); // far
+            return frustum;
+        }
+
+        [[nodiscard]] auto
+        aabb_intersects_frustum(const ViewFrustum& frustum, const glm::vec3& mins, const glm::vec3& maxs) -> bool
+        {
+            for (const FrustumPlane& plane: frustum.planes)
+            {
+                const glm::vec3 positive_vertex{
+                    plane.normal.x >= 0.0F ? maxs.x : mins.x,
+                    plane.normal.y >= 0.0F ? maxs.y : mins.y,
+                    plane.normal.z >= 0.0F ? maxs.z : mins.z,
+                };
+
+                if (glm::dot(plane.normal, positive_vertex) + plane.distance < 0.0F) { return false; }
+            }
+
+            return true;
+        }
+    } // namespace
+
     void DemoGame::on_startup(RelayCore::EngineServices& services)
     {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::on_startup");
+
         const auto level_path = RelayCore::core::asset_path("levels/stress_room_02.toml");
         level_                = RelayCore::load_blockout_level(level_path);
-        blockout_mesh_.initialize(RelayCore::render::build_blockout_mesh(level_));
+
+        const RelayCore::render::BlockoutRenderData render_data = RelayCore::render::build_blockout_render_data(level_);
+
+        render_chunks_.clear();
+        render_chunks_.reserve(render_data.chunks.size());
+
+        for (const auto& chunk_data: render_data.chunks)
+        {
+            RenderChunk chunk{};
+            chunk.mesh.initialize(chunk_data.mesh);
+            chunk.mins           = chunk_data.mins;
+            chunk.maxs           = chunk_data.maxs;
+            chunk.triangle_count = chunk_data.triangle_count;
+            render_chunks_.push_back(std::move(chunk));
+        }
+
+        total_solids_         = static_cast<std::uint32_t>(level_.solids.size());
+        visible_solids_       = static_cast<std::uint32_t>(render_chunks_.size());
+        draw_calls_per_frame_ = visible_solids_;
+        triangles_per_frame_  = render_data.total_triangles;
 
         glm::vec3  spawn_position{0.0F, 0.3F, 0.0F};
         const auto spawn_it =
@@ -31,8 +118,19 @@ namespace RelayGame
         player_controller_.enable_capture(services.window());
         player_controller_.apply_camera(services.camera());
 
+        RelayCore::render::WorldDiagnostics world_diagnostics{};
+        world_diagnostics.total_solids   = total_solids_;
+        world_diagnostics.visible_solids = visible_solids_;
+        world_diagnostics.draw_calls     = draw_calls_per_frame_;
+        world_diagnostics.triangles      = triangles_per_frame_;
+        services.renderer().set_world_diagnostics(world_diagnostics);
+
         RelayCore::log::info(
-            "DemoGame loaded level: {} solids, {} entities", level_.solids.size(), level_.entities.size()
+            "DemoGame loaded level: {} solids, {} entities, {} render chunks, {} triangles",
+            level_.solids.size(),
+            level_.entities.size(),
+            render_chunks_.size(),
+            render_data.total_triangles
         );
     }
 
@@ -51,7 +149,32 @@ namespace RelayGame
     void DemoGame::on_render(const RelayCore::FrameInfo& /*frame*/, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_render");
-        services.renderer().draw_color_mesh(blockout_mesh_, glm::mat4{1.0F});
+
+        visible_solids_       = 0;
+        draw_calls_per_frame_ = 0;
+        triangles_per_frame_  = 0;
+
+        const ViewFrustum frustum = extract_frustum(services.camera().view_projection_matrix());
+        {
+            RELAYCORE_PROFILE_ZONE_N("DemoGame::draw_visible_blockout_chunks");
+
+            for (const RenderChunk& chunk: render_chunks_)
+            {
+                if (!aabb_intersects_frustum(frustum, chunk.mins, chunk.maxs)) { continue; }
+
+                ++visible_solids_;
+                ++draw_calls_per_frame_;
+                triangles_per_frame_ += chunk.triangle_count;
+                services.renderer().draw_color_mesh(chunk.mesh, glm::mat4{1.0F});
+            }
+        }
+
+        RelayCore::render::WorldDiagnostics world_diagnostics{};
+        world_diagnostics.total_solids   = total_solids_;
+        world_diagnostics.visible_solids = visible_solids_;
+        world_diagnostics.draw_calls     = draw_calls_per_frame_;
+        world_diagnostics.triangles      = triangles_per_frame_;
+        services.renderer().set_world_diagnostics(world_diagnostics);
     }
 
     void DemoGame::on_shutdown(RelayCore::EngineServices& /*services*/) noexcept

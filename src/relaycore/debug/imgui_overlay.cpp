@@ -110,7 +110,10 @@ namespace RelayCore::debug
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
+        const FrameInfo&                 frame,
+        const render::PerspectiveCamera& camera,
+        const AudioSystem&               audio_system,
+        const render::WorldDiagnostics&  world
     )
     {
         (void) frame;
@@ -140,6 +143,11 @@ namespace RelayCore::debug
         ImGui::SeparatorText("Camera");
         ImGui::Text("Position: %.2f %.2f %.2f", position.x, position.y, position.z);
         ImGui::Text("Yaw/Pitch: %.2f / %.2f", camera.yaw_radians(), camera.pitch_radians());
+
+        ImGui::SeparatorText("World");
+        ImGui::Text("Solids: %u visible / %u total", world.visible_solids, world.total_solids);
+        ImGui::Text("Draw calls: %u", world.draw_calls);
+        ImGui::Text("Triangles: %u", world.triangles);
 
         ImGui::SeparatorText("Audio");
         ImGui::Text("Initialized: %s", audio_system.is_initialized() ? "yes" : "no");

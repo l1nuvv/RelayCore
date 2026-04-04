@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <cstdint>
 #include <glm/vec3.hpp>
 
 #include "relaycore/app/frame_timer.h"
@@ -19,6 +20,11 @@ namespace RelayCore::render
 
 namespace RelayGame
 {
+    enum class MovementMode : std::uint8_t {
+        Grounded,
+        Noclip,
+    };
+
     struct GroundedPlayerControllerConfig {
         float move_speed                = 4.5F;
         float sprint_multiplier         = 1.65F;
@@ -56,16 +62,28 @@ namespace RelayGame
 
         [[nodiscard]] auto grounded() const noexcept -> bool;
 
+        [[nodiscard]] auto movement_mode() const noexcept -> MovementMode;
+
     private:
+        void toggle_noclip() noexcept;
+
+        void update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level);
+
+        void update_noclip(const RelayCore::FrameInfo& frame);
+
         [[nodiscard]] auto eye_position() const noexcept -> glm::vec3;
 
         GroundedPlayerControllerConfig config_{};
         glm::vec3                      position_{0.0F, 0.0F, 0.0F};
         glm::vec3                      velocity_{0.0F, 0.0F, 0.0F};
-        float                          yaw_radians_         = -1.5707963268F;
-        float                          pitch_radians_       = 0.0F;
-        float                          pending_yaw_delta_   = 0.0F;
-        float                          pending_pitch_delta_ = 0.0F;
-        bool                           grounded_            = false;
+        float                          yaw_radians_            = -1.5707963268F;
+        float                          pitch_radians_          = 0.0F;
+        float                          pending_yaw_delta_      = 0.0F;
+        float                          pending_pitch_delta_    = 0.0F;
+        bool                           grounded_               = false;
+        MovementMode                   movement_mode_          = MovementMode::Grounded;
+        float                          noclip_speed_           = 8.0F;
+        float                          noclip_fast_multiplier_ = 3.0F;
+        float                          noclip_slow_multiplier_ = 0.35F;
     };
 } // namespace RelayGame

@@ -124,6 +124,29 @@ namespace RelayGame
 
             return result;
         }
+
+        [[nodiscard]] auto horizontal_forward_from_yaw(const float yaw_radians) -> glm::vec3
+        {
+            return glm::normalize(glm::vec3{std::cos(yaw_radians), 0.0F, std::sin(yaw_radians)});
+        }
+
+        [[nodiscard]] auto right_from_yaw(const float yaw_radians) -> glm::vec3
+        {
+            const glm::vec3 forward = horizontal_forward_from_yaw(yaw_radians);
+            return glm::normalize(glm::cross(forward, glm::vec3{0.0F, 1.0F, 0.0F}));
+        }
+
+        [[nodiscard]] auto full_forward_from_angles(const float yaw_radians, const float pitch_radians) -> glm::vec3
+        {
+            const float cos_pitch = std::cos(pitch_radians);
+            return glm::normalize(
+                glm::vec3{
+                    std::cos(yaw_radians) * cos_pitch,
+                    std::sin(pitch_radians),
+                    std::sin(yaw_radians) * cos_pitch,
+                }
+            );
+        }
     } // namespace
 
     GroundedPlayerController::GroundedPlayerController(const GroundedPlayerControllerConfig& config) : config_(config)
@@ -131,9 +154,10 @@ namespace RelayGame
 
     void GroundedPlayerController::initialize(const glm::vec3& spawn_position) noexcept
     {
-        position_ = spawn_position;
-        velocity_ = glm::vec3{0.0F};
-        grounded_ = false;
+        position_      = spawn_position;
+        velocity_      = glm::vec3{0.0F};
+        grounded_      = false;
+        movement_mode_ = MovementMode::Grounded;
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
@@ -142,8 +166,16 @@ namespace RelayGame
 
         window.set_relative_mouse_mode(true);
         RelayCore::log::info(
-            "Grounded player capture enabled (WASD move, Space jump, Shift sprint, F1 toggle mouse, Esc quit)"
+            "Player capture enabled (WASD move, Space jump/up, Ctrl down in noclip, Shift sprint, F1 mouse, F3 noclip, "
+            "Esc quit)"
         );
+    }
+
+    void GroundedPlayerController::toggle_noclip() noexcept
+    {
+        movement_mode_ = (movement_mode_ == MovementMode::Grounded) ? MovementMode::Noclip : MovementMode::Grounded;
+        velocity_      = glm::vec3{0.0F};
+        grounded_      = false;
     }
 
     void GroundedPlayerController::on_event(
@@ -177,6 +209,12 @@ namespace RelayGame
                 } else if (event.key.scancode == SDL_SCANCODE_V)
                 {
                     window.toggle_vsync();
+                } else if (event.key.scancode == SDL_SCANCODE_F3)
+                {
+                    toggle_noclip();
+                    RelayCore::log::info(
+                        "Movement mode: {}", movement_mode_ == MovementMode::Noclip ? "noclip" : "grounded"
+                    );
                 }
 
                 break;
@@ -193,6 +231,18 @@ namespace RelayGame
         pending_yaw_delta_   = 0.0F;
         pending_pitch_delta_ = 0.0F;
 
+        if (movement_mode_ == MovementMode::Noclip)
+        {
+            update_noclip(frame);
+            return;
+        }
+
+        update_grounded(frame, level);
+    }
+
+    void
+    GroundedPlayerController::update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
+    {
         const float dt         = static_cast<float>(frame.delta_seconds);
         const bool* key_states = SDL_GetKeyboardState(nullptr);
 
@@ -207,8 +257,8 @@ namespace RelayGame
         if (key_states[SDL_SCANCODE_D]) { right_axis += 1.0F; }
         if (key_states[SDL_SCANCODE_A]) { right_axis -= 1.0F; }
 
-        const glm::vec3 forward = glm::normalize(glm::vec3{std::cos(yaw_radians_), 0.0F, std::sin(yaw_radians_)});
-        const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3{0.0F, 1.0F, 0.0F}));
+        const glm::vec3 forward = horizontal_forward_from_yaw(yaw_radians_);
+        const glm::vec3 right   = right_from_yaw(yaw_radians_);
 
         glm::vec3 desired_direction = forward * forward_axis + right * right_axis;
         if (glm::dot(desired_direction, desired_direction) > 0.0F)
@@ -260,6 +310,38 @@ namespace RelayGame
         }
     }
 
+    void GroundedPlayerController::update_noclip(const RelayCore::FrameInfo& frame)
+    {
+        const float dt         = static_cast<float>(frame.delta_seconds);
+        const bool* key_states = SDL_GetKeyboardState(nullptr);
+
+        float speed = noclip_speed_;
+        if (key_states[SDL_SCANCODE_LSHIFT] || key_states[SDL_SCANCODE_RSHIFT]) { speed *= noclip_fast_multiplier_; }
+        if (key_states[SDL_SCANCODE_LALT] || key_states[SDL_SCANCODE_RALT]) { speed *= noclip_slow_multiplier_; }
+
+        float forward_axis = 0.0F;
+        float right_axis   = 0.0F;
+        float up_axis      = 0.0F;
+
+        if (key_states[SDL_SCANCODE_W]) { forward_axis += 1.0F; }
+        if (key_states[SDL_SCANCODE_S]) { forward_axis -= 1.0F; }
+        if (key_states[SDL_SCANCODE_D]) { right_axis += 1.0F; }
+        if (key_states[SDL_SCANCODE_A]) { right_axis -= 1.0F; }
+        if (key_states[SDL_SCANCODE_SPACE]) { up_axis += 1.0F; }
+        if (key_states[SDL_SCANCODE_LCTRL] || key_states[SDL_SCANCODE_RCTRL]) { up_axis -= 1.0F; }
+
+        const glm::vec3 forward = full_forward_from_angles(yaw_radians_, pitch_radians_);
+        const glm::vec3 right   = right_from_yaw(yaw_radians_);
+        const glm::vec3 up{0.0F, 1.0F, 0.0F};
+
+        glm::vec3 move = forward * forward_axis + right * right_axis + up * up_axis;
+        if (glm::dot(move, move) > 0.0F) { move = glm::normalize(move); }
+
+        position_ += move * speed * dt;
+        velocity_ = glm::vec3{0.0F};
+        grounded_ = false;
+    }
+
     void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
     {
         camera.set_position(eye_position());
@@ -271,6 +353,8 @@ namespace RelayGame
     auto GroundedPlayerController::velocity() const noexcept -> const glm::vec3& { return velocity_; }
 
     auto GroundedPlayerController::grounded() const noexcept -> bool { return grounded_; }
+
+    auto GroundedPlayerController::movement_mode() const noexcept -> MovementMode { return movement_mode_; }
 
     auto GroundedPlayerController::eye_position() const noexcept -> glm::vec3
     {

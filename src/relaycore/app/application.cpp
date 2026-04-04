@@ -6,6 +6,7 @@
 #include "relaycore/app/application.h"
 
 #include <SDL3/SDL.h>
+#include <chrono>
 
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
@@ -69,6 +70,8 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_ZONE_N("Application::run");
 
+        using Clock = std::chrono::steady_clock;
+
         EngineServices   services{config_, window_, renderer_, audio_system_, is_running_};
         AppShutdownGuard shutdown_guard(*app_delegate_, services);
 
@@ -76,31 +79,41 @@ namespace RelayCore
 
         while (is_running_)
         {
-            const FrameInfo frame = frame_timer_.begin_frame();
+            RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
+
+            const auto      frame_cpu_start = Clock::now();
+            const FrameInfo frame           = frame_timer_.begin_frame();
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
                 process_events(services);
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("app_delegate.on_update");
+                RELAYCORE_PROFILE_ZONE_N("app_update");
                 app_delegate_->on_update(frame, services);
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("renderer.begin_frame");
+                RELAYCORE_PROFILE_ZONE_N("begin_frame");
                 renderer_.begin_frame();
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("app_delegate.on_render");
+                RELAYCORE_PROFILE_ZONE_N("render_world");
                 app_delegate_->on_render(frame, services);
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("renderer.draw_debug_overlay");
+                RELAYCORE_PROFILE_ZONE_N("render_debug");
                 renderer_.draw_debug_overlay(frame, audio_system_);
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_.swap_buffers();
             }
+
+            const auto cpu_frame_end = Clock::now();
+            const auto cpu_frame_ms =
+                std::chrono::duration<double, std::milli>(cpu_frame_end - frame_cpu_start).count();
+
+            RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.delta_seconds * 1000.0);
+            RELAYCORE_PROFILE_PLOT("cpu_frame_ms", cpu_frame_ms);
 
             RELAYCORE_PROFILE_FRAME();
         }
