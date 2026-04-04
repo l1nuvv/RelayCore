@@ -51,11 +51,12 @@ namespace RelayCore::debug
         void begin_frame();
 
         void draw_diagnostics(
-            const FrameInfo&                 frame,
-            const render::PerspectiveCamera& camera,
-            const AudioSystem&               audio_system,
-            const render::WorldDiagnostics&  world,
-            const render::PlayerDiagnostics& player
+            const FrameInfo&                      frame,
+            const render::PerspectiveCamera&      camera,
+            const AudioSystem&                    audio_system,
+            const render::WorldDiagnostics&       world,
+            const render::PlayerDiagnostics&      player,
+            const render::InteractionDiagnostics& interaction
         );
 
         void render() const;

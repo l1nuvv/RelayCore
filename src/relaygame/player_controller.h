@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <glm/vec3.hpp>
+#include <span>
 #include <vector>
 
 #include "relaycore/app/frame_timer.h"
@@ -31,11 +32,11 @@ namespace RelayGame
 
     struct GroundedPlayerControllerConfig {
         float move_speed                = 4.5F;
-        float sprint_multiplier         = 1.65F;
-        float ground_acceleration       = 42.0F;
-        float air_acceleration          = 8.0F;
-        float ground_friction           = 10.0F;
-        float stop_speed                = 4.5F;
+        float sprint_multiplier         = 1.0F;
+        float ground_acceleration       = 10.0F;
+        float air_acceleration          = 10.0F;
+        float ground_friction           = 4.0F;
+        float stop_speed                = 1.5F;
         float gravity                   = 24.0F;
         float jump_speed                = 8.5F;
         float mouse_sensitivity_radians = 0.0022F;
@@ -61,7 +62,11 @@ namespace RelayGame
 
         void on_event(const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services);
 
-        void update(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level);
+        void update(
+            const RelayCore::FrameInfo&               frame,
+            const RelayCore::BlockoutLevel&           level,
+            std::span<const RelayCore::physics::Aabb> dynamic_blockers = {}
+        );
 
         void apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept;
 
@@ -73,23 +78,34 @@ namespace RelayGame
 
         [[nodiscard]] auto movement_mode() const noexcept -> MovementMode;
 
+        [[nodiscard]] auto eye_position_world() const noexcept -> glm::vec3;
+
+        [[nodiscard]] auto view_forward() const noexcept -> glm::vec3;
+
+        [[nodiscard]] auto player_bounds() const noexcept -> RelayCore::physics::Aabb;
+
+        [[nodiscard]] auto consume_use_pressed() noexcept -> bool;
+
     private:
         void toggle_noclip() noexcept;
 
-        void update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level);
+        void update_grounded(
+            const RelayCore::FrameInfo&               frame,
+            const RelayCore::BlockoutLevel&           level,
+            std::span<const RelayCore::physics::Aabb> dynamic_blockers
+        );
 
         void update_noclip(const RelayCore::FrameInfo& frame);
 
         [[nodiscard]] auto poll_move_input() const -> RelayCore::physics::MoveInput;
 
-        [[nodiscard]] auto build_collision_world(const RelayCore::BlockoutLevel& level) const
-            -> std::vector<RelayCore::physics::Aabb>;
+        [[nodiscard]] auto build_collision_world(
+            const RelayCore::BlockoutLevel& level, std::span<const RelayCore::physics::Aabb> dynamic_blockers
+        ) const -> std::vector<RelayCore::physics::Aabb>;
 
         [[nodiscard]] auto build_motion_config() const -> RelayCore::physics::PlayerMotionConfig;
 
         [[nodiscard]] auto build_collision_config() const -> RelayCore::physics::CollisionConfig;
-
-        [[nodiscard]] auto eye_position() const noexcept -> glm::vec3;
 
         GroundedPlayerControllerConfig        config_{};
         glm::vec3                             position_{0.0F, 0.0F, 0.0F};
@@ -104,5 +120,6 @@ namespace RelayGame
         float                                 noclip_speed_           = 8.0F;
         float                                 noclip_fast_multiplier_ = 3.0F;
         float                                 noclip_slow_multiplier_ = 0.35F;
+        bool                                  use_pressed_            = false;
     };
 } // namespace RelayGame

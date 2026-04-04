@@ -66,7 +66,7 @@ namespace RelayCore::physics
         CollisionWorld         world,
         const glm::vec3&       start_position,
         const CollisionConfig& config,
-        const std::size_t      axis,
+        const int              axis,
         const float            delta
     ) -> AxisMoveResult
     {
@@ -86,12 +86,10 @@ namespace RelayCore::physics
             hit = true;
             if (delta > 0.0F)
             {
-                const float separation = (axis == 1) ? 0.0F : config.epsilon;
-                position[axis]         = std::min(position[axis], solid.mins[axis] - max_offsets[axis] - separation);
+                position[axis] = std::min(position[axis], solid.mins[axis] - max_offsets[axis] - config.epsilon);
             } else if (delta < 0.0F)
             {
-                const float separation = (axis == 1) ? 0.0F : config.epsilon;
-                position[axis]         = std::max(position[axis], solid.maxs[axis] - min_offsets[axis] + separation);
+                position[axis] = std::max(position[axis], solid.maxs[axis] - min_offsets[axis] + config.epsilon);
             }
         }
 

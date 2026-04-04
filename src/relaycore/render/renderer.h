@@ -44,6 +44,10 @@ namespace RelayCore
 
         [[nodiscard]] auto player_diagnostics() const noexcept -> const render::PlayerDiagnostics&;
 
+        void set_interaction_diagnostics(const render::InteractionDiagnostics& diagnostics) noexcept;
+
+        [[nodiscard]] auto interaction_diagnostics() const noexcept -> const render::InteractionDiagnostics&;
+
         [[nodiscard]] auto camera() noexcept -> render::PerspectiveCamera&;
 
         [[nodiscard]] auto camera() const noexcept -> const render::PerspectiveCamera&;
@@ -55,15 +59,16 @@ namespace RelayCore
         void toggle_diagnostics_visible() noexcept;
 
     private:
-        render::RendererConfig    config_{};
-        bool                      initialized_     = false;
-        int                       viewport_width_  = 1280;
-        int                       viewport_height_ = 720;
-        render::PerspectiveCamera camera_{};
-        render::ShaderProgram     shader_program_{};
-        render::ColorCubeMesh     cube_mesh_{};
-        debug::ImGuiOverlay       imgui_overlay_{};
-        render::WorldDiagnostics  world_diagnostics_{};
-        render::PlayerDiagnostics player_diagnostics_{};
+        render::RendererConfig         config_{};
+        bool                           initialized_     = false;
+        int                            viewport_width_  = 1280;
+        int                            viewport_height_ = 720;
+        render::PerspectiveCamera      camera_{};
+        render::ShaderProgram          shader_program_{};
+        render::ColorCubeMesh          cube_mesh_{};
+        debug::ImGuiOverlay            imgui_overlay_{};
+        render::WorldDiagnostics       world_diagnostics_{};
+        render::PlayerDiagnostics      player_diagnostics_{};
+        render::InteractionDiagnostics interaction_diagnostics_{};
     };
 } // namespace RelayCore

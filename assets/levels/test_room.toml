@@ -36,3 +36,40 @@ material = "Concrete"
 [[entity]]
 classname = "player_spawn"
 origin = [0.0, 1.0, 0.0]
+
+[[solid]]
+mins = [-2.0, 0.0, 4.0]
+maxs = [2.0, 0.2, 10.0]
+material = "Concrete"
+
+[[solid]]
+mins = [-2.0, 2.8, 4.0]
+maxs = [2.0, 3.0, 10.0]
+material = "Concrete"
+
+[[solid]]
+mins = [-2.0, 0.0, 10.0]
+maxs = [2.0, 3.0, 10.2]
+material = "Concrete"
+
+[[solid]]
+mins = [-2.0, 0.0, 4.0]
+maxs = [-1.8, 3.0, 10.2]
+material = "Concrete"
+
+[[solid]]
+mins = [1.8, 0.0, 4.0]
+maxs = [2.0, 3.0, 10.2]
+material = "Concrete"
+
+[[entity]]
+classname = "dev_door"
+origin = [0.0, 0.0, 3.7]
+
+[[entity]]
+classname = "dev_use"
+origin = [0.0, 2.2, 1.5]
+
+[[entity]]
+classname = "dev_trigger"
+origin = [0.0, 0.0, 6.5]

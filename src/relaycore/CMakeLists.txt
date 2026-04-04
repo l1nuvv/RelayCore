@@ -27,6 +27,7 @@ target_sources(
         world/blockout_loader.cpp
         physics/player_motion.cpp
         physics/collision.cpp
+        gameplay/interaction_runtime.cpp
         PUBLIC
         FILE_SET HEADERS
         BASE_DIRS ${PROJECT_SOURCE_DIR}/src
@@ -58,6 +59,7 @@ target_sources(
         world/blockout_loader.h
         physics/collision.h
         physics/player_motion.h
+        gameplay/interaction_runtime.h
 )
 
 target_include_directories(

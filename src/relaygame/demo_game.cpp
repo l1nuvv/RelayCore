@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
@@ -78,13 +80,29 @@ namespace RelayGame
 
             return true;
         }
+
+        [[nodiscard]] auto make_aabb_model_matrix(const RelayCore::physics::Aabb& bounds) -> glm::mat4
+        {
+            const glm::vec3 center = (bounds.mins + bounds.maxs) * 0.5F;
+            const glm::vec3 size   = (bounds.maxs - bounds.mins);
+
+            glm::mat4 model{1.0F};
+            model = glm::translate(model, center);
+            model = glm::scale(model, size);
+            return model;
+        }
+
+        void copy_text(std::array<char, 64>& destination, const std::string& source)
+        {
+            std::snprintf(destination.data(), destination.size(), "%s", source.c_str());
+        }
     } // namespace
 
     void DemoGame::on_startup(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_startup");
 
-        const auto level_path = RelayCore::core::asset_path("levels/stress_room_02.toml");
+        const auto level_path = RelayCore::core::asset_path("levels/test_room.toml");
         level_                = RelayCore::load_blockout_level(level_path);
 
         const RelayCore::render::BlockoutRenderData render_data = RelayCore::render::build_blockout_render_data(level_);
@@ -115,6 +133,8 @@ namespace RelayGame
 
         if (spawn_it != level_.entities.end()) { spawn_position = spawn_it->origin; }
 
+        RelayCore::gameplay::build_runtime_interactions(level_, doors_, triggers_, usables_);
+
         player_controller_.initialize(spawn_position);
         player_controller_.enable_capture(services.window());
         player_controller_.apply_camera(services.camera());
@@ -126,12 +146,19 @@ namespace RelayGame
         world_diagnostics.triangles      = triangles_per_frame_;
         services.renderer().set_world_diagnostics(world_diagnostics);
 
+        publish_player_diagnostics(services);
+        publish_interaction_diagnostics(services);
+
         RelayCore::log::info(
-            "DemoGame loaded level: {} solids, {} entities, {} render chunks, {} triangles",
+            "DemoGame loaded level: {} solids, {} entities, {} render chunks, {} triangles, {} doors, {} triggers, {} "
+            "usables",
             level_.solids.size(),
             level_.entities.size(),
             render_chunks_.size(),
-            render_data.total_triangles
+            render_data.total_triangles,
+            doors_.size(),
+            triggers_.size(),
+            usables_.size()
         );
     }
 
@@ -144,22 +171,36 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_update");
 
-        player_controller_.update(frame, level_);
+        RelayCore::gameplay::collect_blocking_doors(doors_, dynamic_blockers_);
+        player_controller_.update(frame, level_, dynamic_blockers_);
         player_controller_.apply_camera(services.camera());
-        {
-            RELAYCORE_PROFILE_ZONE_N("DemoGame::player_diagnostics_publish");
-            RelayCore::render::PlayerDiagnostics player_diagnostics{};
-            player_diagnostics.position = player_controller_.position();
-            player_diagnostics.velocity = player_controller_.velocity();
-            player_diagnostics.grounded = player_controller_.grounded();
-            player_diagnostics.collision_enabled =
-                (player_controller_.movement_mode() != RelayGame::MovementMode::Noclip);
-            player_diagnostics.movement_mode = static_cast<std::uint32_t>(player_controller_.movement_mode());
 
-            const auto& velocity     = player_diagnostics.velocity;
-            player_diagnostics.speed = std::sqrt((velocity.x * velocity.x) + (velocity.z * velocity.z));
-            services.renderer().set_player_diagnostics(player_diagnostics);
+        const auto focus = RelayCore::gameplay::find_focused_usable(
+            player_controller_.eye_position_world(), player_controller_.view_forward(), usables_
+        );
+        interaction_state_.focused_usable_index = focus.usable_index;
+        interaction_state_.focused_distance     = focus.distance;
+
+        interaction_state_.use_pressed = player_controller_.consume_use_pressed();
+        if (interaction_state_.use_pressed && interaction_state_.focused_usable_index >= 0)
+        {
+            const RelayCore::gameplay::RuntimeUsable& usable =
+                usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
+            if (RelayCore::gameplay::activate_target(usable.target, doors_))
+            {
+                interaction_state_.last_target = usable.target;
+            }
         }
+
+        interaction_state_.fired_triggers = RelayCore::gameplay::update_trigger_overlaps(
+            player_controller_.player_bounds(), triggers_, doors_, interaction_state_.last_target
+        );
+
+        interaction_state_.active_doors =
+            RelayCore::gameplay::update_doors(static_cast<float>(frame.delta_seconds), doors_);
+
+        publish_player_diagnostics(services);
+        publish_interaction_diagnostics(services);
     }
 
     void DemoGame::on_render(const RelayCore::FrameInfo& /*frame*/, RelayCore::EngineServices& services)
@@ -185,6 +226,14 @@ namespace RelayGame
             }
         }
 
+        for (const RelayCore::gameplay::RuntimeDoor& door: doors_)
+        {
+            const RelayCore::physics::Aabb bounds = RelayCore::gameplay::current_door_bounds(door);
+            if (!aabb_intersects_frustum(frustum, bounds.mins, bounds.maxs)) { continue; }
+            ++draw_calls_per_frame_;
+            services.renderer().draw_color_cube(make_aabb_model_matrix(bounds));
+        }
+
         RelayCore::render::WorldDiagnostics world_diagnostics{};
         world_diagnostics.total_solids   = total_solids_;
         world_diagnostics.visible_solids = visible_solids_;
@@ -196,6 +245,43 @@ namespace RelayGame
     void DemoGame::on_shutdown(RelayCore::EngineServices& /*services*/) noexcept
     {
         RelayCore::log::info("DemoGame shutdown");
+    }
+
+    void DemoGame::publish_player_diagnostics(RelayCore::EngineServices& services) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::player_diagnostics_publish");
+        RelayCore::render::PlayerDiagnostics player_diagnostics{};
+        player_diagnostics.position          = player_controller_.position();
+        player_diagnostics.velocity          = player_controller_.velocity();
+        player_diagnostics.grounded          = player_controller_.grounded();
+        player_diagnostics.collision_enabled = (player_controller_.movement_mode() != RelayGame::MovementMode::Noclip);
+        player_diagnostics.movement_mode     = static_cast<std::uint32_t>(player_controller_.movement_mode());
+
+        const auto& velocity     = player_diagnostics.velocity;
+        player_diagnostics.speed = std::sqrt((velocity.x * velocity.x) + (velocity.z * velocity.z));
+        services.renderer().set_player_diagnostics(player_diagnostics);
+    }
+
+    void DemoGame::publish_interaction_diagnostics(RelayCore::EngineServices& services) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::interaction_diagnostics_publish");
+        RelayCore::render::InteractionDiagnostics diagnostics{};
+        diagnostics.has_focused_usable = interaction_state_.focused_usable_index >= 0;
+        diagnostics.focused_distance   = interaction_state_.focused_distance;
+        diagnostics.active_doors       = interaction_state_.active_doors;
+        diagnostics.fired_triggers     = interaction_state_.fired_triggers;
+        diagnostics.total_doors        = static_cast<std::uint32_t>(doors_.size());
+        diagnostics.total_triggers     = static_cast<std::uint32_t>(triggers_.size());
+        diagnostics.use_pressed        = interaction_state_.use_pressed;
+
+        if (interaction_state_.focused_usable_index >= 0)
+        {
+            const auto& usable = usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
+            copy_text(diagnostics.focused_label, usable.label);
+        }
+
+        copy_text(diagnostics.last_target, interaction_state_.last_target);
+        services.renderer().set_interaction_diagnostics(diagnostics);
     }
 
     auto make_demo_game() -> std::unique_ptr<RelayCore::AppDelegate> { return std::make_unique<DemoGame>(); }

@@ -30,6 +30,7 @@ namespace RelayGame
         motion_state_.grounded = false;
         grounded_              = false;
         movement_mode_         = MovementMode::Air;
+        use_pressed_           = false;
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
@@ -38,8 +39,8 @@ namespace RelayGame
 
         window.set_relative_mouse_mode(true);
         RelayCore::log::info(
-            "Player capture enabled (WASD move, Space jump/up, Ctrl down in noclip, Shift sprint, F1 mouse, F3 noclip, "
-            "Esc quit)"
+            "Player capture enabled (WASD move, Space jump/up, Ctrl down in noclip, Shift sprint, E use, F1 mouse, F3 "
+            "noclip, Esc quit)"
         );
     }
 
@@ -103,6 +104,9 @@ namespace RelayGame
                         label = "noclip";
                     }
                     RelayCore::log::info("Movement mode: {}", label);
+                } else if (event.key.scancode == SDL_SCANCODE_E)
+                {
+                    use_pressed_ = true;
                 }
 
                 break;
@@ -112,7 +116,11 @@ namespace RelayGame
         }
     }
 
-    void GroundedPlayerController::update(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
+    void GroundedPlayerController::update(
+        const RelayCore::FrameInfo&               frame,
+        const RelayCore::BlockoutLevel&           level,
+        std::span<const RelayCore::physics::Aabb> dynamic_blockers
+    )
     {
         RELAYCORE_PROFILE_ZONE_N("GroundedPlayerController::update");
 
@@ -127,15 +135,18 @@ namespace RelayGame
             return;
         }
 
-        update_grounded(frame, level);
+        update_grounded(frame, level, dynamic_blockers);
     }
 
-    void
-    GroundedPlayerController::update_grounded(const RelayCore::FrameInfo& frame, const RelayCore::BlockoutLevel& level)
+    void GroundedPlayerController::update_grounded(
+        const RelayCore::FrameInfo&               frame,
+        const RelayCore::BlockoutLevel&           level,
+        std::span<const RelayCore::physics::Aabb> dynamic_blockers
+    )
     {
         RELAYCORE_PROFILE_ZONE_N("physics::update_grounded");
 
-        const auto world  = build_collision_world(level);
+        const auto world  = build_collision_world(level, dynamic_blockers);
         const auto input  = poll_move_input();
         const auto config = build_motion_config();
 
@@ -202,15 +213,21 @@ namespace RelayGame
         return input;
     }
 
-    auto GroundedPlayerController::build_collision_world(const RelayCore::BlockoutLevel& level) const
-        -> std::vector<RelayCore::physics::Aabb>
+    auto GroundedPlayerController::build_collision_world(
+        const RelayCore::BlockoutLevel& level, std::span<const RelayCore::physics::Aabb> dynamic_blockers
+    ) const -> std::vector<RelayCore::physics::Aabb>
     {
         std::vector<RelayCore::physics::Aabb> world;
-        world.reserve(level.solids.size());
+        world.reserve(level.solids.size() + dynamic_blockers.size());
 
         for (const RelayCore::BlockoutSolid& solid: level.solids)
         {
             world.push_back({solid.mins, solid.maxs});
+        }
+
+        for (const RelayCore::physics::Aabb& blocker: dynamic_blockers)
+        {
+            world.push_back(blocker);
         }
 
         return world;
@@ -249,7 +266,7 @@ namespace RelayGame
 
     void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
     {
-        camera.set_position(eye_position());
+        camera.set_position(eye_position_world());
         camera.set_orientation(yaw_radians_, pitch_radians_);
     }
 
@@ -261,8 +278,32 @@ namespace RelayGame
 
     auto GroundedPlayerController::movement_mode() const noexcept -> MovementMode { return movement_mode_; }
 
-    auto GroundedPlayerController::eye_position() const noexcept -> glm::vec3
+    auto GroundedPlayerController::eye_position_world() const noexcept -> glm::vec3
     {
         return position_ + glm::vec3{0.0F, config_.eye_height, 0.0F};
+    }
+
+    auto GroundedPlayerController::view_forward() const noexcept -> glm::vec3
+    {
+        const float cos_pitch = std::cos(pitch_radians_);
+        return glm::normalize(
+            glm::vec3{
+                std::cos(yaw_radians_) * cos_pitch,
+                std::sin(pitch_radians_),
+                std::sin(yaw_radians_) * cos_pitch,
+            }
+        );
+    }
+
+    auto GroundedPlayerController::player_bounds() const noexcept -> RelayCore::physics::Aabb
+    {
+        return RelayCore::physics::make_player_aabb(position_, config_.collider_radius, config_.collider_height);
+    }
+
+    auto GroundedPlayerController::consume_use_pressed() noexcept -> bool
+    {
+        const bool pressed = use_pressed_;
+        use_pressed_       = false;
+        return pressed;
     }
 } // namespace RelayGame

@@ -12,8 +12,6 @@ namespace
     using RelayCore::physics::PlayerMotionConfig;
     using RelayCore::physics::PlayerMotionState;
 
-    constexpr float kTestYaw = -1.5707963268F;
-
     [[nodiscard]] auto make_config() -> PlayerMotionConfig
     {
         PlayerMotionConfig config{};
@@ -56,7 +54,7 @@ TEST_CASE("player falls onto floor and becomes grounded")
 
     for (int i = 0; i < 120 && !state.grounded; ++i)
     {
-        RelayCore::physics::update_grounded(state, MoveInput{}, kTestYaw, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, MoveInput{}, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
     }
 
     CHECK(state.grounded);
@@ -115,8 +113,8 @@ TEST_CASE("diagonal move into wall slides along free axis")
     std::vector<Aabb>        world  = make_floor_world();
     world.push_back(
         Aabb{
-            .mins = {0.8F, 0.0F, -50.0F},
-            .maxs = {1.0F, 2.0F, 50.0F},
+            .mins = {0.8F, 0.0F, -1.0F},
+            .maxs = {1.0F, 2.0F, 1.0F},
         }
     );
 
@@ -151,7 +149,7 @@ TEST_CASE("noclip ignores solids")
 
     for (int i = 0; i < 30; ++i)
     {
-        RelayCore::physics::update_noclip(state, input, kTestYaw, 0.0F, 1.0F / 60.0F, config);
+        RelayCore::physics::update_noclip(state, input, -1.5707963268F, 0.0F, 1.0F / 60.0F, config);
     }
 
     CHECK_FALSE(state.grounded);
@@ -164,8 +162,8 @@ TEST_CASE("step-up climbs small obstacle")
     std::vector<Aabb>        world  = make_floor_world();
     world.push_back(
         Aabb{
-            .mins = {0.6F, 0.0F, -50.0F},
-            .maxs = {4.0F, 0.25F, 50.0F},
+            .mins = {0.6F, 0.0F, -1.0F},
+            .maxs = {1.4F, 0.25F, 1.0F},
         }
     );
 
@@ -176,8 +174,9 @@ TEST_CASE("step-up climbs small obstacle")
     MoveInput input{};
     input.forward_axis = 1.0F;
 
-    for (int i = 0; i < 45; ++i)
+    for (int i = 0; i < 120; ++i)
     {
+        input.right_axis = 1.0F;
         RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
     }
 
@@ -191,8 +190,8 @@ TEST_CASE("obstacle higher than step height blocks movement")
     std::vector<Aabb>        world  = make_floor_world();
     world.push_back(
         Aabb{
-            .mins = {0.6F, 0.0F, -50.0F},
-            .maxs = {4.0F, 0.60F, 50.0F},
+            .mins = {0.6F, 0.0F, -1.0F},
+            .maxs = {1.4F, 0.60F, 1.0F},
         }
     );
 
@@ -204,7 +203,7 @@ TEST_CASE("obstacle higher than step height blocks movement")
     input.forward_axis = 1.0F;
     input.right_axis   = 1.0F;
 
-    for (int i = 0; i < 45; ++i)
+    for (int i = 0; i < 120; ++i)
     {
         RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
     }

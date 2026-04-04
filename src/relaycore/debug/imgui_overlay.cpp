@@ -124,11 +124,12 @@ namespace RelayCore::debug
     }
 
     void ImGuiOverlay::draw_diagnostics(
-        const FrameInfo&                 frame,
-        const render::PerspectiveCamera& camera,
-        const AudioSystem&               audio_system,
-        const render::WorldDiagnostics&  world,
-        const render::PlayerDiagnostics& player
+        const FrameInfo&                      frame,
+        const render::PerspectiveCamera&      camera,
+        const AudioSystem&                    audio_system,
+        const render::WorldDiagnostics&       world,
+        const render::PlayerDiagnostics&      player,
+        const render::InteractionDiagnostics& interaction
     )
     {
         (void) frame;
@@ -141,7 +142,6 @@ namespace RelayCore::debug
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 12.0F, viewport->WorkPos.y + 12.0F), ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.92F);
-
         constexpr ImGuiWindowFlags kWindowFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
 
         ImGui::Begin("RelayCore Diagnostics", nullptr, kWindowFlags);
@@ -177,6 +177,15 @@ namespace RelayCore::debug
         ImGui::Text("Grounded: %s", player.grounded ? "yes" : "no");
         ImGui::Text("Mode: %s", movement_mode_label(player.movement_mode));
         ImGui::Text("Collision: %s", player.collision_enabled ? "on" : "off");
+
+        ImGui::SeparatorText("Interaction");
+        ImGui::Text("Focused usable: %s", interaction.has_focused_usable ? "yes" : "no");
+        ImGui::Text("Focused label: %s", interaction.focused_label.data());
+        ImGui::Text("Focus distance: %.2f", interaction.focused_distance);
+        ImGui::Text("Last target: %s", interaction.last_target.data());
+        ImGui::Text("Doors: %u active / %u total", interaction.active_doors, interaction.total_doors);
+        ImGui::Text("Triggers: %u fired / %u total", interaction.fired_triggers, interaction.total_triggers);
+        ImGui::Text("Use pressed: %s", interaction.use_pressed ? "yes" : "no");
 
         ImGui::SeparatorText("Audio");
         ImGui::Text("Initialized: %s", audio_system.is_initialized() ? "yes" : "no");
