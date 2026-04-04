@@ -39,6 +39,10 @@ namespace RelayCore
 
         [[nodiscard]] auto camera() const noexcept -> const render::PerspectiveCamera&;
 
+        [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
+        void               set_diagnostics_visible(bool visible) noexcept;
+        void               toggle_diagnostics_visible() noexcept;
+
     private:
         render::RendererConfig    config_{};
         bool                      initialized_     = false;

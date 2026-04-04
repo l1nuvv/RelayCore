@@ -86,6 +86,29 @@ namespace RelayCore
         [[nodiscard]] auto relative_mouse_mode() const -> bool;
 
         /**
+         * @brief Returns the active display refresh rate for the window.
+         * @return Refresh rate in hertz, or 0 when unavailable.
+         */
+        [[nodiscard]] auto refresh_rate_hz() const -> float;
+
+        /**
+         * @brief Returns the active OpenGL swap interval.
+         * @return Swap interval value reported by SDL.
+         */
+        [[nodiscard]] auto swap_interval() const -> int;
+
+        /**
+         * @brief Reports whether swap-interval synchronization is enabled.
+         * @return True when the swap interval is non-zero.
+         */
+        [[nodiscard]] auto vsync_enabled() const -> bool;
+
+        [[nodiscard]] auto set_swap_interval(int interval) -> bool;
+
+        [[nodiscard]] auto toggle_vsync() -> bool;
+
+
+        /**
          * @brief Enables or disables relative mouse mode for the window.
          * @param enabled Desired relative mouse mode state.
          */

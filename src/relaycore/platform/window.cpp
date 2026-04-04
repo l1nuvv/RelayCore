@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/core/sdl_error.h"
 
 namespace RelayCore
@@ -92,6 +93,45 @@ namespace RelayCore
 
     auto Window::relative_mouse_mode() const -> bool { return SDL_GetWindowRelativeMouseMode(window_); }
 
+    auto Window::refresh_rate_hz() const -> float
+    {
+        const SDL_DisplayID display_id = SDL_GetDisplayForWindow(window_);
+        if (display_id == 0) { return 0.0F; }
+
+        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display_id);
+        if (mode == nullptr) { return 0.0F; }
+
+        return mode->refresh_rate;
+    }
+
+    auto Window::swap_interval() const -> int
+    {
+        int interval = 0;
+        if (!SDL_GL_GetSwapInterval(&interval)) { return 0; }
+        return interval;
+    }
+
+    auto Window::vsync_enabled() const -> bool { return swap_interval() != 0; }
+
+    auto Window::set_swap_interval(int interval) -> bool
+    {
+        if (SDL_GL_SetSwapInterval(interval)) { return true; }
+
+        log::warn("SDL_GL_SetSwapInterval({}) failed: {}", interval, SDL_GetError());
+        return false;
+    }
+
+    auto Window::toggle_vsync() -> bool
+    {
+        const int current = swap_interval();
+        const int next    = (current == 0) ? 1 : 0;
+
+        if (!set_swap_interval(next)) { return false; }
+
+        log::info("VSync: {}", next == 0 ? "off" : "on");
+        return true;
+    }
+
     void Window::set_relative_mouse_mode(const bool enabled) const
     {
         core::require_sdl(SDL_SetWindowRelativeMouseMode(window_, enabled), "Failed to set relative mouse mode");
@@ -99,6 +139,7 @@ namespace RelayCore
 
     void Window::swap_buffers() const
     {
+        RELAYCORE_PROFILE_ZONE_N("SDL_GL_SwapWindow");
         if (!SDL_GL_SwapWindow(window_)) { core::throw_sdl_error("Failed to swap OpenGL window buffers"); }
     }
 
@@ -121,9 +162,11 @@ namespace RelayCore
         if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE)
         {
             profile = "core";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY) {
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY)
+        {
             profile = "compatibility";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
+        {
             profile = "es";
         }
 

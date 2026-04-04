@@ -165,7 +165,11 @@ namespace RelayCore::log
             auto created_logger = std::make_shared<spdlog::logger>(config.logger_name, sinks.begin(), sinks.end());
 
             created_logger->set_level(config.level);
+#ifndef NDEBUG
+            created_logger->flush_on(spdlog::level::info);
+#else
             created_logger->flush_on(spdlog::level::warn);
+#endif
 
             spdlog::set_default_logger(created_logger);
             spdlog::flush_every(config.periodic_flush);

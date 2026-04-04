@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "relaycore/core/profiling.h"
+
 namespace RelayCore::render
 {
     namespace
@@ -132,6 +134,7 @@ namespace RelayCore::render
 
     void StaticColorMesh::draw() const
     {
+        RELAYCORE_PROFILE_ZONE_N("StaticColorMesh::draw");
         glBindVertexArray(vertex_array_id_);
         glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
@@ -220,6 +223,7 @@ namespace RelayCore::render
 
     void ColorCubeMesh::draw() const
     {
+        RELAYCORE_PROFILE_ZONE_N("ColorCubeMesh::draw");
         glBindVertexArray(vertex_array_id_);
         glDrawArrays(GL_TRIANGLES, 0, kVertexCount);
         glBindVertexArray(0);

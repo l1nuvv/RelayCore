@@ -26,7 +26,7 @@ namespace RelayCore::log
         bool                 enable_console_sink    = true;
         bool                 enable_timestamped_log = true;
         bool                 enable_latest_log      = true;
-        std::chrono::seconds periodic_flush{3};
+        std::chrono::seconds periodic_flush{1};
 #ifndef NDEBUG
         spdlog::level::level_enum level = spdlog::level::trace;
 #else

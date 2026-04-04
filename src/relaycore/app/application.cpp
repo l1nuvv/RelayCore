@@ -127,7 +127,19 @@ namespace RelayCore
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 renderer_.on_resize(event.window.data1, event.window.data2);
-                log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
+                RelayCore::log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
+                break;
+
+            case SDL_EVENT_KEY_DOWN:
+                if (!event.key.repeat && event.key.scancode == SDL_SCANCODE_F2)
+                {
+                    renderer_.toggle_diagnostics_visible();
+                    RelayCore::log::info(
+                        "Diagnostics overlay {}", renderer_.diagnostics_visible() ? "enabled" : "disabled"
+                    );
+                    RelayCore::log::flush();
+                    return;
+                }
                 break;
 
             default: break;
