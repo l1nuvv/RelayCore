@@ -5,12 +5,12 @@
 
 #include "relaycore/app/application.h"
 
-#include <SDL3/SDL.h>
-#include <chrono>
-
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
+
+#include <SDL3/SDL.h>
+#include <chrono>
 
 namespace RelayCore
 {
@@ -33,34 +33,38 @@ namespace RelayCore
             /**
              * @brief Invokes the delegate shutdown callback.
              */
-            ~AppShutdownGuard() noexcept { delegate_.on_shutdown(services_); }
+            ~AppShutdownGuard() noexcept
+            {
+                delegate_.on_shutdown(services_);
+            }
 
             AppShutdownGuard(const AppShutdownGuard&) = delete;
 
             auto operator=(const AppShutdownGuard&) -> AppShutdownGuard& = delete;
 
         private:
-            AppDelegate&    delegate_; ///< Delegate that owns shutdown behaviour.
+            AppDelegate& delegate_;    ///< Delegate that owns shutdown behaviour.
             EngineServices& services_; ///< Runtime services forwarded to the delegate.
         };
     } // namespace
 
     Application::Application(std::unique_ptr<AppDelegate> app_delegate) :
-        app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>()),
-        config_(core::load_default_engine_config()),
-        window_(config_.window),
-        renderer_(config_.renderer),
-        audio_system_(config_.audio)
+        app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>())
     {
-        renderer_.initialize(window_);
+        config_.emplace(core::load_default_engine_config());
+        window_.emplace(config_->window);
+        renderer_.emplace(config_->renderer);
+        audio_system_.emplace(config_->audio);
 
-        const PixelExtent extent = window_.pixel_extent();
-        renderer_.on_resize(extent.width, extent.height);
+        renderer_->initialize(*window_);
 
-        audio_system_.initialize();
-        if (!config_.audio.startup_sound.empty())
+        const PixelExtent extent = window_->pixel_extent();
+        renderer_->on_resize(extent.width, extent.height);
+
+        audio_system_->initialize();
+        if (!config_->audio.startup_sound.empty())
         {
-            audio_system_.play_one_shot(core::asset_path(config_.audio.startup_sound));
+            audio_system_->play_one_shot(core::asset_path(config_->audio.startup_sound));
         }
 
         log::info("Application initialized");
@@ -72,17 +76,16 @@ namespace RelayCore
 
         using Clock = std::chrono::steady_clock;
 
-        EngineServices   services{config_, window_, renderer_, audio_system_, is_running_};
+        EngineServices services{*config_, *window_, *renderer_, *audio_system_, is_running_};
         AppShutdownGuard shutdown_guard(*app_delegate_, services);
-
         app_delegate_->on_startup(services);
 
         while (is_running_)
         {
             RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
 
-            const auto      frame_cpu_start = Clock::now();
-            const FrameInfo frame           = frame_timer_.begin_frame();
+            const auto frame_cpu_start = Clock::now();
+            const FrameInfo frame = frame_timer_.begin_frame();
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
                 process_events(services);
@@ -93,7 +96,7 @@ namespace RelayCore
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("begin_frame");
-                renderer_.begin_frame();
+                renderer_->begin_frame();
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("render_world");
@@ -101,11 +104,11 @@ namespace RelayCore
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("render_debug");
-                renderer_.draw_debug_overlay(frame, audio_system_);
+                renderer_->draw_debug_overlay(frame, *audio_system_);
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
-                window_.swap_buffers();
+                window_->swap_buffers();
             }
 
             const auto cpu_frame_end = Clock::now();
@@ -132,30 +135,34 @@ namespace RelayCore
 
     void Application::handle_event(const SDL_Event& event, EngineServices& services)
     {
-        renderer_.process_event(event);
+        renderer_->process_event(event);
 
         switch (event.type)
         {
-            case SDL_EVENT_QUIT: services.request_quit(); break;
+            case SDL_EVENT_QUIT:
+                services.request_quit();
+                break;
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                renderer_.on_resize(event.window.data1, event.window.data2);
+                renderer_->on_resize(event.window.data1, event.window.data2);
                 RelayCore::log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 
             case SDL_EVENT_KEY_DOWN:
                 if (!event.key.repeat && event.key.scancode == SDL_SCANCODE_F2)
                 {
-                    renderer_.toggle_diagnostics_visible();
+                    renderer_->toggle_diagnostics_visible();
                     RelayCore::log::info(
-                        "Diagnostics overlay {}", renderer_.diagnostics_visible() ? "enabled" : "disabled"
+                        "Diagnostics overlay {}",
+                        renderer_->diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();
                     return;
                 }
                 break;
 
-            default: break;
+            default:
+                break;
         }
 
         app_delegate_->on_event(event, services);

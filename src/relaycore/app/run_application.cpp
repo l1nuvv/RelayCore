@@ -5,11 +5,12 @@
 
 #include "relaycore/app/run_application.h"
 
-#include <exception>
-#include <string_view>
-
 #include "relaycore/app/application.h"
 #include "relaycore/core/log.h"
+
+#include <cstdio>
+#include <exception>
+#include <string_view>
 
 namespace
 {
@@ -21,12 +22,18 @@ namespace
         /**
          * @brief Initializes the shared engine logger.
          */
-        LogLifetime() { RelayCore::log::init(); }
+        LogLifetime()
+        {
+            RelayCore::log::init();
+        }
 
         /**
          * @brief Shuts down the shared engine logger.
          */
-        ~LogLifetime() noexcept { RelayCore::log::shutdown(); }
+        ~LogLifetime() noexcept
+        {
+            RelayCore::log::shutdown();
+        }
 
         LogLifetime(const LogLifetime&) = delete;
 
@@ -49,7 +56,11 @@ namespace RelayCore
             return app.run();
         } catch (const std::exception& exception)
         {
-            log::critical("Unhandled exception: {}", std::string_view{exception.what()});
+            const std::string_view message{exception.what()};
+            std::fprintf(stderr, "RelayCore exception: %s\n", message.data());
+            std::fflush(stderr);
+            log::critical("Unhandled exception: {}", message);
+            log::flush();
             return 1;
         }
     }

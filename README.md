@@ -1,143 +1,158 @@
 # RelayCore
 
-**RelayCore** — небольшой C++20-проект про разработку игрового движка и ретро-FPS на современном, но достаточно простом стеке. Это не "готовый движок для всего", а аккуратная база, на которой можно поэтапно собирать свой runtime: окно, рендер, ввод, звук, загрузку данных, игровую логику и отладочные инструменты.
+**RelayCore** — небольшой C++20-проект про разработку движка и ретро-FPS с упором не на “технодемо”, а на понятный, расширяемый runtime для маленького indoor FPS slice.
 
-Проект делается как учебный и инженерный полигон: с понятной структурой, явным разделением движка и игры, нормальной отладкой и постепенным ростом без хаоса.
+Проект вдохновлён GoldSrc / Half-Life 1 по ощущению пространства и читаемости систем, но реализуется современным и поддерживаемым способом: SDL3, OpenGL 4.6 Core, CMake, vcpkg manifest mode, Dear ImGui, Tracy и простой data-driven blockout pipeline.
 
-## Идея и вдохновение
+## Что уже есть
 
-RelayCore вдохновляется старыми PC-шутерами и движками конца 90-х – начала 2000-х:
+- SDL3 окно и жизненный цикл приложения
+- OpenGL 4.6 Core + glad2
+- engine/game split
+- логирование через spdlog
+- Dear ImGui overlay
+- базовая аудиосистема на miniaudio
+- загрузка blockout-уровней из TOML
+- базовый runtime для interaction/doors/triggers
+- doctest для unit-тестов
+- Tracy для профилирования
 
-- **GoldSrc / Half-Life 1 / Counter-Strike 1.6**
-- **Quake-линейкой** и классическим подходом к FPS-архитектуре
-- эстетикой ретро-3D, индустриального sci-fi и "технических" пространств
+## Ключевая цель
 
-При этом сам проект не пытается буквально копировать GoldSrc. Скорее это современная, компактная основа, на которой можно изучать engine programming и собирать собственный движок с похожим духом: простая геометрия, читаемый пайплайн, контролируемая сложность и постепенное развитие систем.
+Довести проект до маленького, но играбельного indoor FPS vertical slice:
 
-## Что есть сейчас
+- spawn
+- walking
+- collision
+- doors / buttons / triggers
+- materials / textures
+- lighting
+- ambient/world audio
+- один небольшой полированный уровень
 
-На текущем этапе в проекте уже есть:
+## Технологии
 
-- окно на **SDL3**
-- **OpenGL 4.6 Core** контекст
-- загрузка OpenGL через **glad2**
-- разделение на **engine** и **game** слои
-- логирование через **spdlog**
-- OpenGL debug output
-- загрузка шейдеров и ассетов из `assets/`
-- базовый 3D-рендер путь
-- камера и игровой update/render hook через `AppDelegate + EngineServices`
-- отладочный overlay на **Dear ImGui**
-- конфиг движка в **TOML**
-- базовая аудиосистема на **miniaudio**
-- unit-тесты на **doctest**
-- загрузка blockout-уровня из `test_room.toml`
+- C++20
+- SDL3
+- OpenGL 4.6 Core
+- glad2
+- GLM
+- spdlog
+- Dear ImGui
+- toml++
+- miniaudio
+- doctest
+- Tracy
+- CMake
+- vcpkg
 
-## Стек
+## Требования
 
-Основной стек проекта:
+Минимум для рабочего dev-окружения:
 
-- **C++20**
-- **SDL3**
-- **OpenGL 4.6 Core**
-- **glad2**
-- **GLM**
-- **spdlog**
-- **Dear ImGui**
-- **toml++**
-- **miniaudio**
-- **doctest**
-- **CMake**
+- Windows 11
+- Visual Studio 2022 / MSVC toolchain
+- CMake 3.28+
+- Git
+- vcpkg
+- Ninja или другой generator из ваших preset'ов
 
-## Структура проекта
+## Сборка
 
-Код разделён на две основные части:
+Проект использует `CMakePresets.json`, а зависимости ставятся через `vcpkg.json` в manifest mode. Такой режим vcpkg рекомендует как основной для большинства пользователей; он также нужен для versioning и project-local dependency trees.
 
-- `src/relaycore/` — код движка и общие runtime-системы
-- `src/relaygame/` — игровая/демо-часть, которая использует движок
+Пример типичного запуска:
 
-Внутри `src/relaycore/`:
+```powershell
+cmake --preset msvc-debug
+cmake --build --preset demo-debug
+```
 
-- `app/` — жизненный цикл приложения, frame loop, bootstrap, engine services
+Если есть тестовый preset:
+
+```powershell
+ctest --preset tests-debug --output-on-failure
+```
+
+`BUILD_TESTING` обычно приходит из `include(CTest)`, а сам `CTest` рекомендуют подключать именно в верхнем `CMakeLists.txt`.
+
+## clangd / compile_commands.json
+
+В корневом `CMakeLists.txt` включён `CMAKE_EXPORT_COMPILE_COMMANDS`, чтобы clang-based tools могли использовать `compile_commands.json`. CMake документирует, что эта переменная генерирует точные compile commands, но реально работает для Makefile и Ninja generators.
+
+Для проекта также есть `.clangd` с:
+
+- `CompilationDatabase: Ancestors`
+- `clang-tidy` checks для bugprone / analyzer / performance
+- stricter include cleaner
+- отдельное отключение диагностики для `extern/` и build-директорий
+
+## Форматирование
+
+В корневом `CMakeLists.txt` есть два utility-target'а:
+
+- `format` — форматирует tracked C/C++ файлы
+- `format-check` — проверяет формат без переписывания
+
+`.clang-format` настроен на более стабильные diff'ы: без агрессивного выравнивания колонок и без one-line `if`/`function` конструкций.
+
+## Документация
+
+`Doxyfile` настроен на генерацию HTML + XML в `docs/doxygen/`, использует `README.md` как main page и фокусируется на публично полезной документации вместо шума от private/local symbols. Doxygen поддерживает конфигурацию через `Doxyfile`, а `CLANG_ASSISTED_PARSING` помогает разбирать современный C++ код.
+
+Пример запуска:
+
+```powershell
+doxygen Doxyfile
+```
+
+## Структура репозитория
+
+```text
+src/
+  relaycore/   # engine runtime
+  relaygame/   # game/demo layer
+assets/        # shaders, textures, audio, level data
+cmake/         # helper modules and dependency glue
+tests/         # doctest-based tests
+```
+
+### `src/relaycore/`
+
+- `app/` — bootstrap, loop, frame timing, engine services
 - `audio/` — аудиосистема
-- `core/` — логирование, конфиг, пути, вспомогательная инфраструктура
-- `debug/` — отладочный overlay
-- `platform/` — SDL, окно, OpenGL context
-- `render/` — камера, шейдеры, меши, renderer
-- `world/` — загрузка и представление blockout-уровней
+- `core/` — logging, config, paths, profiling helpers
+- `debug/` — Dear ImGui overlay
+- `gameplay/` — interaction descriptors/runtime
+- `physics/` — collision и motion
+- `platform/` — SDL / window / GL context
+- `render/` — camera, shaders, renderer, diagnostics
+- `world/` — blockout level loading/data
 
-Внутри `src/relaygame/`:
+### `src/relaygame/`
 
-- `main.cpp` — точка входа приложения
-- `demo_game.*` — текущая игровая логика и sandbox-сцена
+- `demo_game.*` — demo/game glue
+- `player_controller.*` — player-side logic
+- `world_scene_renderer.*` — render bridge for current game world
 
-## Граница между движком и игрой
+## Принципы проекта
 
-**Движок** отвечает за:
+- маленькие вертикальные срезы вместо больших абстрактных переписок
+- debuggability важнее «умной» архитектуры
+- явные границы между engine / game / data
+- минимум скрытой магии
+- профилирование и диагностика с самого начала
 
-- цикл приложения
-- окно и lifetime платформы
-- рендер-инфраструктуру
-- runtime-сервисы, конфиг, bootstrap, звук
+## vcpkg manifest
 
-**Игра** отвечает за:
+`vcpkg.json` описывает project dependencies. vcpkg использует manifest file `vcpkg.json` как декларативный источник зависимостей, а `builtin-baseline` нужен для repeatable version resolution в top-level project manifests.
 
-- поведение камеры и ввод на уровне gameplay
-- сцену и её логику
-- правила игры
-- будущие сущности, игрока, триггеры, двери, загрузку уровня как gameplay-слой
+## Следующий разумный шаг
 
-Это один из главных принципов проекта: движок не должен знать про конкретную игру больше, чем ему действительно нужно.
+Сделать один законченный игровой цикл в комнате:
 
-## Цели проекта
-
-RelayCore делается как база для дальнейшего роста в сторону небольшого ретро-FPS / immersive sandbox с упором на:
-
-- понятную архитектуру
-- поэтапное развитие систем
-- удобную отладку
-- минимальную магию
-- инженерный контроль над тем, что происходит в кадре и в runtime
-
-## Targets
-
-- `relaycore_engine` — библиотека движка
-- `relaycore_demo` — демо/игровое приложение
-- `relaycore_tests` — unit-тесты
-
-## Presets
-
-Рекомендуемые configure presets:
-
-- `msvc-debug`
-- `msvc-relwithdebinfo`
-- `msvc-release`
-- `msvc-asan`
-
-Рекомендуемые build presets:
-
-- `demo-debug`
-- `demo-relwithdebinfo`
-- `tests-debug`
-
-## Conventional Commits
-
-Для истории проекта используются **Conventional Commits**:
-
-- **feat** — новая функциональность
-- **fix** — исправление бага
-- **docs** — изменения в документации
-- **style** — правки оформления кода без изменения логики
-- **refactor** — переработка кода без новой функциональности и без исправления багов
-- **perf** — оптимизация производительности
-- **test** — добавление или обновление тестов
-- **build** — изменения в сборке, зависимостях, CMake, CI
-- **chore** — служебные и вспомогательные изменения
-- **revert** — откат предыдущего коммита
-
-Примеры:
-
-- `feat(renderer): add blockout level rendering`
-- `fix(input): restore mouse capture on startup`
-- `refactor(world): simplify blockout loader`
-- `build(cmake): clean up preset configuration`
+1. spawn
+2. move + collision
+3. use interaction
+4. одна дверь / одна кнопка / один триггер
+5. один полированный тестовый уровень

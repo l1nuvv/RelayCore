@@ -1,14 +1,15 @@
 #pragma once
 
-#include <SDL3/SDL.h>
-
 #include "relaycore/app/frame_timer.h"
 #include "relaycore/core/engine_config.h"
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/render_diagnostics.h"
+#include "relaycore/render/render_queue.h"
 #include "relaycore/render/shader_program.h"
+
+#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
@@ -30,9 +31,7 @@ namespace RelayCore
 
         void begin_frame();
 
-        void draw_color_cube(const glm::mat4& model_matrix);
-
-        void draw_color_mesh(const render::StaticColorMesh& mesh, const glm::mat4& model_matrix);
+        void draw_render_queue(std::span<const render::RenderItem> items);
 
         void draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system);
 
@@ -59,16 +58,15 @@ namespace RelayCore
         void toggle_diagnostics_visible() noexcept;
 
     private:
-        render::RendererConfig         config_{};
-        bool                           initialized_     = false;
-        int                            viewport_width_  = 1280;
-        int                            viewport_height_ = 720;
-        render::PerspectiveCamera      camera_{};
-        render::ShaderProgram          shader_program_{};
-        render::ColorCubeMesh          cube_mesh_{};
-        debug::ImGuiOverlay            imgui_overlay_{};
-        render::WorldDiagnostics       world_diagnostics_{};
-        render::PlayerDiagnostics      player_diagnostics_{};
+        render::RendererConfig config_{};
+        bool initialized_ = false;
+        int viewport_width_ = 1280;
+        int viewport_height_ = 720;
+        render::PerspectiveCamera camera_{};
+        render::ShaderProgram shader_program_{};
+        debug::ImGuiOverlay imgui_overlay_{};
+        render::WorldDiagnostics world_diagnostics_{};
+        render::PlayerDiagnostics player_diagnostics_{};
         render::InteractionDiagnostics interaction_diagnostics_{};
     };
 } // namespace RelayCore

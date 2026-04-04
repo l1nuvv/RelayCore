@@ -1,52 +1,16 @@
 #include "relaycore/render/mesh.h"
 
-#include <array>
+#include "relaycore/core/profiling.h"
+
 #include <cstddef>
 #include <glad/gl.h>
 #include <stdexcept>
 #include <utility>
 
-#include "relaycore/core/profiling.h"
-
 namespace RelayCore::render
 {
     namespace
     {
-        struct CubeVertex {
-            float position_x;
-            float position_y;
-            float position_z;
-            float color_r;
-            float color_g;
-            float color_b;
-        };
-
-        constexpr std::array<CubeVertex, 36> kCubeVertices{
-            CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},  CubeVertex{0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},    CubeVertex{-0.5F, -0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-            CubeVertex{0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},    CubeVertex{-0.5F, 0.5F, 0.5F, 0.95F, 0.30F, 0.25F},
-
-            CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{-0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{0.5F, -0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-            CubeVertex{-0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},  CubeVertex{0.5F, 0.5F, -0.5F, 0.25F, 0.75F, 0.35F},
-
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F}, CubeVertex{-0.5F, -0.5F, 0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},   CubeVertex{-0.5F, -0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.20F, 0.55F, 0.95F},   CubeVertex{-0.5F, 0.5F, -0.5F, 0.20F, 0.55F, 0.95F},
-
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, -0.5F, -0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, -0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.98F, 0.82F, 0.30F},   CubeVertex{0.5F, 0.5F, 0.5F, 0.98F, 0.82F, 0.30F},
-
-            CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{-0.5F, 0.5F, 0.5F, 0.80F, 0.35F, 0.90F},
-            CubeVertex{0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},   CubeVertex{-0.5F, 0.5F, -0.5F, 0.80F, 0.35F, 0.90F},
-
-            CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F}, CubeVertex{0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},   CubeVertex{-0.5F, -0.5F, -0.5F, 0.30F, 0.85F, 0.90F},
-            CubeVertex{0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},   CubeVertex{-0.5F, -0.5F, 0.5F, 0.30F, 0.85F, 0.90F},
-        };
-
         void configure_color_vertex_layout()
         {
             glEnableVertexAttribArray(0);
@@ -71,13 +35,44 @@ namespace RelayCore::render
         }
     } // namespace
 
-    StaticColorMesh::~StaticColorMesh() noexcept { reset(); }
+    auto make_color_box_mesh_data() -> CpuColorMeshData
+    {
+        CpuColorMeshData mesh_data{};
+        mesh_data.vertices = {
+            {{-0.5F, -0.5F, 0.5F}, {0.42F, 0.54F, 0.47F}},  {{0.5F, -0.5F, 0.5F}, {0.42F, 0.54F, 0.47F}},
+            {{0.5F, 0.5F, 0.5F}, {0.42F, 0.54F, 0.47F}},    {{-0.5F, 0.5F, 0.5F}, {0.42F, 0.54F, 0.47F}},
+
+            {{0.5F, -0.5F, -0.5F}, {0.32F, 0.41F, 0.36F}},  {{-0.5F, -0.5F, -0.5F}, {0.32F, 0.41F, 0.36F}},
+            {{-0.5F, 0.5F, -0.5F}, {0.32F, 0.41F, 0.36F}},  {{0.5F, 0.5F, -0.5F}, {0.32F, 0.41F, 0.36F}},
+
+            {{-0.5F, -0.5F, -0.5F}, {0.29F, 0.36F, 0.33F}}, {{-0.5F, -0.5F, 0.5F}, {0.29F, 0.36F, 0.33F}},
+            {{-0.5F, 0.5F, 0.5F}, {0.29F, 0.36F, 0.33F}},   {{-0.5F, 0.5F, -0.5F}, {0.29F, 0.36F, 0.33F}},
+
+            {{0.5F, -0.5F, 0.5F}, {0.50F, 0.61F, 0.54F}},   {{0.5F, -0.5F, -0.5F}, {0.50F, 0.61F, 0.54F}},
+            {{0.5F, 0.5F, -0.5F}, {0.50F, 0.61F, 0.54F}},   {{0.5F, 0.5F, 0.5F}, {0.50F, 0.61F, 0.54F}},
+
+            {{-0.5F, 0.5F, 0.5F}, {0.54F, 0.66F, 0.58F}},   {{0.5F, 0.5F, 0.5F}, {0.54F, 0.66F, 0.58F}},
+            {{0.5F, 0.5F, -0.5F}, {0.54F, 0.66F, 0.58F}},   {{-0.5F, 0.5F, -0.5F}, {0.54F, 0.66F, 0.58F}},
+
+            {{-0.5F, -0.5F, -0.5F}, {0.22F, 0.29F, 0.26F}}, {{0.5F, -0.5F, -0.5F}, {0.22F, 0.29F, 0.26F}},
+            {{0.5F, -0.5F, 0.5F}, {0.22F, 0.29F, 0.26F}},   {{-0.5F, -0.5F, 0.5F}, {0.22F, 0.29F, 0.26F}},
+        };
+        mesh_data.indices = {
+            0,  1,  2,  0,  2,  3,  4,  5,  6,  4,  6,  7,  8,  9,  10, 8,  10, 11,
+            12, 13, 14, 12, 14, 15, 16, 17, 18, 16, 18, 19, 20, 21, 22, 20, 22, 23,
+        };
+        return mesh_data;
+    }
+
+    StaticColorMesh::~StaticColorMesh() noexcept
+    {
+        reset();
+    }
 
     StaticColorMesh::StaticColorMesh(StaticColorMesh&& other) noexcept :
         vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
         vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0)),
-        index_buffer_id_(std::exchange(other.index_buffer_id_, 0)),
-        index_count_(std::exchange(other.index_count_, 0))
+        index_buffer_id_(std::exchange(other.index_buffer_id_, 0)), index_count_(std::exchange(other.index_count_, 0))
     {}
 
     auto StaticColorMesh::operator=(StaticColorMesh&& other) noexcept -> StaticColorMesh&
@@ -85,10 +80,10 @@ namespace RelayCore::render
         if (this != &other)
         {
             reset();
-            vertex_array_id_  = std::exchange(other.vertex_array_id_, 0);
+            vertex_array_id_ = std::exchange(other.vertex_array_id_, 0);
             vertex_buffer_id_ = std::exchange(other.vertex_buffer_id_, 0);
-            index_buffer_id_  = std::exchange(other.index_buffer_id_, 0);
-            index_count_      = std::exchange(other.index_count_, 0);
+            index_buffer_id_ = std::exchange(other.index_buffer_id_, 0);
+            index_count_ = std::exchange(other.index_count_, 0);
         }
 
         return *this;
@@ -140,7 +135,10 @@ namespace RelayCore::render
         glBindVertexArray(0);
     }
 
-    auto StaticColorMesh::index_count() const noexcept -> GLsizei { return index_count_; }
+    auto StaticColorMesh::index_count() const noexcept -> GLsizei
+    {
+        return index_count_;
+    }
 
     void StaticColorMesh::reset() noexcept
     {
@@ -163,84 +161,5 @@ namespace RelayCore::render
         }
 
         index_count_ = 0;
-    }
-
-    ColorCubeMesh::~ColorCubeMesh() noexcept { reset(); }
-
-    ColorCubeMesh::ColorCubeMesh(ColorCubeMesh&& other) noexcept :
-        vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
-        vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0))
-    {}
-
-    auto ColorCubeMesh::operator=(ColorCubeMesh&& other) noexcept -> ColorCubeMesh&
-    {
-        if (this != &other)
-        {
-            reset();
-            vertex_array_id_  = std::exchange(other.vertex_array_id_, 0);
-            vertex_buffer_id_ = std::exchange(other.vertex_buffer_id_, 0);
-        }
-
-        return *this;
-    }
-
-    void ColorCubeMesh::initialize()
-    {
-        reset();
-
-        glGenVertexArrays(1, &vertex_array_id_);
-        glGenBuffers(1, &vertex_buffer_id_);
-
-        glBindVertexArray(vertex_array_id_);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_id_);
-        glBufferData(
-            GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(kCubeVertices)), kCubeVertices.data(), GL_STATIC_DRAW
-        );
-
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(
-            0,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            static_cast<GLsizei>(sizeof(CubeVertex)),
-            reinterpret_cast<const void*>(offsetof(CubeVertex, position_x))
-        );
-
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(
-            1,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            static_cast<GLsizei>(sizeof(CubeVertex)),
-            reinterpret_cast<const void*>(offsetof(CubeVertex, color_r))
-        );
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
-    }
-
-    void ColorCubeMesh::draw() const
-    {
-        RELAYCORE_PROFILE_ZONE_N("ColorCubeMesh::draw");
-        glBindVertexArray(vertex_array_id_);
-        glDrawArrays(GL_TRIANGLES, 0, kVertexCount);
-        glBindVertexArray(0);
-    }
-
-    void ColorCubeMesh::reset() noexcept
-    {
-        if (vertex_buffer_id_ != 0)
-        {
-            glDeleteBuffers(1, &vertex_buffer_id_);
-            vertex_buffer_id_ = 0;
-        }
-
-        if (vertex_array_id_ != 0)
-        {
-            glDeleteVertexArrays(1, &vertex_array_id_);
-            vertex_array_id_ = 0;
-        }
     }
 } // namespace RelayCore::render

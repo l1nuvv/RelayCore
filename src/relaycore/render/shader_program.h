@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -55,7 +56,8 @@ namespace RelayCore::render
          * @param fragment_shader_path Path to the fragment shader source.
          */
         void load_from_files(
-            const std::filesystem::path& vertex_shader_path, const std::filesystem::path& fragment_shader_path
+            const std::filesystem::path& vertex_shader_path,
+            const std::filesystem::path& fragment_shader_path
         );
 
         /**
@@ -76,6 +78,20 @@ namespace RelayCore::render
          * @param value Matrix value to upload.
          */
         void set_mat4(int location, const glm::mat4& value) const;
+
+        /**
+         * @brief Sets a vec3 uniform by explicit location.
+         * @param location Uniform location.
+         * @param value Vector value to upload.
+         */
+        void set_vec3(int location, const glm::vec3& value) const;
+
+        /**
+         * @brief Sets a float uniform by explicit location.
+         * @param location Uniform location.
+         * @param value Scalar value to upload.
+         */
+        void set_float(int location, float value) const;
 
     private:
         /**
@@ -108,7 +124,7 @@ namespace RelayCore::render
         compile_shader(unsigned int shader_type, const std::string& source, const std::filesystem::path& source_path)
             -> unsigned int;
 
-        unsigned int                                 program_id_ = 0;           ///< Owned OpenGL program identifier.
+        unsigned int program_id_ = 0;                                           ///< Owned OpenGL program identifier.
         mutable std::unordered_map<std::string, int> uniform_location_cache_{}; ///< Cached uniform lookups by name.
     };
 } // namespace RelayCore::render

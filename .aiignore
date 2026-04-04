@@ -1,0 +1,202 @@
+# RelayCore .aiignore
+# Syntax: same as .gitignore
+# Goal: keep AI focused on hand-written engine/game code and text configs,
+# while excluding generated output, caches, binaries, vendor code, and noisy assets.
+
+# -----------------------------
+# VCS / IDE / OS noise
+# -----------------------------
+.git/
+.gitmodules
+.gitattributes
+.idea/
+.vs/
+.vscode/
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Build trees / generators
+# -----------------------------
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/bin/
+/lib/
+/generated/
+.cache/
+/logs/
+/docs/doxygen/
+
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+Testing/
+
+# Ninja / Make / MSBuild artifacts
+.build/
+.ninja_deps
+.ninja_log
+build.ninja
+Makefile
+*.make
+*.cmake.user
+
+# -----------------------------
+# Compiler / linker artifacts
+# -----------------------------
+*.obj
+*.o
+*.lo
+*.slo
+*.pch
+*.pdb
+*.idb
+*.ilk
+*.iobj
+*.ipdb
+*.exp
+*.lib
+*.a
+*.la
+*.dll
+*.so
+*.so.*
+*.dylib
+*.exe
+*.out
+*.app
+*.apk
+*.msi
+
+# -----------------------------
+# Logs / traces / coverage / profiling
+# -----------------------------
+*.log
+imgui.ini
+*.tmp
+*.temp
+*.trace
+*.tracy
+*.prof
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.gcov
+coverage/
+coverage-*/
+
+# -----------------------------
+# Package managers / dependency caches
+# -----------------------------
+/vcpkg/buildtrees/
+/vcpkg/downloads/
+/vcpkg/installed/
+/vcpkg/packages/
+/.vcpkg-cache/
+/conan/
+/.conan/
+
+# -----------------------------
+# Third-party / vendored code
+# Keep AI on your code first.
+# -----------------------------
+/third_party/
+/extern/
+/external/
+/vendor/
+/deps/
+/submodules/
+
+# -----------------------------
+# Secrets / local env
+# -----------------------------
+.env
+.env.*
+*.secret
+*.secrets
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+*.token
+
+# -----------------------------
+# Binary assets that usually bloat context
+# Text-based assets below are re-included.
+# -----------------------------
+/assets/**/*.png
+/assets/**/*.jpg
+/assets/**/*.jpeg
+/assets/**/*.webp
+/assets/**/*.dds
+/assets/**/*.ktx
+/assets/**/*.ktx2
+/assets/**/*.tga
+/assets/**/*.bmp
+/assets/**/*.psd
+/assets/**/*.blend
+/assets/**/*.fbx
+/assets/**/*.obj
+/assets/**/*.gltf
+/assets/**/*.glb
+/assets/**/*.wav
+/assets/**/*.mp3
+/assets/**/*.ogg
+/assets/**/*.flac
+/assets/**/*.mp4
+/assets/**/*.avi
+/assets/**/*.mov
+/assets/**/*.zip
+/assets/**/*.7z
+/assets/**/*.rar
+
+# -----------------------------
+# Re-include useful source/config/text assets
+# -----------------------------
+!/CMakeLists.txt
+!/**/CMakeLists.txt
+!/CMakePresets.json
+!/vcpkg.json
+!/vcpkg-configuration.json
+!/.clang-format
+!/.clangd
+!/.editorconfig
+!/.gitignore
+!/.aiignore
+!/README.md
+!/AGENTS.md
+!/AGENTS.MD
+!/.codex/**
+
+!/assets/**/*.toml
+!/assets/**/*.json
+!/assets/**/*.yaml
+!/assets/**/*.yml
+!/assets/**/*.txt
+!/assets/**/*.md
+!/assets/**/*.vert
+!/assets/**/*.frag
+!/assets/**/*.glsl
+!/assets/**/*.hlsl
+!/assets/**/*.wgsl
+
+# -----------------------------
+# Keep handwritten code and tests visible
+# -----------------------------
+!/src/**
+!/include/**
+!/tests/**
+!/tools/**
+!/cmake/**
+!/docs/**

@@ -1,60 +1,48 @@
-# =============================================================================
-# BASIC SETTINGS
-# =============================================================================
 Language: Cpp
 BasedOnStyle: LLVM
 Standard: c++20
+
 ColumnLimit: 120
 IndentWidth: 4
 ContinuationIndentWidth: 4
 TabWidth: 4
+UseTab: Never
 InsertNewlineAtEOF: true
-MaxEmptyLinesToKeep: 2
+MaxEmptyLinesToKeep: 1
 
-# =============================================================================
-# INDENTATION AND ALIGNMENT
-# =============================================================================
 AccessModifierOffset: -4
 IndentCaseLabels: true
 NamespaceIndentation: All
-AlignConsecutiveAssignments: true
-AlignConsecutiveDeclarations: true
+
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
 AlignOperands: true
 AlignTrailingComments:
   Kind: Always
-  OverEmptyLines: 2
+  OverEmptyLines: 1
 
-# =============================================================================
-# SHORT CONSTRUCTS
-# =============================================================================
-AllowShortBlocksOnASingleLine: Always
-AllowShortFunctionsOnASingleLine: All
-AllowShortIfStatementsOnASingleLine: AllIfsAndElse
-AllowShortLambdasOnASingleLine: All
-AllowShortCaseLabelsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
 AllowShortEnumsOnASingleLine: false
 
-# =============================================================================
-# POINTERS AND REFERENCES
-# =============================================================================
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReferenceAlignment: Left
 
-# =============================================================================
-# BRACES
-# =============================================================================
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterCaseLabel: true
   AfterClass: false
   AfterControlStatement: true
   AfterEnum: false
+  AfterExternBlock: false
   AfterFunction: true
   AfterNamespace: true
   AfterStruct: false
   AfterUnion: false
-  AfterExternBlock: false
   BeforeCatch: false
   BeforeElse: false
   BeforeLambdaBody: false
@@ -64,55 +52,39 @@ BraceWrapping:
   SplitEmptyRecord: true
   SplitEmptyNamespace: true
 
-# =============================================================================
-# FUNCTION ARGUMENTS AND CONSTRUCTORS
-# =============================================================================
 BinPackArguments: false
 BinPackParameters: false
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
 BreakConstructorInitializers: AfterColon
 BreakConstructorInitializersBeforeComma: false
-ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
 ConstructorInitializerIndentWidth: 4
 AlwaysBreakTemplateDeclarations: Yes
 Cpp11BracedListStyle: true
 AlignAfterOpenBracket: BlockIndent
 
-# =============================================================================
-# LINE BREAKS
-# =============================================================================
 BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeTernaryOperators: true
 BreakStringLiterals: true
 
-# =============================================================================
-# INITIALIZERS
-# =============================================================================
-BreakBeforeInheritanceComma: false
-BreakInheritanceList: BeforeColon
-
-# =============================================================================
-# INCLUDES
-# =============================================================================
 IncludeBlocks: Regroup
 SortIncludes: CaseSensitive
 SortUsingDeclarations: true
 IncludeCategories:
-  - Regex: '^<.*'
+  - Regex: '^"(relaycore|relaygame)/.*'
     Priority: 1
-  - Regex: '^".*'
+  - Regex: '^<.*'
     Priority: 2
-  - Regex: '.*'
+  - Regex: '^".*'
     Priority: 3
+  - Regex: '.*'
+    Priority: 4
 IncludeIsMainRegex: '([-_](test|unittest))?$'
 
-# =============================================================================
-# SPACES
-# =============================================================================
 SpaceAfterCStyleCast: true
 SpaceAfterTemplateKeyword: false
-SpaceBeforeRangeBasedForLoopColon: false
+SpaceBeforeRangeBasedForLoopColon: true
 SpaceInEmptyParentheses: false
 SpacesInAngles: false
 SpacesInConditionalStatement: false
@@ -121,17 +93,10 @@ SpacesInParentheses: false
 SpaceBeforeAssignmentOperators: true
 SpaceAfterLogicalNot: false
 
-# =============================================================================
-# COMMENT HANDLING
-# =============================================================================
 PenaltyBreakComment: 100
-
-# =============================================================================
-# ADDITIONAL USEFUL OPTIONS
-# =============================================================================
 FixNamespaceComments: true
 IndentPPDirectives: None
 KeepEmptyLinesAtTheStartOfBlocks: false
-ReflowComments: true
+ReflowComments: false
 SeparateDefinitionBlocks: Leave
 SpaceInEmptyBlock: false

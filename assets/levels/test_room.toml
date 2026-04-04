@@ -1,75 +1,148 @@
 [[solid]]
-mins = [-4.0, 0.0, -4.0]
-maxs = [4.0, 0.2, 4.0]
-material = "Concrete"
+mins = [-4.5, 0.0, -4.0]
+maxs = [4.5, 0.2, 4.2]
+material = "Floor"
 
 [[solid]]
-mins = [-4.0, 2.8, -4.0]
-maxs = [4.0, 3.0, 4.0]
-material = "Concrete"
+mins = [-4.5, 3.0, -4.0]
+maxs = [4.5, 3.2, 4.2]
+material = "Ceiling"
 
 [[solid]]
-mins = [-4.0, 0.0, -4.0]
-maxs = [-3.8, 3.0, 4.0]
-material = "Concrete"
+mins = [-4.5, 0.0, -4.0]
+maxs = [-4.3, 3.2, 4.2]
+material = "Wall"
 
 [[solid]]
-mins = [3.8, 0.0, -4.0]
-maxs = [4.0, 3.0, 4.0]
-material = "Concrete"
+mins = [4.3, 0.0, -4.0]
+maxs = [4.5, 3.2, 4.2]
+material = "Wall"
 
 [[solid]]
-mins = [-4.0, 0.0, -4.0]
-maxs = [4.0, 3.0, -3.8]
-material = "Concrete"
+mins = [-4.5, 0.0, -4.0]
+maxs = [4.5, 3.2, -3.8]
+material = "Wall"
 
 [[solid]]
-mins = [-4.0, 0.0, 3.8]
-maxs = [-1.0, 3.0, 4.0]
-material = "Concrete"
+mins = [-4.5, 0.0, 4.0]
+maxs = [-1.2, 3.2, 4.2]
+material = "Wall"
 
 [[solid]]
-mins = [1.0, 0.0, 3.8]
-maxs = [4.0, 3.0, 4.0]
-material = "Concrete"
+mins = [1.2, 0.0, 4.0]
+maxs = [4.5, 3.2, 4.2]
+material = "Wall"
+
+[[solid]]
+mins = [2.6, 0.0, -1.4]
+maxs = [3.7, 1.2, 0.4]
+material = "Block"
+
+[[solid]]
+mins = [-1.4, 0.0, 4.2]
+maxs = [1.4, 0.2, 8.8]
+material = "Corridor"
+
+[[solid]]
+mins = [-1.4, 3.0, 4.2]
+maxs = [1.4, 3.2, 8.8]
+material = "Ceiling"
+
+[[solid]]
+mins = [-1.4, 0.0, 4.2]
+maxs = [-1.2, 3.2, 8.8]
+material = "Corridor"
+
+[[solid]]
+mins = [1.2, 0.0, 4.2]
+maxs = [1.4, 3.2, 8.8]
+material = "Corridor"
+
+[[solid]]
+mins = [-3.6, 0.0, 8.8]
+maxs = [3.6, 0.2, 14.5]
+material = "Platform"
+
+[[solid]]
+mins = [-3.6, 0.0, 8.8]
+maxs = [-1.4, 3.2, 9.0]
+material = "Wall"
+
+[[solid]]
+mins = [1.4, 0.0, 8.8]
+maxs = [3.6, 3.2, 9.0]
+material = "Wall"
+
+[[solid]]
+mins = [-3.6, 3.0, 8.8]
+maxs = [3.6, 3.2, 14.5]
+material = "Ceiling"
+
+[[solid]]
+mins = [-3.6, 0.0, 14.3]
+maxs = [3.6, 3.2, 14.5]
+material = "Wall"
+
+[[solid]]
+mins = [-3.6, 0.0, 8.8]
+maxs = [-3.4, 3.2, 14.5]
+material = "Wall"
+
+[[solid]]
+mins = [3.4, 0.0, 8.8]
+maxs = [3.6, 3.2, 14.5]
+material = "Wall"
+
+[[solid]]
+mins = [-0.25, 0.0, 11.2]
+maxs = [0.25, 2.4, 11.7]
+material = "Pillar"
 
 [[entity]]
 classname = "player_spawn"
-origin = [0.0, 1.0, 0.0]
-
-[[solid]]
-mins = [-2.0, 0.0, 4.0]
-maxs = [2.0, 0.2, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-2.0, 2.8, 4.0]
-maxs = [2.0, 3.0, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-2.0, 0.0, 10.0]
-maxs = [2.0, 3.0, 10.2]
-material = "Concrete"
-
-[[solid]]
-mins = [-2.0, 0.0, 4.0]
-maxs = [-1.8, 3.0, 10.2]
-material = "Concrete"
-
-[[solid]]
-mins = [1.8, 0.0, 4.0]
-maxs = [2.0, 3.0, 10.2]
-material = "Concrete"
+origin = [0.0, 0.21, 0.0]
 
 [[entity]]
-classname = "dev_door"
-origin = [0.0, 0.0, 3.7]
+classname = "gameplay_entity"
+kind = "door"
+origin = [0.0, 0.0, 4.1]
+targetname = "airlock_main"
+width = "2.2"
+height = "2.7"
+thickness = "0.18"
+move_speed = "2.8"
+move_offset_x = "2.4"
+move_offset_y = "0.0"
+move_offset_z = "0.0"
 
 [[entity]]
-classname = "dev_use"
-origin = [0.0, 2.2, 1.5]
+classname = "gameplay_entity"
+kind = "panel"
+origin = [-2.25, 1.35, 3.94]
+target = "airlock_main"
+label = "Open airlock"
+width = "0.34"
+height = "0.52"
+depth = "0.12"
+use_radius = "1.85"
 
 [[entity]]
-classname = "dev_trigger"
-origin = [0.0, 0.0, 6.5]
+classname = "gameplay_entity"
+kind = "trigger"
+origin = [0.0, 0.0, 10.4]
+target = "airlock_main"
+once = "true"
+width = "2.8"
+height = "2.6"
+depth = "1.6"
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+origin = [2.25, 1.35, 9.06]
+target = "airlock_main"
+label = "Return to airlock"
+width = "0.34"
+height = "0.52"
+depth = "0.12"
+use_radius = "1.85"
