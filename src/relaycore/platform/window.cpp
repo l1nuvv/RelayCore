@@ -113,6 +113,25 @@ namespace RelayCore
 
     auto Window::vsync_enabled() const -> bool { return swap_interval() != 0; }
 
+    auto Window::set_swap_interval(int interval) -> bool
+    {
+        if (SDL_GL_SetSwapInterval(interval)) { return true; }
+
+        log::warn("SDL_GL_SetSwapInterval({}) failed: {}", interval, SDL_GetError());
+        return false;
+    }
+
+    auto Window::toggle_vsync() -> bool
+    {
+        const int current = swap_interval();
+        const int next    = (current == 0) ? 1 : 0;
+
+        if (!set_swap_interval(next)) { return false; }
+
+        log::info("VSync: {}", next == 0 ? "off" : "on");
+        return true;
+    }
+
     void Window::set_relative_mouse_mode(const bool enabled) const
     {
         core::require_sdl(SDL_SetWindowRelativeMouseMode(window_, enabled), "Failed to set relative mouse mode");

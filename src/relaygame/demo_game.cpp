@@ -15,7 +15,7 @@ namespace RelayGame
 {
     void DemoGame::on_startup(RelayCore::EngineServices& services)
     {
-        const auto level_path = RelayCore::core::asset_path("levels/test_room.toml");
+        const auto level_path = RelayCore::core::asset_path("levels/stress_room_01.toml");
         level_                = RelayCore::load_blockout_level(level_path);
         blockout_mesh_.initialize(RelayCore::render::build_blockout_mesh(level_));
 

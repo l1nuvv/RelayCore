@@ -95,6 +95,10 @@ namespace RelayCore
     void Renderer::draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system)
     {
         if (!imgui_overlay_.enabled()) { return; }
+
+        imgui_overlay_.update_diagnostics(frame);
+
+        if (!imgui_overlay_.diagnostics_visible()) { return; }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
@@ -112,4 +116,13 @@ namespace RelayCore
     auto Renderer::camera() noexcept -> render::PerspectiveCamera& { return camera_; }
 
     auto Renderer::camera() const noexcept -> const render::PerspectiveCamera& { return camera_; }
+
+    auto Renderer::diagnostics_visible() const noexcept -> bool { return imgui_overlay_.diagnostics_visible(); }
+
+    void Renderer::set_diagnostics_visible(const bool visible) noexcept
+    {
+        imgui_overlay_.set_diagnostics_visible(visible);
+    }
+
+    void Renderer::toggle_diagnostics_visible() noexcept { imgui_overlay_.toggle_diagnostics_visible(); }
 } // namespace RelayCore

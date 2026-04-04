@@ -113,42 +113,18 @@ namespace RelayCore::debug
         const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
     )
     {
-        if (!initialized_) { return; }
+        (void) frame;
 
-        ImGuiIO& io = ImGui::GetIO();
+        if (!initialized_ || !diagnostics_visible_) { return; }
 
-        const float frame_time_ms = static_cast<float>(frame.delta_seconds * 1000.0);
-        push_frame_time_sample(frame_time_ms);
-
-        const float avg_frame_time_ms = average_frame_time_ms();
-        const float fps               = io.Framerate;
-        const float avg_fps           = avg_frame_time_ms > 0.0F ? (1000.0F / avg_frame_time_ms) : 0.0F;
-        const float refresh_rate_hz   = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
-        const int   swap_interval     = window_ != nullptr ? window_->swap_interval() : 0;
-
-        if (config_.log_fps_to_console)
-        {
-            fps_log_accumulator_ += io.DeltaTime;
-
-            const float interval = config_.fps_log_interval_seconds > 0.1F ? config_.fps_log_interval_seconds : 0.1F;
-
-            if (fps_log_accumulator_ >= interval)
-            {
-                fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
-                log::info(
-                    "FPS: {:.1f} | Frame time: {:.3f} ms | Frame time avg: {:.3f} ms",
-                    fps,
-                    frame_time_ms,
-                    avg_frame_time_ms
-                );
-            }
-        }
+        const float refresh_rate_hz = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
+        const int   swap_interval   = window_ != nullptr ? window_->swap_interval() : 0;
 
         ImGui::Begin("RelayCore Diagnostics");
-        ImGui::Text("Frame time: %.3f ms", frame_time_ms);
-        ImGui::Text("Frame time avg (%zu): %.3f ms", frame_time_sample_count_, avg_frame_time_ms);
-        ImGui::Text("FPS: %.1f", fps);
-        ImGui::Text("FPS avg: %.1f", avg_fps);
+        ImGui::Text("Frame time: %.3f ms", frame_time_ms_);
+        ImGui::Text("Frame time avg (%zu): %.3f ms", frame_time_sample_count_, avg_frame_time_ms_);
+        ImGui::Text("FPS: %.1f", fps_);
+        ImGui::Text("FPS avg: %.1f", avg_fps_);
 
         if (refresh_rate_hz > 0.0F)
         {
@@ -189,4 +165,37 @@ namespace RelayCore::debug
     auto ImGuiOverlay::is_initialized() const noexcept -> bool { return initialized_; }
 
     auto ImGuiOverlay::enabled() const noexcept -> bool { return config_.enabled; }
+
+    auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool { return diagnostics_visible_; }
+
+    void ImGuiOverlay::set_diagnostics_visible(bool visible) noexcept { diagnostics_visible_ = visible; }
+
+    void ImGuiOverlay::toggle_diagnostics_visible() noexcept { diagnostics_visible_ = !diagnostics_visible_; }
+
+    void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept
+    {
+        frame_time_ms_ = static_cast<float>(frame.delta_seconds) * 1000.0;
+        push_frame_time_sample(frame_time_ms_);
+
+        avg_frame_time_ms_ = average_frame_time_ms();
+        fps_               = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0;
+        avg_fps_           = avg_frame_time_ms_ > 0.0F ? (1000.0F / avg_frame_time_ms_) : 0.0F;
+
+        if (config_.log_fps_to_console)
+        {
+            fps_log_accumulator_ += static_cast<float>(frame.delta_seconds);
+
+            const float interval = config_.fps_log_interval_seconds > 0.1F ? config_.fps_log_interval_seconds : 0.1F;
+            if (fps_log_accumulator_ >= interval)
+            {
+                fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
+                log::info(
+                    "FPS: {:.1f} | Frame time: {:.3f} ms | Frame time avg: {:.3f} ms",
+                    fps_,
+                    frame_time_ms_,
+                    avg_frame_time_ms_
+                );
+            }
+        }
+    }
 } // namespace RelayCore::debug

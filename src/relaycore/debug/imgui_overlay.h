@@ -59,6 +59,14 @@ namespace RelayCore::debug
 
         [[nodiscard]] auto enabled() const noexcept -> bool;
 
+        [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
+
+        void set_diagnostics_visible(bool visible) noexcept;
+
+        void toggle_diagnostics_visible() noexcept;
+
+        void update_diagnostics(const FrameInfo& frame) noexcept;
+
     private:
         static constexpr std::size_t kFrameTimeSampleCount = 120;
 
@@ -75,5 +83,10 @@ namespace RelayCore::debug
         std::array<float, kFrameTimeSampleCount> frame_time_samples_{};
         std::size_t                              frame_time_sample_count_  = 0;
         std::size_t                              frame_time_sample_cursor_ = 0;
+        bool                                     diagnostics_visible_      = true;
+        float                                    frame_time_ms_            = 0.0F;
+        float                                    avg_frame_time_ms_        = 0.0F;
+        float                                    fps_                      = 0.0F;
+        float                                    avg_fps_                  = 0.0F;
     };
 } // namespace RelayCore::debug

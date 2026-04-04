@@ -103,6 +103,11 @@ namespace RelayCore
          */
         [[nodiscard]] auto vsync_enabled() const -> bool;
 
+        [[nodiscard]] auto set_swap_interval(int interval) -> bool;
+
+        [[nodiscard]] auto toggle_vsync() -> bool;
+
+
         /**
          * @brief Enables or disables relative mouse mode for the window.
          * @param enabled Desired relative mouse mode state.

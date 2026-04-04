@@ -114,7 +114,8 @@ namespace RelayGame
                 if (delta > 0.0F)
                 {
                     result.position_axis = std::min(result.position_axis, solid_aabb.mins[axis] - player_max_offset);
-                } else if (delta < 0.0F) {
+                } else if (delta < 0.0F)
+                {
                     result.position_axis = std::max(result.position_axis, solid_aabb.maxs[axis] - player_min_offset);
                 }
 
@@ -152,25 +153,34 @@ namespace RelayGame
         switch (event.type)
         {
             case SDL_EVENT_MOUSE_MOTION:
+            {
                 if (window.relative_mouse_mode())
                 {
                     pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
                 }
                 break;
+            }
 
             case SDL_EVENT_KEY_DOWN:
+            {
                 if (event.key.repeat) { break; }
 
                 if (event.key.scancode == SDL_SCANCODE_ESCAPE)
                 {
                     services.request_quit();
-                } else if (event.key.scancode == SDL_SCANCODE_F1) {
+                } else if (event.key.scancode == SDL_SCANCODE_F1)
+                {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
                     RelayCore::log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");
+                } else if (event.key.scancode == SDL_SCANCODE_V)
+                {
+                    window.toggle_vsync();
                 }
+
                 break;
+            }
 
             default: break;
         }
@@ -244,7 +254,8 @@ namespace RelayGame
         {
             velocity_.y = 0.0F;
             grounded_   = moving_down;
-        } else {
+        } else
+        {
             grounded_ = false;
         }
     }
