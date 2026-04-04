@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
@@ -52,12 +53,12 @@ namespace RelayGame
             };
 
             ViewFrustum frustum{};
-            frustum.planes[0] = normalize_plane(row3 + row0); // left
-            frustum.planes[1] = normalize_plane(row3 - row0); // right
-            frustum.planes[2] = normalize_plane(row3 + row1); // bottom
-            frustum.planes[3] = normalize_plane(row3 - row1); // top
-            frustum.planes[4] = normalize_plane(row3 + row2); // near
-            frustum.planes[5] = normalize_plane(row3 - row2); // far
+            frustum.planes[0] = normalize_plane(row3 + row0);
+            frustum.planes[1] = normalize_plane(row3 - row0);
+            frustum.planes[2] = normalize_plane(row3 + row1);
+            frustum.planes[3] = normalize_plane(row3 - row1);
+            frustum.planes[4] = normalize_plane(row3 + row2);
+            frustum.planes[5] = normalize_plane(row3 - row2);
             return frustum;
         }
 
@@ -142,8 +143,23 @@ namespace RelayGame
     void DemoGame::on_update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_update");
+
         player_controller_.update(frame, level_);
         player_controller_.apply_camera(services.camera());
+        {
+            RELAYCORE_PROFILE_ZONE_N("DemoGame::player_diagnostics_publish");
+            RelayCore::render::PlayerDiagnostics player_diagnostics{};
+            player_diagnostics.position = player_controller_.position();
+            player_diagnostics.velocity = player_controller_.velocity();
+            player_diagnostics.grounded = player_controller_.grounded();
+            player_diagnostics.collision_enabled =
+                (player_controller_.movement_mode() != RelayGame::MovementMode::Noclip);
+            player_diagnostics.movement_mode = static_cast<std::uint32_t>(player_controller_.movement_mode());
+
+            const auto& velocity     = player_diagnostics.velocity;
+            player_diagnostics.speed = std::sqrt((velocity.x * velocity.x) + (velocity.z * velocity.z));
+            services.renderer().set_player_diagnostics(player_diagnostics);
+        }
     }
 
     void DemoGame::on_render(const RelayCore::FrameInfo& /*frame*/, RelayCore::EngineServices& services)

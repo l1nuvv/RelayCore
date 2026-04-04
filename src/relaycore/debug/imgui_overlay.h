@@ -54,7 +54,8 @@ namespace RelayCore::debug
             const FrameInfo&                 frame,
             const render::PerspectiveCamera& camera,
             const AudioSystem&               audio_system,
-            const render::WorldDiagnostics&  world
+            const render::WorldDiagnostics&  world,
+            const render::PlayerDiagnostics& player
         );
 
         void render() const;

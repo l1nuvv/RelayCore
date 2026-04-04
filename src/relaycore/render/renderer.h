@@ -40,6 +40,10 @@ namespace RelayCore
 
         [[nodiscard]] auto world_diagnostics() const noexcept -> const render::WorldDiagnostics&;
 
+        void set_player_diagnostics(const render::PlayerDiagnostics& diagnostics) noexcept;
+
+        [[nodiscard]] auto player_diagnostics() const noexcept -> const render::PlayerDiagnostics&;
+
         [[nodiscard]] auto camera() noexcept -> render::PerspectiveCamera&;
 
         [[nodiscard]] auto camera() const noexcept -> const render::PerspectiveCamera&;
@@ -60,5 +64,6 @@ namespace RelayCore
         render::ColorCubeMesh     cube_mesh_{};
         debug::ImGuiOverlay       imgui_overlay_{};
         render::WorldDiagnostics  world_diagnostics_{};
+        render::PlayerDiagnostics player_diagnostics_{};
     };
 } // namespace RelayCore

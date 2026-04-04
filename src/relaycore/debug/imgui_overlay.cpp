@@ -18,6 +18,20 @@
 
 namespace RelayCore::debug
 {
+    namespace
+    {
+        [[nodiscard]] auto movement_mode_label(const std::uint32_t movement_mode) -> const char*
+        {
+            switch (movement_mode)
+            {
+                case 0: return "grounded";
+                case 1: return "air";
+                case 2: return "noclip";
+                default: return "unknown";
+            }
+        }
+    } // namespace
+
     ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
 
     ImGuiOverlay::~ImGuiOverlay() noexcept { shutdown(); }
@@ -113,7 +127,8 @@ namespace RelayCore::debug
         const FrameInfo&                 frame,
         const render::PerspectiveCamera& camera,
         const AudioSystem&               audio_system,
-        const render::WorldDiagnostics&  world
+        const render::WorldDiagnostics&  world,
+        const render::PlayerDiagnostics& player
     )
     {
         (void) frame;
@@ -123,7 +138,13 @@ namespace RelayCore::debug
         const float refresh_rate_hz = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
         const int   swap_interval   = window_ != nullptr ? window_->swap_interval() : 0;
 
-        ImGui::Begin("RelayCore Diagnostics");
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 12.0F, viewport->WorkPos.y + 12.0F), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.92F);
+
+        constexpr ImGuiWindowFlags kWindowFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::Begin("RelayCore Diagnostics", nullptr, kWindowFlags);
         ImGui::Text("Frame time: %.3f ms", frame_time_ms_);
         ImGui::Text("Frame time avg (%zu): %.3f ms", frame_time_sample_count_, avg_frame_time_ms_);
         ImGui::Text("FPS: %.1f", fps_);
@@ -148,6 +169,14 @@ namespace RelayCore::debug
         ImGui::Text("Solids: %u visible / %u total", world.visible_solids, world.total_solids);
         ImGui::Text("Draw calls: %u", world.draw_calls);
         ImGui::Text("Triangles: %u", world.triangles);
+
+        ImGui::SeparatorText("Player");
+        ImGui::Text("Position: %.2f %.2f %.2f", player.position.x, player.position.y, player.position.z);
+        ImGui::Text("Velocity: %.2f %.2f %.2f", player.velocity.x, player.velocity.y, player.velocity.z);
+        ImGui::Text("Speed: %.2f", player.speed);
+        ImGui::Text("Grounded: %s", player.grounded ? "yes" : "no");
+        ImGui::Text("Mode: %s", movement_mode_label(player.movement_mode));
+        ImGui::Text("Collision: %s", player.collision_enabled ? "on" : "off");
 
         ImGui::SeparatorText("Audio");
         ImGui::Text("Initialized: %s", audio_system.is_initialized() ? "yes" : "no");
@@ -182,11 +211,11 @@ namespace RelayCore::debug
 
     void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept
     {
-        frame_time_ms_ = static_cast<float>(frame.delta_seconds) * 1000.0;
+        frame_time_ms_ = static_cast<float>(frame.delta_seconds) * 1000.0F;
         push_frame_time_sample(frame_time_ms_);
 
         avg_frame_time_ms_ = average_frame_time_ms();
-        fps_               = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0;
+        fps_               = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0F;
         avg_fps_           = avg_frame_time_ms_ > 0.0F ? (1000.0F / avg_frame_time_ms_) : 0.0F;
 
         if (config_.log_fps_to_console)
