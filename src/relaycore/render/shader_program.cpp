@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "relaycore/core/profiling.h"
+
 namespace RelayCore::render
 {
     namespace
@@ -122,10 +124,15 @@ namespace RelayCore::render
         uniform_location_cache_.clear();
     }
 
-    void ShaderProgram::bind() const { glUseProgram(program_id_); }
+    void ShaderProgram::bind() const
+    {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::bind");
+        glUseProgram(program_id_);
+    }
 
     void ShaderProgram::set_mat4(const int location, const glm::mat4& value) const
     {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_mat4");
         if (location >= 0) { glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value)); }
     }
 

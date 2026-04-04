@@ -62,8 +62,14 @@ namespace RelayCore
     void Renderer::begin_frame()
     {
         RELAYCORE_PROFILE_ZONE_N("Renderer::begin_frame");
-        glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        {
+            RELAYCORE_PROFILE_ZONE_N("glClearColor");
+            glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
+        }
+        {
+            RELAYCORE_PROFILE_ZONE_N("glClear");
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
     }
 
     void Renderer::draw_color_cube(const glm::mat4& model_matrix)

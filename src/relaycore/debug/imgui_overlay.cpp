@@ -12,6 +12,7 @@
 
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/camera.h"
 
@@ -36,8 +37,12 @@ namespace RelayCore::debug
         ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context());
         ImGui_ImplOpenGL3_Init("#version 460 core");
 
-        fps_log_accumulator_ = 0.0F;
-        initialized_         = true;
+        window_                   = &window;
+        fps_log_accumulator_      = 0.0F;
+        frame_time_sample_count_  = 0;
+        frame_time_sample_cursor_ = 0;
+        frame_time_samples_.fill(0.0F);
+        initialized_ = true;
 
         log::info("ImGui overlay initialized");
     }
@@ -50,8 +55,12 @@ namespace RelayCore::debug
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
 
-        fps_log_accumulator_ = 0.0F;
-        initialized_         = false;
+        window_                   = nullptr;
+        fps_log_accumulator_      = 0.0F;
+        frame_time_sample_count_  = 0;
+        frame_time_sample_cursor_ = 0;
+        frame_time_samples_.fill(0.0F);
+        initialized_ = false;
     }
 
     void ImGuiOverlay::process_event(const SDL_Event& event)
@@ -69,6 +78,37 @@ namespace RelayCore::debug
         ImGui::NewFrame();
     }
 
+    void ImGuiOverlay::push_frame_time_sample(const float frame_time_ms) noexcept
+    {
+        frame_time_samples_[frame_time_sample_cursor_] = frame_time_ms;
+        frame_time_sample_cursor_                      = (frame_time_sample_cursor_ + 1) % frame_time_samples_.size();
+
+        if (frame_time_sample_count_ < frame_time_samples_.size()) { ++frame_time_sample_count_; }
+    }
+
+    auto ImGuiOverlay::average_frame_time_ms() const noexcept -> float
+    {
+        if (frame_time_sample_count_ == 0) { return 0.0F; }
+
+        float sum = 0.0F;
+        for (std::size_t i = 0; i < frame_time_sample_count_; ++i)
+        {
+            sum += frame_time_samples_[i];
+        }
+
+        return sum / static_cast<float>(frame_time_sample_count_);
+    }
+
+    auto ImGuiOverlay::vsync_label(const int swap_interval) -> const char*
+    {
+        switch (swap_interval)
+        {
+            case -1: return "adaptive";
+            case 1: return "on";
+            default: return "off";
+        }
+    }
+
     void ImGuiOverlay::draw_diagnostics(
         const FrameInfo& frame, const render::PerspectiveCamera& camera, const AudioSystem& audio_system
     )
@@ -77,8 +117,14 @@ namespace RelayCore::debug
 
         ImGuiIO& io = ImGui::GetIO();
 
-        const float fps           = io.Framerate;
-        const float frame_time_ms = fps > 0.0F ? (1000.0F / fps) : static_cast<float>(frame.delta_seconds * 1000.0);
+        const float frame_time_ms = static_cast<float>(frame.delta_seconds * 1000.0);
+        push_frame_time_sample(frame_time_ms);
+
+        const float avg_frame_time_ms = average_frame_time_ms();
+        const float fps               = io.Framerate;
+        const float avg_fps           = avg_frame_time_ms > 0.0F ? (1000.0F / avg_frame_time_ms) : 0.0F;
+        const float refresh_rate_hz   = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
+        const int   swap_interval     = window_ != nullptr ? window_->swap_interval() : 0;
 
         if (config_.log_fps_to_console)
         {
@@ -89,13 +135,30 @@ namespace RelayCore::debug
             if (fps_log_accumulator_ >= interval)
             {
                 fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
-                log::info("FPS: {:.1f} | Frame time: {:.3f} ms", fps, frame_time_ms);
+                log::info(
+                    "FPS: {:.1f} | Frame time: {:.3f} ms | Frame time avg: {:.3f} ms",
+                    fps,
+                    frame_time_ms,
+                    avg_frame_time_ms
+                );
             }
         }
 
         ImGui::Begin("RelayCore Diagnostics");
         ImGui::Text("Frame time: %.3f ms", frame_time_ms);
+        ImGui::Text("Frame time avg (%zu): %.3f ms", frame_time_sample_count_, avg_frame_time_ms);
         ImGui::Text("FPS: %.1f", fps);
+        ImGui::Text("FPS avg: %.1f", avg_fps);
+
+        if (refresh_rate_hz > 0.0F)
+        {
+            ImGui::Text("Refresh rate: %.1f Hz", refresh_rate_hz);
+        } else
+        {
+            ImGui::TextUnformatted("Refresh rate: unknown");
+        }
+
+        ImGui::Text("VSync: %s (%d)", vsync_label(swap_interval), swap_interval);
 
         const auto& position = camera.position();
         ImGui::SeparatorText("Camera");
@@ -113,9 +176,14 @@ namespace RelayCore::debug
     void ImGuiOverlay::render() const
     {
         if (!initialized_) { return; }
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        {
+            RELAYCORE_PROFILE_ZONE_N("ImGui::Render");
+            ImGui::Render();
+        }
+        {
+            RELAYCORE_PROFILE_ZONE_N("ImGui_ImplOpenGL3_RenderDrawData");
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
     }
 
     auto ImGuiOverlay::is_initialized() const noexcept -> bool { return initialized_; }

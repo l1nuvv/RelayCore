@@ -6,6 +6,8 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <array>
+#include <cstddef>
 
 #include "relaycore/app/frame_timer.h"
 
@@ -58,8 +60,20 @@ namespace RelayCore::debug
         [[nodiscard]] auto enabled() const noexcept -> bool;
 
     private:
-        ImGuiOverlayConfig config_{};
-        bool               initialized_         = false;
-        float              fps_log_accumulator_ = 0.0F;
+        static constexpr std::size_t kFrameTimeSampleCount = 120;
+
+        void push_frame_time_sample(float frame_time_ms) noexcept;
+
+        [[nodiscard]] auto average_frame_time_ms() const noexcept -> float;
+
+        [[nodiscard]] static auto vsync_label(int swap_interval) -> const char*;
+
+        ImGuiOverlayConfig                       config_{};
+        const Window*                            window_              = nullptr;
+        bool                                     initialized_         = false;
+        float                                    fps_log_accumulator_ = 0.0F;
+        std::array<float, kFrameTimeSampleCount> frame_time_samples_{};
+        std::size_t                              frame_time_sample_count_  = 0;
+        std::size_t                              frame_time_sample_cursor_ = 0;
     };
 } // namespace RelayCore::debug

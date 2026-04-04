@@ -6,6 +6,7 @@
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/render/blockout_mesh_builder.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_loader.h"
@@ -42,12 +43,14 @@ namespace RelayGame
 
     void DemoGame::on_update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::on_update");
         player_controller_.update(frame, level_);
         player_controller_.apply_camera(services.camera());
     }
 
     void DemoGame::on_render(const RelayCore::FrameInfo& /*frame*/, RelayCore::EngineServices& services)
     {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::on_render");
         services.renderer().draw_color_mesh(blockout_mesh_, glm::mat4{1.0F});
     }
 
