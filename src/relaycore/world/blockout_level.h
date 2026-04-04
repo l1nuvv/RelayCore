@@ -21,7 +21,22 @@ namespace RelayCore
         Metal,    ///< Metal surface.
         Tile,     ///< Tile or ceramic surface.
         Glass,    ///< Glass surface.
-        Hazard    ///< Hazard-marked surface.
+        Hazard,   ///< Hazard-marked surface.
+
+        Floor,
+        Ceiling,
+        Wall,
+        Corridor,
+        Platform,
+        PlatformTop,
+        PlatformTop2,
+        Pillar,
+        Cover,
+        Block,
+        Beam,
+        Divider,
+        Crate,
+        Post,
     };
 
     /**

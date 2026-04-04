@@ -54,7 +54,7 @@ namespace RelayCore
 
             glm::vec3 result{};
 
-            for (std::size_t i = 0; i < 3; ++i)
+            for (glm::length_t i = 0; i < 3; ++i)
             {
                 const auto value = (*array)[i].value<double>();
                 if (!value.has_value())
@@ -75,11 +75,28 @@ namespace RelayCore
          */
         [[nodiscard]] SurfaceMaterial parse_surface_material(std::string_view value)
         {
+            // Generic names
             if (value == "Concrete") return SurfaceMaterial::Concrete;
             if (value == "Metal") return SurfaceMaterial::Metal;
             if (value == "Tile") return SurfaceMaterial::Tile;
             if (value == "Glass") return SurfaceMaterial::Glass;
             if (value == "Hazard") return SurfaceMaterial::Hazard;
+
+            // Dev-material aliases used by blockout TOML
+            if (value == "dev/floor") return SurfaceMaterial::Floor;
+            if (value == "dev/ceiling") return SurfaceMaterial::Ceiling;
+            if (value == "dev/wall") return SurfaceMaterial::Wall;
+            if (value == "dev/corridor") return SurfaceMaterial::Corridor;
+            if (value == "dev/platform") return SurfaceMaterial::Platform;
+            if (value == "dev/platform_top") return SurfaceMaterial::PlatformTop;
+            if (value == "dev/platform_top2") return SurfaceMaterial::PlatformTop2;
+            if (value == "dev/pillar") return SurfaceMaterial::Pillar;
+            if (value == "dev/cover") return SurfaceMaterial::Cover;
+            if (value == "dev/block") return SurfaceMaterial::Block;
+            if (value == "dev/beam") return SurfaceMaterial::Beam;
+            if (value == "dev/divider") return SurfaceMaterial::Divider;
+            if (value == "dev/crate") return SurfaceMaterial::Crate;
+            if (value == "dev/post") return SurfaceMaterial::Post;
 
             throw std::runtime_error("Unknown surface material: " + std::string(value));
         }

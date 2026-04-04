@@ -36,6 +36,23 @@ namespace RelayCore::render
                 case SurfaceMaterial::Tile: return {0.73F, 0.76F, 0.78F};
                 case SurfaceMaterial::Glass: return {0.45F, 0.72F, 0.84F};
                 case SurfaceMaterial::Hazard: return {0.92F, 0.78F, 0.18F};
+
+                case SurfaceMaterial::Floor: return {0.36F, 0.36F, 0.38F};
+                case SurfaceMaterial::Ceiling: return {0.30F, 0.31F, 0.33F};
+                case SurfaceMaterial::Wall: return {0.56F, 0.58F, 0.62F};
+                case SurfaceMaterial::Corridor: return {0.42F, 0.46F, 0.52F};
+
+                case SurfaceMaterial::Platform: return {0.52F, 0.52F, 0.58F};
+                case SurfaceMaterial::PlatformTop: return {0.78F, 0.72F, 0.30F};
+                case SurfaceMaterial::PlatformTop2: return {0.92F, 0.52F, 0.22F};
+
+                case SurfaceMaterial::Pillar: return {0.50F, 0.54F, 0.58F};
+                case SurfaceMaterial::Cover: return {0.28F, 0.44F, 0.34F};
+                case SurfaceMaterial::Block: return {0.58F, 0.48F, 0.36F};
+                case SurfaceMaterial::Beam: return {0.67F, 0.42F, 0.18F};
+                case SurfaceMaterial::Divider: return {0.32F, 0.76F, 0.88F};
+                case SurfaceMaterial::Crate: return {0.55F, 0.39F, 0.22F};
+                case SurfaceMaterial::Post: return {0.82F, 0.82F, 0.86F};
             }
 
             return {1.0F, 0.0F, 1.0F};
