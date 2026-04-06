@@ -8,8 +8,10 @@
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
 #include "relaycore/render/shader_program.h"
+#include "relaycore/render/texture2d.h"
 
 #include <SDL3/SDL.h>
+#include <vector>
 
 namespace RelayCore
 {
@@ -32,6 +34,10 @@ namespace RelayCore
         void begin_frame();
 
         void draw_render_queue(std::span<const render::RenderItem> items);
+
+        void set_local_lights(std::span<const render::LocalLight> lights);
+
+        void set_scene_time(float seconds) noexcept;
 
         void draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system);
 
@@ -68,5 +74,8 @@ namespace RelayCore
         render::WorldDiagnostics world_diagnostics_{};
         render::PlayerDiagnostics player_diagnostics_{};
         render::InteractionDiagnostics interaction_diagnostics_{};
+        std::vector<render::LocalLight> local_lights_{};
+        render::Texture2D blockout_atlas_{};
+        float scene_time_seconds_ = 0.0F;
     };
 } // namespace RelayCore

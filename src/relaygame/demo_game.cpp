@@ -42,9 +42,10 @@ namespace RelayGame
         runtime_.publish_diagnostics(services.renderer());
     }
 
-    void DemoGame::on_render(const RelayCore::FrameInfo& /*frame*/, RelayCore::EngineServices& services)
+    void DemoGame::on_render(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_render");
+        services.renderer().set_scene_time(static_cast<float>(frame.elapsed_seconds));
         world_scene_.render(
             services.renderer(),
             services.camera(),
@@ -55,8 +56,9 @@ namespace RelayGame
         services.renderer().set_world_diagnostics(world_scene_.diagnostics());
     }
 
-    void DemoGame::on_shutdown(RelayCore::EngineServices& /*services*/) noexcept
+    void DemoGame::on_shutdown(RelayCore::EngineServices& services) noexcept
     {
+        runtime_.shutdown(services);
         world_scene_.shutdown();
         RelayCore::log::info("DemoGame shutdown");
     }

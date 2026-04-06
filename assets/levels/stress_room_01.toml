@@ -1,687 +1,316 @@
-# RelayCore stress profiling level
-# solids = 136
+# RelayCore stress_room_01
+# Coolant exchange hub: medium indoor stress arena with a readable reactor-centered cross layout.
 
+# Outer shell
 [[solid]]
 mins = [-24.0, 0.0, -24.0]
 maxs = [24.0, 0.2, 24.0]
 material = "Concrete"
 
 [[solid]]
-mins = [-24.0, 6.8, -24.0]
-maxs = [24.0, 7.0, 24.0]
-material = "Concrete"
+mins = [-24.0, 7.0, -24.0]
+maxs = [24.0, 7.2, 24.0]
+material = "Ceiling"
+
+[[solid_group]]
+material = "Wall"
+boxes = [
+  { mins = [-24.0, 0.0, -24.0], maxs = [-23.8, 7.2, 24.0] },
+  { mins = [23.8, 0.0, -24.0], maxs = [24.0, 7.2, 24.0] },
+  { mins = [-24.0, 0.0, -24.0], maxs = [24.0, 7.2, -23.8] },
+  { mins = [-24.0, 0.0, 23.8], maxs = [24.0, 7.2, 24.0] },
+]
+
+# Cross separators
+[[solid_group]]
+material = "Wall"
+boxes = [
+  { mins = [-3.2, 0.0, -24.0], maxs = [-2.8, 6.8, -6.0] },
+  { mins = [-3.2, 0.0, 6.0], maxs = [-2.8, 6.8, 24.0] },
+  { mins = [2.8, 0.0, -24.0], maxs = [3.2, 6.8, -6.0] },
+  { mins = [2.8, 0.0, 6.0], maxs = [3.2, 6.8, 24.0] },
+  { mins = [-24.0, 0.0, -3.2], maxs = [-6.0, 6.8, -2.8] },
+  { mins = [6.0, 0.0, -3.2], maxs = [24.0, 6.8, -2.8] },
+  { mins = [-24.0, 0.0, 2.8], maxs = [-6.0, 6.8, 3.2] },
+  { mins = [6.0, 0.0, 2.8], maxs = [24.0, 6.8, 3.2] },
+]
+
+# Bulkhead beams around the reactor cross
+[[solid]]
+mins = [-3.2, 4.8, -6.4]
+maxs = [3.2, 5.4, -5.8]
+material = "Beam"
 
 [[solid]]
-mins = [-24.0, 0.0, -24.0]
-maxs = [-23.5, 7.0, 24.0]
-material = "Concrete"
+mins = [-3.2, 4.8, 5.8]
+maxs = [3.2, 5.4, 6.4]
+material = "Beam"
 
 [[solid]]
-mins = [23.5, 0.0, -24.0]
-maxs = [24.0, 7.0, 24.0]
-material = "Concrete"
+mins = [-6.4, 4.8, -3.2]
+maxs = [-5.8, 5.4, 3.2]
+material = "Beam"
 
 [[solid]]
-mins = [-24.0, 0.0, -24.0]
-maxs = [24.0, 7.0, -23.5]
-material = "Concrete"
+mins = [5.8, 4.8, -3.2]
+maxs = [6.4, 5.4, 3.2]
+material = "Beam"
+
+# Central reactor island
+[[solid]]
+mins = [-5.0, 0.0, -5.0]
+maxs = [5.0, 0.6, 5.0]
+material = "Platform"
+tint = [0.80, 0.94, 1.08]
+brightness = 1.08
 
 [[solid]]
-mins = [-24.0, 0.0, 23.5]
-maxs = [24.0, 7.0, 24.0]
-material = "Concrete"
+mins = [-3.8, 0.6, -3.8]
+maxs = [3.8, 1.2, 3.8]
+material = "PlatformTop"
+tint = [1.04, 0.90, 0.72]
+brightness = 1.08
 
 [[solid]]
-mins = [-10.0, 0.0, -24.0]
-maxs = [-9.5, 7.0, -6.0]
-material = "Concrete"
+mins = [-1.2, 0.0, -1.2]
+maxs = [1.2, 4.8, 1.2]
+material = "Pillar"
+tint = [0.80, 1.00, 1.16]
+brightness = 1.22
 
 [[solid]]
-mins = [-10.0, 0.0, -2.0]
-maxs = [-9.5, 7.0, 2.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-10.0, 0.0, 6.0]
-maxs = [-9.5, 7.0, 24.0]
-material = "Concrete"
-
-[[solid]]
-mins = [9.5, 0.0, -24.0]
-maxs = [10.0, 7.0, -6.0]
-material = "Concrete"
-
-[[solid]]
-mins = [9.5, 0.0, -2.0]
-maxs = [10.0, 7.0, 2.0]
-material = "Concrete"
-
-[[solid]]
-mins = [9.5, 0.0, 6.0]
-maxs = [10.0, 7.0, 24.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-24.0, 0.0, -10.0]
-maxs = [-6.0, 7.0, -9.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-2.0, 0.0, -10.0]
-maxs = [2.0, 7.0, -9.5]
-material = "Concrete"
-
-[[solid]]
-mins = [6.0, 0.0, -10.0]
-maxs = [24.0, 7.0, -9.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-24.0, 0.0, 9.5]
-maxs = [-6.0, 7.0, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-2.0, 0.0, 9.5]
-maxs = [2.0, 7.0, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [6.0, 0.0, 9.5]
-maxs = [24.0, 7.0, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-15.8, 0.0, -15.8]
-maxs = [-14.2, 5.5, -14.2]
-material = "Metal"
-
-[[solid]]
-mins = [-15.8, 0.0, -5.8]
-maxs = [-14.2, 5.5, -4.2]
-material = "Metal"
-
-[[solid]]
-mins = [-15.8, 0.0, 4.2]
-maxs = [-14.2, 5.5, 5.8]
-material = "Metal"
-
-[[solid]]
-mins = [-15.8, 0.0, 14.2]
-maxs = [-14.2, 5.5, 15.8]
-material = "Metal"
-
-[[solid]]
-mins = [-5.8, 0.0, -15.8]
-maxs = [-4.2, 5.5, -14.2]
-material = "Metal"
-
-[[solid]]
-mins = [-5.8, 0.0, -5.8]
-maxs = [-4.2, 5.5, -4.2]
-material = "Metal"
-
-[[solid]]
-mins = [-5.8, 0.0, 4.2]
-maxs = [-4.2, 5.5, 5.8]
-material = "Metal"
-
-[[solid]]
-mins = [-5.8, 0.0, 14.2]
-maxs = [-4.2, 5.5, 15.8]
-material = "Metal"
-
-[[solid]]
-mins = [4.2, 0.0, -15.8]
-maxs = [5.8, 5.5, -14.2]
-material = "Metal"
-
-[[solid]]
-mins = [4.2, 0.0, -5.8]
-maxs = [5.8, 5.5, -4.2]
-material = "Metal"
-
-[[solid]]
-mins = [4.2, 0.0, 4.2]
-maxs = [5.8, 5.5, 5.8]
-material = "Metal"
-
-[[solid]]
-mins = [4.2, 0.0, 14.2]
-maxs = [5.8, 5.5, 15.8]
-material = "Metal"
-
-[[solid]]
-mins = [14.2, 0.0, -15.8]
-maxs = [15.8, 5.5, -14.2]
-material = "Metal"
-
-[[solid]]
-mins = [14.2, 0.0, -5.8]
-maxs = [15.8, 5.5, -4.2]
-material = "Metal"
-
-[[solid]]
-mins = [14.2, 0.0, 4.2]
-maxs = [15.8, 5.5, 5.8]
-material = "Metal"
-
-[[solid]]
-mins = [14.2, 0.0, 14.2]
-maxs = [15.8, 5.5, 15.8]
-material = "Metal"
-
-[[solid]]
-mins = [-13.5, 0.0, -1.5]
-maxs = [-10.5, 1.6, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-7.5, 0.0, -1.5]
-maxs = [-4.5, 1.6, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [4.5, 0.0, -1.5]
-maxs = [7.5, 1.6, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [10.5, 0.0, -1.5]
-maxs = [13.5, 1.6, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -13.5]
-maxs = [1.5, 1.6, -10.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -7.5]
-maxs = [1.5, 1.6, -4.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 4.5]
-maxs = [1.5, 1.6, 7.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 10.5]
-maxs = [1.5, 1.6, 13.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-13.2, 0.0, -13.2]
-maxs = [-10.8, 2.0, -10.8]
-material = "Tile"
-
-[[solid]]
-mins = [-13.2, 0.0, 10.8]
-maxs = [-10.8, 2.0, 13.2]
-material = "Tile"
-
-[[solid]]
-mins = [10.8, 0.0, -13.2]
-maxs = [13.2, 2.0, -10.8]
-material = "Tile"
-
-[[solid]]
-mins = [10.8, 0.0, 10.8]
-maxs = [13.2, 2.0, 13.2]
-material = "Tile"
-
-[[solid]]
-mins = [-7.2, 0.0, -7.2]
-maxs = [-4.8, 2.0, -4.8]
-material = "Tile"
-
-[[solid]]
-mins = [-7.2, 0.0, 4.8]
-maxs = [-4.8, 2.0, 7.2]
-material = "Tile"
-
-[[solid]]
-mins = [4.8, 0.0, -7.2]
-maxs = [7.2, 2.0, -4.8]
-material = "Tile"
-
-[[solid]]
-mins = [4.8, 0.0, 4.8]
-maxs = [7.2, 2.0, 7.2]
-material = "Tile"
-
-[[solid]]
-mins = [-4.0, 0.0, -4.0]
-maxs = [4.0, 0.8, 4.0]
-material = "Metal"
-
-[[solid]]
-mins = [-3.0, 0.8, -3.0]
-maxs = [3.0, 1.6, 3.0]
-material = "Metal"
-
-[[solid]]
-mins = [-1.5, 0.0, -4.8]
-maxs = [1.5, 0.2, -4.0]
+mins = [-3.8, 0.0, -5.8]
+maxs = [3.8, 0.2, -5.0]
 material = "Hazard"
+brightness = 1.10
 
 [[solid]]
-mins = [-1.5, 0.0, 4.0]
-maxs = [1.5, 0.2, 4.8]
+mins = [-3.8, 0.0, 5.0]
+maxs = [3.8, 0.2, 5.8]
 material = "Hazard"
+brightness = 1.10
 
 [[solid]]
-mins = [-4.8, 0.0, -1.5]
-maxs = [-4.0, 0.2, 1.5]
+mins = [-5.8, 0.0, -3.8]
+maxs = [-5.0, 0.2, 3.8]
 material = "Hazard"
+brightness = 1.10
 
 [[solid]]
-mins = [4.0, 0.0, -1.5]
-maxs = [4.8, 0.2, 1.5]
+mins = [5.0, 0.0, -3.8]
+maxs = [5.8, 0.2, 3.8]
 material = "Hazard"
+brightness = 1.10
+
+[[solid_group]]
+material = "Post"
+size = [0.7, 4.2, 0.7]
+entries = [
+  { origin = [-5.75, 2.1, -5.75] },
+  { origin = [5.75, 2.1, -5.75] },
+  { origin = [-5.75, 2.1, 5.75] },
+  { origin = [5.75, 2.1, 5.75] },
+]
 
 [[solid]]
-mins = [-1.5, 0.0, -5.6]
-maxs = [1.5, 0.4, -4.8]
-material = "Hazard"
+mins = [-1.8, 0.0, -7.6]
+maxs = [1.8, 1.0, -6.3]
+material = "Cover"
 
 [[solid]]
-mins = [-1.5, 0.0, 4.8]
-maxs = [1.5, 0.4, 5.6]
-material = "Hazard"
+mins = [-1.8, 0.0, 6.3]
+maxs = [1.8, 1.0, 7.6]
+material = "Cover"
 
 [[solid]]
-mins = [-5.6, 0.0, -1.5]
-maxs = [-4.8, 0.4, 1.5]
-material = "Hazard"
+mins = [-7.6, 0.0, -1.8]
+maxs = [-6.3, 1.0, 1.8]
+material = "Cover"
 
 [[solid]]
-mins = [4.8, 0.0, -1.5]
-maxs = [5.6, 0.4, 1.5]
-material = "Hazard"
+mins = [6.3, 0.0, -1.8]
+maxs = [7.6, 1.0, 1.8]
+material = "Cover"
 
+# North-west coolant hall
 [[solid]]
-mins = [-1.5, 0.0, -6.4]
-maxs = [1.5, 0.6, -5.6]
-material = "Hazard"
-
-[[solid]]
-mins = [-1.5, 0.0, 5.6]
-maxs = [1.5, 0.6, 6.4]
-material = "Hazard"
-
-[[solid]]
-mins = [-6.4, 0.0, -1.5]
-maxs = [-5.6, 0.6, 1.5]
-material = "Hazard"
-
-[[solid]]
-mins = [5.6, 0.0, -1.5]
-maxs = [6.4, 0.6, 1.5]
-material = "Hazard"
-
-[[solid]]
-mins = [-1.5, 0.0, -7.2]
-maxs = [1.5, 0.8, -6.4]
-material = "Hazard"
-
-[[solid]]
-mins = [-1.5, 0.0, 6.4]
-maxs = [1.5, 0.8, 7.2]
-material = "Hazard"
-
-[[solid]]
-mins = [-7.2, 0.0, -1.5]
-maxs = [-6.4, 0.8, 1.5]
-material = "Hazard"
-
-[[solid]]
-mins = [6.4, 0.0, -1.5]
-maxs = [7.2, 0.8, 1.5]
-material = "Hazard"
-
-[[solid]]
-mins = [-20.0, 0.0, -8.8]
-maxs = [-16.0, 2.2, -7.2]
-material = "Concrete"
-
-[[solid]]
-mins = [-18.8, 0.0, -10.0]
-maxs = [-17.2, 2.2, -6.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-19.0, 2.2, -9.0]
-maxs = [-17.0, 3.0, -7.0]
-material = "Glass"
-
-[[solid]]
-mins = [-20.0, 0.0, 7.2]
-maxs = [-16.0, 2.2, 8.8]
-material = "Concrete"
-
-[[solid]]
-mins = [-18.8, 0.0, 6.0]
-maxs = [-17.2, 2.2, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-19.0, 2.2, 7.0]
-maxs = [-17.0, 3.0, 9.0]
-material = "Glass"
-
-[[solid]]
-mins = [16.0, 0.0, -8.8]
-maxs = [20.0, 2.2, -7.2]
-material = "Concrete"
-
-[[solid]]
-mins = [17.2, 0.0, -10.0]
-maxs = [18.8, 2.2, -6.0]
-material = "Concrete"
-
-[[solid]]
-mins = [17.0, 2.2, -9.0]
-maxs = [19.0, 3.0, -7.0]
-material = "Glass"
-
-[[solid]]
-mins = [16.0, 0.0, 7.2]
-maxs = [20.0, 2.2, 8.8]
-material = "Concrete"
-
-[[solid]]
-mins = [17.2, 0.0, 6.0]
-maxs = [18.8, 2.2, 10.0]
-material = "Concrete"
-
-[[solid]]
-mins = [17.0, 2.2, 7.0]
-maxs = [19.0, 3.0, 9.0]
-material = "Glass"
-
-[[solid]]
-mins = [-10.0, 0.0, -18.8]
-maxs = [-6.0, 2.2, -17.2]
-material = "Concrete"
-
-[[solid]]
-mins = [-8.8, 0.0, -20.0]
-maxs = [-7.2, 2.2, -16.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-9.0, 2.2, -19.0]
-maxs = [-7.0, 3.0, -17.0]
-material = "Glass"
-
-[[solid]]
-mins = [6.0, 0.0, -18.8]
-maxs = [10.0, 2.2, -17.2]
-material = "Concrete"
-
-[[solid]]
-mins = [7.2, 0.0, -20.0]
-maxs = [8.8, 2.2, -16.0]
-material = "Concrete"
-
-[[solid]]
-mins = [7.0, 2.2, -19.0]
-maxs = [9.0, 3.0, -17.0]
-material = "Glass"
-
-[[solid]]
-mins = [-10.0, 0.0, 17.2]
-maxs = [-6.0, 2.2, 18.8]
-material = "Concrete"
-
-[[solid]]
-mins = [-8.8, 0.0, 16.0]
-maxs = [-7.2, 2.2, 20.0]
-material = "Concrete"
-
-[[solid]]
-mins = [-9.0, 2.2, 17.0]
-maxs = [-7.0, 3.0, 19.0]
-material = "Glass"
-
-[[solid]]
-mins = [6.0, 0.0, 17.2]
-maxs = [10.0, 2.2, 18.8]
-material = "Concrete"
-
-[[solid]]
-mins = [7.2, 0.0, 16.0]
-maxs = [8.8, 2.2, 20.0]
-material = "Concrete"
-
-[[solid]]
-mins = [7.0, 2.2, 17.0]
-maxs = [9.0, 3.0, 19.0]
-material = "Glass"
-
-[[solid]]
-mins = [-18.9, 0.0, -18.9]
-maxs = [-17.1, 3.0, -17.1]
+mins = [-20.5, 0.0, -20.5]
+maxs = [-9.5, 0.15, -9.5]
 material = "Tile"
 
-[[solid]]
-mins = [-18.9, 0.0, -14.9]
-maxs = [-17.1, 3.0, -13.1]
-material = "Tile"
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 4.8, 1.4]
+entries = [
+  { origin = [-19.9, 2.4, -19.9] },
+  { origin = [-12.7, 2.4, -19.5] },
+  { origin = [-19.5, 2.4, -12.7] },
+  { origin = [-12.3, 2.4, -12.3] },
+]
 
 [[solid]]
-mins = [-18.9, 0.0, 13.1]
-maxs = [-17.1, 3.0, 14.9]
-material = "Tile"
+mins = [-22.4, 0.0, -16.8]
+maxs = [-20.2, 1.5, -13.6]
+material = "Block"
+tint = [0.78, 0.96, 1.08]
+brightness = 1.06
 
 [[solid]]
-mins = [-18.9, 0.0, 17.1]
-maxs = [-17.1, 3.0, 18.9]
-material = "Tile"
+mins = [-16.8, 0.0, -22.2]
+maxs = [-13.6, 1.2, -20.4]
+material = "Block"
+tint = [0.78, 0.96, 1.08]
+brightness = 1.04
 
 [[solid]]
-mins = [-14.9, 0.0, -18.9]
-maxs = [-13.1, 3.0, -17.1]
-material = "Tile"
+mins = [-10.6, 0.0, -17.0]
+maxs = [-8.9, 2.2, -15.2]
+material = "Crate"
 
 [[solid]]
-mins = [-14.9, 0.0, -14.9]
-maxs = [-13.1, 3.0, -13.1]
+mins = [-15.0, 0.0, -10.8]
+maxs = [-13.2, 2.2, -9.0]
+material = "Crate"
+
+# North-east control hall
+[[solid]]
+mins = [9.5, 0.0, -20.5]
+maxs = [20.5, 0.15, -9.5]
 material = "Tile"
+tint = [1.02, 0.94, 0.82]
+brightness = 1.02
+
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 4.8, 1.4]
+entries = [
+  { origin = [19.9, 2.4, -19.9] },
+  { origin = [12.7, 2.4, -19.5] },
+  { origin = [19.5, 2.4, -12.7] },
+  { origin = [12.3, 2.4, -12.3] },
+]
 
 [[solid]]
-mins = [-14.9, 0.0, 13.1]
-maxs = [-13.1, 3.0, 14.9]
-material = "Tile"
+mins = [20.2, 0.0, -16.6]
+maxs = [22.2, 1.35, -13.6]
+material = "Divider"
+tint = [0.88, 1.04, 1.12]
+brightness = 1.06
 
 [[solid]]
-mins = [-14.9, 0.0, 17.1]
-maxs = [-13.1, 3.0, 18.9]
-material = "Tile"
+mins = [13.8, 0.0, -22.2]
+maxs = [17.0, 1.0, -20.6]
+material = "Cover"
 
 [[solid]]
-mins = [13.1, 0.0, -18.9]
-maxs = [14.9, 3.0, -17.1]
-material = "Tile"
+mins = [9.0, 0.0, -16.4]
+maxs = [10.8, 2.2, -14.6]
+material = "Crate"
 
 [[solid]]
-mins = [13.1, 0.0, -14.9]
-maxs = [14.9, 3.0, -13.1]
-material = "Tile"
+mins = [14.2, 0.0, -10.8]
+maxs = [16.0, 2.0, -9.0]
+material = "Crate"
 
+# South-west storage hall
 [[solid]]
-mins = [13.1, 0.0, 13.1]
-maxs = [14.9, 3.0, 14.9]
-material = "Tile"
-
-[[solid]]
-mins = [13.1, 0.0, 17.1]
-maxs = [14.9, 3.0, 18.9]
-material = "Tile"
-
-[[solid]]
-mins = [17.1, 0.0, -18.9]
-maxs = [18.9, 3.0, -17.1]
-material = "Tile"
-
-[[solid]]
-mins = [17.1, 0.0, -14.9]
-maxs = [18.9, 3.0, -13.1]
-material = "Tile"
-
-[[solid]]
-mins = [17.1, 0.0, 13.1]
-maxs = [18.9, 3.0, 14.9]
-material = "Tile"
-
-[[solid]]
-mins = [17.1, 0.0, 17.1]
-maxs = [18.9, 3.0, 18.9]
-material = "Tile"
-
-[[solid]]
-mins = [-22.0, 0.0, -20.4]
-maxs = [-16.0, 1.4, -19.6]
+mins = [-20.5, 0.0, 9.5]
+maxs = [-9.5, 0.15, 20.5]
 material = "Metal"
+tint = [0.74, 0.90, 1.08]
+brightness = 1.02
+
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 4.8, 1.4]
+entries = [
+  { origin = [-19.9, 2.4, 19.9] },
+  { origin = [-12.7, 2.4, 19.5] },
+  { origin = [-19.5, 2.4, 12.7] },
+  { origin = [-12.3, 2.4, 12.3] },
+]
 
 [[solid]]
-mins = [16.0, 0.0, -20.4]
-maxs = [22.0, 1.4, -19.6]
+mins = [-22.2, 0.0, 13.6]
+maxs = [-20.4, 1.4, 16.8]
+material = "Crate"
+
+[[solid]]
+mins = [-17.0, 0.0, 20.4]
+maxs = [-13.8, 1.0, 22.2]
+material = "Cover"
+
+[[solid]]
+mins = [-10.8, 0.0, 14.8]
+maxs = [-9.0, 2.2, 16.6]
+material = "Crate"
+
+[[solid]]
+mins = [-15.8, 0.0, 9.0]
+maxs = [-14.0, 2.1, 10.8]
+material = "Crate"
+
+# South-east maintenance hall
+[[solid]]
+mins = [9.5, 0.0, 9.5]
+maxs = [20.5, 0.15, 20.5]
 material = "Metal"
+tint = [1.04, 0.90, 0.76]
+brightness = 1.02
+
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 4.8, 1.4]
+entries = [
+  { origin = [19.9, 2.4, 19.9] },
+  { origin = [12.7, 2.4, 19.5] },
+  { origin = [19.5, 2.4, 12.7] },
+  { origin = [12.3, 2.4, 12.3] },
+]
 
 [[solid]]
-mins = [-22.0, 0.0, -16.4]
-maxs = [-16.0, 1.4, -15.6]
-material = "Metal"
+mins = [20.4, 0.0, 13.8]
+maxs = [22.2, 1.3, 17.0]
+material = "Divider"
+tint = [1.06, 0.92, 0.80]
+brightness = 1.04
 
 [[solid]]
-mins = [16.0, 0.0, -16.4]
-maxs = [22.0, 1.4, -15.6]
-material = "Metal"
+mins = [13.8, 0.0, 20.4]
+maxs = [17.0, 1.0, 22.2]
+material = "Cover"
 
 [[solid]]
-mins = [-22.0, 0.0, -12.4]
-maxs = [-16.0, 1.4, -11.6]
-material = "Metal"
+mins = [9.0, 0.0, 14.0]
+maxs = [10.8, 2.2, 15.8]
+material = "Crate"
 
 [[solid]]
-mins = [16.0, 0.0, -12.4]
-maxs = [22.0, 1.4, -11.6]
-material = "Metal"
+mins = [14.4, 0.0, 9.0]
+maxs = [16.2, 2.0, 10.8]
+material = "Crate"
 
-[[solid]]
-mins = [-22.0, 0.0, 11.6]
-maxs = [-16.0, 1.4, 12.4]
-material = "Metal"
-
-[[solid]]
-mins = [16.0, 0.0, 11.6]
-maxs = [22.0, 1.4, 12.4]
-material = "Metal"
-
-[[solid]]
-mins = [-22.0, 0.0, 15.6]
-maxs = [-16.0, 1.4, 16.4]
-material = "Metal"
-
-[[solid]]
-mins = [16.0, 0.0, 15.6]
-maxs = [22.0, 1.4, 16.4]
-material = "Metal"
-
-[[solid]]
-mins = [-22.0, 0.0, 19.6]
-maxs = [-16.0, 1.4, 20.4]
-material = "Metal"
-
-[[solid]]
-mins = [16.0, 0.0, 19.6]
-maxs = [22.0, 1.4, 20.4]
-material = "Metal"
-
-[[solid]]
-mins = [-20.7, 0.0, -1.5]
-maxs = [-19.3, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-16.7, 0.0, -1.5]
-maxs = [-15.3, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-12.7, 0.0, -1.5]
-maxs = [-11.3, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-8.7, 0.0, -1.5]
-maxs = [-7.3, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [7.3, 0.0, -1.5]
-maxs = [8.7, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [11.3, 0.0, -1.5]
-maxs = [12.7, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [15.3, 0.0, -1.5]
-maxs = [16.7, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [19.3, 0.0, -1.5]
-maxs = [20.7, 1.0, 1.5]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -20.7]
-maxs = [1.5, 1.0, -19.3]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -16.7]
-maxs = [1.5, 1.0, -15.3]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -12.7]
-maxs = [1.5, 1.0, -11.3]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, -8.7]
-maxs = [1.5, 1.0, -7.3]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 7.3]
-maxs = [1.5, 1.0, 8.7]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 11.3]
-maxs = [1.5, 1.0, 12.7]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 15.3]
-maxs = [1.5, 1.0, 16.7]
-material = "Concrete"
-
-[[solid]]
-mins = [-1.5, 0.0, 19.3]
-maxs = [1.5, 1.0, 20.7]
-material = "Concrete"
+# Corridor guide strips
+[[solid_group]]
+material = "Hazard"
+brightness = 1.06
+boxes = [
+  { mins = [-1.2, 0.0, -22.0], maxs = [1.2, 0.08, -10.0] },
+  { mins = [-1.2, 0.0, 10.0], maxs = [1.2, 0.08, 22.0] },
+  { mins = [-22.0, 0.0, -1.2], maxs = [-10.0, 0.08, 1.2] },
+  { mins = [10.0, 0.0, -1.2], maxs = [22.0, 0.08, 1.2] },
+]
 
 [[entity]]
 classname = "player_spawn"
-origin = [0.0, 1.7, 16.0]
+origin = [0.0, 0.21, 18.0]
 angles = [180.0, 0.0, 0.0]
+
+[[entity_group]]
+classname = "render_light"
+entries = [
+  { origin = [-12.0, 5.8, -12.0], color = [0.15, 0.22, 0.32], radius = 13.5, intensity = 1.00 },
+  { origin = [12.0, 5.8, -12.0], color = [0.24, 0.18, 0.11], radius = 13.5, intensity = 0.96 },
+  { origin = [-12.0, 5.8, 12.0], color = [0.14, 0.21, 0.30], radius = 13.5, intensity = 0.94 },
+  { origin = [12.0, 5.8, 12.0], color = [0.24, 0.18, 0.11], radius = 13.5, intensity = 0.94 },
+]

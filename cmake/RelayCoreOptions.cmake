@@ -13,6 +13,29 @@ function(relaycore_find_first_target out_var)
     set(${out_var} "${found_target}" PARENT_SCOPE)
 endfunction()
 
+function(relaycore_find_msvc_asan_runtime out_var)
+    set(runtime_candidates "")
+
+    if(CMAKE_CXX_COMPILER)
+        get_filename_component(cxx_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        list(APPEND runtime_candidates "${cxx_compiler_dir}/clang_rt.asan_dynamic-x86_64.dll")
+    endif()
+
+    if(CMAKE_C_COMPILER)
+        get_filename_component(c_compiler_dir "${CMAKE_C_COMPILER}" DIRECTORY)
+        list(APPEND runtime_candidates "${c_compiler_dir}/clang_rt.asan_dynamic-x86_64.dll")
+    endif()
+
+    foreach(candidate IN LISTS runtime_candidates)
+        if(EXISTS "${candidate}")
+            set(${out_var} "${candidate}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+
+    set(${out_var} "" PARENT_SCOPE)
+endfunction()
+
 macro(relaycore_initialize_project)
     if(PROJECT_IS_TOP_LEVEL)
         include(CTest)
@@ -124,6 +147,23 @@ function(relaycore_apply_standard_target_settings target_name)
         if(RELAYCORE_ENABLE_ASAN)
             target_compile_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
             target_link_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
+
+            get_target_property(target_type "${target_name}" TYPE)
+            if(target_type STREQUAL "EXECUTABLE")
+                relaycore_find_msvc_asan_runtime(asan_runtime_dll)
+                if(asan_runtime_dll)
+                    add_custom_command(
+                        TARGET "${target_name}"
+                        POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${asan_runtime_dll}"
+                        "$<TARGET_FILE_DIR:${target_name}>"
+                        COMMENT "Copying MSVC ASan runtime"
+                    )
+                else()
+                    message(WARNING "MSVC ASan runtime DLL was not found for target '${target_name}'")
+                endif()
+            endif()
         endif()
 
         if(RELAYCORE_ENABLE_MSVC_ANALYZE)

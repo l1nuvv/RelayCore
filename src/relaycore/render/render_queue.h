@@ -8,6 +8,12 @@
 
 namespace RelayCore::render
 {
+    struct LocalLight {
+        glm::vec3 position{0.0F};
+        glm::vec3 color{0.0F};
+        float radius = 1.0F;
+    };
+
     struct RenderItem {
         const StaticColorMesh* mesh = nullptr;
         glm::mat4 model_matrix{1.0F};

@@ -53,6 +53,13 @@ namespace RelayCore::core
         std::string quit{"Escape"};
     };
 
+    struct GameplayAudioConfig {
+        std::string ambient_loop{};
+        std::string panel_press{};
+        std::string door_open{};
+        std::string door_close{};
+    };
+
     /**
      * @brief Demo/gameplay bootstrap settings loaded from configuration.
      */
@@ -60,6 +67,7 @@ namespace RelayCore::core
         std::string level_path{"levels/test_room.toml"}; ///< Relative asset path or absolute path to the level file.
         std::string spawn_classname{"player_spawn"};     ///< Entity classname used as the player spawn point.
         GameplayControlsConfig controls{};               ///< Gameplay action bindings loaded by the demo runtime.
+        GameplayAudioConfig audio{};                     ///< Gameplay-facing world audio cues.
     };
 
     /**

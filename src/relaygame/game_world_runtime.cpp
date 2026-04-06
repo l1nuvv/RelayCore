@@ -2,6 +2,7 @@
 
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/player_controller_config.h"
@@ -26,12 +27,35 @@ namespace RelayGame
         interaction_state_.use_binding_label = services.config().gameplay.controls.use.empty()
                                                    ? std::string{"E"}
                                                    : services.config().gameplay.controls.use;
+        const auto& gameplay_audio = services.config().gameplay.audio;
+        audio_cues_.ambient_loop = gameplay_audio.ambient_loop.empty()
+                                       ? std::filesystem::path{}
+                                       : RelayCore::core::asset_path(gameplay_audio.ambient_loop);
+        audio_cues_.panel_press = gameplay_audio.panel_press.empty()
+                                      ? std::filesystem::path{}
+                                      : RelayCore::core::asset_path(gameplay_audio.panel_press);
+        audio_cues_.door_open = gameplay_audio.door_open.empty()
+                                    ? std::filesystem::path{}
+                                    : RelayCore::core::asset_path(gameplay_audio.door_open);
+        audio_cues_.door_close = gameplay_audio.door_close.empty()
+                                     ? std::filesystem::path{}
+                                     : RelayCore::core::asset_path(gameplay_audio.door_close);
+        sync_door_audio_state();
         player_controller_.set_config(build_player_controller_config(services.config()));
         player_controller_.initialize(spawn_position);
         player_controller_.set_static_collision_world(level_);
         player_controller_.enable_capture(services.window());
         simulation_loop_.reset();
         player_controller_.apply_camera(services.camera());
+        if (!audio_cues_.ambient_loop.empty())
+        {
+            services.audio_system().play_loop(audio_cues_.ambient_loop);
+        }
+    }
+
+    void GameWorldRuntime::shutdown(RelayCore::EngineServices& services) noexcept
+    {
+        services.audio_system().stop_loop();
     }
 
     void GameWorldRuntime::on_event(const SDL_Event& event, RelayCore::EngineServices& services)
@@ -47,8 +71,8 @@ namespace RelayGame
         interaction_state_.fired_triggers = 0;
         player_controller_.flush_pending_look();
 
-        (void) simulation_loop_.advance(frame, [this](const RelayCore::FrameInfo& sim_frame) {
-            simulate_fixed_step(sim_frame);
+        (void) simulation_loop_.advance(frame, [this, &services](const RelayCore::FrameInfo& sim_frame) {
+            simulate_fixed_step(sim_frame, services);
         });
 
         refresh_runtime_usables_and_focus();
@@ -90,7 +114,8 @@ namespace RelayGame
         return interaction_state_.focused_usable_index;
     }
 
-    void GameWorldRuntime::simulate_fixed_step(const RelayCore::FrameInfo& sim_frame)
+    void
+    GameWorldRuntime::simulate_fixed_step(const RelayCore::FrameInfo& sim_frame, RelayCore::EngineServices& services)
     {
         RelayCore::gameplay::collect_blocking_doors(doors_, dynamic_blockers_);
         player_controller_.update(sim_frame, level_, dynamic_blockers_);
@@ -105,6 +130,7 @@ namespace RelayGame
             if (RelayCore::gameplay::activate_target(usable.target, doors_))
             {
                 interaction_state_.last_target = usable.target;
+                play_gameplay_audio(services, audio_cues_.panel_press);
             }
         }
 
@@ -120,9 +146,11 @@ namespace RelayGame
             doors_,
             interaction_state_.last_target
         );
+        play_door_state_change_audio(services);
 
         interaction_state_.active_doors =
             RelayCore::gameplay::update_doors(static_cast<float>(sim_frame.delta_seconds), doors_);
+        sync_door_audio_state();
     }
 
     void GameWorldRuntime::refresh_runtime_usables_and_focus()
@@ -148,6 +176,49 @@ namespace RelayGame
         );
         interaction_state_.focused_usable_index = focus.usable_index;
         interaction_state_.focused_distance = focus.distance;
+    }
+
+    void GameWorldRuntime::play_gameplay_audio(
+        RelayCore::EngineServices& services,
+        const std::filesystem::path& cue_path
+    ) const
+    {
+        if (cue_path.empty())
+        {
+            return;
+        }
+        services.audio_system().play_one_shot(cue_path);
+    }
+
+    void GameWorldRuntime::play_door_state_change_audio(RelayCore::EngineServices& services)
+    {
+        const std::size_t state_count = std::min(previous_door_states_.size(), doors_.size());
+        for (std::size_t i = 0; i < state_count; ++i)
+        {
+            const RelayCore::gameplay::DoorState previous_state = previous_door_states_[i];
+            const RelayCore::gameplay::DoorState current_state = doors_[i].state;
+            if (previous_state == current_state)
+            {
+                continue;
+            }
+
+            if (current_state == RelayCore::gameplay::DoorState::Opening)
+            {
+                play_gameplay_audio(services, audio_cues_.door_open);
+            } else if (current_state == RelayCore::gameplay::DoorState::Closing)
+            {
+                play_gameplay_audio(services, audio_cues_.door_close);
+            }
+        }
+    }
+
+    void GameWorldRuntime::sync_door_audio_state()
+    {
+        previous_door_states_.resize(doors_.size(), RelayCore::gameplay::DoorState::Closed);
+        for (std::size_t i = 0; i < doors_.size(); ++i)
+        {
+            previous_door_states_[i] = doors_[i].state;
+        }
     }
 
     auto GameWorldRuntime::build_player_diagnostics() const -> RelayCore::render::PlayerDiagnostics

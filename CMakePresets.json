@@ -36,6 +36,9 @@
       "name": "msvc-base",
       "hidden": true,
       "inherits": "windows-base",
+      "environment": {
+        "VSLANG": "1033"
+      },
       "cacheVariables": {
         "CMAKE_C_COMPILER": "cl",
         "CMAKE_CXX_COMPILER": "cl"
@@ -122,6 +125,12 @@
       "displayName": "Build Tests (RelWithDebInfo)",
       "configurePreset": "msvc-relwithdebinfo",
       "targets": ["relaycore_tests"]
+    },
+    {
+      "name": "tests-asan",
+      "displayName": "Build Tests (ASan)",
+      "configurePreset": "msvc-asan",
+      "targets": ["relaycore_tests"]
     }
   ],
   "testPresets": [
@@ -162,8 +171,22 @@
         { "type": "configure", "name": "msvc-relwithdebinfo" },
         { "type": "build", "name": "demo-relwithdebinfo" }
       ]
+    },
+    {
+      "name": "tests-asan-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-asan" },
+        { "type": "build", "name": "tests-asan" },
+        { "type": "test", "name": "test-asan" }
+      ]
+    },
+    {
+      "name": "demo-asan-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-asan" },
+        { "type": "build", "name": "demo-asan" }
+      ]
     }
   ]
 }
-
 

@@ -137,6 +137,7 @@ tests/         # doctest-based tests
 
 ## Принципы проекта
 
+
 - debuggability важнее «умной» архитектуры
 - явные границы между engine / game / data
 - минимум скрытой магии

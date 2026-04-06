@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <glm/common.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -56,6 +57,8 @@ namespace RelayCore::render
                     return {0.18F, 0.20F, 0.22F};
                 case SurfaceMaterial::Wall:
                     return {0.43F, 0.46F, 0.50F};
+                case SurfaceMaterial::WallPanel:
+                    return {0.58F, 0.61F, 0.66F};
                 case SurfaceMaterial::Corridor:
                     return {0.28F, 0.34F, 0.40F};
 
@@ -74,8 +77,12 @@ namespace RelayCore::render
                     return {0.46F, 0.39F, 0.31F};
                 case SurfaceMaterial::Beam:
                     return {0.64F, 0.39F, 0.16F};
+                case SurfaceMaterial::Trim:
+                    return {0.26F, 0.29F, 0.33F};
                 case SurfaceMaterial::Divider:
                     return {0.24F, 0.63F, 0.72F};
+                case SurfaceMaterial::LightStrip:
+                    return {0.74F, 0.82F, 0.66F};
                 case SurfaceMaterial::Crate:
                     return {0.48F, 0.33F, 0.18F};
                 case SurfaceMaterial::Post:
@@ -90,21 +97,49 @@ namespace RelayCore::render
             return color * factor;
         }
 
+        [[nodiscard]] auto clamp_color(const glm::vec3& color) -> glm::vec3
+        {
+            return glm::clamp(color, glm::vec3{0.0F}, glm::vec3{1.0F});
+        }
+
+        [[nodiscard]] auto face_normal(const FaceAxis face) -> glm::vec3
+        {
+            switch (face)
+            {
+                case FaceAxis::PosX:
+                    return {1.0F, 0.0F, 0.0F};
+                case FaceAxis::NegX:
+                    return {-1.0F, 0.0F, 0.0F};
+                case FaceAxis::PosY:
+                    return {0.0F, 1.0F, 0.0F};
+                case FaceAxis::NegY:
+                    return {0.0F, -1.0F, 0.0F};
+                case FaceAxis::PosZ:
+                    return {0.0F, 0.0F, 1.0F};
+                case FaceAxis::NegZ:
+                    return {0.0F, 0.0F, -1.0F};
+            }
+
+            return {0.0F, 0.0F, 1.0F};
+        }
+
         void append_quad(
             CpuColorMeshData& mesh,
             const glm::vec3& a,
             const glm::vec3& b,
             const glm::vec3& c,
             const glm::vec3& d,
-            const glm::vec3& color
+            const glm::vec3& color,
+            const glm::vec3& normal,
+            const float material_kind
         )
         {
             const auto base_index = static_cast<std::uint32_t>(mesh.vertices.size());
 
-            mesh.vertices.push_back(ColorVertex{a, color});
-            mesh.vertices.push_back(ColorVertex{b, color});
-            mesh.vertices.push_back(ColorVertex{c, color});
-            mesh.vertices.push_back(ColorVertex{d, color});
+            mesh.vertices.push_back(ColorVertex{a, color, normal, material_kind});
+            mesh.vertices.push_back(ColorVertex{b, color, normal, material_kind});
+            mesh.vertices.push_back(ColorVertex{c, color, normal, material_kind});
+            mesh.vertices.push_back(ColorVertex{d, color, normal, material_kind});
 
             mesh.indices.push_back(base_index + 0);
             mesh.indices.push_back(base_index + 1);
@@ -324,9 +359,11 @@ namespace RelayCore::render
             const FaceAxis face,
             const float plane,
             const Rect2D& rect,
-            const glm::vec3& color
+            const glm::vec3& color,
+            const float material_kind
         )
         {
+            const glm::vec3 normal = face_normal(face);
             switch (face)
             {
                 case FaceAxis::PosZ:
@@ -336,7 +373,9 @@ namespace RelayCore::render
                         {rect.u1, rect.v0, plane},
                         {rect.u1, rect.v1, plane},
                         {rect.u0, rect.v1, plane},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
                 case FaceAxis::NegZ:
@@ -346,7 +385,9 @@ namespace RelayCore::render
                         {rect.u0, rect.v0, plane},
                         {rect.u0, rect.v1, plane},
                         {rect.u1, rect.v1, plane},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
                 case FaceAxis::NegX:
@@ -356,7 +397,9 @@ namespace RelayCore::render
                         {plane, rect.v0, rect.u1},
                         {plane, rect.v1, rect.u1},
                         {plane, rect.v1, rect.u0},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
                 case FaceAxis::PosX:
@@ -366,7 +409,9 @@ namespace RelayCore::render
                         {plane, rect.v0, rect.u0},
                         {plane, rect.v1, rect.u0},
                         {plane, rect.v1, rect.u1},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
                 case FaceAxis::PosY:
@@ -376,7 +421,9 @@ namespace RelayCore::render
                         {rect.u1, plane, rect.v1},
                         {rect.u1, plane, rect.v0},
                         {rect.u0, plane, rect.v0},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
                 case FaceAxis::NegY:
@@ -386,7 +433,9 @@ namespace RelayCore::render
                         {rect.u1, plane, rect.v0},
                         {rect.u1, plane, rect.v1},
                         {rect.u0, plane, rect.v1},
-                        color
+                        color,
+                        normal,
+                        material_kind
                     );
                     return;
             }
@@ -432,9 +481,10 @@ namespace RelayCore::render
             }
 
             const float plane = face_plane(solid, face);
+            const float material_kind = static_cast<float>(static_cast<std::uint8_t>(solid.material));
             for (const Rect2D& rect : visible_rects)
             {
-                append_face_rect(mesh, face, plane, rect, color);
+                append_face_rect(mesh, face, plane, rect, color, material_kind);
             }
         }
     } // namespace
@@ -452,7 +502,7 @@ namespace RelayCore::render
         mesh.vertices.reserve(24);
         mesh.indices.reserve(36);
 
-        const glm::vec3 base_color = material_base_color(solid.material);
+        const glm::vec3 base_color = clamp_color(material_base_color(solid.material) * solid.tint * solid.brightness);
 
         append_visible_face(
             mesh,

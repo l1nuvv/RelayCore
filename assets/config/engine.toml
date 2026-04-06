@@ -55,3 +55,9 @@ toggle_capture = "F1"
 toggle_vsync = "V"
 toggle_noclip = "F3"
 quit = "Escape"
+
+[game.audio]
+ambient_loop = "audio/ambient_airlock_hum.wav"
+panel_press = "audio/panel_press.wav"
+door_open = "audio/door_open.wav"
+door_close = "audio/door_close.wav"

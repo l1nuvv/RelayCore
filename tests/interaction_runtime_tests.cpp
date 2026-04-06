@@ -308,6 +308,87 @@ TEST_CASE("door bounds and slide offset can be configured from entity properties
     CHECK(doors[0].open_offset.y == doctest::Approx(0.0F));
 }
 
+TEST_CASE("compact size and move_offset properties are supported by interaction runtime")
+{
+    RelayCore::BlockoutLevel level{};
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {0.0F, 0.0F, 4.0F},
+            .properties = {
+                {"kind", "door"},
+                {"targetname", "door_compact"},
+                {"size", "2.0 2.6 0.18"},
+                {"move_offset", "2.25 0.0 0.0"},
+            },
+        }
+    );
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {-2.9F, 1.35F, 3.2F},
+            .properties = {
+                {"kind", "panel"},
+                {"target", "door_compact"},
+                {"label", "Open airlock"},
+                {"size", "0.18 0.45 0.28"},
+            },
+        }
+    );
+
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeTrigger> triggers;
+    std::vector<RuntimeUsable> usables;
+
+    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+
+    REQUIRE(doors.size() == 1);
+    REQUIRE(usables.size() == 1);
+    CHECK(doors[0].closed_bounds.mins.x == doctest::Approx(-1.0F));
+    CHECK(doors[0].closed_bounds.maxs.y == doctest::Approx(2.6F));
+    CHECK(doors[0].closed_bounds.maxs.z == doctest::Approx(4.09F));
+    CHECK(doors[0].open_offset.x == doctest::Approx(2.25F));
+    CHECK(doors[0].open_offset.y == doctest::Approx(0.0F));
+    CHECK(usables[0].visual_kind == UsableVisualKind::Panel);
+    CHECK(usables[0].has_visual_bounds);
+    CHECK(usables[0].visual_bounds.mins.x == doctest::Approx(-2.99F));
+    CHECK(usables[0].visual_bounds.maxs.z == doctest::Approx(3.34F));
+}
+
+TEST_CASE("panel mount_axis builds wall-mounted bounds")
+{
+    RelayCore::BlockoutLevel level{};
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {-5.0F, 1.35F, 2.8F},
+            .properties = {
+                {"kind", "panel"},
+                {"target", "outer_bulkhead"},
+                {"label", "Outer bulkhead"},
+                {"size", "0.34 0.52 0.12"},
+                {"mount_axis", "+x"},
+            },
+        }
+    );
+
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeTrigger> triggers;
+    std::vector<RuntimeUsable> usables;
+
+    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+
+    REQUIRE(usables.size() == 1);
+    CHECK(usables[0].visual_kind == UsableVisualKind::Panel);
+    CHECK(usables[0].has_visual_bounds);
+    CHECK(usables[0].visual_bounds.mins.x == doctest::Approx(-4.994F));
+    CHECK(usables[0].visual_bounds.maxs.x == doctest::Approx(-4.874F));
+    CHECK(usables[0].visual_bounds.mins.z == doctest::Approx(2.63F));
+    CHECK(usables[0].visual_bounds.maxs.z == doctest::Approx(2.97F));
+    CHECK(usables[0].visual_bounds.mins.y == doctest::Approx(1.09F));
+    CHECK(usables[0].visual_bounds.maxs.y == doctest::Approx(1.61F));
+}
+
 TEST_CASE("runtime interactions can be defined by kind property without dev classnames")
 {
     RelayCore::BlockoutLevel level{};

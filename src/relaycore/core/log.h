@@ -20,12 +20,14 @@
 namespace RelayCore::log
 {
     struct Config {
-        std::string          logger_name            = "engine";
-        std::string          logs_directory         = R"(E:\Code\C++\RelayCore\logs)";
-        std::string          latest_filename        = "RelayCore_latest.log";
-        bool                 enable_console_sink    = true;
-        bool                 enable_timestamped_log = true;
-        bool                 enable_latest_log      = true;
+        std::string logger_name = "engine";
+        std::string logs_directory = "logs";
+        std::string latest_filename = "RelayCore_latest.log";
+        bool enable_console_sink = true;
+        bool enable_timestamped_log = true;
+        bool enable_latest_log = true;
+        bool truncate_latest_log = true;
+        std::size_t max_timestamped_logs = 12;
         std::chrono::seconds periodic_flush{1};
 #ifndef NDEBUG
         spdlog::level::level_enum level = spdlog::level::trace;
@@ -94,7 +96,10 @@ namespace RelayCore::log
 
     class MessageBuffer final {
     public:
-        explicit MessageBuffer(const std::size_t reserve_size = 64) { messages_.reserve(reserve_size); }
+        explicit MessageBuffer(const std::size_t reserve_size = 64)
+        {
+            messages_.reserve(reserve_size);
+        }
 
         ~MessageBuffer();
 
@@ -128,6 +133,6 @@ namespace RelayCore::log
 
     private:
         std::vector<std::string> messages_{};
-        mutable std::mutex       mutex_{};
+        mutable std::mutex mutex_{};
     };
 } // namespace RelayCore::log
