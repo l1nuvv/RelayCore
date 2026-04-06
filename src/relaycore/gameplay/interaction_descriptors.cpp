@@ -7,6 +7,8 @@
 #include <charconv>
 #include <glm/common.hpp>
 #include <optional>
+#include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 namespace RelayCore::gameplay
@@ -19,6 +21,14 @@ namespace RelayCore::gameplay
             Trigger,
             Usable,
             Panel,
+        };
+
+        enum class PanelMountAxis : std::uint8_t {
+            Centered,
+            PositiveX,
+            NegativeX,
+            PositiveZ,
+            NegativeZ,
         };
 
         [[nodiscard]] auto make_centered_aabb(const glm::vec3& center, const glm::vec3& half_extents) -> physics::Aabb
@@ -127,6 +137,34 @@ namespace RelayCore::gameplay
             return result;
         }
 
+        [[nodiscard]] auto parse_vec3_property(const EntitySpawnData& entity, std::string_view key)
+            -> std::optional<glm::vec3>
+        {
+            const std::string* value = find_property(entity, key);
+            if (value == nullptr || value->empty())
+            {
+                return std::nullopt;
+            }
+
+            std::string normalized = *value;
+            std::replace(normalized.begin(), normalized.end(), ',', ' ');
+
+            std::istringstream stream(normalized);
+            glm::vec3 result{};
+            if (!(stream >> result.x >> result.y >> result.z))
+            {
+                return std::nullopt;
+            }
+
+            stream >> std::ws;
+            if (!stream.eof())
+            {
+                return std::nullopt;
+            }
+
+            return result;
+        }
+
         [[nodiscard]] auto parse_bool_property(const EntitySpawnData& entity, std::string_view key, const bool fallback)
             -> bool
         {
@@ -154,6 +192,11 @@ namespace RelayCore::gameplay
 
         [[nodiscard]] auto parse_move_offset(const EntitySpawnData& entity, const glm::vec3& fallback) -> glm::vec3
         {
+            if (const auto offset = parse_vec3_property(entity, "move_offset"); offset.has_value())
+            {
+                return *offset;
+            }
+
             const auto x = parse_float_property(entity, "move_offset_x");
             const auto y = parse_float_property(entity, "move_offset_y");
             const auto z = parse_float_property(entity, "move_offset_z");
@@ -205,14 +248,87 @@ namespace RelayCore::gameplay
 
         [[nodiscard]] auto parse_panel_bounds(const EntitySpawnData& entity) -> physics::Aabb
         {
-            const float width = std::max(parse_float_property(entity, "width").value_or(0.18F), 0.05F);
-            const float height = std::max(parse_float_property(entity, "height").value_or(0.42F), 0.05F);
-            const float thickness = std::max(
+            constexpr float kWallMountClearance = 0.006F;
+
+            glm::vec3 size{
+                parse_float_property(entity, "width").value_or(0.18F),
+                parse_float_property(entity, "height").value_or(0.42F),
                 parse_float_property(entity, "depth")
                     .value_or(parse_float_property(entity, "thickness").value_or(0.12F)),
-                0.03F
-            );
-            return make_centered_aabb(entity.origin, glm::vec3{width * 0.5F, height * 0.5F, thickness * 0.5F});
+            };
+            if (const auto compact_size = parse_vec3_property(entity, "size"); compact_size.has_value())
+            {
+                size = *compact_size;
+            }
+
+            const float width = std::max(size.x, 0.05F);
+            const float height = std::max(size.y, 0.05F);
+            const float thickness = std::max(size.z, 0.03F);
+            const float half_width = width * 0.5F;
+            const float half_height = height * 0.5F;
+            const float half_thickness = thickness * 0.5F;
+
+            const std::string* mount_axis_value = find_property(entity, "mount_axis");
+            if (mount_axis_value == nullptr || mount_axis_value->empty())
+            {
+                mount_axis_value = find_property(entity, "panel_axis");
+            }
+
+            PanelMountAxis mount_axis = PanelMountAxis::Centered;
+            if (mount_axis_value != nullptr && !mount_axis_value->empty())
+            {
+                std::string normalized = *mount_axis_value;
+                std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+
+                if (normalized == "x" || normalized == "+x" || normalized == "positive_x" || normalized == "pos_x")
+                {
+                    mount_axis = PanelMountAxis::PositiveX;
+                } else if (normalized == "-x" || normalized == "negative_x" || normalized == "neg_x"
+                           || normalized == "minus_x")
+                {
+                    mount_axis = PanelMountAxis::NegativeX;
+                } else if (normalized == "z" || normalized == "+z" || normalized == "positive_z"
+                           || normalized == "pos_z")
+                {
+                    mount_axis = PanelMountAxis::PositiveZ;
+                } else if (normalized == "-z" || normalized == "negative_z" || normalized == "neg_z"
+                           || normalized == "minus_z")
+                {
+                    mount_axis = PanelMountAxis::NegativeZ;
+                } else
+                {
+                    throw std::runtime_error("Unsupported panel mount_axis value: " + *mount_axis_value);
+                }
+            }
+
+            switch (mount_axis)
+            {
+                case PanelMountAxis::PositiveX:
+                    return make_centered_aabb(
+                        entity.origin + glm::vec3{half_thickness + kWallMountClearance, 0.0F, 0.0F},
+                        glm::vec3{half_thickness, half_height, half_width}
+                    );
+                case PanelMountAxis::NegativeX:
+                    return make_centered_aabb(
+                        entity.origin - glm::vec3{half_thickness + kWallMountClearance, 0.0F, 0.0F},
+                        glm::vec3{half_thickness, half_height, half_width}
+                    );
+                case PanelMountAxis::PositiveZ:
+                    return make_centered_aabb(
+                        entity.origin + glm::vec3{0.0F, 0.0F, half_thickness + kWallMountClearance},
+                        glm::vec3{half_width, half_height, half_thickness}
+                    );
+                case PanelMountAxis::NegativeZ:
+                    return make_centered_aabb(
+                        entity.origin - glm::vec3{0.0F, 0.0F, half_thickness + kWallMountClearance},
+                        glm::vec3{half_width, half_height, half_thickness}
+                    );
+                case PanelMountAxis::Centered:
+                default:
+                    return make_centered_aabb(entity.origin, glm::vec3{half_width, half_height, half_thickness});
+            }
         }
     } // namespace
 
@@ -236,9 +352,19 @@ namespace RelayCore::gameplay
             DoorDesc door{};
             door.name = property_or(entity, "targetname", "door_" + std::to_string(door_index++));
 
-            const float width = std::max(parse_float_property(entity, "width").value_or(1.0F), 0.1F);
-            const float height = std::max(parse_float_property(entity, "height").value_or(2.0F), 0.1F);
-            const float thickness = std::max(parse_float_property(entity, "thickness").value_or(0.20F), 0.05F);
+            glm::vec3 size{
+                parse_float_property(entity, "width").value_or(1.0F),
+                parse_float_property(entity, "height").value_or(2.0F),
+                parse_float_property(entity, "thickness").value_or(0.20F),
+            };
+            if (const auto compact_size = parse_vec3_property(entity, "size"); compact_size.has_value())
+            {
+                size = *compact_size;
+            }
+
+            const float width = std::max(size.x, 0.1F);
+            const float height = std::max(size.y, 0.1F);
+            const float thickness = std::max(size.z, 0.05F);
             door.closed_bounds = make_centered_aabb(
                 entity.origin + glm::vec3{0.0F, height * 0.5F, 0.0F},
                 glm::vec3{width * 0.5F, height * 0.5F, thickness * 0.5F}
@@ -311,9 +437,19 @@ namespace RelayCore::gameplay
                 descriptors.doors.empty() ? std::string{} : descriptors.doors[target_index].name
             );
 
-            const float width = std::max(parse_float_property(entity, "width").value_or(1.5F), 0.1F);
-            const float height = std::max(parse_float_property(entity, "height").value_or(2.0F), 0.1F);
-            const float depth = std::max(parse_float_property(entity, "depth").value_or(1.5F), 0.1F);
+            glm::vec3 size{
+                parse_float_property(entity, "width").value_or(1.5F),
+                parse_float_property(entity, "height").value_or(2.0F),
+                parse_float_property(entity, "depth").value_or(1.5F),
+            };
+            if (const auto compact_size = parse_vec3_property(entity, "size"); compact_size.has_value())
+            {
+                size = *compact_size;
+            }
+
+            const float width = std::max(size.x, 0.1F);
+            const float height = std::max(size.y, 0.1F);
+            const float depth = std::max(size.z, 0.1F);
             trigger.bounds = make_centered_aabb(
                 entity.origin + glm::vec3{0.0F, height * 0.5F, 0.0F},
                 glm::vec3{width * 0.5F, height * 0.5F, depth * 0.5F}

@@ -1,3477 +1,409 @@
 # RelayCore stress_room_02
-# Synthetic profiling scene: dense arena, 3 corridors, many visible solids
+# Large industrial facility stress map: entry block, long service spine, cargo bays and a north turbine hall.
 
+# South entry block
 [[solid]]
-mins = [-48, -1, -48]
-maxs = [48, 0, 48]
+mins = [-10.0, 0.0, -44.0]
+maxs = [10.0, 0.2, -24.0]
 material = "Floor"
 
 [[solid]]
-mins = [-48, 14, -48]
-maxs = [48, 15, 48]
+mins = [-10.0, 8.0, -44.0]
+maxs = [10.0, 8.2, -24.0]
+material = "Ceiling"
+
+[[solid_group]]
+material = "Wall"
+boxes = [
+  { mins = [-10.0, 0.0, -44.0], maxs = [-9.8, 8.2, -24.0] },
+  { mins = [9.8, 0.0, -44.0], maxs = [10.0, 8.2, -24.0] },
+  { mins = [-10.0, 0.0, -44.0], maxs = [10.0, 8.2, -43.8] },
+  { mins = [-10.0, 0.0, -24.2], maxs = [-4.2, 8.2, -24.0] },
+  { mins = [4.2, 0.0, -24.2], maxs = [10.0, 8.2, -24.0] },
+]
+
+[[solid]]
+mins = [-4.2, 6.8, -24.2]
+maxs = [4.2, 8.2, -24.0]
+material = "Beam"
+
+[[solid_group]]
+material = "Crate"
+size = [2.2, 2.2, 2.2]
+entries = [
+  { origin = [-7.1, 1.1, -38.9] },
+  { origin = [7.1, 1.1, -37.9] },
+]
+
+[[solid]]
+mins = [-1.2, 0.0, -41.5]
+maxs = [1.2, 0.12, -27.0]
+material = "Divider"
+tint = [0.82, 0.98, 1.10]
+brightness = 1.06
+
+# Main spine
+[[solid]]
+mins = [-6.0, 0.0, -24.0]
+maxs = [6.0, 0.2, 128.0]
+material = "Corridor"
+
+[[solid]]
+mins = [-6.0, 8.0, -24.0]
+maxs = [6.0, 8.2, 128.0]
 material = "Ceiling"
 
 [[solid]]
-mins = [-48, 0, -49]
-maxs = [48, 14, -48]
+mins = [-6.0, 0.0, -24.0]
+maxs = [-5.8, 8.0, -8.0]
 material = "Wall"
 
 [[solid]]
-mins = [-48, 0, 48]
-maxs = [-10, 14, 49]
+mins = [-6.0, 0.0, 16.0]
+maxs = [-5.8, 8.0, 34.0]
 material = "Wall"
 
 [[solid]]
-mins = [10, 0, 48]
-maxs = [48, 14, 49]
+mins = [-6.0, 0.0, 58.0]
+maxs = [-5.8, 8.0, 74.0]
 material = "Wall"
 
 [[solid]]
-mins = [-49, 0, -48]
-maxs = [-48, 14, -10]
+mins = [-6.0, 0.0, 98.0]
+maxs = [-5.8, 8.0, 128.0]
 material = "Wall"
 
 [[solid]]
-mins = [-49, 0, 10]
-maxs = [-48, 14, 48]
+mins = [5.8, 0.0, -24.0]
+maxs = [6.0, 8.0, 6.0]
 material = "Wall"
 
 [[solid]]
-mins = [48, 0, -48]
-maxs = [49, 14, -10]
+mins = [5.8, 0.0, 30.0]
+maxs = [6.0, 8.0, 46.0]
 material = "Wall"
 
 [[solid]]
-mins = [48, 0, 10]
-maxs = [49, 14, 48]
+mins = [5.8, 0.0, 70.0]
+maxs = [6.0, 8.0, 86.0]
 material = "Wall"
 
 [[solid]]
-mins = [-14, 0, -14]
-maxs = [14, 2, 14]
+mins = [5.8, 0.0, 110.0]
+maxs = [6.0, 8.0, 128.0]
+material = "Wall"
+
+[[solid]]
+mins = [-6.0, 0.0, -24.2]
+maxs = [6.0, 8.0, -24.0]
+material = "Wall"
+
+[[solid]]
+mins = [-6.0, 0.0, 127.8]
+maxs = [6.0, 8.0, 128.0]
+material = "Wall"
+
+[[solid_group]]
+material = "Beam"
+boxes = [
+  { mins = [-6.0, 3.8, -18.2], maxs = [6.0, 4.4, -17.6] },
+  { mins = [-6.0, 3.8, -6.2], maxs = [6.0, 4.4, -5.6] },
+  { mins = [-6.0, 3.8, 5.8], maxs = [6.0, 4.4, 6.4] },
+  { mins = [-6.0, 3.8, 17.8], maxs = [6.0, 4.4, 18.4] },
+  { mins = [-6.0, 3.8, 29.8], maxs = [6.0, 4.4, 30.4] },
+  { mins = [-6.0, 3.8, 41.8], maxs = [6.0, 4.4, 42.4] },
+  { mins = [-6.0, 3.8, 53.8], maxs = [6.0, 4.4, 54.4] },
+  { mins = [-6.0, 3.8, 65.8], maxs = [6.0, 4.4, 66.4] },
+  { mins = [-6.0, 3.8, 77.8], maxs = [6.0, 4.4, 78.4] },
+  { mins = [-6.0, 3.8, 89.8], maxs = [6.0, 4.4, 90.4] },
+  { mins = [-6.0, 3.8, 101.8], maxs = [6.0, 4.4, 102.4] },
+  { mins = [-6.0, 3.8, 113.8], maxs = [6.0, 4.4, 114.4] },
+]
+
+[[solid]]
+mins = [-1.1, 0.0, -20.0]
+maxs = [1.1, 0.08, 120.0]
+material = "Hazard"
+brightness = 1.05
+
+[[solid_group]]
+material = "Cover"
+size = [2.4, 1.1, 1.6]
+entries = [
+  { origin = [-4.0, 0.55, 18.8] },
+  { origin = [4.0, 0.55, 54.8] },
+  { origin = [-4.0, 0.55, 92.8] },
+]
+
+[[solid_template]]
+name = "west_cargo_bay_shell"
+entries = [
+  { origin = [-16.0, 0.1, 4.0], size = [20.0, 0.2, 24.0], material = "Floor" },
+  { origin = [-16.0, 8.1, 4.0], size = [20.0, 0.2, 24.0], material = "Ceiling" },
+  { origin = [-25.9, 4.1, 4.0], size = [0.2, 8.2, 24.0], material = "Wall" },
+  { origin = [-16.0, 4.1, -7.9], size = [20.0, 8.2, 0.2], material = "Wall" },
+  { origin = [-16.0, 4.1, 15.9], size = [20.0, 8.2, 0.2], material = "Wall" },
+]
+
+[[solid_template]]
+name = "east_cargo_bay_shell"
+entries = [
+  { origin = [16.0, 0.1, 18.0], size = [20.0, 0.2, 24.0], material = "Floor" },
+  { origin = [16.0, 8.1, 18.0], size = [20.0, 0.2, 24.0], material = "Ceiling" },
+  { origin = [25.9, 4.1, 18.0], size = [0.2, 8.2, 24.0], material = "Wall" },
+  { origin = [16.0, 4.1, 6.1], size = [20.0, 8.2, 0.2], material = "Wall" },
+  { origin = [16.0, 4.1, 29.9], size = [20.0, 8.2, 0.2], material = "Wall" },
+]
+
+# West cargo bay 01
+[[solid_instance]]
+template = "west_cargo_bay_shell"
+
+[[solid]]
+mins = [-23.0, 0.0, -5.0]
+maxs = [-20.8, 2.4, -2.8]
+material = "Crate"
+
+[[solid]]
+mins = [-18.8, 0.0, 1.0]
+maxs = [-16.6, 2.4, 3.2]
+material = "Crate"
+
+[[solid]]
+mins = [-12.8, 0.0, 8.0]
+maxs = [-10.2, 1.2, 10.0]
+material = "Cover"
+
+# East cargo bay 01
+[[solid_instance]]
+template = "east_cargo_bay_shell"
+
+[[solid]]
+mins = [9.2, 0.0, 9.0]
+maxs = [11.4, 2.6, 11.2]
+material = "Crate"
+
+[[solid]]
+mins = [14.6, 0.0, 16.0]
+maxs = [16.8, 2.6, 18.2]
+material = "Crate"
+
+[[solid]]
+mins = [20.0, 0.0, 23.0]
+maxs = [22.4, 1.3, 25.2]
+material = "Cover"
+
+# West cargo bay 02
+[[solid_instance]]
+template = "west_cargo_bay_shell"
+offset = [0.0, 0.0, 42.0]
+
+[[solid]]
+mins = [-24.0, 0.0, 38.0]
+maxs = [-22.0, 1.4, 42.0]
+material = "Block"
+tint = [0.78, 0.96, 1.08]
+brightness = 1.05
+
+[[solid]]
+mins = [-18.8, 0.0, 45.6]
+maxs = [-17.0, 2.8, 47.4]
+material = "Crate"
+
+[[solid]]
+mins = [-14.0, 0.0, 52.0]
+maxs = [-11.0, 1.2, 54.2]
+material = "Divider"
+tint = [0.86, 1.02, 1.12]
+brightness = 1.06
+
+# East cargo bay 02
+[[solid_instance]]
+template = "east_cargo_bay_shell"
+offset = [0.0, 0.0, 40.0]
+
+[[solid]]
+mins = [8.0, 0.0, 50.0]
+maxs = [10.0, 1.5, 54.0]
+material = "Block"
+tint = [1.06, 0.92, 0.78]
+brightness = 1.04
+
+[[solid]]
+mins = [14.0, 0.0, 56.6]
+maxs = [15.8, 2.8, 58.4]
+material = "Crate"
+
+[[solid]]
+mins = [19.2, 0.0, 63.0]
+maxs = [22.0, 1.3, 65.0]
+material = "Divider"
+tint = [1.04, 0.92, 0.82]
+brightness = 1.04
+
+# West cargo bay 03
+[[solid_instance]]
+template = "west_cargo_bay_shell"
+offset = [0.0, 0.0, 82.0]
+
+[[solid]]
+mins = [-23.8, 0.0, 78.0]
+maxs = [-21.8, 2.6, 80.0]
+material = "Crate"
+
+[[solid]]
+mins = [-18.2, 0.0, 84.0]
+maxs = [-16.0, 2.6, 86.2]
+material = "Crate"
+
+[[solid]]
+mins = [-12.8, 0.0, 90.2]
+maxs = [-9.8, 1.2, 92.0]
+material = "Cover"
+
+# East cargo bay 03
+[[solid_instance]]
+template = "east_cargo_bay_shell"
+offset = [0.0, 0.0, 80.0]
+
+[[solid]]
+mins = [9.0, 0.0, 90.0]
+maxs = [11.2, 2.6, 92.2]
+material = "Crate"
+
+[[solid]]
+mins = [14.8, 0.0, 96.4]
+maxs = [16.8, 2.6, 98.4]
+material = "Crate"
+
+[[solid]]
+mins = [19.6, 0.0, 103.0]
+maxs = [22.2, 1.2, 105.0]
+material = "Cover"
+
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 5.0, 1.4]
+entries = [
+  { origin = [-22.7, 2.5, 9.3] },
+  { origin = [22.7, 2.5, 11.9] },
+  { origin = [-21.7, 2.5, 91.5] },
+  { origin = [22.7, 2.5, 92.7] },
+]
+
+[[solid_group]]
+material = "Pillar"
+size = [1.4, 5.2, 1.4]
+entries = [
+  { origin = [-22.1, 2.6, 50.7] },
+  { origin = [22.7, 2.6, 53.3] },
+]
+
+# North turbine hall
+[[solid]]
+mins = [-16.0, 0.0, 128.0]
+maxs = [16.0, 0.2, 156.0]
 material = "Platform"
+tint = [0.82, 0.96, 1.08]
+brightness = 1.06
 
 [[solid]]
-mins = [-10, 2, -10]
-maxs = [10, 4, 10]
-material = "PlatformTop"
+mins = [-16.0, 8.0, 128.0]
+maxs = [16.0, 8.2, 156.0]
+material = "Ceiling"
 
 [[solid]]
-mins = [-6, 4, -6]
-maxs = [6, 6, 6]
-material = "PlatformTop2"
+mins = [-16.0, 0.0, 128.0]
+maxs = [-15.8, 8.2, 156.0]
+material = "Wall"
 
 [[solid]]
-mins = [-36.75, 0, -36.75]
-maxs = [-35.25, 10, -35.25]
-material = "Pillar"
+mins = [15.8, 0.0, 128.0]
+maxs = [16.0, 8.2, 156.0]
+material = "Wall"
 
 [[solid]]
-mins = [-38.0, 0, -36.5]
-maxs = [-34.0, 2.5, -35.5]
-material = "Cover"
+mins = [-16.0, 0.0, 155.8]
+maxs = [16.0, 8.2, 156.0]
+material = "Wall"
 
 [[solid]]
-mins = [-36.75, 0, -30.75]
-maxs = [-35.25, 10, -29.25]
-material = "Pillar"
+mins = [-16.0, 0.0, 128.0]
+maxs = [-6.2, 8.2, 128.2]
+material = "Wall"
 
 [[solid]]
-mins = [-36.5, 0, -32.0]
-maxs = [-35.5, 2.5, -28.0]
-material = "Cover"
+mins = [6.2, 0.0, 128.0]
+maxs = [16.0, 8.2, 128.2]
+material = "Wall"
 
 [[solid]]
-mins = [-36.75, 0, -24.75]
-maxs = [-35.25, 10, -23.25]
-material = "Pillar"
+mins = [-6.0, 6.8, 128.0]
+maxs = [6.0, 8.2, 128.2]
+material = "Beam"
 
-[[solid]]
-mins = [-38.0, 0, -24.5]
-maxs = [-34.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, -18.75]
-maxs = [-35.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-36.5, 0, -20.0]
-maxs = [-35.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, -12.75]
-maxs = [-35.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-38.0, 0, -12.5]
-maxs = [-34.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, -6.75]
-maxs = [-35.25, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-36.5, 0, -8.0]
-maxs = [-35.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, -0.75]
-maxs = [-35.25, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-38.0, 0, -0.5]
-maxs = [-34.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 5.25]
-maxs = [-35.25, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-36.5, 0, 4.0]
-maxs = [-35.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 11.25]
-maxs = [-35.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-38.0, 0, 11.5]
-maxs = [-34.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 17.25]
-maxs = [-35.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-36.5, 0, 16.0]
-maxs = [-35.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 23.25]
-maxs = [-35.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-38.0, 0, 23.5]
-maxs = [-34.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 29.25]
-maxs = [-35.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-36.5, 0, 28.0]
-maxs = [-35.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [-36.75, 0, 35.25]
-maxs = [-35.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-38.0, 0, 35.5]
-maxs = [-34.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -36.75]
-maxs = [-29.25, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, -38.0]
-maxs = [-29.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -30.75]
-maxs = [-29.25, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, -30.5]
-maxs = [-28.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -24.75]
-maxs = [-29.25, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, -26.0]
-maxs = [-29.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -18.75]
-maxs = [-29.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, -18.5]
-maxs = [-28.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -12.75]
-maxs = [-29.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, -14.0]
-maxs = [-29.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -6.75]
-maxs = [-29.25, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, -6.5]
-maxs = [-28.0, 2.5, -5.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, -0.75]
-maxs = [-29.25, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, -2.0]
-maxs = [-29.5, 2.5, 2.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 5.25]
-maxs = [-29.25, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, 5.5]
-maxs = [-28.0, 2.5, 6.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 11.25]
-maxs = [-29.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, 10.0]
-maxs = [-29.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 17.25]
-maxs = [-29.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, 17.5]
-maxs = [-28.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 23.25]
-maxs = [-29.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, 22.0]
-maxs = [-29.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 29.25]
-maxs = [-29.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-32.0, 0, 29.5]
-maxs = [-28.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [-30.75, 0, 35.25]
-maxs = [-29.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-30.5, 0, 34.0]
-maxs = [-29.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -36.75]
-maxs = [-23.25, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, -36.5]
-maxs = [-22.0, 2.5, -35.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -30.75]
-maxs = [-23.25, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, -32.0]
-maxs = [-23.5, 2.5, -28.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -24.75]
-maxs = [-23.25, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, -24.5]
-maxs = [-22.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -18.75]
-maxs = [-23.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, -20.0]
-maxs = [-23.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -12.75]
-maxs = [-23.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, -12.5]
-maxs = [-22.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -6.75]
-maxs = [-23.25, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, -8.0]
-maxs = [-23.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, -0.75]
-maxs = [-23.25, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, -0.5]
-maxs = [-22.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 5.25]
-maxs = [-23.25, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, 4.0]
-maxs = [-23.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 11.25]
-maxs = [-23.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, 11.5]
-maxs = [-22.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 17.25]
-maxs = [-23.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, 16.0]
-maxs = [-23.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 23.25]
-maxs = [-23.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, 23.5]
-maxs = [-22.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 29.25]
-maxs = [-23.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-24.5, 0, 28.0]
-maxs = [-23.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [-24.75, 0, 35.25]
-maxs = [-23.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-26.0, 0, 35.5]
-maxs = [-22.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -36.75]
-maxs = [-17.25, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, -38.0]
-maxs = [-17.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -30.75]
-maxs = [-17.25, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, -30.5]
-maxs = [-16.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -24.75]
-maxs = [-17.25, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, -26.0]
-maxs = [-17.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -18.75]
-maxs = [-17.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, -18.5]
-maxs = [-16.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -12.75]
-maxs = [-17.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, -14.0]
-maxs = [-17.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -6.75]
-maxs = [-17.25, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, -6.5]
-maxs = [-16.0, 2.5, -5.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, -0.75]
-maxs = [-17.25, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, -2.0]
-maxs = [-17.5, 2.5, 2.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 5.25]
-maxs = [-17.25, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, 5.5]
-maxs = [-16.0, 2.5, 6.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 11.25]
-maxs = [-17.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, 10.0]
-maxs = [-17.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 17.25]
-maxs = [-17.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, 17.5]
-maxs = [-16.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 23.25]
-maxs = [-17.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, 22.0]
-maxs = [-17.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 29.25]
-maxs = [-17.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-20.0, 0, 29.5]
-maxs = [-16.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [-18.75, 0, 35.25]
-maxs = [-17.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-18.5, 0, 34.0]
-maxs = [-17.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -36.75]
-maxs = [-11.25, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, -36.5]
-maxs = [-10.0, 2.5, -35.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -30.75]
-maxs = [-11.25, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, -32.0]
-maxs = [-11.5, 2.5, -28.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -24.75]
-maxs = [-11.25, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, -24.5]
-maxs = [-10.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -18.75]
-maxs = [-11.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, -20.0]
-maxs = [-11.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -12.75]
-maxs = [-11.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, -12.5]
-maxs = [-10.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -6.75]
-maxs = [-11.25, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, -8.0]
-maxs = [-11.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, -0.75]
-maxs = [-11.25, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, -0.5]
-maxs = [-10.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 5.25]
-maxs = [-11.25, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, 4.0]
-maxs = [-11.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 11.25]
-maxs = [-11.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, 11.5]
-maxs = [-10.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 17.25]
-maxs = [-11.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, 16.0]
-maxs = [-11.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 23.25]
-maxs = [-11.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, 23.5]
-maxs = [-10.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 29.25]
-maxs = [-11.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-12.5, 0, 28.0]
-maxs = [-11.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [-12.75, 0, 35.25]
-maxs = [-11.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-14.0, 0, 35.5]
-maxs = [-10.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, -36.75]
-maxs = [-5.25, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, -38.0]
-maxs = [-5.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, -30.75]
-maxs = [-5.25, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-8.0, 0, -30.5]
-maxs = [-4.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, -24.75]
-maxs = [-5.25, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, -26.0]
-maxs = [-5.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, -18.75]
-maxs = [-5.25, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-8.0, 0, -18.5]
-maxs = [-4.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, -12.75]
-maxs = [-5.25, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, -14.0]
-maxs = [-5.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, 11.25]
-maxs = [-5.25, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, 10.0]
-maxs = [-5.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, 17.25]
-maxs = [-5.25, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-8.0, 0, 17.5]
-maxs = [-4.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, 23.25]
-maxs = [-5.25, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, 22.0]
-maxs = [-5.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, 29.25]
-maxs = [-5.25, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-8.0, 0, 29.5]
-maxs = [-4.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [-6.75, 0, 35.25]
-maxs = [-5.25, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-6.5, 0, 34.0]
-maxs = [-5.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, -18.75]
-maxs = [0.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-0.5, 0, -20.0]
-maxs = [0.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, -12.75]
-maxs = [0.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [-2.0, 0, -12.5]
-maxs = [2.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, 11.25]
-maxs = [0.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-2.0, 0, 11.5]
-maxs = [2.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, 17.25]
-maxs = [0.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-0.5, 0, 16.0]
-maxs = [0.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, 23.25]
-maxs = [0.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-2.0, 0, 23.5]
-maxs = [2.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, 29.25]
-maxs = [0.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-0.5, 0, 28.0]
-maxs = [0.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [-0.75, 0, 35.25]
-maxs = [0.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [-2.0, 0, 35.5]
-maxs = [2.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, -36.75]
-maxs = [6.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, -38.0]
-maxs = [6.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, -30.75]
-maxs = [6.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [4.0, 0, -30.5]
-maxs = [8.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, -24.75]
-maxs = [6.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, -26.0]
-maxs = [6.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, -18.75]
-maxs = [6.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [4.0, 0, -18.5]
-maxs = [8.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, -12.75]
-maxs = [6.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, -14.0]
-maxs = [6.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, 11.25]
-maxs = [6.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, 10.0]
-maxs = [6.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, 17.25]
-maxs = [6.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [4.0, 0, 17.5]
-maxs = [8.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, 23.25]
-maxs = [6.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, 22.0]
-maxs = [6.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, 29.25]
-maxs = [6.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [4.0, 0, 29.5]
-maxs = [8.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [5.25, 0, 35.25]
-maxs = [6.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [5.5, 0, 34.0]
-maxs = [6.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -36.75]
-maxs = [12.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, -36.5]
-maxs = [14.0, 2.5, -35.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -30.75]
-maxs = [12.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, -32.0]
-maxs = [12.5, 2.5, -28.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -24.75]
-maxs = [12.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, -24.5]
-maxs = [14.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -18.75]
-maxs = [12.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, -20.0]
-maxs = [12.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -12.75]
-maxs = [12.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, -12.5]
-maxs = [14.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -6.75]
-maxs = [12.75, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, -8.0]
-maxs = [12.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, -0.75]
-maxs = [12.75, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, -0.5]
-maxs = [14.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 5.25]
-maxs = [12.75, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, 4.0]
-maxs = [12.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 11.25]
-maxs = [12.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, 11.5]
-maxs = [14.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 17.25]
-maxs = [12.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, 16.0]
-maxs = [12.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 23.25]
-maxs = [12.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, 23.5]
-maxs = [14.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 29.25]
-maxs = [12.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [11.5, 0, 28.0]
-maxs = [12.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [11.25, 0, 35.25]
-maxs = [12.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [10.0, 0, 35.5]
-maxs = [14.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -36.75]
-maxs = [18.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, -38.0]
-maxs = [18.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -30.75]
-maxs = [18.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, -30.5]
-maxs = [20.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -24.75]
-maxs = [18.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, -26.0]
-maxs = [18.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -18.75]
-maxs = [18.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, -18.5]
-maxs = [20.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -12.75]
-maxs = [18.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, -14.0]
-maxs = [18.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -6.75]
-maxs = [18.75, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, -6.5]
-maxs = [20.0, 2.5, -5.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, -0.75]
-maxs = [18.75, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, -2.0]
-maxs = [18.5, 2.5, 2.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 5.25]
-maxs = [18.75, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, 5.5]
-maxs = [20.0, 2.5, 6.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 11.25]
-maxs = [18.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, 10.0]
-maxs = [18.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 17.25]
-maxs = [18.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, 17.5]
-maxs = [20.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 23.25]
-maxs = [18.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, 22.0]
-maxs = [18.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 29.25]
-maxs = [18.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [16.0, 0, 29.5]
-maxs = [20.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [17.25, 0, 35.25]
-maxs = [18.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [17.5, 0, 34.0]
-maxs = [18.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -36.75]
-maxs = [24.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, -36.5]
-maxs = [26.0, 2.5, -35.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -30.75]
-maxs = [24.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, -32.0]
-maxs = [24.5, 2.5, -28.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -24.75]
-maxs = [24.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, -24.5]
-maxs = [26.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -18.75]
-maxs = [24.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, -20.0]
-maxs = [24.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -12.75]
-maxs = [24.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, -12.5]
-maxs = [26.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -6.75]
-maxs = [24.75, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, -8.0]
-maxs = [24.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, -0.75]
-maxs = [24.75, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, -0.5]
-maxs = [26.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 5.25]
-maxs = [24.75, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, 4.0]
-maxs = [24.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 11.25]
-maxs = [24.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, 11.5]
-maxs = [26.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 17.25]
-maxs = [24.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, 16.0]
-maxs = [24.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 23.25]
-maxs = [24.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, 23.5]
-maxs = [26.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 29.25]
-maxs = [24.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [23.5, 0, 28.0]
-maxs = [24.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [23.25, 0, 35.25]
-maxs = [24.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [22.0, 0, 35.5]
-maxs = [26.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -36.75]
-maxs = [30.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, -38.0]
-maxs = [30.5, 2.5, -34.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -30.75]
-maxs = [30.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, -30.5]
-maxs = [32.0, 2.5, -29.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -24.75]
-maxs = [30.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, -26.0]
-maxs = [30.5, 2.5, -22.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -18.75]
-maxs = [30.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, -18.5]
-maxs = [32.0, 2.5, -17.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -12.75]
-maxs = [30.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, -14.0]
-maxs = [30.5, 2.5, -10.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -6.75]
-maxs = [30.75, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, -6.5]
-maxs = [32.0, 2.5, -5.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, -0.75]
-maxs = [30.75, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, -2.0]
-maxs = [30.5, 2.5, 2.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 5.25]
-maxs = [30.75, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, 5.5]
-maxs = [32.0, 2.5, 6.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 11.25]
-maxs = [30.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, 10.0]
-maxs = [30.5, 2.5, 14.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 17.25]
-maxs = [30.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, 17.5]
-maxs = [32.0, 2.5, 18.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 23.25]
-maxs = [30.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, 22.0]
-maxs = [30.5, 2.5, 26.0]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 29.25]
-maxs = [30.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [28.0, 0, 29.5]
-maxs = [32.0, 2.5, 30.5]
-material = "Cover"
-
-[[solid]]
-mins = [29.25, 0, 35.25]
-maxs = [30.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [29.5, 0, 34.0]
-maxs = [30.5, 2.5, 38.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -36.75]
-maxs = [36.75, 10, -35.25]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, -36.5]
-maxs = [38.0, 2.5, -35.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -30.75]
-maxs = [36.75, 10, -29.25]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, -32.0]
-maxs = [36.5, 2.5, -28.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -24.75]
-maxs = [36.75, 10, -23.25]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, -24.5]
-maxs = [38.0, 2.5, -23.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -18.75]
-maxs = [36.75, 10, -17.25]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, -20.0]
-maxs = [36.5, 2.5, -16.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -12.75]
-maxs = [36.75, 10, -11.25]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, -12.5]
-maxs = [38.0, 2.5, -11.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -6.75]
-maxs = [36.75, 10, -5.25]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, -8.0]
-maxs = [36.5, 2.5, -4.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, -0.75]
-maxs = [36.75, 10, 0.75]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, -0.5]
-maxs = [38.0, 2.5, 0.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 5.25]
-maxs = [36.75, 10, 6.75]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, 4.0]
-maxs = [36.5, 2.5, 8.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 11.25]
-maxs = [36.75, 10, 12.75]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, 11.5]
-maxs = [38.0, 2.5, 12.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 17.25]
-maxs = [36.75, 10, 18.75]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, 16.0]
-maxs = [36.5, 2.5, 20.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 23.25]
-maxs = [36.75, 10, 24.75]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, 23.5]
-maxs = [38.0, 2.5, 24.5]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 29.25]
-maxs = [36.75, 10, 30.75]
-material = "Pillar"
-
-[[solid]]
-mins = [35.5, 0, 28.0]
-maxs = [36.5, 2.5, 32.0]
-material = "Cover"
-
-[[solid]]
-mins = [35.25, 0, 35.25]
-maxs = [36.75, 10, 36.75]
-material = "Pillar"
-
-[[solid]]
-mins = [34.0, 0, 35.5]
-maxs = [38.0, 2.5, 36.5]
-material = "Cover"
-
-[[solid]]
-mins = [-22, 0, -10]
-maxs = [-18, 4, -6]
+[[solid_group]]
 material = "Block"
-
-[[solid]]
-mins = [-22, 0, -2]
-maxs = [-18, 4, 2]
-material = "Block"
-
-[[solid]]
-mins = [-22, 0, 6]
-maxs = [-18, 4, 10]
-material = "Block"
-
-[[solid]]
-mins = [18, 0, -10]
-maxs = [22, 4, -6]
-material = "Block"
-
-[[solid]]
-mins = [18, 0, -2]
-maxs = [22, 4, 2]
-material = "Block"
-
-[[solid]]
-mins = [18, 0, 6]
-maxs = [22, 4, 10]
-material = "Block"
-
-[[solid]]
-mins = [-10, 0, -22]
-maxs = [-6, 4, -18]
-material = "Block"
-
-[[solid]]
-mins = [-2, 0, -22]
-maxs = [2, 4, -18]
-material = "Block"
-
-[[solid]]
-mins = [6, 0, -22]
-maxs = [10, 4, -18]
-material = "Block"
-
-[[solid]]
-mins = [-10, 0, 18]
-maxs = [-6, 4, 22]
-material = "Block"
-
-[[solid]]
-mins = [-2, 0, 18]
-maxs = [2, 4, 22]
-material = "Block"
-
-[[solid]]
-mins = [6, 0, 18]
-maxs = [10, 4, 22]
-material = "Block"
-
-[[solid]]
-mins = [-48, 11, -42.4]
-maxs = [48, 12, -41.6]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, -30.4]
-maxs = [48, 12, -29.6]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, -18.4]
-maxs = [48, 12, -17.6]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, -6.4]
-maxs = [48, 12, -5.6]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, 5.6]
-maxs = [48, 12, 6.4]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, 17.6]
-maxs = [48, 12, 18.4]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, 29.6]
-maxs = [48, 12, 30.4]
-material = "Beam"
-
-[[solid]]
-mins = [-48, 11, 41.6]
-maxs = [48, 12, 42.4]
-material = "Beam"
-
-[[solid]]
-mins = [-42.4, 11, -48]
-maxs = [-41.6, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [-30.4, 11, -48]
-maxs = [-29.6, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [-18.4, 11, -48]
-maxs = [-17.6, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [-6.4, 11, -48]
-maxs = [-5.6, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [5.6, 11, -48]
-maxs = [6.4, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [17.6, 11, -48]
-maxs = [18.4, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [29.6, 11, -48]
-maxs = [30.4, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [41.6, 11, -48]
-maxs = [42.4, 12, 48]
-material = "Beam"
-
-[[solid]]
-mins = [-10, -1, 48]
-maxs = [10, 0, 124]
-material = "Floor"
-
-[[solid]]
-mins = [-10, 8, 48]
-maxs = [10, 9, 124]
-material = "Ceiling"
-
-[[solid]]
-mins = [-11, 0, 48]
-maxs = [-10, 8, 124]
-material = "Corridor"
-
-[[solid]]
-mins = [10, 0, 48]
-maxs = [11, 8, 124]
-material = "Corridor"
-
-[[solid]]
-mins = [-10, 0, 124]
-maxs = [10, 8, 125]
-material = "Corridor"
-
-[[solid]]
-mins = [48, -1, -10]
-maxs = [124, 0, 10]
-material = "Floor"
-
-[[solid]]
-mins = [48, 8, -10]
-maxs = [124, 9, 10]
-material = "Ceiling"
-
-[[solid]]
-mins = [124, 0, -10]
-maxs = [125, 8, 10]
-material = "Corridor"
-
-[[solid]]
-mins = [48, 0, -11]
-maxs = [124, 8, -10]
-material = "Corridor"
-
-[[solid]]
-mins = [48, 0, 10]
-maxs = [124, 8, 11]
-material = "Corridor"
-
-[[solid]]
-mins = [-124, -1, -10]
-maxs = [-48, 0, 10]
-material = "Floor"
-
-[[solid]]
-mins = [-124, 8, -10]
-maxs = [-48, 9, 10]
-material = "Ceiling"
-
-[[solid]]
-mins = [-125, 0, -10]
-maxs = [-124, 8, 10]
-material = "Corridor"
-
-[[solid]]
-mins = [-124, 0, -11]
-maxs = [-48, 8, -10]
-material = "Corridor"
-
-[[solid]]
-mins = [-124, 0, 10]
-maxs = [-48, 8, 11]
-material = "Corridor"
-
-[[solid]]
-mins = [-10, 0, 54]
-maxs = [-2, 5, 55.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 57]
-maxs = [10, 5, 58.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 60]
-maxs = [10, 5, 61.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 63]
-maxs = [-2, 5, 64.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 66]
-maxs = [-2, 5, 67.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 69]
-maxs = [10, 5, 70.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 72]
-maxs = [10, 5, 73.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 75]
-maxs = [-2, 5, 76.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 78]
-maxs = [-2, 5, 79.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 81]
-maxs = [10, 5, 82.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 84]
-maxs = [10, 5, 85.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 87]
-maxs = [-2, 5, 88.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 90]
-maxs = [-2, 5, 91.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 93]
-maxs = [10, 5, 94.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 96]
-maxs = [10, 5, 97.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 99]
-maxs = [-2, 5, 100.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 102]
-maxs = [-2, 5, 103.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 105]
-maxs = [10, 5, 106.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 108]
-maxs = [10, 5, 109.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 111]
-maxs = [-2, 5, 112.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 114]
-maxs = [-2, 5, 115.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 117]
-maxs = [10, 5, 118.5]
-material = "Divider"
-
-[[solid]]
-mins = [2, 0, 120]
-maxs = [10, 5, 121.5]
-material = "Divider"
-
-[[solid]]
-mins = [-10, 0, 123]
-maxs = [-2, 5, 124.5]
-material = "Divider"
-
-[[solid]]
-mins = [54, 0, -10]
-maxs = [55.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [57, 0, 2]
-maxs = [58.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-55.5, 0, 2]
-maxs = [-54, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-58.5, 0, -10]
-maxs = [-57, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [60, 0, 2]
-maxs = [61.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [63, 0, -10]
-maxs = [64.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-61.5, 0, -10]
-maxs = [-60, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-64.5, 0, 2]
-maxs = [-63, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [66, 0, -10]
-maxs = [67.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [69, 0, 2]
-maxs = [70.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-67.5, 0, 2]
-maxs = [-66, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-70.5, 0, -10]
-maxs = [-69, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [72, 0, 2]
-maxs = [73.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [75, 0, -10]
-maxs = [76.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-73.5, 0, -10]
-maxs = [-72, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-76.5, 0, 2]
-maxs = [-75, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [78, 0, -10]
-maxs = [79.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [81, 0, 2]
-maxs = [82.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-79.5, 0, 2]
-maxs = [-78, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-82.5, 0, -10]
-maxs = [-81, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [84, 0, 2]
-maxs = [85.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [87, 0, -10]
-maxs = [88.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-85.5, 0, -10]
-maxs = [-84, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-88.5, 0, 2]
-maxs = [-87, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [90, 0, -10]
-maxs = [91.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [93, 0, 2]
-maxs = [94.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-91.5, 0, 2]
-maxs = [-90, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-94.5, 0, -10]
-maxs = [-93, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [96, 0, 2]
-maxs = [97.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [99, 0, -10]
-maxs = [100.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-97.5, 0, -10]
-maxs = [-96, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-100.5, 0, 2]
-maxs = [-99, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [102, 0, -10]
-maxs = [103.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [105, 0, 2]
-maxs = [106.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-103.5, 0, 2]
-maxs = [-102, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-106.5, 0, -10]
-maxs = [-105, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [108, 0, 2]
-maxs = [109.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [111, 0, -10]
-maxs = [112.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-109.5, 0, -10]
-maxs = [-108, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-112.5, 0, 2]
-maxs = [-111, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [114, 0, -10]
-maxs = [115.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [117, 0, 2]
-maxs = [118.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-115.5, 0, 2]
-maxs = [-114, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-118.5, 0, -10]
-maxs = [-117, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [120, 0, 2]
-maxs = [121.5, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [123, 0, -10]
-maxs = [124.5, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-121.5, 0, -10]
-maxs = [-120, 5, -2]
-material = "Divider"
-
-[[solid]]
-mins = [-124.5, 0, 2]
-maxs = [-123, 5, 10]
-material = "Divider"
-
-[[solid]]
-mins = [-32, -1, 58]
-maxs = [-12, 0, 78]
-material = "Floor"
-
-[[solid]]
-mins = [-32, 8, 58]
-maxs = [-12, 9, 78]
-material = "Ceiling"
-
-[[solid]]
-mins = [-33, 0, 58]
-maxs = [-32, 8, 78]
-material = "Wall"
-
-[[solid]]
-mins = [-12, 0, 58]
-maxs = [-11, 8, 65.0]
-material = "Wall"
-
-[[solid]]
-mins = [-12, 0, 71.0]
-maxs = [-11, 8, 78]
-material = "Wall"
-
-[[solid]]
-mins = [-32, 0, 57]
-maxs = [-12, 8, 58]
-material = "Wall"
-
-[[solid]]
-mins = [-32, 0, 78]
-maxs = [-12, 8, 79]
-material = "Wall"
-
-[[solid]]
-mins = [-30, 0, 60]
-maxs = [-28, 3, 62]
-material = "Crate"
-
-[[solid]]
-mins = [-30, 0, 66]
-maxs = [-28, 3, 68]
-material = "Crate"
-
-[[solid]]
-mins = [-30, 0, 72]
-maxs = [-28, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 60]
-maxs = [-22, 3, 62]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 66]
-maxs = [-22, 3, 68]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 72]
-maxs = [-22, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 60]
-maxs = [-16, 3, 62]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 66]
-maxs = [-16, 3, 68]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 72]
-maxs = [-16, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [12, -1, 70]
-maxs = [32, 0, 90]
-material = "Floor"
-
-[[solid]]
-mins = [12, 8, 70]
-maxs = [32, 9, 90]
-material = "Ceiling"
-
-[[solid]]
-mins = [11, 0, 70]
-maxs = [12, 8, 77.0]
-material = "Wall"
-
-[[solid]]
-mins = [11, 0, 83.0]
-maxs = [12, 8, 90]
-material = "Wall"
-
-[[solid]]
-mins = [32, 0, 70]
-maxs = [33, 8, 90]
-material = "Wall"
-
-[[solid]]
-mins = [12, 0, 69]
-maxs = [32, 8, 70]
-material = "Wall"
-
-[[solid]]
-mins = [12, 0, 90]
-maxs = [32, 8, 91]
-material = "Wall"
-
-[[solid]]
-mins = [14, 0, 72]
-maxs = [16, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [14, 0, 78]
-maxs = [16, 3, 80]
-material = "Crate"
-
-[[solid]]
-mins = [14, 0, 84]
-maxs = [16, 3, 86]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 72]
-maxs = [22, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 78]
-maxs = [22, 3, 80]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 84]
-maxs = [22, 3, 86]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 72]
-maxs = [28, 3, 74]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 78]
-maxs = [28, 3, 80]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 84]
-maxs = [28, 3, 86]
-material = "Crate"
-
-[[solid]]
-mins = [-32, -1, 92]
-maxs = [-12, 0, 112]
-material = "Floor"
-
-[[solid]]
-mins = [-32, 8, 92]
-maxs = [-12, 9, 112]
-material = "Ceiling"
-
-[[solid]]
-mins = [-33, 0, 92]
-maxs = [-32, 8, 112]
-material = "Wall"
-
-[[solid]]
-mins = [-12, 0, 92]
-maxs = [-11, 8, 99.0]
-material = "Wall"
-
-[[solid]]
-mins = [-12, 0, 105.0]
-maxs = [-11, 8, 112]
-material = "Wall"
-
-[[solid]]
-mins = [-32, 0, 91]
-maxs = [-12, 8, 92]
-material = "Wall"
-
-[[solid]]
-mins = [-32, 0, 112]
-maxs = [-12, 8, 113]
-material = "Wall"
-
-[[solid]]
-mins = [-30, 0, 94]
-maxs = [-28, 3, 96]
-material = "Crate"
-
-[[solid]]
-mins = [-30, 0, 100]
-maxs = [-28, 3, 102]
-material = "Crate"
-
-[[solid]]
-mins = [-30, 0, 106]
-maxs = [-28, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 94]
-maxs = [-22, 3, 96]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 100]
-maxs = [-22, 3, 102]
-material = "Crate"
-
-[[solid]]
-mins = [-24, 0, 106]
-maxs = [-22, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 94]
-maxs = [-16, 3, 96]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 100]
-maxs = [-16, 3, 102]
-material = "Crate"
-
-[[solid]]
-mins = [-18, 0, 106]
-maxs = [-16, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [12, -1, 104]
-maxs = [32, 0, 124]
-material = "Floor"
-
-[[solid]]
-mins = [12, 8, 104]
-maxs = [32, 9, 124]
-material = "Ceiling"
-
-[[solid]]
-mins = [11, 0, 104]
-maxs = [12, 8, 111.0]
-material = "Wall"
-
-[[solid]]
-mins = [11, 0, 117.0]
-maxs = [12, 8, 124]
-material = "Wall"
-
-[[solid]]
-mins = [32, 0, 104]
-maxs = [33, 8, 124]
-material = "Wall"
-
-[[solid]]
-mins = [12, 0, 103]
-maxs = [32, 8, 104]
-material = "Wall"
-
-[[solid]]
-mins = [12, 0, 124]
-maxs = [32, 8, 125]
-material = "Wall"
-
-[[solid]]
-mins = [14, 0, 106]
-maxs = [16, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [14, 0, 112]
-maxs = [16, 3, 114]
-material = "Crate"
-
-[[solid]]
-mins = [14, 0, 118]
-maxs = [16, 3, 120]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 106]
-maxs = [22, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 112]
-maxs = [22, 3, 114]
-material = "Crate"
-
-[[solid]]
-mins = [20, 0, 118]
-maxs = [22, 3, 120]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 106]
-maxs = [28, 3, 108]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 112]
-maxs = [28, 3, 114]
-material = "Crate"
-
-[[solid]]
-mins = [26, 0, 118]
-maxs = [28, 3, 120]
-material = "Crate"
-
-[[solid]]
-mins = [58, -1, 12]
-maxs = [78, 0, 32]
-material = "Floor"
-
-[[solid]]
-mins = [58, 8, 12]
-maxs = [78, 9, 32]
-material = "Ceiling"
-
-[[solid]]
-mins = [57, 0, 12]
-maxs = [58, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [78, 0, 12]
-maxs = [79, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [58, 0, 11]
-maxs = [65.0, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [71.0, 0, 11]
-maxs = [78, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [58, 0, 32]
-maxs = [78, 8, 33]
-material = "Wall"
-
-[[solid]]
-mins = [60, 0, 14]
-maxs = [62, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [60, 0, 20]
-maxs = [62, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [60, 0, 26]
-maxs = [62, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [66, 0, 14]
-maxs = [68, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [66, 0, 20]
-maxs = [68, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [66, 0, 26]
-maxs = [68, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [72, 0, 14]
-maxs = [74, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [72, 0, 20]
-maxs = [74, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [72, 0, 26]
-maxs = [74, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [70, -1, -32]
-maxs = [90, 0, -12]
-material = "Floor"
-
-[[solid]]
-mins = [70, 8, -32]
-maxs = [90, 9, -12]
-material = "Ceiling"
-
-[[solid]]
-mins = [69, 0, -32]
-maxs = [70, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [90, 0, -32]
-maxs = [91, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [70, 0, -33]
-maxs = [90, 8, -32]
-material = "Wall"
-
-[[solid]]
-mins = [70, 0, -12]
-maxs = [77.0, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [83.0, 0, -12]
-maxs = [90, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [72, 0, -30]
-maxs = [74, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [72, 0, -24]
-maxs = [74, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [72, 0, -18]
-maxs = [74, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [78, 0, -30]
-maxs = [80, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [78, 0, -24]
-maxs = [80, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [78, 0, -18]
-maxs = [80, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [84, 0, -30]
-maxs = [86, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [84, 0, -24]
-maxs = [86, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [84, 0, -18]
-maxs = [86, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [92, -1, 12]
-maxs = [112, 0, 32]
-material = "Floor"
-
-[[solid]]
-mins = [92, 8, 12]
-maxs = [112, 9, 32]
-material = "Ceiling"
-
-[[solid]]
-mins = [91, 0, 12]
-maxs = [92, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [112, 0, 12]
-maxs = [113, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [92, 0, 11]
-maxs = [99.0, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [105.0, 0, 11]
-maxs = [112, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [92, 0, 32]
-maxs = [112, 8, 33]
-material = "Wall"
-
-[[solid]]
-mins = [94, 0, 14]
-maxs = [96, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [94, 0, 20]
-maxs = [96, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [94, 0, 26]
-maxs = [96, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [100, 0, 14]
-maxs = [102, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [100, 0, 20]
-maxs = [102, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [100, 0, 26]
-maxs = [102, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [106, 0, 14]
-maxs = [108, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [106, 0, 20]
-maxs = [108, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [106, 0, 26]
-maxs = [108, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [104, -1, -32]
-maxs = [124, 0, -12]
-material = "Floor"
-
-[[solid]]
-mins = [104, 8, -32]
-maxs = [124, 9, -12]
-material = "Ceiling"
-
-[[solid]]
-mins = [103, 0, -32]
-maxs = [104, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [124, 0, -32]
-maxs = [125, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [104, 0, -33]
-maxs = [124, 8, -32]
-material = "Wall"
-
-[[solid]]
-mins = [104, 0, -12]
-maxs = [111.0, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [117.0, 0, -12]
-maxs = [124, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [106, 0, -30]
-maxs = [108, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [106, 0, -24]
-maxs = [108, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [106, 0, -18]
-maxs = [108, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [112, 0, -30]
-maxs = [114, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [112, 0, -24]
-maxs = [114, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [112, 0, -18]
-maxs = [114, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [118, 0, -30]
-maxs = [120, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [118, 0, -24]
-maxs = [120, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [118, 0, -18]
-maxs = [120, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-78, -1, -32]
-maxs = [-58, 0, -12]
-material = "Floor"
-
-[[solid]]
-mins = [-78, 8, -32]
-maxs = [-58, 9, -12]
-material = "Ceiling"
-
-[[solid]]
-mins = [-79, 0, -32]
-maxs = [-78, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [-58, 0, -32]
-maxs = [-57, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [-78, 0, -33]
-maxs = [-58, 8, -32]
-material = "Wall"
-
-[[solid]]
-mins = [-78, 0, -12]
-maxs = [-71.0, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [-65.0, 0, -12]
-maxs = [-58, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [-76, 0, -30]
-maxs = [-74, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-76, 0, -24]
-maxs = [-74, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-76, 0, -18]
-maxs = [-74, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-70, 0, -30]
-maxs = [-68, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-70, 0, -24]
-maxs = [-68, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-70, 0, -18]
-maxs = [-68, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-64, 0, -30]
-maxs = [-62, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-64, 0, -24]
-maxs = [-62, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-64, 0, -18]
-maxs = [-62, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-90, -1, 12]
-maxs = [-70, 0, 32]
-material = "Floor"
-
-[[solid]]
-mins = [-90, 8, 12]
-maxs = [-70, 9, 32]
-material = "Ceiling"
-
-[[solid]]
-mins = [-91, 0, 12]
-maxs = [-90, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [-70, 0, 12]
-maxs = [-69, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [-90, 0, 11]
-maxs = [-83.0, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [-77.0, 0, 11]
-maxs = [-70, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [-90, 0, 32]
-maxs = [-70, 8, 33]
-material = "Wall"
-
-[[solid]]
-mins = [-88, 0, 14]
-maxs = [-86, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-88, 0, 20]
-maxs = [-86, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-88, 0, 26]
-maxs = [-86, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-82, 0, 14]
-maxs = [-80, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-82, 0, 20]
-maxs = [-80, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-82, 0, 26]
-maxs = [-80, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-76, 0, 14]
-maxs = [-74, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-76, 0, 20]
-maxs = [-74, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-76, 0, 26]
-maxs = [-74, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-112, -1, -32]
-maxs = [-92, 0, -12]
-material = "Floor"
-
-[[solid]]
-mins = [-112, 8, -32]
-maxs = [-92, 9, -12]
-material = "Ceiling"
-
-[[solid]]
-mins = [-113, 0, -32]
-maxs = [-112, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [-92, 0, -32]
-maxs = [-91, 8, -12]
-material = "Wall"
-
-[[solid]]
-mins = [-112, 0, -33]
-maxs = [-92, 8, -32]
-material = "Wall"
-
-[[solid]]
-mins = [-112, 0, -12]
-maxs = [-105.0, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [-99.0, 0, -12]
-maxs = [-92, 8, -11]
-material = "Wall"
-
-[[solid]]
-mins = [-110, 0, -30]
-maxs = [-108, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-110, 0, -24]
-maxs = [-108, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-110, 0, -18]
-maxs = [-108, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-104, 0, -30]
-maxs = [-102, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-104, 0, -24]
-maxs = [-102, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-104, 0, -18]
-maxs = [-102, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-98, 0, -30]
-maxs = [-96, 3, -28]
-material = "Crate"
-
-[[solid]]
-mins = [-98, 0, -24]
-maxs = [-96, 3, -22]
-material = "Crate"
-
-[[solid]]
-mins = [-98, 0, -18]
-maxs = [-96, 3, -16]
-material = "Crate"
-
-[[solid]]
-mins = [-124, -1, 12]
-maxs = [-104, 0, 32]
-material = "Floor"
-
-[[solid]]
-mins = [-124, 8, 12]
-maxs = [-104, 9, 32]
-material = "Ceiling"
-
-[[solid]]
-mins = [-125, 0, 12]
-maxs = [-124, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [-104, 0, 12]
-maxs = [-103, 8, 32]
-material = "Wall"
-
-[[solid]]
-mins = [-124, 0, 11]
-maxs = [-117.0, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [-111.0, 0, 11]
-maxs = [-104, 8, 12]
-material = "Wall"
-
-[[solid]]
-mins = [-124, 0, 32]
-maxs = [-104, 8, 33]
-material = "Wall"
-
-[[solid]]
-mins = [-122, 0, 14]
-maxs = [-120, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-122, 0, 20]
-maxs = [-120, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-122, 0, 26]
-maxs = [-120, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-116, 0, 14]
-maxs = [-114, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-116, 0, 20]
-maxs = [-114, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-116, 0, 26]
-maxs = [-114, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-110, 0, 14]
-maxs = [-108, 3, 16]
-material = "Crate"
-
-[[solid]]
-mins = [-110, 0, 20]
-maxs = [-108, 3, 22]
-material = "Crate"
-
-[[solid]]
-mins = [-110, 0, 26]
-maxs = [-108, 3, 28]
-material = "Crate"
-
-[[solid]]
-mins = [-10, -1, 110]
-maxs = [10, 0, 130]
-material = "Floor"
-
-[[solid]]
-mins = [-10, 8, 110]
-maxs = [10, 9, 130]
-material = "Ceiling"
-
-[[solid]]
-mins = [-11, 0, 110]
-maxs = [-10, 8, 130]
-material = "Wall"
-
-[[solid]]
-mins = [10, 0, 110]
-maxs = [11, 8, 130]
-material = "Wall"
-
-[[solid]]
-mins = [-10, 0, 130]
-maxs = [10, 8, 131]
-material = "Wall"
-
-[[solid]]
-mins = [-5, 0, 115]
-maxs = [-3, 4, 117]
-material = "Crate"
-
-[[solid]]
-mins = [-5, 0, 119]
-maxs = [-3, 4, 121]
-material = "Crate"
-
-[[solid]]
-mins = [-5, 0, 123]
-maxs = [-3, 4, 125]
-material = "Crate"
-
-[[solid]]
-mins = [-1, 0, 115]
-maxs = [1, 4, 117]
-material = "Crate"
-
-[[solid]]
-mins = [-1, 0, 123]
-maxs = [1, 4, 125]
-material = "Crate"
-
-[[solid]]
-mins = [3, 0, 115]
-maxs = [5, 4, 117]
-material = "Crate"
-
-[[solid]]
-mins = [3, 0, 119]
-maxs = [5, 4, 121]
-material = "Crate"
-
-[[solid]]
-mins = [3, 0, 123]
-maxs = [5, 4, 125]
-material = "Crate"
-
-[[solid]]
-mins = [110, -1, -10]
-maxs = [130, 0, 10]
-material = "Floor"
-
-[[solid]]
-mins = [110, 8, -10]
-maxs = [130, 9, 10]
-material = "Ceiling"
-
-[[solid]]
-mins = [110, 0, -11]
-maxs = [130, 8, -10]
-material = "Wall"
-
-[[solid]]
-mins = [130, 0, -10]
-maxs = [131, 8, 10]
-material = "Wall"
-
-[[solid]]
-mins = [110, 0, 10]
-maxs = [130, 8, 11]
-material = "Wall"
-
-[[solid]]
-mins = [115, 0, -5]
-maxs = [117, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [115, 0, -1]
-maxs = [117, 4, 1]
-material = "Crate"
-
-[[solid]]
-mins = [115, 0, 3]
-maxs = [117, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [119, 0, -5]
-maxs = [121, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [119, 0, 3]
-maxs = [121, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [123, 0, -5]
-maxs = [125, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [123, 0, -1]
-maxs = [125, 4, 1]
-material = "Crate"
-
-[[solid]]
-mins = [123, 0, 3]
-maxs = [125, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [-130, -1, -10]
-maxs = [-110, 0, 10]
-material = "Floor"
-
-[[solid]]
-mins = [-130, 8, -10]
-maxs = [-110, 9, 10]
-material = "Ceiling"
-
-[[solid]]
-mins = [-130, 0, -11]
-maxs = [-110, 8, -10]
-material = "Wall"
-
-[[solid]]
-mins = [-131, 0, -10]
-maxs = [-130, 8, 10]
-material = "Wall"
-
-[[solid]]
-mins = [-130, 0, 10]
-maxs = [-110, 8, 11]
-material = "Wall"
-
-[[solid]]
-mins = [-125, 0, -5]
-maxs = [-123, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [-125, 0, -1]
-maxs = [-123, 4, 1]
-material = "Crate"
-
-[[solid]]
-mins = [-125, 0, 3]
-maxs = [-123, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [-121, 0, -5]
-maxs = [-119, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [-121, 0, 3]
-maxs = [-119, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [-117, 0, -5]
-maxs = [-115, 4, -3]
-material = "Crate"
-
-[[solid]]
-mins = [-117, 0, -1]
-maxs = [-115, 4, 1]
-material = "Crate"
-
-[[solid]]
-mins = [-117, 0, 3]
-maxs = [-115, 4, 5]
-material = "Crate"
-
-[[solid]]
-mins = [-6.5, 0, -30.4]
-maxs = [-5.8, 4, -29.6]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -30.4]
-maxs = [6.5, 4, -29.6]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, -24.4]
-maxs = [-5.8, 4, -23.6]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -24.4]
-maxs = [6.5, 4, -23.6]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, -18.4]
-maxs = [-5.8, 4, -17.6]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -18.4]
-maxs = [6.5, 4, -17.6]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, -12.4]
-maxs = [-5.8, 4, -11.6]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -12.4]
-maxs = [6.5, 4, -11.6]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, -6.4]
-maxs = [-5.8, 4, -5.6]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -6.4]
-maxs = [6.5, 4, -5.6]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, -0.4]
-maxs = [-5.8, 4, 0.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, -0.4]
-maxs = [6.5, 4, 0.4]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, 5.6]
-maxs = [-5.8, 4, 6.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, 5.6]
-maxs = [6.5, 4, 6.4]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, 11.6]
-maxs = [-5.8, 4, 12.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, 11.6]
-maxs = [6.5, 4, 12.4]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, 17.6]
-maxs = [-5.8, 4, 18.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, 17.6]
-maxs = [6.5, 4, 18.4]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, 23.6]
-maxs = [-5.8, 4, 24.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, 23.6]
-maxs = [6.5, 4, 24.4]
-material = "Post"
-
-[[solid]]
-mins = [-6.5, 0, 29.6]
-maxs = [-5.8, 4, 30.4]
-material = "Post"
-
-[[solid]]
-mins = [5.8, 0, 29.6]
-maxs = [6.5, 4, 30.4]
-material = "Post"
+size = [3.0, 3.2, 16.0]
+brightness = 1.04
+entries = [
+  { origin = [-6.5, 1.6, 142.0], tint = [0.78, 0.96, 1.08] },
+  { origin = [6.5, 1.6, 142.0], tint = [1.06, 0.92, 0.76] },
+]
+
+[[solid]]
+mins = [-1.0, 0.0, 136.0]
+maxs = [1.0, 4.6, 148.0]
+material = "Pillar"
+tint = [0.84, 1.00, 1.14]
+brightness = 1.18
+
+[[solid_group]]
+material = "Glass"
+size = [0.4, 1.8, 8.0]
+brightness = 1.08
+entries = [
+  { origin = [-12.8, 2.1, 143.0], tint = [0.88, 1.02, 1.10] },
+  { origin = [12.8, 2.1, 143.0], tint = [1.00, 0.94, 0.84] },
+]
+
+[[solid]]
+mins = [-3.2, 0.0, 132.0]
+maxs = [3.2, 0.15, 152.0]
+material = "Hazard"
+brightness = 1.08
 
 [[entity]]
 classname = "player_spawn"
-origin = [0.0, 0.0, -34.0]
+origin = [0.0, 0.21, -36.0]
 angles = [0.0, 0.0, 0.0]
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "door"
+size = [8.0, 3.0, 0.18]
+entries = [
+  { origin = [0.0, 0.0, 24.0], targetname = "south_bulkhead", move_speed = 2.4, move_offset = [4.0, 0.0, 0.0] },
+  { origin = [0.0, 0.0, 96.0], targetname = "north_bulkhead", move_speed = 2.4, move_offset = [-4.0, 0.0, 0.0] },
+]
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "panel"
+size = [0.34, 0.52, 0.12]
+use_radius = 1.9
+entries = [
+  { origin = [-5.74, 1.35, -30.0], target = "south_bulkhead", label = "Spine access" },
+  { origin = [-5.74, 1.35, 28.0], target = "south_bulkhead", label = "Reopen south bulkhead" },
+  { origin = [5.74, 1.35, 84.0], target = "north_bulkhead", label = "Turbine access" },
+  { origin = [5.74, 1.35, 132.0], target = "north_bulkhead", label = "Reopen turbine bulkhead" },
+]
+
+[[entity_group]]
+classname = "render_light"
+entries = [
+  { origin = [0.0, 6.2, -34.0], color = [0.14, 0.20, 0.28], radius = 18.0, intensity = 0.92 },
+  { origin = [0.0, 6.4, 52.0], color = [0.13, 0.19, 0.28], radius = 42.0, intensity = 0.84 },
+  { origin = [18.0, 6.0, 58.0], color = [0.24, 0.18, 0.11], radius = 24.0, intensity = 0.96 },
+  { origin = [0.0, 6.8, 142.0], color = [0.26, 0.18, 0.10], radius = 26.0, intensity = 1.10 },
+]

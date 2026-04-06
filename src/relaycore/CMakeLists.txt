@@ -19,12 +19,14 @@ set(RELAYCORE_ENGINE_SOURCES
     platform/sdl_system.cpp
     platform/window.cpp
     render/blockout_mesh_builder.cpp
+    render/blockout_texture_atlas.cpp
     render/camera.cpp
     render/gl_debug.cpp
     render/gl_loader.cpp
     render/mesh.cpp
     render/renderer.cpp
     render/shader_program.cpp
+    render/texture2d.cpp
     world/blockout_loader.cpp
 )
 
@@ -50,6 +52,7 @@ set(RELAYCORE_ENGINE_HEADERS
     platform/sdl_system.h
     platform/window.h
     render/blockout_mesh_builder.h
+    render/blockout_texture_atlas.h
     render/camera.h
     render/gl_debug.h
     render/gl_loader.h
@@ -58,6 +61,7 @@ set(RELAYCORE_ENGINE_HEADERS
     render/render_queue.h
     render/renderer.h
     render/shader_program.h
+    render/texture2d.h
     world/blockout_level.h
     world/blockout_loader.h
 )

@@ -137,7 +137,7 @@ tests/         # doctest-based tests
 
 ## Принципы проекта
 
-- маленькие вертикальные срезы вместо больших абстрактных переписок
+
 - debuggability важнее «умной» архитектуры
 - явные границы между engine / game / data
 - минимум скрытой магии
@@ -146,13 +146,3 @@ tests/         # doctest-based tests
 ## vcpkg manifest
 
 `vcpkg.json` описывает project dependencies. vcpkg использует manifest file `vcpkg.json` как декларативный источник зависимостей, а `builtin-baseline` нужен для repeatable version resolution в top-level project manifests.
-
-## Следующий разумный шаг
-
-Сделать один законченный игровой цикл в комнате:
-
-1. spawn
-2. move + collision
-3. use interaction
-4. одна дверь / одна кнопка / один триггер
-5. один полированный тестовый уровень

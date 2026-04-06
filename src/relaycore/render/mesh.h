@@ -10,6 +10,8 @@ namespace RelayCore::render
     struct ColorVertex {
         glm::vec3 position{};
         glm::vec3 color{};
+        glm::vec3 normal{};
+        float material_kind = 0.0F;
     };
 
     struct CpuColorMeshData {
@@ -18,6 +20,8 @@ namespace RelayCore::render
     };
 
     [[nodiscard]] auto make_color_box_mesh_data() -> CpuColorMeshData;
+
+    [[nodiscard]] auto make_color_double_sided_quad_mesh_data() -> CpuColorMeshData;
 
     class StaticColorMesh {
     public:

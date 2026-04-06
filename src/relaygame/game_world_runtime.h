@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL.h>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,8 @@ namespace RelayGame
     class GameWorldRuntime {
     public:
         void startup(RelayCore::EngineServices& services);
+
+        void shutdown(RelayCore::EngineServices& services) noexcept;
 
         void on_event(const SDL_Event& event, RelayCore::EngineServices& services);
 
@@ -43,6 +46,13 @@ namespace RelayGame
         [[nodiscard]] auto focused_usable_index() const noexcept -> int;
 
     private:
+        struct AudioCueSet {
+            std::filesystem::path ambient_loop{};
+            std::filesystem::path panel_press{};
+            std::filesystem::path door_open{};
+            std::filesystem::path door_close{};
+        };
+
         struct InteractionState {
             int focused_usable_index = -1;
             float focused_distance = 0.0F;
@@ -53,11 +63,17 @@ namespace RelayGame
             std::uint32_t active_doors = 0;
         };
 
-        void simulate_fixed_step(const RelayCore::FrameInfo& sim_frame);
+        void simulate_fixed_step(const RelayCore::FrameInfo& sim_frame, RelayCore::EngineServices& services);
 
         void refresh_runtime_usables_and_focus();
 
         void refresh_interaction_focus();
+
+        void play_gameplay_audio(RelayCore::EngineServices& services, const std::filesystem::path& cue_path) const;
+
+        void play_door_state_change_audio(RelayCore::EngineServices& services);
+
+        void sync_door_audio_state();
 
         [[nodiscard]] auto build_player_diagnostics() const -> RelayCore::render::PlayerDiagnostics;
 
@@ -74,6 +90,8 @@ namespace RelayGame
         std::vector<std::uint32_t> usable_candidates_{};
         std::vector<RelayCore::physics::Aabb> dynamic_blockers_{};
         InteractionState interaction_state_{};
+        AudioCueSet audio_cues_{};
+        std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FixedSimulationLoop simulation_loop_{1.0 / 120.0, 8};
     };
 } // namespace RelayGame

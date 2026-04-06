@@ -163,6 +163,15 @@ namespace RelayCore::render
         }
     }
 
+    void ShaderProgram::set_int(const int location, const int value) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_int");
+        if (location >= 0)
+        {
+            glUniform1i(location, value);
+        }
+    }
+
     void ShaderProgram::reset() noexcept
     {
         if (program_id_ != 0)

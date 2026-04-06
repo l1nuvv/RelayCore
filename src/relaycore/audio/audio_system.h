@@ -10,6 +10,7 @@
 #include <string>
 
 struct ma_engine;
+struct ma_sound;
 
 namespace RelayCore
 {
@@ -17,9 +18,9 @@ namespace RelayCore
      * @brief Startup configuration for the audio subsystem.
      */
     struct AudioSystemConfig {
-        bool        enabled       = true; ///< Enables or disables audio initialization entirely.
-        float       master_volume = 1.0F; ///< Initial master volume applied to the audio engine.
-        std::string startup_sound = "";   ///< Optional startup sound path relative to the asset root.
+        bool enabled = true;            ///< Enables or disables audio initialization entirely.
+        float master_volume = 1.0F;     ///< Initial master volume applied to the audio engine.
+        std::string startup_sound = ""; ///< Optional startup sound path relative to the asset root.
     };
 
     /**
@@ -76,6 +77,17 @@ namespace RelayCore
         void play_one_shot(const std::filesystem::path& file_path) const;
 
         /**
+         * @brief Starts or replaces a single looping sound.
+         * @param file_path Path to the sound file to loop.
+         */
+        void play_loop(const std::filesystem::path& file_path);
+
+        /**
+         * @brief Stops the currently active loop, if any.
+         */
+        void stop_loop() noexcept;
+
+        /**
          * @brief Reports whether the audio engine has been initialized.
          * @return True when the miniaudio engine is live.
          */
@@ -88,7 +100,8 @@ namespace RelayCore
         [[nodiscard]] auto config() const noexcept -> const AudioSystemConfig&;
 
     private:
-        AudioSystemConfig          config_{}; ///< Stored audio configuration.
-        std::unique_ptr<ma_engine> engine_;   ///< Owned miniaudio engine instance.
+        AudioSystemConfig config_{};             ///< Stored audio configuration.
+        std::unique_ptr<ma_engine> engine_;      ///< Owned miniaudio engine instance.
+        std::unique_ptr<ma_sound> loop_sound_{}; ///< Optional looping sound instance.
     };
 } // namespace RelayCore

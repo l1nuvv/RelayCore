@@ -51,6 +51,7 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh panel_mesh_{};
         RelayCore::render::StaticColorMesh panel_highlight_mesh_{};
         std::vector<RenderChunk> render_chunks_{};
+        std::vector<RelayCore::render::LocalLight> local_lights_{};
         RelayCore::render::RenderQueue render_queue_{};
         RelayCore::render::WorldDiagnostics diagnostics_{};
     };

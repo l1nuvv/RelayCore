@@ -5,9 +5,11 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
+#include "relaycore/render/blockout_texture_atlas.h"
 #include "relaycore/render/gl_debug.h"
 #include "relaycore/render/gl_loader.h"
 
+#include <algorithm>
 #include <glad/gl.h>
 #include <glm/mat4x4.hpp>
 
@@ -45,6 +47,8 @@ namespace RelayCore
         log::debug("Asset root: {}", core::asset_root_path().string());
 
         shader_program_.load_from_files(core::asset_path("shaders/basic.vert"), core::asset_path("shaders/basic.frag"));
+        const render::CpuRgbaTextureData atlas = render::build_blockout_texture_atlas();
+        blockout_atlas_.initialize_rgba(atlas.width, atlas.height, atlas.pixels);
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window);
 
@@ -95,6 +99,13 @@ namespace RelayCore
         constexpr GLint kFogColorLocation = 3;
         constexpr GLint kFogStartLocation = 4;
         constexpr GLint kFogEndLocation = 5;
+        constexpr GLint kLocalLightCountLocation = 6;
+        constexpr GLint kLocalLightPositionBaseLocation = 7;
+        constexpr GLint kLocalLightColorBaseLocation = 15;
+        constexpr GLint kLocalLightRadiusBaseLocation = 23;
+        constexpr GLint kSceneTimeLocation = 31;
+        constexpr GLint kBlockoutAtlasLocation = 32;
+        constexpr std::size_t kMaxLocalLights = 8;
         const glm::mat4 view_projection = camera_.view_projection_matrix();
         shader_program_.set_vec3(kCameraPositionLocation, camera_.position());
         shader_program_.set_vec3(kFogColorLocation, config_.fog_color);
@@ -103,6 +114,25 @@ namespace RelayCore
             config_.fog_enabled ? config_.fog_start : config_.camera.far_plane
         );
         shader_program_.set_float(kFogEndLocation, config_.fog_enabled ? config_.fog_end : config_.camera.far_plane);
+        shader_program_.set_int(
+            kLocalLightCountLocation,
+            static_cast<int>(std::min<std::size_t>(local_lights_.size(), kMaxLocalLights))
+        );
+        shader_program_.set_float(kSceneTimeLocation, scene_time_seconds_);
+        if (blockout_atlas_.valid())
+        {
+            blockout_atlas_.bind(0);
+            shader_program_.set_int(kBlockoutAtlasLocation, 0);
+        }
+
+        for (std::size_t light_index = 0; light_index < std::min<std::size_t>(local_lights_.size(), kMaxLocalLights);
+             ++light_index)
+        {
+            const render::LocalLight& light = local_lights_[light_index];
+            shader_program_.set_vec3(kLocalLightPositionBaseLocation + static_cast<int>(light_index), light.position);
+            shader_program_.set_vec3(kLocalLightColorBaseLocation + static_cast<int>(light_index), light.color);
+            shader_program_.set_float(kLocalLightRadiusBaseLocation + static_cast<int>(light_index), light.radius);
+        }
 
         for (const render::RenderItem& item : items)
         {
@@ -115,6 +145,16 @@ namespace RelayCore
             shader_program_.set_mat4(kModelLocation, item.model_matrix);
             item.mesh->draw();
         }
+    }
+
+    void Renderer::set_local_lights(const std::span<const render::LocalLight> lights)
+    {
+        local_lights_.assign(lights.begin(), lights.end());
+    }
+
+    void Renderer::set_scene_time(const float seconds) noexcept
+    {
+        scene_time_seconds_ = seconds;
     }
 
     void Renderer::draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system)

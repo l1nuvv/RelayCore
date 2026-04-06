@@ -56,9 +56,12 @@ add_custom_command(
         TARGET relaycore_demo
         POST_BUILD
         COMMAND
+        ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_demo>" $<TARGET_RUNTIME_DLLS:relaycore_demo>
+        COMMAND
         ${CMAKE_COMMAND} -E copy_directory_if_different
         "${PROJECT_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:relaycore_demo>/assets"
         COMMENT
         "Copying runtime assets"
+        COMMAND_EXPAND_LISTS
 )

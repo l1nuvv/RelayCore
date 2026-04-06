@@ -138,6 +138,12 @@ namespace RelayCore::core
             assign_if_present(controls, "toggle_noclip", config.gameplay.controls.toggle_noclip);
             assign_if_present(controls, "quit", config.gameplay.controls.quit);
 
+            const auto gameplay_audio = game["audio"];
+            assign_if_present(gameplay_audio, "ambient_loop", config.gameplay.audio.ambient_loop);
+            assign_if_present(gameplay_audio, "panel_press", config.gameplay.audio.panel_press);
+            assign_if_present(gameplay_audio, "door_open", config.gameplay.audio.door_open);
+            assign_if_present(gameplay_audio, "door_close", config.gameplay.audio.door_close);
+
             log::info("Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)
         {

@@ -93,6 +93,13 @@ namespace RelayCore::render
          */
         void set_float(int location, float value) const;
 
+        /**
+         * @brief Sets an int uniform by explicit location.
+         * @param location Uniform location.
+         * @param value Scalar integer value to upload.
+         */
+        void set_int(int location, int value) const;
+
     private:
         /**
          * @brief Releases the current OpenGL program and clears caches.

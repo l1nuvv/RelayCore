@@ -5,6 +5,7 @@
 
 #include "relaycore/core/log.h"
 
+#include <algorithm>
 #include <ctime>
 #include <filesystem>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -21,9 +22,10 @@ namespace RelayCore::log
     namespace
     {
         std::shared_ptr<spdlog::logger> g_logger;
-        std::mutex                      g_logger_mutex;
-        std::string                     g_run_log_path;
-        std::string                     g_latest_log_path;
+        std::mutex g_logger_mutex;
+        std::string g_run_log_path;
+        std::string g_latest_log_path;
+        std::string g_session_id;
 
         auto local_time(const std::time_t time_value) -> std::tm
         {
@@ -38,7 +40,7 @@ namespace RelayCore::log
 
         auto make_run_stamp() -> std::string
         {
-            const auto now      = std::chrono::system_clock::now();
+            const auto now = std::chrono::system_clock::now();
             const auto now_time = std::chrono::system_clock::to_time_t(now);
             const auto tm_value = local_time(now_time);
 
@@ -47,13 +49,24 @@ namespace RelayCore::log
             return std::string(buffer);
         }
 
-        auto make_run_filename() -> std::string { return "RelayCore_" + make_run_stamp() + ".log"; }
+        auto make_run_filename(const std::string_view session_id) -> std::string
+        {
+            return "RelayCore_" + std::string(session_id) + ".log";
+        }
 
         auto resolve_logs_directory(const std::string& configured_path) -> std::filesystem::path
         {
+            if (configured_path.empty())
+            {
+                return resolve_logs_directory("logs");
+            }
+
             const std::filesystem::path requested_path(configured_path);
 
-            if (requested_path.is_absolute()) { return requested_path; }
+            if (requested_path.is_absolute())
+            {
+                return requested_path;
+            }
 
             const std::filesystem::path asset_dir(RELAYCORE_ASSET_DIR);
             if (!asset_dir.empty())
@@ -63,6 +76,70 @@ namespace RelayCore::log
             }
 
             return std::filesystem::absolute(requested_path);
+        }
+
+        auto is_timestamped_run_log_filename(const std::string_view filename) -> bool
+        {
+            return filename.starts_with("RelayCore_") && filename.ends_with(".log");
+        }
+
+        auto prune_timestamped_logs(
+            const std::filesystem::path& logs_dir,
+            const std::string_view latest_filename,
+            const std::size_t max_timestamped_logs
+        ) -> std::size_t
+        {
+            if (max_timestamped_logs == 0)
+            {
+                return 0;
+            }
+
+            struct LogEntry {
+                std::filesystem::path path;
+                std::filesystem::file_time_type write_time{};
+            };
+
+            std::vector<LogEntry> candidates;
+            for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(logs_dir))
+            {
+                if (!entry.is_regular_file())
+                {
+                    continue;
+                }
+
+                const std::string filename = entry.path().filename().string();
+                if (filename == latest_filename || !is_timestamped_run_log_filename(filename))
+                {
+                    continue;
+                }
+
+                candidates.push_back({entry.path(), entry.last_write_time()});
+            }
+
+            if (candidates.size() <= max_timestamped_logs)
+            {
+                return 0;
+            }
+
+            std::sort(candidates.begin(), candidates.end(), [](const LogEntry& lhs, const LogEntry& rhs) {
+                if (lhs.write_time == rhs.write_time)
+                {
+                    return lhs.path.filename().string() > rhs.path.filename().string();
+                }
+                return lhs.write_time > rhs.write_time;
+            });
+
+            std::size_t removed_count = 0;
+            for (std::size_t index = max_timestamped_logs; index < candidates.size(); ++index)
+            {
+                std::error_code remove_error;
+                if (std::filesystem::remove(candidates[index].path, remove_error))
+                {
+                    ++removed_count;
+                }
+            }
+
+            return removed_count;
         }
     } // namespace
 
@@ -85,12 +162,15 @@ namespace RelayCore::log
         std::vector<std::string> pending;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (messages_.empty()) { return; }
+            if (messages_.empty())
+            {
+                return;
+            }
             pending.swap(messages_);
         }
 
         log::info("{}: {}", title, pending.size());
-        for (const auto& message: pending)
+        for (const auto& message : pending)
         {
             log::info("  {}", message);
         }
@@ -117,17 +197,22 @@ namespace RelayCore::log
     void init(const Config& config)
     {
         std::lock_guard<std::mutex> lock(g_logger_mutex);
-        if (g_logger) { return; }
+        if (g_logger)
+        {
+            return;
+        }
 
         try
         {
-            const std::filesystem::path logs_dir = std::filesystem::path(config.logs_directory);
+            const std::filesystem::path logs_dir = resolve_logs_directory(config.logs_directory);
             std::filesystem::create_directories(logs_dir);
             const std::filesystem::path resolved_logs_dir = std::filesystem::weakly_canonical(logs_dir);
+            const std::string session_id = make_run_stamp();
 
             std::vector<spdlog::sink_ptr> sinks;
             g_run_log_path.clear();
             g_latest_log_path.clear();
+            g_session_id = session_id;
 
             if (config.enable_console_sink)
             {
@@ -140,8 +225,8 @@ namespace RelayCore::log
 
             if (config.enable_timestamped_log)
             {
-                const auto run_path = resolved_logs_dir / make_run_filename();
-                auto run_file_sink  = std::make_shared<spdlog::sinks::basic_file_sink_mt>(run_path.string(), false);
+                const auto run_path = resolved_logs_dir / make_run_filename(session_id);
+                auto run_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(run_path.string(), false);
                 run_file_sink->set_level(spdlog::level::trace);
                 run_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
                 sinks.push_back(run_file_sink);
@@ -152,7 +237,10 @@ namespace RelayCore::log
             if (config.enable_latest_log)
             {
                 const auto latest_path = resolved_logs_dir / config.latest_filename;
-                auto latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(latest_path.string(), true);
+                auto latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                    latest_path.string(),
+                    config.truncate_latest_log
+                );
                 latest_file_sink->set_level(spdlog::level::trace);
                 latest_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
                 sinks.push_back(latest_file_sink);
@@ -160,7 +248,10 @@ namespace RelayCore::log
                 g_latest_log_path = latest_path.string();
             }
 
-            if (sinks.empty()) { throw std::runtime_error("Logger initialization failed: no sinks configured"); }
+            if (sinks.empty())
+            {
+                throw std::runtime_error("Logger initialization failed: no sinks configured");
+            }
 
             auto created_logger = std::make_shared<spdlog::logger>(config.logger_name, sinks.begin(), sinks.end());
 
@@ -176,12 +267,29 @@ namespace RelayCore::log
 
             g_logger = std::move(created_logger);
 
+            if (config.enable_timestamped_log)
+            {
+                const std::size_t removed_logs =
+                    prune_timestamped_logs(resolved_logs_dir, config.latest_filename, config.max_timestamped_logs);
+                if (removed_logs > 0)
+                {
+                    log::info("Pruned {} old timestamped log file(s)", removed_logs);
+                }
+            }
+
+            log::info("===== Session {} start =====", g_session_id);
             log::info("Logger initialized");
             log::info("Resolved logs directory: {}", resolved_logs_dir.string());
             log::info("Logger name: {}", config.logger_name);
             log::info("Log level: {}", spdlog::level::to_string_view(config.level));
-            if (!g_run_log_path.empty()) { log::info("Run log: {}", g_run_log_path); }
-            if (!g_latest_log_path.empty()) { log::info("Latest log: {}", g_latest_log_path); }
+            if (!g_run_log_path.empty())
+            {
+                log::info("Run log: {}", g_run_log_path);
+            }
+            if (!g_latest_log_path.empty())
+            {
+                log::info("Latest log: {}", g_latest_log_path);
+            }
         } catch (const spdlog::spdlog_ex& ex)
         {
             throw std::runtime_error(std::string("Failed to initialize logger: ") + ex.what());
@@ -194,24 +302,38 @@ namespace RelayCore::log
     void shutdown()
     {
         std::lock_guard<std::mutex> lock(g_logger_mutex);
-        if (!g_logger) { return; }
+        if (!g_logger)
+        {
+            return;
+        }
 
+        if (!g_session_id.empty())
+        {
+            g_logger->info("===== Session {} end =====", g_session_id);
+        }
         g_logger->flush();
         spdlog::shutdown();
         g_logger.reset();
         g_run_log_path.clear();
         g_latest_log_path.clear();
+        g_session_id.clear();
     }
 
     auto logger() -> spdlog::logger&
     {
-        if (!g_logger) { throw std::runtime_error("RelayCore logger is not initialized"); }
+        if (!g_logger)
+        {
+            throw std::runtime_error("RelayCore logger is not initialized");
+        }
         return *g_logger;
     }
 
     void flush()
     {
-        if (g_logger) { g_logger->flush(); }
+        if (g_logger)
+        {
+            g_logger->flush();
+        }
     }
 
     void set_level(const spdlog::level::level_enum level_value)
@@ -220,15 +342,33 @@ namespace RelayCore::log
         logger().info("Log level changed to {}", spdlog::level::to_string_view(level_value));
     }
 
-    auto level() -> spdlog::level::level_enum { return logger().level(); }
+    auto level() -> spdlog::level::level_enum
+    {
+        return logger().level();
+    }
 
-    auto run_log_path() -> const std::string& { return g_run_log_path; }
+    auto run_log_path() -> const std::string&
+    {
+        return g_run_log_path;
+    }
 
-    auto latest_log_path() -> const std::string& { return g_latest_log_path; }
+    auto latest_log_path() -> const std::string&
+    {
+        return g_latest_log_path;
+    }
 
-    void info(const std::string_view message) { logger().info(message); }
+    void info(const std::string_view message)
+    {
+        logger().info(message);
+    }
 
-    void warn(const std::string_view message) { logger().warn(message); }
+    void warn(const std::string_view message)
+    {
+        logger().warn(message);
+    }
 
-    void error(const std::string_view message) { logger().error(message); }
+    void error(const std::string_view message)
+    {
+        logger().error(message);
+    }
 } // namespace RelayCore::log
