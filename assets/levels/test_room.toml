@@ -1,189 +1,266 @@
 # RelayCore facility slice
 # Maintenance intake -> outer bulkhead -> service airlock -> observation lab
 
-# Maintenance intake shell
-[[solid_group]]
-entries = [
+[[module_template]]
+name = "outer_bulkhead_module"
+solids = [
+  { origin = [-3.25, 1.7, 0.0], size = [3.9, 3.4, 0.2], material = "WallPanel", tint = [0.74, 0.96, 1.10], brightness = 1.18 },
+  { origin = [3.25, 1.7, 0.0], size = [3.9, 3.4, 0.2], material = "WallPanel", tint = [0.74, 0.96, 1.10], brightness = 1.18 },
+  { origin = [0.0, 3.075, 0.0], size = [2.6, 0.65, 0.2], material = "Trim", tint = [1.08, 0.92, 0.74], brightness = 1.10 },
+  { origin = [-1.53, 1.42, -0.04], size = [0.22, 2.64, 0.12], material = "Post", tint = [0.92, 0.96, 1.02], brightness = 0.96 },
+  { origin = [1.53, 1.42, -0.04], size = [0.22, 2.64, 0.12], material = "Post", tint = [0.92, 0.96, 1.02], brightness = 0.96 },
+  { origin = [0.0, 2.68, -0.04], size = [2.84, 0.18, 0.12], material = "Beam", tint = [1.04, 0.88, 0.72], brightness = 0.96 },
+  { origin = [0.0, 0.09, -0.24], size = [2.8, 0.08, 0.24], material = "Hazard", tint = [1.00, 0.96, 0.82], brightness = 1.00 },
+]
+entities = [
+  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "outer_bulkhead", move_speed = 2.8, move_offset = [2.6, 0.0, 0.0] },
+  { classname = "gameplay_entity", kind = "panel", origin = [-5.0, 1.35, -1.3], size = [0.34, 0.52, 0.12], use_radius = 1.9, mount_axis = "+x", target = "outer_bulkhead", label = "Открыть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
+  { classname = "gameplay_entity", kind = "panel", origin = [-1.6, 1.35, 1.3], size = [0.32, 0.50, 0.12], use_radius = 1.8, mount_axis = "+x", target = "outer_bulkhead", label = "Вернуть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
+  { classname = "gameplay_entity", kind = "trigger", origin = [0.0, 0.1, 2.8], targetname = "seal_intake_trigger", target = "outer_bulkhead", size = [2.4, 2.4, 1.6], once = true },
+  { classname = "render_light", origin = [0.0, 2.78, 0.1], color = [0.30, 0.18, 0.09], radius = 2.4, intensity = 0.62 },
+  { classname = "render_light", origin = [-4.55, 1.70, -1.3], color = [0.16, 0.38, 0.46], radius = 1.9, intensity = 0.92 },
+]
+anchors = [
+  { name = "door_center", origin = [0.0, 0.0, 0.0] },
+  { name = "service_panel", origin = [-5.0, 1.35, -1.3] },
+  { name = "return_panel", origin = [-1.6, 1.35, 1.3] },
+]
+
+[[module_template]]
+name = "inner_bulkhead_module"
+solids = [
+  { origin = [-3.55, 1.8, 0.0], size = [4.5, 3.6, 0.2], material = "WallPanel", tint = [1.16, 0.86, 0.62], brightness = 1.08 },
+  { origin = [3.55, 1.8, 0.0], size = [4.5, 3.6, 0.2], material = "WallPanel", tint = [1.16, 0.86, 0.62], brightness = 1.08 },
+  { origin = [0.0, 3.2, 0.0], size = [2.6, 0.8, 0.2], material = "Trim", tint = [1.10, 0.86, 0.66], brightness = 1.10 },
+  { origin = [-1.53, 1.42, -0.04], size = [0.22, 2.68, 0.12], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
+  { origin = [1.53, 1.42, -0.04], size = [0.22, 2.68, 0.12], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
+  { origin = [0.0, 2.72, -0.04], size = [2.84, 0.18, 0.12], material = "Beam", tint = [1.10, 0.90, 0.72], brightness = 0.98 },
+  { origin = [0.0, 2.18, -0.25], size = [1.60, 0.24, 0.03], material = "Divider", tint = [0.76, 0.96, 1.08], brightness = 1.02 },
+  { origin = [-2.3, 1.22, -0.24], size = [1.8, 0.16, 0.03], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
+  { origin = [2.3, 1.22, -0.24], size = [1.8, 0.16, 0.03], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
+]
+entities = [
+  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "inner_bulkhead", move_speed = 2.6, move_offset = [-2.6, 0.0, 0.0] },
+  { classname = "gameplay_entity", kind = "panel", origin = [1.6, 1.35, -1.3], size = [0.32, 0.50, 0.12], use_radius = 1.8, mount_axis = "-x", target = "inner_bulkhead", required_item = "lab_keycard", required_item_name = "Ключ-карта лаборатории", label = "Разблокировать внутренний шлюз", success_message = "Команда на внутренний шлюз принята", denied_message = "Нужна ключ-карта лаборатории" },
+  { classname = "gameplay_entity", kind = "panel", origin = [5.6, 1.35, 1.5], size = [0.34, 0.52, 0.12], use_radius = 1.9, mount_axis = "-x", target = "inner_bulkhead", required_item = "lab_keycard", required_item_name = "Ключ-карта лаборатории", label = "Открыть внутренний шлюз", success_message = "Команда на внутренний шлюз принята", denied_message = "Нужна ключ-карта лаборатории" },
+  { classname = "gameplay_entity", kind = "trigger", origin = [0.0, 0.1, 2.0], targetname = "seal_lab_trigger", target = "inner_bulkhead", size = [2.6, 2.6, 1.8], once = true },
+  { classname = "render_light", origin = [1.15, 1.72, -1.3], color = [0.20, 0.34, 0.16], radius = 1.5, intensity = 0.82 },
+  { classname = "render_light", origin = [5.15, 1.72, 1.5], color = [0.42, 0.24, 0.12], radius = 1.9, intensity = 0.96 },
+]
+anchors = [
+  { name = "door_center", origin = [0.0, 0.0, 0.0] },
+  { name = "card_reader", origin = [1.6, 1.35, -1.3] },
+]
+
+[[module_template]]
+name = "service_rack_module"
+solids = [
+  { origin = [0.0, 0.78, 0.0], size = [0.46, 1.16, 0.54], material = "Block", tint = [0.76, 0.96, 1.06], brightness = 1.04 },
+  { origin = [0.0, 1.38, 0.0], size = [0.52, 0.06, 0.62], material = "Trim", tint = [0.94, 0.98, 1.04], brightness = 1.00 },
+  { origin = [0.0, 1.72, 0.0], size = [0.42, 0.04, 0.48], material = "Divider", tint = [0.72, 0.90, 1.02], brightness = 0.96 },
+  { origin = [-0.23, 1.30, 0.0], size = [0.04, 0.98, 0.52], material = "LightStrip", tint = [0.76, 1.00, 1.12], brightness = 1.08 },
+]
+anchors = [
+  { name = "pickup_slot", origin = [0.0, 1.445, 0.0] },
+]
+entities = [
+  { classname = "render_light", origin = [0.18, 1.58, 0.18], color = [0.12, 0.36, 0.32], radius = 1.45, intensity = 0.88 },
+]
+
+[[module_template]]
+name = "maintenance_intake_module"
+solids = [
   { origin = [0.0, 0.1, -0.3], size = [10.4, 0.2, 9.0], material = "Floor" },
   { origin = [0.0, 3.3, -0.3], size = [10.4, 0.2, 9.0], material = "Ceiling" },
   { origin = [-5.1, 1.7, -0.3], size = [0.2, 3.4, 9.0], material = "WallPanel" },
   { origin = [5.1, 1.7, -0.3], size = [0.2, 3.4, 9.0], material = "WallPanel" },
   { origin = [0.0, 1.7, -4.7], size = [10.4, 3.4, 0.2], material = "WallPanel" },
-  { origin = [-3.25, 1.7, 4.1], size = [3.9, 3.4, 0.2], material = "WallPanel", tint = [0.74, 0.96, 1.10], brightness = 1.18 },
-  { origin = [3.25, 1.7, 4.1], size = [3.9, 3.4, 0.2], material = "WallPanel", tint = [0.74, 0.96, 1.10], brightness = 1.18 },
-  { origin = [0.0, 3.075, 4.1], size = [2.6, 0.65, 0.2], material = "Trim", tint = [1.08, 0.92, 0.74], brightness = 1.10 },
-]
-
-[[solid_group]]
-entries = [
   { origin = [-4.98, 0.46, -0.3], size = [0.08, 0.92, 8.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
   { origin = [4.98, 0.46, -0.3], size = [0.08, 0.92, 8.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
   { origin = [0.0, 0.46, -4.58], size = [10.0, 0.92, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
-  { origin = [-1.46, 1.42, 4.02], size = [0.22, 2.64, 0.16], material = "Post", tint = [0.92, 0.96, 1.02], brightness = 0.96 },
-  { origin = [1.46, 1.42, 4.02], size = [0.22, 2.64, 0.16], material = "Post", tint = [0.92, 0.96, 1.02], brightness = 0.96 },
-  { origin = [0.0, 2.68, 4.02], size = [3.14, 0.18, 0.16], material = "Beam", tint = [1.04, 0.88, 0.72], brightness = 0.96 },
   { origin = [0.0, 2.72, -0.3], size = [0.46, 0.24, 7.8], material = "Post", tint = [0.90, 0.94, 0.98], brightness = 0.88 },
-]
-
-# Intake room props
-[[solid_group]]
-entries = [
-  { origin = [-4.3, 0.75, -0.6], size = [1.0, 1.5, 2.4], material = "Block", tint = [0.78, 0.96, 1.08], brightness = 1.06 },
-  { origin = [-4.3, 1.7, -0.6], size = [1.0, 0.4, 2.4], material = "Trim" },
-  { origin = [4.3, 0.675, 0.6], size = [1.0, 1.35, 2.4], material = "Block", tint = [0.78, 0.96, 1.08], brightness = 1.04 },
-  { origin = [4.25, 0.55, 3.0], size = [1.1, 1.1, 1.2], material = "Crate" },
+  { origin = [-4.3, 0.95, -0.6], size = [1.0, 1.5, 2.4], material = "Block", tint = [0.78, 0.96, 1.08], brightness = 1.06 },
+  { origin = [-4.3, 1.9, -0.6], size = [1.0, 0.4, 2.4], material = "Trim" },
+  { origin = [4.3, 0.875, 0.6], size = [1.0, 1.35, 2.4], material = "Block", tint = [0.78, 0.96, 1.08], brightness = 1.04 },
+  { origin = [4.25, 0.75, 3.0], size = [1.1, 1.1, 1.2], material = "Crate" },
   { origin = [0.0, 0.035, 0.1], size = [0.30, 0.02, 7.2], material = "Divider", tint = [0.74, 0.96, 1.08], brightness = 0.98 },
-  { origin = [0.0, 0.09, 3.86], size = [2.8, 0.08, 0.24], material = "Hazard", tint = [1.00, 0.96, 0.82], brightness = 1.00 },
   { origin = [0.0, 0.125, -4.25], size = [2.2, 0.25, 0.7], material = "LightStrip", tint = [0.90, 1.05, 1.14], brightness = 1.08 },
-]
-
-[[solid_group]]
-entries = [
   { origin = [-4.98, 1.18, -0.3], size = [0.04, 0.18, 7.8], material = "Trim", tint = [0.82, 0.88, 0.94], brightness = 0.96 },
   { origin = [4.98, 1.18, -0.3], size = [0.04, 0.18, 7.8], material = "Trim", tint = [0.82, 0.88, 0.94], brightness = 0.96 },
-]
-
-[[solid_group]]
-entries = [
   { origin = [0.0, 2.96, -2.2], size = [9.0, 0.12, 0.04], material = "Trim", tint = [0.72, 0.78, 0.84], brightness = 0.90 },
   { origin = [0.0, 2.96, 1.2], size = [9.0, 0.12, 0.04], material = "Trim", tint = [0.72, 0.78, 0.84], brightness = 0.90 },
   { origin = [0.0, 0.04, -0.3], size = [6.0, 0.02, 0.28], material = "LightStrip", tint = [0.84, 0.94, 1.08], brightness = 1.10 },
 ]
-
-# Outer airlock chamber
-[[solid_group]]
-entries = [
-  { origin = [0.0, 0.1, 6.5], size = [3.6, 0.2, 4.6], material = "Corridor" },
-  { origin = [0.0, 3.1, 6.5], size = [3.6, 0.2, 4.6], material = "Ceiling" },
-  { origin = [-1.7, 1.6, 6.5], size = [0.2, 3.2, 4.6], material = "WallPanel", tint = [0.70, 0.92, 1.14], brightness = 1.10 },
-  { origin = [1.7, 1.6, 6.5], size = [0.2, 3.2, 4.6], material = "WallPanel", tint = [0.70, 0.92, 1.14], brightness = 1.10 },
-  { origin = [-1.62, 0.48, 6.5], size = [0.08, 0.96, 4.0], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.92 },
-  { origin = [1.62, 0.48, 6.5], size = [0.08, 0.96, 4.0], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.92 },
-  { origin = [0.0, 0.035, 6.5], size = [0.24, 0.02, 3.2], material = "Divider", tint = [0.74, 0.98, 1.10], brightness = 1.02 },
-  { origin = [0.0, 0.09, 8.48], size = [2.4, 0.08, 0.36], material = "Hazard", tint = [1.00, 0.98, 0.82], brightness = 1.00 },
-  { origin = [0.0, 2.75, 6.1], size = [2.4, 0.4, 0.4], material = "Trim", tint = [0.80, 0.98, 1.10], brightness = 1.12 },
-  { origin = [-1.625, 1.15, 6.3], size = [0.35, 2.3, 0.4], material = "LightStrip" },
-  { origin = [1.625, 1.15, 6.7], size = [0.35, 2.3, 0.4], material = "LightStrip" },
+entities = [
+  { classname = "render_light", origin = [0.0, 2.82, -1.8], color = [0.11, 0.18, 0.30], radius = 5.6, intensity = 0.88 },
+  { classname = "render_light", origin = [4.1, 1.8, 2.9], color = [0.10, 0.18, 0.28], radius = 3.0, intensity = 0.54 },
+]
+anchors = [
+  { name = "spawn", origin = [0.0, 0.21, -1.4] },
 ]
 
-# Inner bulkhead frame
-[[solid_group]]
-entries = [
-  { origin = [-3.55, 1.8, 8.7], size = [4.5, 3.6, 0.2], material = "WallPanel", tint = [1.16, 0.86, 0.62], brightness = 1.08 },
-  { origin = [3.55, 1.8, 8.7], size = [4.5, 3.6, 0.2], material = "WallPanel", tint = [1.16, 0.86, 0.62], brightness = 1.08 },
-  { origin = [0.0, 3.2, 8.7], size = [2.6, 0.8, 0.2], material = "Trim", tint = [1.10, 0.86, 0.66], brightness = 1.10 },
+[[module_template]]
+name = "airlock_chamber_module"
+solids = [
+  { origin = [0.0, 0.1, 0.0], size = [3.6, 0.2, 4.6], material = "Corridor" },
+  { origin = [0.0, 3.1, 0.0], size = [3.6, 0.2, 4.6], material = "Ceiling" },
+  { origin = [-1.7, 1.6, 0.0], size = [0.2, 3.2, 4.6], material = "WallPanel", tint = [0.70, 0.92, 1.14], brightness = 1.10 },
+  { origin = [1.7, 1.6, 0.0], size = [0.2, 3.2, 4.6], material = "WallPanel", tint = [0.70, 0.92, 1.14], brightness = 1.10 },
+  { origin = [-1.62, 0.48, 0.0], size = [0.08, 0.96, 4.0], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.92 },
+  { origin = [1.62, 0.48, 0.0], size = [0.08, 0.96, 4.0], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.92 },
+  { origin = [0.0, 0.035, 0.0], size = [0.24, 0.02, 3.2], material = "Divider", tint = [0.74, 0.98, 1.10], brightness = 1.02 },
+  { origin = [0.0, 0.09, 1.98], size = [2.4, 0.08, 0.36], material = "Hazard", tint = [1.00, 0.98, 0.82], brightness = 1.00 },
+  { origin = [0.0, 2.75, -0.4], size = [2.4, 0.4, 0.4], material = "Trim", tint = [0.80, 0.98, 1.10], brightness = 1.12 },
+  { origin = [-1.625, 1.15, -0.2], size = [0.35, 2.3, 0.4], material = "LightStrip" },
+  { origin = [1.625, 1.15, 0.2], size = [0.35, 2.3, 0.4], material = "LightStrip" },
+]
+entities = [
+  { classname = "render_light", origin = [0.0, 2.62, 0.4], color = [0.12, 0.22, 0.34], radius = 3.6, intensity = 1.02 },
+]
+anchors = [
+  { name = "center", origin = [0.0, 0.0, 0.0] },
+  { name = "rack_mount", origin = [-1.18, 0.0, 0.95] },
 ]
 
-[[solid_group]]
-entries = [
-  { origin = [-1.46, 1.42, 8.58], size = [0.22, 2.68, 0.16], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
-  { origin = [1.46, 1.42, 8.58], size = [0.22, 2.68, 0.16], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
-  { origin = [0.0, 2.72, 8.58], size = [3.02, 0.18, 0.16], material = "Beam", tint = [1.10, 0.90, 0.72], brightness = 0.98 },
-  { origin = [0.0, 2.18, 8.56], size = [1.64, 0.24, 0.04], material = "Divider", tint = [0.76, 0.96, 1.08], brightness = 1.02 },
+[[module_template]]
+name = "observation_lab_module"
+solids = [
+  { origin = [0.0, 0.1, 0.0], size = [11.6, 0.2, 8.8], material = "Platform" },
+  { origin = [0.0, 3.5, 0.0], size = [11.6, 0.2, 8.8], material = "Ceiling" },
+  { origin = [-5.7, 1.8, 0.0], size = [0.2, 3.6, 8.8], material = "WallPanel" },
+  { origin = [5.7, 1.8, 0.0], size = [0.2, 3.6, 8.8], material = "WallPanel" },
+  { origin = [-3.6, 1.8, 4.3], size = [4.4, 3.6, 0.2], material = "WallPanel" },
+  { origin = [3.6, 1.8, 4.3], size = [4.4, 3.6, 0.2], material = "WallPanel" },
+  { origin = [-5.58, 0.54, 0.0], size = [0.08, 1.08, 7.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
+  { origin = [5.58, 0.54, 0.0], size = [0.08, 1.08, 7.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
+  { origin = [-3.2, 0.54, 4.18], size = [4.0, 1.08, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
+  { origin = [3.2, 0.54, 4.18], size = [4.0, 1.08, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
+  { origin = [0.0, 0.035, -1.5], size = [0.32, 0.02, 4.2], material = "Divider", tint = [0.76, 0.94, 1.04], brightness = 0.98 },
+  { origin = [0.0, 2.98, 0.0], size = [0.62, 0.24, 7.4], material = "Post", tint = [0.88, 0.92, 0.98], brightness = 0.86 },
+  { origin = [-5.58, 1.22, 0.0], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
+  { origin = [5.58, 1.22, 0.0], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
+  { origin = [-3.1, 2.9, 4.18], size = [3.6, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
+  { origin = [3.1, 2.9, 4.18], size = [3.6, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
+  { origin = [-1.48, 1.45, 4.10], size = [0.16, 2.90, 0.20], material = "Post", tint = [0.94, 0.98, 1.02], brightness = 0.98 },
+  { origin = [1.48, 1.45, 4.10], size = [0.16, 2.90, 0.20], material = "Post", tint = [0.94, 0.98, 1.02], brightness = 0.98 },
+  { origin = [0.0, 2.86, 4.10], size = [2.80, 0.16, 0.12], material = "Beam", tint = [0.88, 0.94, 1.02], brightness = 1.00 },
+  { origin = [0.0, 3.08, -2.0], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
+  { origin = [0.0, 3.08, 2.0], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
+  { origin = [0.0, 0.04, -3.4], size = [4.6, 0.02, 0.24], material = "LightStrip", tint = [0.78, 0.86, 0.74], brightness = 1.14 },
+  { origin = [-5.4, 1.65, -0.5], size = [0.16, 1.3, 3.4], material = "Divider", tint = [0.84, 0.98, 1.08], brightness = 1.06 },
+  { origin = [5.4, 1.6, 0.3], size = [0.16, 1.2, 3.0], material = "Divider", tint = [1.02, 0.92, 0.82], brightness = 1.04 },
+  { origin = [0.0, 0.56, -0.05], size = [3.9, 0.12, 3.8], material = "Trim", tint = [0.84, 0.88, 0.92], brightness = 0.94 },
+  { origin = [0.0, 0.275, -0.05], size = [3.6, 0.55, 3.5], material = "PlatformTop", tint = [1.04, 0.90, 0.72], brightness = 1.08 },
+  { origin = [0.0, 1.525, -0.05], size = [0.9, 1.95, 1.3], material = "Pillar", tint = [0.82, 1.00, 1.16], brightness = 1.20 },
+  { origin = [0.0, 1.02, -0.78], size = [0.74, 0.76, 0.18], material = "Block", tint = [0.88, 0.98, 1.10], brightness = 1.06 },
+  { origin = [0.0, 1.32, -0.68], size = [0.44, 0.20, 0.04], material = "LightStrip", tint = [0.72, 0.98, 1.10], brightness = 1.16 },
+  { origin = [-4.3, 0.825, -2.45], size = [1.0, 1.25, 1.5], material = "Crate" },
+  { origin = [-4.05, 0.725, 2.0], size = [1.1, 1.05, 1.6], material = "Block", tint = [1.10, 0.92, 0.74], brightness = 1.02 },
+  { origin = [4.35, 0.775, -1.9], size = [1.1, 1.15, 1.4], material = "Block", tint = [1.10, 0.92, 0.74], brightness = 1.02 },
+  { origin = [4.25, 0.8, 2.4], size = [1.3, 1.2, 1.2], material = "Crate" },
+]
+entities = [
+  { classname = "render_light", origin = [0.0, 1.6, 0.0], color = [0.28, 0.18, 0.08], radius = 4.8, intensity = 0.92 },
+  { classname = "render_light", origin = [0.0, 2.10, 3.4], color = [0.10, 0.26, 0.30], radius = 4.4, intensity = 0.80 },
+  { classname = "gameplay_entity", kind = "terminal", origin = [0.0, 1.32, -0.74], size = [0.42, 0.34, 0.10], use_radius = 1.8, mount_axis = "-z", target = "lab_relay_console", action = "signal", label = "Стабилизировать ядро ретранслятора", success_message = "Ядро ретранслятора стабилизировано" },
+  { classname = "render_light", origin = [0.0, 1.72, -1.55], color = [0.14, 0.38, 0.42], radius = 2.2, intensity = 0.96 },
+]
+anchors = [
+  { name = "entry_zone", origin = [0.0, 0.1, -0.9] },
+  { name = "relay_console", origin = [0.0, 1.32, -0.74] },
+  { name = "rear_exit", origin = [0.0, 0.1, 4.5] },
 ]
 
-[[solid_group]]
-entries = [
-  { origin = [-2.3, 1.22, 8.58], size = [1.8, 0.16, 0.04], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
-  { origin = [2.3, 1.22, 8.58], size = [1.8, 0.16, 0.04], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
+[[module_template]]
+name = "reactor_gallery_module"
+solids = [
+  { origin = [0.0, 0.1, 0.0], size = [8.4, 0.2, 7.6], material = "Corridor" },
+  { origin = [0.0, 3.7, 0.0], size = [8.4, 0.2, 7.6], material = "Ceiling" },
+  { origin = [-4.1, 1.9, 0.0], size = [0.2, 3.8, 7.6], material = "WallPanel", tint = [0.76, 0.92, 1.08], brightness = 1.06 },
+  { origin = [4.1, 1.9, 0.0], size = [0.2, 3.8, 7.6], material = "WallPanel", tint = [0.76, 0.92, 1.08], brightness = 1.06 },
+  { origin = [-3.1, 1.9, -3.7], size = [2.0, 3.8, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [3.1, 1.9, -3.7], size = [2.0, 3.8, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [0.0, 3.05, -3.7], size = [4.0, 1.10, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [-1.48, 1.45, -3.60], size = [0.16, 2.90, 0.20], material = "Post", tint = [0.94, 0.98, 1.02], brightness = 0.98 },
+  { origin = [1.48, 1.45, -3.60], size = [0.16, 2.90, 0.20], material = "Post", tint = [0.94, 0.98, 1.02], brightness = 0.98 },
+  { origin = [0.0, 2.86, -3.60], size = [2.80, 0.16, 0.12], material = "Beam", tint = [0.88, 0.94, 1.02], brightness = 1.00 },
+  { origin = [-3.0, 1.9, 3.7], size = [2.0, 3.8, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [3.0, 1.9, 3.7], size = [2.0, 3.8, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [0.0, 3.05, 3.7], size = [4.0, 1.10, 0.2], material = "WallPanel", tint = [0.78, 0.90, 1.04], brightness = 1.02 },
+  { origin = [0.0, 0.62, -1.2], size = [2.6, 1.04, 3.2], material = "PlatformTop", tint = [0.94, 0.86, 0.72], brightness = 1.02 },
+  { origin = [0.0, 1.52, -1.15], size = [0.74, 1.84, 0.90], material = "Pillar", tint = [0.84, 0.98, 1.14], brightness = 1.14 },
+  { origin = [0.0, 2.30, -1.15], size = [0.44, 0.20, 0.44], material = "LightStrip", tint = [0.74, 1.02, 1.12], brightness = 1.22 },
+  { origin = [-2.8, 1.05, -0.6], size = [0.18, 2.0, 4.4], material = "Post", tint = [0.88, 0.96, 1.04], brightness = 0.96 },
+  { origin = [2.8, 1.05, -0.6], size = [0.18, 2.0, 4.4], material = "Post", tint = [0.88, 0.96, 1.04], brightness = 0.96 },
+  { origin = [0.0, 0.04, 2.4], size = [3.8, 0.02, 0.28], material = "Hazard", tint = [1.00, 0.94, 0.76], brightness = 1.04 },
+  { origin = [0.0, 3.28, -1.0], size = [6.8, 0.12, 0.04], material = "Trim", tint = [0.74, 0.80, 0.88], brightness = 0.92 },
 ]
-
-# Observation lab shell
-[[solid_group]]
-entries = [
-  { origin = [0.0, 0.1, 13.2], size = [11.6, 0.2, 8.8], material = "Platform" },
-  { origin = [0.0, 3.5, 13.2], size = [11.6, 0.2, 8.8], material = "Ceiling" },
-  { origin = [-5.7, 1.8, 13.2], size = [0.2, 3.6, 8.8], material = "WallPanel" },
-  { origin = [5.7, 1.8, 13.2], size = [0.2, 3.6, 8.8], material = "WallPanel" },
-  { origin = [0.0, 1.8, 17.5], size = [11.6, 3.6, 0.2], material = "WallPanel" },
-]
-
-[[solid_group]]
-entries = [
-  { origin = [-5.58, 0.54, 13.2], size = [0.08, 1.08, 7.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
-  { origin = [5.58, 0.54, 13.2], size = [0.08, 1.08, 7.2], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
-  { origin = [0.0, 0.54, 17.38], size = [10.4, 1.08, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
-  { origin = [0.0, 0.035, 11.7], size = [0.32, 0.02, 4.2], material = "Divider", tint = [0.76, 0.94, 1.04], brightness = 0.98 },
-  { origin = [0.0, 2.98, 13.2], size = [0.62, 0.24, 7.4], material = "Post", tint = [0.88, 0.92, 0.98], brightness = 0.86 },
-]
-
-[[solid_group]]
-entries = [
-  { origin = [-5.58, 1.22, 13.2], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
-  { origin = [5.58, 1.22, 13.2], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
-  { origin = [0.0, 2.9, 17.38], size = [9.8, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
-]
-
-[[solid_group]]
-entries = [
-  { origin = [0.0, 3.08, 11.2], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
-  { origin = [0.0, 3.08, 15.2], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
-  { origin = [0.0, 0.04, 9.8], size = [4.6, 0.02, 0.24], material = "LightStrip", tint = [0.78, 0.86, 0.74], brightness = 1.14 },
-]
-
-# Lab observation strips and props
-[[solid_group]]
-entries = [
-  { origin = [-5.4, 1.65, 12.7], size = [0.4, 1.3, 3.4], material = "Glass", tint = [0.88, 1.02, 1.10], brightness = 1.12 },
-  { origin = [5.4, 1.6, 13.5], size = [0.4, 1.2, 3.0], material = "Glass", tint = [1.00, 0.94, 0.84], brightness = 1.10 },
-  { origin = [-5.18, 1.65, 12.7], size = [0.18, 1.44, 3.64], material = "Post", tint = [0.92, 0.96, 1.02], brightness = 0.92 },
-  { origin = [5.18, 1.6, 13.5], size = [0.18, 1.34, 3.24], material = "Post", tint = [0.92, 0.90, 0.84], brightness = 0.92 },
-  { origin = [-5.22, 2.28, 12.7], size = [0.12, 0.18, 3.76], material = "Trim", tint = [0.84, 0.90, 0.96], brightness = 0.94 },
-  { origin = [5.22, 2.18, 13.5], size = [0.12, 0.18, 3.36], material = "Trim", tint = [0.90, 0.84, 0.78], brightness = 0.94 },
-  { origin = [0.0, 0.56, 13.15], size = [3.9, 0.12, 3.8], material = "Trim", tint = [0.84, 0.88, 0.92], brightness = 0.94 },
-  { origin = [0.0, 0.275, 13.15], size = [3.6, 0.55, 3.5], material = "PlatformTop", tint = [1.04, 0.90, 0.72], brightness = 1.08 },
-  { origin = [0.0, 1.525, 13.15], size = [0.9, 1.95, 1.3], material = "Pillar", tint = [0.82, 1.00, 1.16], brightness = 1.20 },
-  { origin = [-4.3, 0.625, 10.75], size = [1.0, 1.25, 1.5], material = "Crate" },
-  { origin = [-4.05, 0.525, 15.2], size = [1.1, 1.05, 1.6], material = "Block", tint = [1.10, 0.92, 0.74], brightness = 1.02 },
-  { origin = [4.35, 0.575, 11.3], size = [1.1, 1.15, 1.4], material = "Block", tint = [1.10, 0.92, 0.74], brightness = 1.02 },
-  { origin = [4.25, 0.6, 15.6], size = [1.3, 1.2, 1.2], material = "Crate" },
+entities = [
+  { classname = "render_light", origin = [0.0, 2.25, -1.7], color = [0.14, 0.28, 0.26], radius = 4.6, intensity = 0.78 },
+  { classname = "render_light", origin = [0.0, 1.55, 2.4], color = [0.30, 0.16, 0.08], radius = 3.8, intensity = 0.52 },
 ]
 
 [[entity]]
 classname = "player_spawn"
-origin = [0.0, 0.21, -1.4]
+anchor = "intake_room:spawn"
+origin = [0.0, 0.0, 0.0]
 angles = [0.0, 0.0, 0.0]
 
+[[entity]]
+classname = "mission_settings"
+completion_title = "Лаборатория наблюдения защищена"
+completion_detail = "Маршрут завершен. Сектор комплекса зачищен."
+
 [[entity_group]]
-classname = "gameplay_entity"
-kind = "door"
-size = [2.4, 2.8, 0.18]
+classname = "mission_step"
 entries = [
-  { origin = [0.0, 0.0, 4.1], targetname = "outer_bulkhead", move_speed = 2.8, move_offset = [2.6, 0.0, 0.0] },
-  { origin = [0.0, 0.0, 8.7], targetname = "inner_bulkhead", move_speed = 2.6, move_offset = [-2.6, 0.0, 0.0] },
+  { kind = "door_open", target = "intake/outer_bulkhead", title = "Открыть внешний шлюз", detail = "Используйте настенную панель у входа, чтобы разгерметизировать шлюз." },
+  { kind = "zone", anchor = "airlock_room:center", origin = [0.0, 0.1, 0.0], size = [2.6, 2.4, 2.8], title = "Войти в шлюзовую камеру", detail = "Перейдите в сервисную камеру до того, как входной отсек закроется." },
+  { kind = "pickup_item", target = "lab_keycard", title = "Забрать ключ-карту лаборатории", detail = "Возьмите карту доступа со стойки обслуживания в шлюзе." },
+  { kind = "door_open", target = "inner_bulkhead", title = "Разблокировать внутренний шлюз", detail = "Используйте правую панель, когда считыватель примет карту." },
+  { kind = "activate_target", target = "lab_relay_console", title = "Стабилизировать ядро ретранслятора", detail = "Используйте лабораторный терминал на центральной платформе, чтобы завершить маршрут." },
 ]
+
+[[module_instance]]
+template = "outer_bulkhead_module"
+name = "intake_bulkhead"
+name_prefix = "intake/"
+offset = [0.0, 0.0, 4.1]
+
+[[module_instance]]
+template = "maintenance_intake_module"
+name = "intake_room"
+
+[[module_instance]]
+template = "inner_bulkhead_module"
+name = "lab_bulkhead"
+offset = [0.0, 0.0, 8.7]
+
+[[module_instance]]
+template = "airlock_chamber_module"
+name = "airlock_room"
+offset = [0.0, 0.0, 6.5]
+
+[[module_instance]]
+template = "observation_lab_module"
+name = "lab_room"
+offset = [0.0, 0.0, 13.2]
+
+[[module_instance]]
+template = "reactor_gallery_module"
+name = "reactor_gallery"
+offset = [0.0, 0.0, 21.5]
+
+[[module_instance]]
+template = "service_rack_module"
+name = "airlock_rack"
+anchor = "airlock_room:rack_mount"
 
 [[entity_group]]
 classname = "gameplay_entity"
-kind = "panel"
-size = [0.34, 0.52, 0.12]
-use_radius = 1.9
-mount_axis = "+x"
+kind = "pickup"
+size = [0.22, 0.12, 0.02]
+use_radius = 1.45
 entries = [
-  { origin = [-5.0, 1.35, 2.8], target = "outer_bulkhead", label = "Outer bulkhead" },
-  { origin = [-1.6, 1.35, 5.4], target = "outer_bulkhead", label = "Return outer bulkhead", size = [0.32, 0.50, 0.12], use_radius = 1.8 },
-]
-
-[[entity_group]]
-classname = "gameplay_entity"
-kind = "panel"
-size = [0.34, 0.52, 0.12]
-use_radius = 1.9
-mount_axis = "-x"
-entries = [
-  { origin = [1.6, 1.35, 7.4], target = "inner_bulkhead", label = "Inner bulkhead", size = [0.32, 0.50, 0.12], use_radius = 1.8 },
-  { origin = [5.6, 1.35, 10.2], target = "inner_bulkhead", label = "Reopen inner bulkhead" },
-]
-
-[[entity_group]]
-classname = "render_light"
-entries = [
-  { origin = [0.0, 2.82, -1.8], color = [0.11, 0.18, 0.30], radius = 5.6, intensity = 0.88 },
-  { origin = [-4.1, 1.9, -0.2], color = [0.26, 0.16, 0.08], radius = 2.4, intensity = 0.50 },
-  { origin = [4.1, 1.8, 2.9], color = [0.09, 0.16, 0.26], radius = 2.5, intensity = 0.46 },
-  { origin = [0.0, 2.78, 4.2], color = [0.30, 0.18, 0.09], radius = 2.4, intensity = 0.62 },
-  { origin = [0.0, 2.62, 6.9], color = [0.12, 0.22, 0.34], radius = 3.6, intensity = 1.02 },
-  { origin = [-4.8, 2.12, 12.7], color = [0.10, 0.24, 0.30], radius = 4.2, intensity = 0.72 },
-  { origin = [0.0, 1.6, 13.2], color = [0.30, 0.20, 0.08], radius = 4.4, intensity = 0.88 },
-  { origin = [4.2, 2.35, 15.2], color = [0.10, 0.18, 0.30], radius = 4.0, intensity = 0.82 },
+  { anchor = "airlock_rack:pickup_slot", origin = [0.0, 0.0, 0.0], size = [0.12, 0.06, 0.012], item_id = "lab_keycard", item_name = "Ключ-карта лаборатории" },
 ]

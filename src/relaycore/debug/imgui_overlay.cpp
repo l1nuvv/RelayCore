@@ -6,12 +6,16 @@
 #include "relaycore/debug/imgui_overlay.h"
 
 #include "relaycore/audio/audio_system.h"
+#include "relaycore/core/engine_config.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/camera.h"
 
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
@@ -36,10 +40,118 @@ namespace RelayCore::debug
             }
         }
 
-        [[nodiscard]] auto has_interaction_prompt(const render::InteractionDiagnostics& interaction) -> bool
+        void configure_imgui_font(ImGuiIO& io)
         {
-            return interaction.has_focused_usable && !interaction.focused_label.empty();
+            io.Fonts->Clear();
+
+            const ImWchar* glyph_ranges = io.Fonts->GetGlyphRangesCyrillic();
+            ImFontConfig font_config{};
+            font_config.OversampleH = 2;
+            font_config.OversampleV = 2;
+            font_config.PixelSnapH = false;
+
+            const std::filesystem::path asset_font = core::asset_path("fonts/RobotoMono-Regular.ttf");
+            const std::filesystem::path segoe_ui_font = "C:/Windows/Fonts/segoeui.ttf";
+            const std::filesystem::path arial_font = "C:/Windows/Fonts/arial.ttf";
+
+            for (const std::filesystem::path& font_path : {asset_font, segoe_ui_font, arial_font})
+            {
+                if (!std::filesystem::exists(font_path))
+                {
+                    continue;
+                }
+
+                if (io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), 19.0F, &font_config, glyph_ranges)
+                    != nullptr)
+                {
+                    log::info("ImGui font loaded from {}", font_path.string());
+                    return;
+                }
+            }
+
+            io.Fonts->AddFontDefault();
+            log::warn("ImGui font fallback to default font; Cyrillic glyphs may be unavailable");
         }
+
+        void draw_shadow_controls(render::RendererConfig& renderer_config)
+        {
+            if (!ImGui::CollapsingHeader("Shadow Tuning", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                return;
+            }
+
+            ImGui::Checkbox("Enable shadows", &renderer_config.shadow_enabled);
+            ImGui::SliderFloat("Indirect bounce", &renderer_config.indirect_bounce_strength, 0.0F, 0.30F, "%.3f");
+            ImGui::SliderFloat("Shadow strength", &renderer_config.shadow_strength, 0.0F, 1.0F, "%.3f");
+            ImGui::SliderFloat("Shadow contact", &renderer_config.shadow_contact_strength, 0.0F, 0.30F, "%.3f");
+            ImGui::SliderFloat("Near shadow bias", &renderer_config.shadow_bias_near, 0.0001F, 0.0100F, "%.4f");
+            ImGui::SliderFloat("Shadow slope bias", &renderer_config.shadow_slope_bias_scale, 0.0F, 0.0200F, "%.4f");
+            ImGui::SliderFloat("Near normal offset", &renderer_config.shadow_normal_offset_near, 0.0F, 0.080F, "%.3f");
+            ImGui::SliderFloat("Shadow near PCF", &renderer_config.shadow_pcf_radius_near, 0.5F, 3.0F, "%.2f");
+            ImGui::SliderFloat("Shadow far PCF", &renderer_config.shadow_pcf_radius_far, 0.5F, 4.0F, "%.2f");
+            ImGui::SliderFloat(
+                "Shadow split distance",
+                &renderer_config.shadow_cascade_split_distance,
+                2.0F,
+                24.0F,
+                "%.2f"
+            );
+            ImGui::SliderFloat("Shadow blend range", &renderer_config.shadow_cascade_blend_range, 0.0F, 6.0F, "%.2f");
+            ImGui::Checkbox("Debug cascade tint", &renderer_config.shadow_debug_cascades);
+            ImGui::SliderFloat("Shadow focus distance", &renderer_config.shadow_focus_distance, 0.0F, 24.0F, "%.2f");
+            ImGui::SliderFloat("Shadow radius", &renderer_config.shadow_projection_radius, 2.0F, 28.0F, "%.2f");
+            ImGui::SliderFloat("Shadow depth", &renderer_config.shadow_projection_depth, 4.0F, 48.0F, "%.2f");
+            ImGui::SeparatorText("Far Cascade");
+            ImGui::SliderFloat("Far shadow bias", &renderer_config.shadow_bias_far, 0.0001F, 0.0160F, "%.4f");
+            ImGui::SliderFloat("Far normal offset", &renderer_config.shadow_normal_offset_far, 0.0F, 0.120F, "%.3f");
+            ImGui::SliderFloat("Far focus distance", &renderer_config.shadow_far_focus_distance, 6.0F, 40.0F, "%.2f");
+            ImGui::SliderFloat("Far radius", &renderer_config.shadow_far_projection_radius, 6.0F, 48.0F, "%.2f");
+            ImGui::SliderFloat("Far depth", &renderer_config.shadow_far_projection_depth, 8.0F, 80.0F, "%.2f");
+            ImGui::SliderFloat("Shadow light intensity", &renderer_config.shadow_light_intensity, 0.0F, 2.0F, "%.2f");
+            ImGui::SliderFloat3(
+                "Shadow light direction",
+                &renderer_config.shadow_light_direction.x,
+                -1.0F,
+                1.0F,
+                "%.2f"
+            );
+            ImGui::ColorEdit3("Shadow light color", &renderer_config.shadow_light_color.x);
+        }
+
+        void draw_shadow_preview(const render::WorldDiagnostics& world)
+        {
+            if (!world.shadow_enabled || world.shadow_preview_texture_id == 0)
+            {
+                return;
+            }
+            if (!ImGui::CollapsingHeader("Shadow Map Preview", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                return;
+            }
+
+            constexpr float preview_size = 192.0F;
+            const ImTextureID near_texture_id =
+                static_cast<ImTextureID>(static_cast<std::intptr_t>(world.shadow_preview_texture_id));
+            ImGui::Text("Near");
+            ImGui::Image(near_texture_id, ImVec2(preview_size, preview_size), ImVec2(0.0F, 1.0F), ImVec2(1.0F, 0.0F));
+
+            if (world.shadow_far_preview_texture_id != 0)
+            {
+                const ImTextureID far_texture_id =
+                    static_cast<ImTextureID>(static_cast<std::intptr_t>(world.shadow_far_preview_texture_id));
+                ImGui::SameLine();
+                ImGui::BeginGroup();
+                ImGui::Text("Far");
+                ImGui::Image(
+                    far_texture_id,
+                    ImVec2(preview_size, preview_size),
+                    ImVec2(0.0F, 1.0F),
+                    ImVec2(1.0F, 0.0F)
+                );
+                ImGui::EndGroup();
+            }
+        }
+
     } // namespace
 
     ImGuiOverlay::ImGuiOverlay(const ImGuiOverlayConfig& config) : config_(config) {}
@@ -61,6 +173,7 @@ namespace RelayCore::debug
 
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        configure_imgui_font(io);
 
         ImGui::StyleColorsDark();
 
@@ -161,6 +274,7 @@ namespace RelayCore::debug
         const FrameInfo& frame,
         const render::PerspectiveCamera& camera,
         const AudioSystem& audio_system,
+        render::RendererConfig& renderer_config,
         const render::WorldDiagnostics& world,
         const render::PlayerDiagnostics& player,
         const render::InteractionDiagnostics& interaction
@@ -206,6 +320,30 @@ namespace RelayCore::debug
         ImGui::Text("Solids: %u visible / %u total", world.visible_solids, world.total_solids);
         ImGui::Text("Draw calls: %u", world.draw_calls);
         ImGui::Text("Triangles: %u", world.triangles);
+        ImGui::Text("Indirect bounce: %.3f", world.indirect_bounce_strength);
+        ImGui::Text("Shadows: %s", world.shadow_enabled ? "on" : "off");
+        if (world.shadow_enabled)
+        {
+            ImGui::Text("Shadow map: %u", world.shadow_map_resolution);
+            ImGui::Text("Shadow cascades: %u", world.shadow_cascade_count);
+            ImGui::Text("Shadow split: %.2f", world.shadow_cascade_split_distance);
+            ImGui::Text("Shadow blend: %.2f", world.shadow_cascade_blend_range);
+            ImGui::Text("Shadow contact: %.3f", world.shadow_contact_strength);
+            ImGui::Text("Shadow near bias: %.4f", world.shadow_bias_near);
+            ImGui::Text("Shadow far bias: %.4f", world.shadow_bias_far);
+            ImGui::Text("Shadow near offset: %.3f", world.shadow_normal_offset_near);
+            ImGui::Text("Shadow far offset: %.3f", world.shadow_normal_offset_far);
+            ImGui::Text("Shadow near PCF: %.2f", world.shadow_pcf_radius_near);
+            ImGui::Text("Shadow far PCF: %.2f", world.shadow_pcf_radius_far);
+            ImGui::Text("Shadow radius: %.2f", world.shadow_projection_radius);
+            ImGui::Text("Shadow far radius: %.2f", world.shadow_far_projection_radius);
+            ImGui::Text("Shadow focus: %.2f", world.shadow_focus_distance);
+            ImGui::Text("Shadow far focus: %.2f", world.shadow_far_focus_distance);
+            ImGui::Text("Shadow texel: %.4f wu", world.shadow_texel_world_size);
+            ImGui::Text("Shadow far texel: %.4f wu", world.shadow_far_texel_world_size);
+        }
+        draw_shadow_controls(renderer_config);
+        draw_shadow_preview(world);
 
         ImGui::SeparatorText("Player");
         ImGui::Text("Position: %.2f %.2f %.2f", player.position.x, player.position.y, player.position.z);
@@ -223,6 +361,8 @@ namespace RelayCore::debug
         ImGui::Text("Doors: %u active / %u total", interaction.active_doors, interaction.total_doors);
         ImGui::Text("Triggers: %u fired / %u total", interaction.fired_triggers, interaction.total_triggers);
         ImGui::Text("Use pressed: %s", interaction.use_pressed ? "yes" : "no");
+        ImGui::Text("Inventory: %s", interaction.has_inventory ? interaction.inventory_summary.c_str() : "(empty)");
+        ImGui::Text("Objective: %s", interaction.has_objective ? interaction.objective_title.c_str() : "(none)");
 
         ImGui::SeparatorText("Audio");
         ImGui::Text("Initialized: %s", audio_system.is_initialized() ? "yes" : "no");
@@ -233,42 +373,6 @@ namespace RelayCore::debug
         {
             ImGui::ShowDemoWindow(&config_.show_demo_window);
         }
-    }
-
-    void ImGuiOverlay::draw_interaction_prompt(const render::InteractionDiagnostics& interaction) const
-    {
-        if (!initialized_ || !has_interaction_prompt(interaction))
-        {
-            return;
-        }
-
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
-        const std::string binding_label = interaction.use_binding_label.empty() ? "E" : interaction.use_binding_label;
-        const std::string prompt_label = "[" + binding_label + "] " + interaction.focused_label;
-
-        ImGui::SetNextWindowPos(
-            ImVec2(
-                viewport->WorkPos.x + (viewport->WorkSize.x * 0.5F),
-                viewport->WorkPos.y + viewport->WorkSize.y - 56.0F
-            ),
-            ImGuiCond_Always,
-            ImVec2(0.5F, 1.0F)
-        );
-        ImGui::SetNextWindowBgAlpha(0.82F);
-
-        constexpr ImGuiWindowFlags kPromptFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs
-                                                  | ImGuiWindowFlags_AlwaysAutoResize
-                                                  | ImGuiWindowFlags_NoSavedSettings;
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0F, 8.0F));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06F, 0.07F, 0.08F, 0.82F));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96F, 0.93F, 0.72F, 1.0F));
-        ImGui::Begin("RelayCore Interaction Prompt", nullptr, kPromptFlags);
-        ImGui::TextUnformatted(prompt_label.c_str());
-        ImGui::End();
-        ImGui::PopStyleColor(2);
-        ImGui::PopStyleVar(2);
     }
 
     void ImGuiOverlay::render() const
@@ -312,10 +416,9 @@ namespace RelayCore::debug
         diagnostics_visible_ = !diagnostics_visible_;
     }
 
-    auto ImGuiOverlay::should_render(const render::InteractionDiagnostics& interaction) const noexcept -> bool
+    auto ImGuiOverlay::should_render() const noexcept -> bool
     {
-        return initialized_
-               && (diagnostics_visible_ || has_interaction_prompt(interaction) || config_.show_demo_window);
+        return initialized_ && (diagnostics_visible_ || config_.show_demo_window);
     }
 
     void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept

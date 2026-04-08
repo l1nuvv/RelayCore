@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <glm/trigonometric.hpp>
 
 namespace RelayGame
 {
@@ -22,6 +23,21 @@ namespace RelayGame
                 return configured;
             }
             return RelayCore::core::asset_path(configured.generic_string());
+        }
+
+        [[nodiscard]] auto spawn_view_angles_from_entity(const RelayCore::EntitySpawnData& entity)
+            -> std::optional<glm::vec2>
+        {
+            if (!entity.has_angles)
+            {
+                return std::nullopt;
+            }
+
+            // Level-authored spawn angles are [yaw, pitch, roll] in degrees with yaw=0 facing +Z.
+            return glm::vec2{
+                glm::radians(90.0F - entity.angles.x),
+                glm::radians(entity.angles.y),
+            };
         }
     } // namespace
 
@@ -43,6 +59,7 @@ namespace RelayGame
         if (spawn_it != session.level.entities.end())
         {
             session.spawn_position = spawn_it->origin;
+            session.spawn_view_angles = spawn_view_angles_from_entity(*spawn_it);
         }
 
         RelayCore::gameplay::build_runtime_interactions(

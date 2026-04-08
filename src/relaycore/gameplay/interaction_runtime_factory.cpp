@@ -51,10 +51,17 @@ namespace RelayCore::gameplay
             RuntimeUsable usable{};
             usable.label = descriptor.label;
             usable.target = descriptor.target;
+            usable.item_id = descriptor.item_id;
+            usable.item_name = descriptor.item_name;
+            usable.required_item = descriptor.required_item;
+            usable.required_item_name = descriptor.required_item_name;
+            usable.success_message = descriptor.success_message;
+            usable.denied_message = descriptor.denied_message;
             usable.origin = descriptor.origin;
             usable.use_radius = descriptor.use_radius;
             usable.tracks_target_door = descriptor.track_target_door;
             usable.visual_kind = descriptor.visual_kind;
+            usable.action_kind = descriptor.action_kind;
             usable.visual_bounds = descriptor.visual_bounds;
             usable.has_visual_bounds = descriptor.has_visual_bounds;
 

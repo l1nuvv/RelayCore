@@ -103,8 +103,8 @@ namespace RelayCore
                 app_delegate_->on_render(frame, services);
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("render_debug");
-                renderer_->draw_debug_overlay(frame, *audio_system_);
+                RELAYCORE_PROFILE_ZONE_N("render_ui");
+                renderer_->draw_ui(frame, *audio_system_);
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");

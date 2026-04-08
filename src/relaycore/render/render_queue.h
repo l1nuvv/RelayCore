@@ -17,6 +17,7 @@ namespace RelayCore::render
     struct RenderItem {
         const StaticColorMesh* mesh = nullptr;
         glm::mat4 model_matrix{1.0F};
+        bool transparent = false;
     };
 
     class RenderQueue {
@@ -31,9 +32,9 @@ namespace RelayCore::render
             items_.reserve(count);
         }
 
-        void push(const StaticColorMesh& mesh, const glm::mat4& model_matrix)
+        void push(const StaticColorMesh& mesh, const glm::mat4& model_matrix, const bool transparent = false)
         {
-            items_.push_back(RenderItem{.mesh = &mesh, .model_matrix = model_matrix});
+            items_.push_back(RenderItem{.mesh = &mesh, .model_matrix = model_matrix, .transparent = transparent});
         }
 
         [[nodiscard]] auto items() const noexcept -> std::span<const RenderItem>

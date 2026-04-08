@@ -138,7 +138,7 @@ namespace RelayCore::gameplay
     {
         for (RuntimeUsable& usable : usables)
         {
-            usable.enabled = true;
+            usable.enabled = !usable.consumed;
             if (!usable.tracks_target_door)
             {
                 continue;

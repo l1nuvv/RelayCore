@@ -88,10 +88,45 @@ namespace RelayCore::core
             assign_if_present(render, "clear_r", config.renderer.clear_r);
             assign_if_present(render, "clear_g", config.renderer.clear_g);
             assign_if_present(render, "clear_b", config.renderer.clear_b);
+            assign_if_present(render, "indirect_bounce_strength", config.renderer.indirect_bounce_strength);
             assign_if_present(render, "fog_enabled", config.renderer.fog_enabled);
             assign_if_present(render, "fog_start", config.renderer.fog_start);
             assign_if_present(render, "fog_end", config.renderer.fog_end);
+            assign_if_present(render, "postfx_vignette_strength", config.renderer.postfx_vignette_strength);
+            assign_if_present(render, "postfx_grain_strength", config.renderer.postfx_grain_strength);
+            assign_if_present(render, "postfx_scanline_strength", config.renderer.postfx_scanline_strength);
+            assign_if_present(render, "postfx_contrast", config.renderer.postfx_contrast);
+            assign_if_present(render, "postfx_saturation", config.renderer.postfx_saturation);
+            assign_if_present(render, "shadow_enabled", config.renderer.shadow_enabled);
+            assign_if_present(render, "shadow_map_resolution", config.renderer.shadow_map_resolution);
+            assign_if_present(render, "shadow_light_intensity", config.renderer.shadow_light_intensity);
+            assign_if_present(render, "shadow_strength", config.renderer.shadow_strength);
+            assign_if_present(render, "shadow_contact_strength", config.renderer.shadow_contact_strength);
+            assign_if_present(render, "shadow_bias", config.renderer.shadow_bias_near);
+            assign_if_present(render, "shadow_bias", config.renderer.shadow_bias_far);
+            assign_if_present(render, "shadow_bias_near", config.renderer.shadow_bias_near);
+            assign_if_present(render, "shadow_bias_far", config.renderer.shadow_bias_far);
+            assign_if_present(render, "shadow_slope_bias_scale", config.renderer.shadow_slope_bias_scale);
+            assign_if_present(render, "shadow_normal_offset", config.renderer.shadow_normal_offset_near);
+            assign_if_present(render, "shadow_normal_offset", config.renderer.shadow_normal_offset_far);
+            assign_if_present(render, "shadow_normal_offset_near", config.renderer.shadow_normal_offset_near);
+            assign_if_present(render, "shadow_normal_offset_far", config.renderer.shadow_normal_offset_far);
+            assign_if_present(render, "shadow_pcf_radius_near", config.renderer.shadow_pcf_radius_near);
+            assign_if_present(render, "shadow_pcf_radius_far", config.renderer.shadow_pcf_radius_far);
+            assign_if_present(render, "shadow_cascade_split_distance", config.renderer.shadow_cascade_split_distance);
+            assign_if_present(render, "shadow_cascade_blend_range", config.renderer.shadow_cascade_blend_range);
+            assign_if_present(render, "shadow_debug_cascades", config.renderer.shadow_debug_cascades);
+            assign_if_present(render, "shadow_focus_distance", config.renderer.shadow_focus_distance);
+            assign_if_present(render, "shadow_projection_radius", config.renderer.shadow_projection_radius);
+            assign_if_present(render, "shadow_projection_depth", config.renderer.shadow_projection_depth);
+            assign_if_present(render, "shadow_far_focus_distance", config.renderer.shadow_far_focus_distance);
+            assign_if_present(render, "shadow_far_projection_radius", config.renderer.shadow_far_projection_radius);
+            assign_if_present(render, "shadow_far_projection_depth", config.renderer.shadow_far_projection_depth);
             config.renderer.fog_color = read_vec3(render, "fog_color", config.renderer.fog_color);
+            config.renderer.shadow_light_direction =
+                read_vec3(render, "shadow_light_direction", config.renderer.shadow_light_direction);
+            config.renderer.shadow_light_color =
+                read_vec3(render, "shadow_light_color", config.renderer.shadow_light_color);
             assign_if_present(render, "near_plane", config.renderer.camera.near_plane);
             assign_if_present(render, "far_plane", config.renderer.camera.far_plane);
             if (const auto fov_degrees = render["fov_degrees"].value<double>())
@@ -143,6 +178,7 @@ namespace RelayCore::core
             assign_if_present(gameplay_audio, "panel_press", config.gameplay.audio.panel_press);
             assign_if_present(gameplay_audio, "door_open", config.gameplay.audio.door_open);
             assign_if_present(gameplay_audio, "door_close", config.gameplay.audio.door_close);
+            assign_if_present(gameplay_audio, "access_denied", config.gameplay.audio.access_denied);
 
             log::info("Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)

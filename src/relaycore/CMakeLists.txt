@@ -14,6 +14,7 @@ set(RELAYCORE_ENGINE_SOURCES
     gameplay/interaction_runtime_doors.cpp
     gameplay/interaction_runtime_factory.cpp
     gameplay/interaction_runtime_queries.cpp
+    gameplay/mission_runtime.cpp
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
@@ -21,6 +22,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/blockout_mesh_builder.cpp
     render/blockout_texture_atlas.cpp
     render/camera.cpp
+    render/game_hud.cpp
     render/gl_debug.cpp
     render/gl_loader.cpp
     render/mesh.cpp
@@ -28,6 +30,9 @@ set(RELAYCORE_ENGINE_SOURCES
     render/shader_program.cpp
     render/texture2d.cpp
     world/blockout_loader.cpp
+    world/blockout_loader_parse.cpp
+    world/blockout_loader_transform.cpp
+    world/blockout_loader_pipeline.cpp
 )
 
 set(RELAYCORE_ENGINE_HEADERS
@@ -47,6 +52,7 @@ set(RELAYCORE_ENGINE_HEADERS
     debug/imgui_overlay.h
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
+    gameplay/mission_runtime.h
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h
@@ -54,6 +60,7 @@ set(RELAYCORE_ENGINE_HEADERS
     render/blockout_mesh_builder.h
     render/blockout_texture_atlas.h
     render/camera.h
+    render/game_hud.h
     render/gl_debug.h
     render/gl_loader.h
     render/mesh.h

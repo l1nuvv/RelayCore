@@ -4,6 +4,7 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/render/camera.h"
+#include "relaycore/render/game_hud.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
@@ -11,6 +12,8 @@
 #include "relaycore/render/texture2d.h"
 
 #include <SDL3/SDL.h>
+#include <array>
+#include <glm/mat4x4.hpp>
 #include <vector>
 
 namespace RelayCore
@@ -39,7 +42,7 @@ namespace RelayCore
 
         void set_scene_time(float seconds) noexcept;
 
-        void draw_debug_overlay(const FrameInfo& frame, const AudioSystem& audio_system);
+        void draw_ui(const FrameInfo& frame, const AudioSystem& audio_system);
 
         void set_world_diagnostics(const render::WorldDiagnostics& diagnostics) noexcept;
 
@@ -64,18 +67,32 @@ namespace RelayCore
         void toggle_diagnostics_visible() noexcept;
 
     private:
+        static constexpr std::size_t kShadowCascadeCount = 2;
+
+        void initialize_shadow_resources();
+
+        void render_shadow_map(std::span<const render::RenderItem> items);
+
+        [[nodiscard]] auto build_shadow_light_view_projection(float focus_distance, float radius, float depth) const
+            -> glm::mat4;
+
         render::RendererConfig config_{};
         bool initialized_ = false;
         int viewport_width_ = 1280;
         int viewport_height_ = 720;
         render::PerspectiveCamera camera_{};
         render::ShaderProgram shader_program_{};
+        render::ShaderProgram shadow_program_{};
         debug::ImGuiOverlay imgui_overlay_{};
+        render::GameHud game_hud_{};
         render::WorldDiagnostics world_diagnostics_{};
         render::PlayerDiagnostics player_diagnostics_{};
         render::InteractionDiagnostics interaction_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
         render::Texture2D blockout_atlas_{};
+        std::array<unsigned int, kShadowCascadeCount> shadow_framebuffer_ids_{};
+        std::array<unsigned int, kShadowCascadeCount> shadow_depth_texture_ids_{};
+        std::array<glm::mat4, kShadowCascadeCount> shadow_light_view_projections_{};
         float scene_time_seconds_ = 0.0F;
     };
 } // namespace RelayCore

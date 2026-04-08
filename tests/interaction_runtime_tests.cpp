@@ -12,6 +12,7 @@ namespace
     using RelayCore::gameplay::RuntimeDoor;
     using RelayCore::gameplay::RuntimeTrigger;
     using RelayCore::gameplay::RuntimeUsable;
+    using RelayCore::gameplay::UsableActionKind;
     using RelayCore::gameplay::UsableVisualKind;
     using RelayCore::physics::Aabb;
 
@@ -206,6 +207,41 @@ TEST_CASE("fully open door no longer blocks")
     RuntimeDoor door{};
     door.open_fraction = 1.0F;
     CHECK_FALSE(RelayCore::gameplay::is_door_blocking(door));
+}
+
+TEST_CASE("closing door that overlaps actor reopens instead of forcing penetration")
+{
+    RuntimeDoor door{};
+    door.name = "door_0";
+    door.closed_bounds = make_bounds({0.0F, 1.3F, 0.0F}, {1.0F, 1.3F, 0.1F});
+    door.open_offset = {2.0F, 0.0F, 0.0F};
+    door.open_fraction = 0.35F;
+    door.move_speed = 4.0F;
+    door.state = DoorState::Closing;
+    std::vector<RuntimeDoor> doors{door};
+
+    const Aabb actor_bounds = make_bounds({0.55F, 0.9F, 0.0F}, {0.30F, 0.90F, 0.30F});
+
+    CHECK(RelayCore::gameplay::update_doors(1.0F / 60.0F, actor_bounds, doors) == 1);
+    CHECK(doors[0].state == DoorState::Opening);
+    CHECK(doors[0].open_fraction > 0.0F);
+}
+
+TEST_CASE("blocking door overlapping actor is excluded from dynamic blockers")
+{
+    RuntimeDoor door{};
+    door.closed_bounds = make_bounds({0.0F, 1.3F, 0.0F}, {1.0F, 1.3F, 0.1F});
+    door.open_offset = {2.0F, 0.0F, 0.0F};
+    door.open_fraction = 0.20F;
+    door.state = DoorState::Closing;
+    std::vector<RuntimeDoor> doors{door};
+
+    const Aabb actor_bounds = make_bounds({0.65F, 0.9F, 0.0F}, {0.30F, 0.90F, 0.30F});
+    std::vector<Aabb> blockers;
+
+    RelayCore::gameplay::collect_blocking_doors(doors, actor_bounds, blockers);
+
+    CHECK(blockers.empty());
 }
 
 TEST_CASE("runtime interactions read target links from entity properties")
@@ -549,6 +585,114 @@ TEST_CASE("panel focus uses panel bounds")
     CHECK(result.distance < 1.1F);
 }
 
+TEST_CASE("pickup entities build collectible visual usables")
+{
+    RelayCore::BlockoutLevel level{};
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {-1.1F, 1.15F, 7.45F},
+            .properties = {
+                {"kind", "pickup"},
+                {"item_id", "lab_keycard"},
+                {"item_name", "Lab keycard"},
+                {"size", "0.22 0.12 0.02"},
+            },
+        }
+    );
+
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeTrigger> triggers;
+    std::vector<RuntimeUsable> usables;
+
+    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+
+    REQUIRE(usables.size() == 1);
+    CHECK(usables[0].action_kind == UsableActionKind::PickupItem);
+    CHECK(usables[0].visual_kind == UsableVisualKind::Pickup);
+    CHECK(usables[0].item_id == "lab_keycard");
+    CHECK(usables[0].item_name == "Lab keycard");
+    CHECK(usables[0].label == "Взять: Lab keycard");
+    CHECK(usables[0].has_visual_bounds);
+    CHECK(usables[0].has_focus_bounds);
+    CHECK(usables[0].visual_bounds.mins.x == doctest::Approx(-1.21F));
+    CHECK(usables[0].visual_bounds.maxs.y == doctest::Approx(1.21F));
+}
+
+TEST_CASE("required_item metadata is preserved on panels")
+{
+    RelayCore::BlockoutLevel level{};
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {0.0F, 0.0F, 8.7F},
+            .properties = {
+                {"kind", "door"},
+                {"targetname", "inner_bulkhead"},
+            },
+        }
+    );
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {1.6F, 1.35F, 7.4F},
+            .properties = {
+                {"kind", "panel"},
+                {"target", "inner_bulkhead"},
+                {"label", "Unlock inner bulkhead"},
+                {"required_item", "lab_keycard"},
+                {"required_item_name", "Lab keycard"},
+                {"success_message", "Inner bulkhead command accepted"},
+                {"denied_message", "Lab keycard required"},
+            },
+        }
+    );
+
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeTrigger> triggers;
+    std::vector<RuntimeUsable> usables;
+
+    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+
+    REQUIRE(usables.size() == 1);
+    CHECK(usables[0].action_kind == UsableActionKind::ActivateTarget);
+    CHECK(usables[0].required_item == "lab_keycard");
+    CHECK(usables[0].required_item_name == "Lab keycard");
+    CHECK(usables[0].success_message == "Inner bulkhead command accepted");
+    CHECK(usables[0].denied_message == "Lab keycard required");
+}
+
+TEST_CASE("signal action metadata is preserved on terminals")
+{
+    RelayCore::BlockoutLevel level{};
+    level.entities.push_back(
+        RelayCore::EntitySpawnData{
+            .classname = "gameplay_entity",
+            .origin = {0.0F, 1.55F, 12.5F},
+            .properties = {
+                {"kind", "terminal"},
+                {"target", "lab_relay_console"},
+                {"label", "Stabilize relay core"},
+                {"action", "signal"},
+                {"mount_axis", "-z"},
+                {"success_message", "Relay core stabilized"},
+            },
+        }
+    );
+
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeTrigger> triggers;
+    std::vector<RuntimeUsable> usables;
+
+    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+
+    REQUIRE(usables.size() == 1);
+    CHECK(usables[0].action_kind == UsableActionKind::SignalTarget);
+    CHECK(usables[0].visual_kind == UsableVisualKind::Panel);
+    CHECK(usables[0].target == "lab_relay_console");
+    CHECK(usables[0].success_message == "Relay core stabilized");
+}
+
 TEST_CASE("auto-generated usable follows moved door bounds")
 {
     std::vector<RuntimeDoor> doors{
@@ -561,7 +705,7 @@ TEST_CASE("auto-generated usable follows moved door bounds")
     };
     std::vector<RuntimeUsable> usables{
         RuntimeUsable{
-            .label = "Use",
+            .label = "Использовать",
             .target = "door_auto_use",
             .origin = {0.0F, 1.0F, 4.0F},
             .use_radius = 2.25F,
@@ -617,6 +761,32 @@ TEST_CASE("opened door remains focusable by its moved bounds")
         RelayCore::gameplay::find_focused_usable({1.6F, 1.35F, 2.2F}, {0.0F, 0.0F, 1.0F}, usables);
 
     CHECK(result.usable_index == 0);
+}
+
+TEST_CASE("consumed pickup stays disabled after runtime refresh")
+{
+    std::vector<RuntimeDoor> doors;
+    std::vector<RuntimeUsable> usables{
+        RuntimeUsable{
+            .label = "Взять: Lab keycard",
+            .item_id = "lab_keycard",
+            .item_name = "Lab keycard",
+            .origin = {-1.1F, 1.15F, 7.45F},
+            .visual_bounds = make_bounds({-1.1F, 1.15F, 7.45F}, {0.11F, 0.06F, 0.01F}),
+            .use_radius = 1.4F,
+            .has_focus_bounds = true,
+            .has_visual_bounds = true,
+            .enabled = true,
+            .consumed = true,
+            .tracks_target_door = false,
+            .visual_kind = UsableVisualKind::Pickup,
+            .action_kind = UsableActionKind::PickupItem,
+        },
+    };
+
+    RelayCore::gameplay::update_runtime_usables(doors, usables);
+
+    CHECK_FALSE(usables[0].enabled);
 }
 
 TEST_CASE("usable spatial index narrows focus candidates")

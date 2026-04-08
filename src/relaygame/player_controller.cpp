@@ -14,6 +14,7 @@ namespace RelayGame
     namespace
     {
         constexpr float kPitchClamp = 1.55334306F;
+        constexpr float kDefaultYaw = -1.5707963268F;
 
         [[nodiscard]] auto binding_matches(const KeyBinding& binding, const SDL_Scancode scancode) -> bool
         {
@@ -36,16 +37,28 @@ namespace RelayGame
         config_ = config;
     }
 
-    void GroundedPlayerController::initialize(const glm::vec3& spawn_position) noexcept
+    void GroundedPlayerController::initialize(
+        const glm::vec3& spawn_position,
+        const std::optional<glm::vec2> spawn_view_angles
+    ) noexcept
     {
         position_ = spawn_position;
         velocity_ = glm::vec3{0.0F};
         motion_state_.position = spawn_position;
         motion_state_.velocity = glm::vec3{0.0F};
         motion_state_.grounded = false;
+        yaw_radians_ = kDefaultYaw;
+        pitch_radians_ = 0.0F;
+        if (spawn_view_angles.has_value())
+        {
+            yaw_radians_ = spawn_view_angles->x;
+            pitch_radians_ = glm::clamp(spawn_view_angles->y, -kPitchClamp, kPitchClamp);
+        }
         grounded_ = false;
         movement_mode_ = MovementMode::Air;
         use_pressed_ = false;
+        pending_yaw_delta_ = 0.0F;
+        pending_pitch_delta_ = 0.0F;
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const

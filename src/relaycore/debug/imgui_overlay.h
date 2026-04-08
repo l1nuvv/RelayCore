@@ -21,7 +21,8 @@ namespace RelayCore
 namespace RelayCore::render
 {
     class PerspectiveCamera;
-}
+    struct RendererConfig;
+} // namespace RelayCore::render
 
 namespace RelayCore::debug
 {
@@ -54,12 +55,11 @@ namespace RelayCore::debug
             const FrameInfo& frame,
             const render::PerspectiveCamera& camera,
             const AudioSystem& audio_system,
+            render::RendererConfig& renderer_config,
             const render::WorldDiagnostics& world,
             const render::PlayerDiagnostics& player,
             const render::InteractionDiagnostics& interaction
         );
-
-        void draw_interaction_prompt(const render::InteractionDiagnostics& interaction) const;
 
         void render() const;
 
@@ -75,7 +75,7 @@ namespace RelayCore::debug
 
         void update_diagnostics(const FrameInfo& frame) noexcept;
 
-        [[nodiscard]] auto should_render(const render::InteractionDiagnostics& interaction) const noexcept -> bool;
+        [[nodiscard]] auto should_render() const noexcept -> bool;
 
     private:
         static constexpr std::size_t kFrameTimeSampleCount = 120;

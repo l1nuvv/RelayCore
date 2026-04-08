@@ -44,9 +44,21 @@ namespace RelayCore::gameplay
         bool fired = false;
     };
 
+    enum class UsableFeedbackStyle : std::uint8_t {
+        None = 0,
+        Success,
+        Warning,
+    };
+
     struct RuntimeUsable {
         std::string label{};
         std::string target{};
+        std::string item_id{};
+        std::string item_name{};
+        std::string required_item{};
+        std::string required_item_name{};
+        std::string success_message{};
+        std::string denied_message{};
         glm::vec3 origin{};
         glm::vec3 tracked_offset{};
         physics::Aabb focus_bounds{};
@@ -55,8 +67,13 @@ namespace RelayCore::gameplay
         bool has_focus_bounds = false;
         bool has_visual_bounds = false;
         bool enabled = true;
+        bool consumed = false;
         bool tracks_target_door = false;
         UsableVisualKind visual_kind = UsableVisualKind::None;
+        UsableActionKind action_kind = UsableActionKind::ActivateTarget;
+        UsableFeedbackStyle feedback_style = UsableFeedbackStyle::None;
+        float feedback_remaining_seconds = 0.0F;
+        float feedback_total_seconds = 0.0F;
     };
 
     struct InteractionQueryResult {
@@ -89,7 +106,15 @@ namespace RelayCore::gameplay
 
     [[nodiscard]] auto is_door_active(const RuntimeDoor& door) -> bool;
 
+    [[nodiscard]] auto door_overlaps_actor(const RuntimeDoor& door, const physics::Aabb& actor_bounds) -> bool;
+
     void collect_blocking_doors(const std::vector<RuntimeDoor>& doors, std::vector<physics::Aabb>& out_blockers);
+
+    void collect_blocking_doors(
+        const std::vector<RuntimeDoor>& doors,
+        const physics::Aabb& actor_bounds,
+        std::vector<physics::Aabb>& out_blockers
+    );
 
     void update_runtime_usables(const std::vector<RuntimeDoor>& doors, std::vector<RuntimeUsable>& usables);
 
@@ -145,4 +170,7 @@ namespace RelayCore::gameplay
     ) -> std::uint32_t;
 
     [[nodiscard]] auto update_doors(float dt, std::vector<RuntimeDoor>& doors) -> std::uint32_t;
+
+    [[nodiscard]] auto update_doors(float dt, const physics::Aabb& actor_bounds, std::vector<RuntimeDoor>& doors)
+        -> std::uint32_t;
 } // namespace RelayCore::gameplay

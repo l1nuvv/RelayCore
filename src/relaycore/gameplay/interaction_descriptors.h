@@ -17,11 +17,18 @@ namespace RelayCore::gameplay
     enum class UsableVisualKind : std::uint8_t {
         None = 0,
         Panel,
+        Pickup,
     };
 
     enum class DoorActivationPolicy : std::uint8_t {
         Toggle = 0,
         OpenOnly,
+    };
+
+    enum class UsableActionKind : std::uint8_t {
+        ActivateTarget = 0,
+        SignalTarget,
+        PickupItem,
     };
 
     struct DoorDesc {
@@ -43,10 +50,17 @@ namespace RelayCore::gameplay
     struct UsableDesc {
         std::string label{};
         std::string target{};
+        std::string item_id{};
+        std::string item_name{};
+        std::string required_item{};
+        std::string required_item_name{};
+        std::string success_message{};
+        std::string denied_message{};
         glm::vec3 origin{};
         float use_radius = 2.25F;
         bool track_target_door = false;
         UsableVisualKind visual_kind = UsableVisualKind::None;
+        UsableActionKind action_kind = UsableActionKind::ActivateTarget;
         physics::Aabb visual_bounds{};
         bool has_visual_bounds = false;
     };

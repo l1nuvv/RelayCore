@@ -2,11 +2,13 @@ set(RELAYCORE_DEMO_SOURCES
         ../relaycore/render/main.cpp
         demo_game.cpp
         game_world_runtime.cpp
+        game_world_runtime_feedback.cpp
         level_session_builder.cpp
         player_controller.cpp
         player_controller_config.cpp
         player_controller_motion.cpp
         world_scene_renderer.cpp
+        world_scene_renderer_interactives.cpp
 )
 
 set(RELAYCORE_DEMO_HEADERS

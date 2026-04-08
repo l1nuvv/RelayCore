@@ -60,6 +60,7 @@ namespace RelayCore
         std::string classname;                                   ///< Entity class name.
         glm::vec3 origin{};                                      ///< Spawn origin in world space.
         glm::vec3 angles{};                                      ///< Euler angles in degrees.
+        bool has_angles = false;                                 ///< True when the level explicitly authored angles.
         std::unordered_map<std::string, std::string> properties; ///< Additional arbitrary string properties.
     };
 

@@ -1,5 +1,6 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/gameplay/interaction_runtime_detail.h"
 
 #include <glm/common.hpp>
 
@@ -75,7 +76,25 @@ namespace RelayCore::gameplay
         return door.state != DoorState::Closed;
     }
 
+    auto door_overlaps_actor(const RuntimeDoor& door, const physics::Aabb& actor_bounds) -> bool
+    {
+        return detail::aabb_overlaps(current_door_bounds(door), actor_bounds);
+    }
+
     void collect_blocking_doors(const std::vector<RuntimeDoor>& doors, std::vector<physics::Aabb>& out_blockers)
+    {
+        const physics::Aabb empty_actor_bounds{
+            .mins = {0.0F, 0.0F, 0.0F},
+            .maxs = {0.0F, 0.0F, 0.0F},
+        };
+        collect_blocking_doors(doors, empty_actor_bounds, out_blockers);
+    }
+
+    void collect_blocking_doors(
+        const std::vector<RuntimeDoor>& doors,
+        const physics::Aabb& actor_bounds,
+        std::vector<physics::Aabb>& out_blockers
+    )
     {
         out_blockers.clear();
         out_blockers.reserve(doors.size());
@@ -83,6 +102,10 @@ namespace RelayCore::gameplay
         for (const RuntimeDoor& door : doors)
         {
             if (!is_door_blocking(door))
+            {
+                continue;
+            }
+            if (door_overlaps_actor(door, actor_bounds))
             {
                 continue;
             }
@@ -106,6 +129,16 @@ namespace RelayCore::gameplay
     }
 
     auto update_doors(const float dt, std::vector<RuntimeDoor>& doors) -> std::uint32_t
+    {
+        const physics::Aabb empty_actor_bounds{
+            .mins = {0.0F, 0.0F, 0.0F},
+            .maxs = {0.0F, 0.0F, 0.0F},
+        };
+        return update_doors(dt, empty_actor_bounds, doors);
+    }
+
+    auto update_doors(const float dt, const physics::Aabb& actor_bounds, std::vector<RuntimeDoor>& doors)
+        -> std::uint32_t
     {
         RELAYCORE_PROFILE_ZONE_N("gameplay::update_doors");
         std::uint32_t active_doors = 0;
@@ -134,6 +167,11 @@ namespace RelayCore::gameplay
                 case DoorState::Closing:
                     door.open_fraction = glm::clamp(door.open_fraction - (door.move_speed * dt), 0.0F, 1.0F);
                     ++active_doors;
+                    if (door_overlaps_actor(door, actor_bounds))
+                    {
+                        door.state = DoorState::Opening;
+                        break;
+                    }
                     if (door.open_fraction <= 0.001F)
                     {
                         door.open_fraction = 0.0F;

@@ -7,7 +7,9 @@
 
 #include <SDL3/SDL.h>
 #include <cstdint>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -81,7 +83,8 @@ namespace RelayGame
 
         void set_config(const GroundedPlayerControllerConfig& config) noexcept;
 
-        void initialize(const glm::vec3& spawn_position) noexcept;
+        void
+        initialize(const glm::vec3& spawn_position, std::optional<glm::vec2> spawn_view_angles = std::nullopt) noexcept;
 
         void set_static_collision_world(const RelayCore::BlockoutLevel& level);
 
