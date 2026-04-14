@@ -1,5 +1,7 @@
 #include "relaycore/physics/player_motion.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
@@ -12,17 +14,20 @@ namespace RelayCore::physics
     {
         [[nodiscard]] auto make_forward_flat(const float yaw_radians) -> glm::vec3
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return glm::normalize(glm::vec3{std::cos(yaw_radians), 0.0F, std::sin(yaw_radians)});
         }
 
         [[nodiscard]] auto make_right_flat(const float yaw_radians) -> glm::vec3
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const glm::vec3 forward = make_forward_flat(yaw_radians);
             return glm::normalize(glm::cross(forward, glm::vec3{0.0F, 1.0F, 0.0F}));
         }
 
         [[nodiscard]] auto make_forward_free(const float yaw_radians, const float pitch_radians) -> glm::vec3
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const float cos_pitch = std::cos(pitch_radians);
             return glm::normalize(
                 glm::vec3{
@@ -35,23 +40,32 @@ namespace RelayCore::physics
 
         [[nodiscard]] auto make_right_free(const float yaw_radians) -> glm::vec3
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return make_right_flat(yaw_radians);
         }
 
         [[nodiscard]] auto planar_speed(const glm::vec3& velocity) -> float
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return std::sqrt((velocity.x * velocity.x) + (velocity.z * velocity.z));
         }
 
         void apply_friction(glm::vec3& velocity, const PlayerMotionConfig& config, const float dt)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const float speed = planar_speed(velocity);
-            if (speed <= 0.0F) { return; }
+            if (speed <= 0.0F)
+            {
+                return;
+            }
 
-            const float control   = std::max(speed, config.stop_speed);
-            const float drop      = control * config.ground_friction * dt;
+            const float control = std::max(speed, config.stop_speed);
+            const float drop = control * config.ground_friction * dt;
             const float new_speed = std::max(speed - drop, 0.0F);
-            if (new_speed == speed) { return; }
+            if (new_speed == speed)
+            {
+                return;
+            }
 
             const float scale = new_speed / speed;
             velocity.x *= scale;
@@ -59,16 +73,27 @@ namespace RelayCore::physics
         }
 
         void accelerate(
-            glm::vec3& velocity, const glm::vec3& wishdir, const float wishspeed, const float accel, const float dt
+            glm::vec3& velocity,
+            const glm::vec3& wishdir,
+            const float wishspeed,
+            const float accel,
+            const float dt
         )
         {
-            if (wishspeed <= 0.0F) { return; }
+            RELAYCORE_PROFILE_FUNCTION();
+            if (wishspeed <= 0.0F)
+            {
+                return;
+            }
 
             const glm::vec2 planar_velocity{velocity.x, velocity.z};
             const glm::vec2 planar_wishdir{wishdir.x, wishdir.z};
-            const float     current_speed = glm::dot(planar_velocity, planar_wishdir);
-            const float     add_speed     = wishspeed - current_speed;
-            if (add_speed <= 0.0F) { return; }
+            const float current_speed = glm::dot(planar_velocity, planar_wishdir);
+            const float add_speed = wishspeed - current_speed;
+            if (add_speed <= 0.0F)
+            {
+                return;
+            }
 
             const float accel_speed = std::min(accel * dt * wishspeed, add_speed);
             velocity.x += wishdir.x * accel_speed;
@@ -77,33 +102,48 @@ namespace RelayCore::physics
     } // namespace
 
     void update_grounded(
-        PlayerMotionState&        state,
-        const MoveInput&          input,
-        const float               yaw_radians,
-        const float               dt,
-        const CollisionWorld      world,
-        const PlayerMotionConfig& config
+        PlayerMotionState& state,
+        const MoveInput& input,
+        const float yaw_radians,
+        const float dt,
+        const CollisionWorld world,
+        const PlayerMotionConfig& config,
+        GroundedMoveDiagnostics* diagnostics
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
+        GroundedMoveDiagnostics local_diagnostics{};
+        local_diagnostics.started_grounded = state.grounded;
+
         if (!state.grounded && state.velocity.y <= 0.0F && probe_ground(world, state.position, config.collision))
         {
+            local_diagnostics.ground_probe_hit = true;
+            const glm::vec3 snapped_position = snap_to_ground(world, state.position, config.collision);
+            local_diagnostics.ground_snap_applied =
+                std::abs(snapped_position.y - state.position.y) > config.collision.epsilon;
             state.grounded = true;
-            state.position = snap_to_ground(world, state.position, config.collision);
-            if (state.velocity.y < 0.0F) { state.velocity.y = 0.0F; }
+            state.position = snapped_position;
+            if (state.velocity.y < 0.0F)
+            {
+                state.velocity.y = 0.0F;
+            }
         }
 
         const glm::vec3 forward = make_forward_flat(yaw_radians);
-        const glm::vec3 right   = make_right_flat(yaw_radians);
+        const glm::vec3 right = make_right_flat(yaw_radians);
 
-        glm::vec3 wishvel   = (forward * input.forward_axis) + (right * input.right_axis);
-        float     wishspeed = glm::length(wishvel);
+        glm::vec3 wishvel = (forward * input.forward_axis) + (right * input.right_axis);
+        float wishspeed = glm::length(wishvel);
         glm::vec3 wishdir{0.0F};
 
         if (wishspeed > 0.0F)
         {
-            wishdir   = wishvel / wishspeed;
+            wishdir = wishvel / wishspeed;
             wishspeed = config.max_speed * std::min(wishspeed, 1.0F);
-            if (input.sprint) { wishspeed *= config.sprint_multiplier; }
+            if (input.sprint)
+            {
+                wishspeed *= config.sprint_multiplier;
+            }
         }
 
         if (state.grounded)
@@ -119,7 +159,8 @@ namespace RelayCore::physics
         if (state.grounded && input.jump_pressed)
         {
             state.velocity.y = config.jump_speed;
-            state.grounded   = false;
+            state.grounded = false;
+            local_diagnostics.jumped = true;
         }
 
         state.velocity.y -= config.gravity * dt * 0.5F;
@@ -127,43 +168,91 @@ namespace RelayCore::physics
         const MoveResult move =
             move_and_collide(world, state.position, state.velocity, dt, config.collision, state.grounded);
 
+        local_diagnostics.attempted_step_move = move.attempted_step;
+        local_diagnostics.used_step_move = move.used_step;
+        local_diagnostics.hit_x = move.hit_x;
+        local_diagnostics.hit_y = move.hit_y;
+        local_diagnostics.hit_z = move.hit_z;
+        local_diagnostics.ground_probe_hit = local_diagnostics.ground_probe_hit || move.probed_ground;
+
         state.position = move.position;
-        if (move.hit_x) { state.velocity.x = 0.0F; }
-        if (move.hit_z) { state.velocity.z = 0.0F; }
-        if (move.hit_y) { state.velocity.y = 0.0F; }
+        if (move.hit_x)
+        {
+            state.velocity.x = 0.0F;
+        }
+        if (move.hit_z)
+        {
+            state.velocity.z = 0.0F;
+        }
+        if (move.hit_y)
+        {
+            state.velocity.y = 0.0F;
+        }
 
         state.velocity.y -= config.gravity * dt * 0.5F;
 
         state.grounded = move.grounded;
         if (state.grounded && state.velocity.y <= 0.0F)
         {
-            state.position = snap_to_ground(world, state.position, config.collision);
-            if (state.velocity.y < 0.0F) { state.velocity.y = 0.0F; }
+            const glm::vec3 snapped_position = snap_to_ground(world, state.position, config.collision);
+            local_diagnostics.ground_snap_applied =
+                local_diagnostics.ground_snap_applied
+                || std::abs(snapped_position.y - state.position.y) > config.collision.epsilon;
+            state.position = snapped_position;
+            if (state.velocity.y < 0.0F)
+            {
+                state.velocity.y = 0.0F;
+            }
+        }
+
+        local_diagnostics.ended_grounded = state.grounded;
+        if (diagnostics != nullptr)
+        {
+            *diagnostics = local_diagnostics;
         }
     }
 
     void update_noclip(
-        PlayerMotionState&        state,
-        const MoveInput&          input,
-        const float               yaw_radians,
-        const float               pitch_radians,
-        const float               dt,
-        const PlayerMotionConfig& config
+        PlayerMotionState& state,
+        const MoveInput& input,
+        const float yaw_radians,
+        const float pitch_radians,
+        const float dt,
+        const PlayerMotionConfig& config,
+        GroundedMoveDiagnostics* diagnostics
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const glm::vec3 forward = make_forward_free(yaw_radians, pitch_radians);
-        const glm::vec3 right   = make_right_free(yaw_radians);
+        const glm::vec3 right = make_right_free(yaw_radians);
         const glm::vec3 up{0.0F, 1.0F, 0.0F};
 
         glm::vec3 move = (forward * input.forward_axis) + (right * input.right_axis) + (up * input.up_axis);
-        if (const float length = glm::length(move); length > 0.0F) { move /= length; }
+        if (const float length = glm::length(move); length > 0.0F)
+        {
+            move /= length;
+        }
 
         float speed = config.noclip_speed;
-        if (input.sprint) { speed *= config.noclip_fast_multiplier; }
-        if (input.slow) { speed *= config.noclip_slow_multiplier; }
+        if (input.sprint)
+        {
+            speed *= config.noclip_fast_multiplier;
+        }
+        if (input.slow)
+        {
+            speed *= config.noclip_slow_multiplier;
+        }
 
         state.position += move * speed * dt;
         state.velocity = glm::vec3{0.0F};
         state.grounded = false;
+
+        if (diagnostics != nullptr)
+        {
+            *diagnostics = GroundedMoveDiagnostics{
+                .started_grounded = false,
+                .ended_grounded = false,
+            };
+        }
     }
 } // namespace RelayCore::physics

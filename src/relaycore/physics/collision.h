@@ -14,23 +14,26 @@ namespace RelayCore::physics
 
     struct AxisMoveResult {
         float position_axis = 0.0F;
-        bool  hit           = false;
+        bool hit = false;
     };
 
     struct MoveResult {
         glm::vec3 position{};
-        bool      hit_x    = false;
-        bool      hit_y    = false;
-        bool      hit_z    = false;
-        bool      grounded = false;
+        bool hit_x = false;
+        bool hit_y = false;
+        bool hit_z = false;
+        bool grounded = false;
+        bool attempted_step = false;
+        bool used_step = false;
+        bool probed_ground = false;
     };
 
     struct CollisionConfig {
-        float radius                   = 0.30F;
-        float height                   = 1.80F;
-        float epsilon                  = 0.001F;
-        float step_height              = 0.35F;
-        float ground_probe_distance    = 0.08F;
+        float radius = 0.30F;
+        float height = 1.80F;
+        float epsilon = 0.001F;
+        float step_height = 0.35F;
+        float ground_probe_distance = 0.08F;
         float max_ground_snap_distance = 0.10F;
     };
 
@@ -40,8 +43,19 @@ namespace RelayCore::physics
 
     [[nodiscard]] auto overlaps(const Aabb& a, const Aabb& b, float epsilon) -> bool;
 
+    [[nodiscard]] auto ray_intersection_distance(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        const Aabb& bounds,
+        float max_distance
+    ) -> std::optional<float>;
+
     [[nodiscard]] auto move_axis(
-        CollisionWorld world, const glm::vec3& start_position, const CollisionConfig& config, int axis, float delta
+        CollisionWorld world,
+        const glm::vec3& start_position,
+        const CollisionConfig& config,
+        int axis,
+        float delta
     ) -> AxisMoveResult;
 
     [[nodiscard]] auto probe_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config)
@@ -51,18 +65,18 @@ namespace RelayCore::physics
         -> glm::vec3;
 
     [[nodiscard]] auto try_step_move(
-        CollisionWorld         world,
-        const glm::vec3&       start_position,
-        const glm::vec3&       desired_delta_xz,
+        CollisionWorld world,
+        const glm::vec3& start_position,
+        const glm::vec3& desired_delta_xz,
         const CollisionConfig& config
     ) -> std::optional<glm::vec3>;
 
     [[nodiscard]] auto move_and_collide(
-        CollisionWorld         world,
-        const glm::vec3&       start_position,
-        const glm::vec3&       velocity,
-        float                  dt,
+        CollisionWorld world,
+        const glm::vec3& start_position,
+        const glm::vec3& velocity,
+        float dt,
         const CollisionConfig& config,
-        bool                   grounded_before_move
+        bool grounded_before_move
     ) -> MoveResult;
 } // namespace RelayCore::physics

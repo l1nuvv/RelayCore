@@ -2,8 +2,10 @@
 
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/camera.h"
+#include "relaycore/render/renderer.h"
 
 #include <cmath>
 #include <glm/common.hpp>
@@ -14,14 +16,17 @@ namespace RelayGame
     namespace
     {
         constexpr float kPitchClamp = 1.55334306F;
+        constexpr float kDefaultYaw = -1.5707963268F;
 
         [[nodiscard]] auto binding_matches(const KeyBinding& binding, const SDL_Scancode scancode) -> bool
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return scancode == binding.primary || scancode == binding.secondary;
         }
 
         [[nodiscard]] auto binding_pressed(const KeyBinding& binding, const bool* key_states) -> bool
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const bool primary_down = binding.primary != SDL_SCANCODE_UNKNOWN && key_states[binding.primary];
             const bool secondary_down = binding.secondary != SDL_SCANCODE_UNKNOWN && key_states[binding.secondary];
             return primary_down || secondary_down;
@@ -29,27 +34,52 @@ namespace RelayGame
     } // namespace
 
     GroundedPlayerController::GroundedPlayerController(const GroundedPlayerControllerConfig& config) : config_(config)
-    {}
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+    }
 
     void GroundedPlayerController::set_config(const GroundedPlayerControllerConfig& config) noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         config_ = config;
     }
 
-    void GroundedPlayerController::initialize(const glm::vec3& spawn_position) noexcept
+    void GroundedPlayerController::initialize(
+        const glm::vec3& spawn_position,
+        const std::optional<glm::vec2> spawn_view_angles
+    ) noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         position_ = spawn_position;
         velocity_ = glm::vec3{0.0F};
         motion_state_.position = spawn_position;
         motion_state_.velocity = glm::vec3{0.0F};
         motion_state_.grounded = false;
+        yaw_radians_ = kDefaultYaw;
+        pitch_radians_ = 0.0F;
+        if (spawn_view_angles.has_value())
+        {
+            yaw_radians_ = spawn_view_angles->x;
+            pitch_radians_ = glm::clamp(spawn_view_angles->y, -kPitchClamp, kPitchClamp);
+        }
         grounded_ = false;
         movement_mode_ = MovementMode::Air;
+        fire_pressed_ = false;
         use_pressed_ = false;
+        inspector_pin_pressed_ = false;
+        reload_level_pressed_ = false;
+        open_inspector_source_pressed_ = false;
+        save_runtime_snapshot_pressed_ = false;
+        restore_runtime_snapshot_pressed_ = false;
+        pending_yaw_delta_ = 0.0F;
+        pending_pitch_delta_ = 0.0F;
+        movement_diagnostics_ = {};
+        collision_query_diagnostics_ = {};
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (!config_.capture_mouse_on_start)
         {
             return;
@@ -65,6 +95,7 @@ namespace RelayGame
         RelayCore::EngineServices& services
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         switch (event.type)
         {
             case SDL_EVENT_MOUSE_MOTION:
@@ -73,6 +104,15 @@ namespace RelayGame
                 {
                     pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
+                }
+                break;
+            }
+
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            {
+                if (window.relative_mouse_mode() && event.button.button == config_.bindings.primary_attack_button)
+                {
+                    fire_pressed_ = true;
                 }
                 break;
             }
@@ -107,6 +147,28 @@ namespace RelayGame
                         label = "noclip";
                     }
                     RelayCore::log::info("Movement mode: {}", label);
+                } else if (binding_matches(config_.bindings.toggle_inspector, event.key.scancode))
+                {
+                    services.renderer().toggle_inspector_visualization_enabled();
+                    RelayCore::log::info(
+                        "Inspector highlight {}",
+                        services.renderer().inspector_visualization_enabled() ? "enabled" : "disabled"
+                    );
+                } else if (binding_matches(config_.bindings.pin_inspector, event.key.scancode))
+                {
+                    inspector_pin_pressed_ = true;
+                } else if (binding_matches(config_.bindings.reload_level, event.key.scancode))
+                {
+                    reload_level_pressed_ = true;
+                } else if (binding_matches(config_.bindings.open_inspector_source, event.key.scancode))
+                {
+                    open_inspector_source_pressed_ = true;
+                } else if (binding_matches(config_.bindings.save_runtime_snapshot, event.key.scancode))
+                {
+                    save_runtime_snapshot_pressed_ = true;
+                } else if (binding_matches(config_.bindings.restore_runtime_snapshot, event.key.scancode))
+                {
+                    restore_runtime_snapshot_pressed_ = true;
                 } else if (binding_matches(config_.bindings.use, event.key.scancode))
                 {
                     use_pressed_ = true;
@@ -122,6 +184,7 @@ namespace RelayGame
 
     void GroundedPlayerController::flush_pending_look() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         yaw_radians_ += pending_yaw_delta_;
         pitch_radians_ = glm::clamp(pitch_radians_ + pending_pitch_delta_, -kPitchClamp, kPitchClamp);
         pending_yaw_delta_ = 0.0F;
@@ -130,6 +193,7 @@ namespace RelayGame
 
     auto GroundedPlayerController::poll_move_input() const -> RelayCore::physics::MoveInput
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const bool* key_states = SDL_GetKeyboardState(nullptr);
 
         RelayCore::physics::MoveInput input{};
@@ -181,37 +245,44 @@ namespace RelayGame
 
     void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         camera.set_position(eye_position_world());
         camera.set_orientation(yaw_radians_, pitch_radians_);
     }
 
     auto GroundedPlayerController::position() const noexcept -> const glm::vec3&
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return position_;
     }
 
     auto GroundedPlayerController::velocity() const noexcept -> const glm::vec3&
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return velocity_;
     }
 
     auto GroundedPlayerController::grounded() const noexcept -> bool
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return grounded_;
     }
 
     auto GroundedPlayerController::movement_mode() const noexcept -> MovementMode
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return movement_mode_;
     }
 
     auto GroundedPlayerController::eye_position_world() const noexcept -> glm::vec3
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return position_ + glm::vec3{0.0F, config_.eye_height, 0.0F};
     }
 
     auto GroundedPlayerController::view_forward() const noexcept -> glm::vec3
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const float cos_pitch = std::cos(pitch_radians_);
         return glm::normalize(
             glm::vec3{
@@ -224,13 +295,69 @@ namespace RelayGame
 
     auto GroundedPlayerController::player_bounds() const noexcept -> RelayCore::physics::Aabb
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return RelayCore::physics::make_player_aabb(position_, config_.collider_radius, config_.collider_height);
     }
 
     auto GroundedPlayerController::consume_use_pressed() noexcept -> bool
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const bool pressed = use_pressed_;
         use_pressed_ = false;
         return pressed;
+    }
+
+    auto GroundedPlayerController::consume_fire_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = fire_pressed_;
+        fire_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::consume_inspector_pin_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = inspector_pin_pressed_;
+        inspector_pin_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::consume_reload_level_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = reload_level_pressed_;
+        reload_level_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::consume_open_inspector_source_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = open_inspector_source_pressed_;
+        open_inspector_source_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::consume_save_runtime_snapshot_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = save_runtime_snapshot_pressed_;
+        save_runtime_snapshot_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::consume_restore_runtime_snapshot_pressed() noexcept -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const bool pressed = restore_runtime_snapshot_pressed_;
+        restore_runtime_snapshot_pressed_ = false;
+        return pressed;
+    }
+
+    auto GroundedPlayerController::collision_query_diagnostics() const noexcept -> const CollisionQueryDiagnostics&
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        return collision_query_diagnostics_;
     }
 } // namespace RelayGame

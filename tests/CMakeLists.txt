@@ -1,16 +1,43 @@
 add_executable(relaycore_tests)
-set_target_properties(relaycore_tests PROPERTIES FOLDER "tests")
+add_executable(relaycore_content_validation)
+set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 
 target_sources(
     relaycore_tests
     PRIVATE
+        ../src/relaygame/level_session_builder.cpp
+        ../src/relaygame/player_controller.cpp
+        ../src/relaygame/player_controller_motion.cpp
+        ../src/relaygame/world_audio_zones.cpp
+        ../src/relaygame/world_inspector.cpp
         camera_tests.cpp
         blockout_loader_tests.cpp
         blockout_mesh_tests.cpp
         blockout_texture_atlas_tests.cpp
+        fixed_simulation_loop_tests.cpp
+        inspector_source_reference_tests.cpp
+        level_session_builder_tests.cpp
         log_tests.cpp
+        mission_runtime_tests.cpp
         player_motion_tests.cpp
+        render_authoring_config_tests.cpp
+        runtime_model_tests.cpp
+        combat_runtime_tests.cpp
+        shader_source_loader_tests.cpp
+        player_controller_tests.cpp
+        world_audio_zones_tests.cpp
+        world_inspector_tests.cpp
         interaction_runtime_tests.cpp
+)
+
+target_sources(
+    relaycore_content_validation
+    PRIVATE
+        ../src/relaygame/level_session_builder.cpp
+        ../src/relaygame/world_audio_zones.cpp
+        content_validation_main.cpp
+        shipped_content_validation_tests.cpp
 )
 
 target_link_libraries(
@@ -22,17 +49,40 @@ target_link_libraries(
         RelayCore::doctest_headers
 )
 
-relaycore_apply_standard_target_settings(relaycore_tests)
-
-add_custom_command(
-    TARGET relaycore_tests
-    POST_BUILD
-    COMMAND
-    ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_tests>" $<TARGET_RUNTIME_DLLS:relaycore_tests>
-    COMMENT
-    "Copying runtime DLLs"
-    COMMAND_EXPAND_LISTS
+target_link_libraries(
+    relaycore_content_validation
+    PRIVATE
+        RelayCore::engine
+        RelayCore::project_options
+        RelayCore::warnings
+        RelayCore::doctest_headers
 )
 
-add_test(NAME relaycore.camera COMMAND relaycore_tests)
-set_tests_properties(relaycore.camera PROPERTIES LABELS "unit;math;camera")
+find_package(doctest CONFIG REQUIRED)
+include(doctest)
+
+foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation)
+    relaycore_apply_standard_target_settings(${test_target})
+
+    add_custom_command(
+        TARGET ${test_target}
+        POST_BUILD
+        COMMAND
+        ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:${test_target}>" $<TARGET_RUNTIME_DLLS:${test_target}>
+        COMMENT
+        "Copying runtime DLLs"
+        COMMAND_EXPAND_LISTS
+    )
+endforeach()
+
+doctest_discover_tests(
+    relaycore_tests
+    TEST_PREFIX "relaycore."
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_tests>"
+)
+
+doctest_discover_tests(
+    relaycore_content_validation
+    TEST_PREFIX "validation."
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
+)

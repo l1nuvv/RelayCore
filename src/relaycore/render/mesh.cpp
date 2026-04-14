@@ -13,6 +13,7 @@ namespace RelayCore::render
     {
         void configure_color_vertex_layout()
         {
+            RELAYCORE_PROFILE_FUNCTION();
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(
                 0,
@@ -57,6 +58,7 @@ namespace RelayCore::render
 
     auto make_color_box_mesh_data() -> CpuColorMeshData
     {
+        RELAYCORE_PROFILE_FUNCTION();
         CpuColorMeshData mesh_data{};
         mesh_data.vertices = {
             {{-0.5F, -0.5F, 0.5F}, {0.42F, 0.54F, 0.47F}, {0.0F, 0.0F, 1.0F}, 0.0F},
@@ -98,6 +100,7 @@ namespace RelayCore::render
 
     auto make_color_double_sided_quad_mesh_data() -> CpuColorMeshData
     {
+        RELAYCORE_PROFILE_FUNCTION();
         CpuColorMeshData mesh_data{};
         mesh_data.vertices = {
             {{-0.5F, -0.5F, 0.0F}, {0.42F, 0.54F, 0.47F}, {0.0F, 0.0F, 1.0F}, 0.0F},
@@ -128,6 +131,7 @@ namespace RelayCore::render
 
     StaticColorMesh::~StaticColorMesh() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         reset();
     }
 
@@ -135,10 +139,13 @@ namespace RelayCore::render
         vertex_array_id_(std::exchange(other.vertex_array_id_, 0)),
         vertex_buffer_id_(std::exchange(other.vertex_buffer_id_, 0)),
         index_buffer_id_(std::exchange(other.index_buffer_id_, 0)), index_count_(std::exchange(other.index_count_, 0))
-    {}
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+    }
 
     auto StaticColorMesh::operator=(StaticColorMesh&& other) noexcept -> StaticColorMesh&
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (this != &other)
         {
             reset();
@@ -153,6 +160,7 @@ namespace RelayCore::render
 
     void StaticColorMesh::initialize(const CpuColorMeshData& mesh_data)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (mesh_data.vertices.empty() || mesh_data.indices.empty())
         {
             throw std::runtime_error("StaticColorMesh requires non-empty vertex and index buffers");
@@ -199,11 +207,13 @@ namespace RelayCore::render
 
     auto StaticColorMesh::index_count() const noexcept -> GLsizei
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return index_count_;
     }
 
     void StaticColorMesh::reset() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (index_buffer_id_ != 0)
         {
             glDeleteBuffers(1, &index_buffer_id_);

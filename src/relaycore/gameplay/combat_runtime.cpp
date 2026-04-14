@@ -1,0 +1,554 @@
+#include "relaycore/gameplay/combat_runtime.h"
+
+#include "relaycore/world/blockout_level.h"
+
+#include <algorithm>
+#include <cctype>
+#include <charconv>
+#include <cmath>
+#include <glm/geometric.hpp>
+#include <optional>
+#include <sstream>
+#include <string_view>
+
+namespace RelayCore::gameplay
+{
+    namespace
+    {
+        [[nodiscard]] auto find_property(const EntitySpawnData& entity, const std::string_view key)
+            -> const std::string*
+        {
+            const auto found = entity.properties.find(std::string{key});
+            return found == entity.properties.end() ? nullptr : &found->second;
+        }
+
+        [[nodiscard]] auto property_or(const EntitySpawnData& entity, const std::string_view key, std::string fallback)
+            -> std::string
+        {
+            if (const std::string* value = find_property(entity, key); value != nullptr && !value->empty())
+            {
+                return *value;
+            }
+
+            return fallback;
+        }
+
+        [[nodiscard]] auto lowercase_copy(const std::string_view value) -> std::string
+        {
+            std::string normalized(value);
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return normalized;
+        }
+
+        [[nodiscard]] auto
+        parse_bool_property(const EntitySpawnData& entity, const std::string_view key, const bool fallback) -> bool
+        {
+            const std::string* value = find_property(entity, key);
+            if (value == nullptr)
+            {
+                return fallback;
+            }
+
+            const std::string normalized = lowercase_copy(*value);
+            if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on")
+            {
+                return true;
+            }
+            if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off")
+            {
+                return false;
+            }
+
+            return fallback;
+        }
+
+        [[nodiscard]] auto parse_float_property(const EntitySpawnData& entity, const std::string_view key)
+            -> std::optional<float>
+        {
+            const std::string* value = find_property(entity, key);
+            if (value == nullptr || value->empty())
+            {
+                return std::nullopt;
+            }
+
+            float parsed_value = 0.0F;
+            const auto [ptr, ec] = std::from_chars(value->data(), value->data() + value->size(), parsed_value);
+            if (ec != std::errc{} || ptr != value->data() + value->size())
+            {
+                return std::nullopt;
+            }
+
+            return parsed_value;
+        }
+
+        [[nodiscard]] auto parse_vec3_property(const EntitySpawnData& entity, const std::string_view key)
+            -> std::optional<glm::vec3>
+        {
+            const std::string* value = find_property(entity, key);
+            if (value == nullptr || value->empty())
+            {
+                return std::nullopt;
+            }
+
+            std::string normalized = *value;
+            std::replace(normalized.begin(), normalized.end(), ',', ' ');
+
+            std::istringstream stream(normalized);
+            glm::vec3 parsed_value{};
+            if (!(stream >> parsed_value.x >> parsed_value.y >> parsed_value.z))
+            {
+                return std::nullopt;
+            }
+
+            stream >> std::ws;
+            if (!stream.eof())
+            {
+                return std::nullopt;
+            }
+
+            return parsed_value;
+        }
+
+        [[nodiscard]] auto centered_bounds(const glm::vec3& center, const glm::vec3& size) -> physics::Aabb
+        {
+            const glm::vec3 half_size = size * 0.5F;
+            return {
+                .mins = center - half_size,
+                .maxs = center + half_size,
+            };
+        }
+
+        [[nodiscard]] auto
+        parse_centered_bounds(const EntitySpawnData& entity, const glm::vec3& default_size, const glm::vec3& min_size)
+            -> physics::Aabb
+        {
+            glm::vec3 size{
+                parse_float_property(entity, "width").value_or(default_size.x),
+                parse_float_property(entity, "height").value_or(default_size.y),
+                parse_float_property(entity, "depth")
+                    .value_or(parse_float_property(entity, "thickness").value_or(default_size.z)),
+            };
+            if (const auto compact_size = parse_vec3_property(entity, "size"); compact_size.has_value())
+            {
+                size = *compact_size;
+            }
+
+            size = glm::max(size, min_size);
+            return centered_bounds(entity.origin, size);
+        }
+
+        [[nodiscard]] auto is_turret_entity(const EntitySpawnData& entity) -> bool
+        {
+            if (entity.classname != "gameplay_entity")
+            {
+                return false;
+            }
+
+            const std::string* kind = find_property(entity, "kind");
+            if (kind == nullptr || kind->empty())
+            {
+                return false;
+            }
+
+            const std::string normalized = lowercase_copy(*kind);
+            return normalized == "turret" || normalized == "sentry";
+        }
+
+        [[nodiscard]] auto parse_target_action(const EntitySpawnData& entity) -> CombatTargetActionKind
+        {
+            const std::string* value = find_property(entity, "destroy_action");
+            if (value == nullptr || value->empty())
+            {
+                value = find_property(entity, "on_destroy");
+            }
+            if (value == nullptr || value->empty())
+            {
+                return CombatTargetActionKind::SignalTarget;
+            }
+
+            const std::string normalized = lowercase_copy(*value);
+            if (normalized == "activate" || normalized == "activate_target" || normalized == "activate-target")
+            {
+                return CombatTargetActionKind::ActivateTarget;
+            }
+            if (normalized == "signal" || normalized == "signal_target" || normalized == "signal-target")
+            {
+                return CombatTargetActionKind::SignalTarget;
+            }
+            return CombatTargetActionKind::None;
+        }
+
+        [[nodiscard]] auto turret_eye_position(const RuntimeTurret& turret) -> glm::vec3
+        {
+            return glm::vec3{
+                turret.origin.x,
+                turret.bounds.maxs.y - 0.12F,
+                turret.origin.z,
+            };
+        }
+
+        [[nodiscard]] auto ray_hits_world_before_distance(
+            const BlockoutLevel& level,
+            std::span<const RuntimeDoor> doors,
+            const glm::vec3& origin,
+            const glm::vec3& direction,
+            const float max_distance
+        ) -> float
+        {
+            float nearest_distance = max_distance;
+
+            for (const BlockoutSolid& solid : level.solids)
+            {
+                const auto hit = physics::ray_intersection_distance(
+                    origin,
+                    direction,
+                    physics::Aabb{.mins = solid.mins, .maxs = solid.maxs},
+                    nearest_distance
+                );
+                if (hit.has_value())
+                {
+                    nearest_distance = *hit;
+                }
+            }
+
+            for (const RuntimeDoor& door : doors)
+            {
+                if (!is_door_blocking(door))
+                {
+                    continue;
+                }
+
+                const auto hit =
+                    physics::ray_intersection_distance(origin, direction, current_door_bounds(door), nearest_distance);
+                if (hit.has_value())
+                {
+                    nearest_distance = *hit;
+                }
+            }
+
+            return nearest_distance;
+        }
+
+        [[nodiscard]] auto
+        apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source) -> float
+        {
+            if (!player.alive || amount <= 0.0F)
+            {
+                return 0.0F;
+            }
+
+            const float applied_damage = std::min(amount, player.health);
+            player.health = std::max(0.0F, player.health - amount);
+            player.damage_taken += applied_damage;
+            player.hurt_flash_remaining_seconds = std::max(player.hurt_flash_remaining_seconds, 0.30F);
+            player.last_damage_source = std::string{source};
+            if (player.health <= 0.0F)
+            {
+                player.alive = false;
+                player.health = 0.0F;
+                player.respawn_remaining_seconds = player.respawn_delay_seconds;
+                ++player.deaths;
+            }
+
+            return applied_damage;
+        }
+
+        [[nodiscard]] auto apply_turret_damage(RuntimeTurret& turret, const float amount, CombatFireResult& result)
+            -> float
+        {
+            if (!turret.enabled || turret.destroyed || amount <= 0.0F)
+            {
+                return 0.0F;
+            }
+
+            const float applied_damage = std::min(amount, turret.health);
+            turret.health = std::max(0.0F, turret.health - amount);
+            turret.hit_flash_remaining_seconds = 0.18F;
+            if (turret.health <= 0.0F)
+            {
+                turret.destroyed = true;
+                turret.enabled = false;
+                turret.cooldown_remaining_seconds = 0.0F;
+                turret.warmup_remaining_seconds = 0.0F;
+                turret.hit_flash_remaining_seconds = 0.32F;
+                result.killed_turret = true;
+                result.target_event = CombatTargetEvent{
+                    .action = turret.destroy_action,
+                    .target = turret.destroy_target,
+                };
+            }
+
+            return applied_damage;
+        }
+    } // namespace
+
+    auto build_runtime_combat(const BlockoutLevel& level) -> CombatBuildResult
+    {
+        CombatBuildResult result{};
+        result.hazards.reserve(level.solids.size());
+
+        for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
+        {
+            const BlockoutSolid& solid = level.solids[solid_index];
+            if (solid.material != SurfaceMaterial::Hazard)
+            {
+                continue;
+            }
+
+            RuntimeHazardVolume hazard{};
+            hazard.authored_solid_index = static_cast<int>(solid_index);
+            hazard.label = "hazard_surface_" + std::to_string(solid_index);
+            hazard.bounds = physics::Aabb{
+                .mins = solid.mins,
+                .maxs = {solid.maxs.x, solid.maxs.y + 1.10F, solid.maxs.z},
+            };
+            hazard.damage_per_second = 18.0F;
+            result.hazards.push_back(std::move(hazard));
+        }
+
+        result.turrets.reserve(level.entities.size());
+        for (std::size_t entity_index = 0; entity_index < level.entities.size(); ++entity_index)
+        {
+            const EntitySpawnData& entity = level.entities[entity_index];
+            if (!is_turret_entity(entity))
+            {
+                continue;
+            }
+
+            RuntimeTurret turret{};
+            turret.authored_entity_index = static_cast<int>(entity_index);
+            turret.bounds = parse_centered_bounds(entity, {0.70F, 0.90F, 0.70F}, {0.30F, 0.45F, 0.30F});
+            turret.origin = (turret.bounds.mins + turret.bounds.maxs) * 0.5F;
+            turret.name = property_or(entity, "targetname", "turret_" + std::to_string(entity_index));
+            turret.label = property_or(entity, "label", "Защитная турель");
+            turret.max_health = std::max(parse_float_property(entity, "health").value_or(turret.max_health), 1.0F);
+            turret.health = turret.max_health;
+            turret.attack_range =
+                std::max(parse_float_property(entity, "attack_range").value_or(turret.attack_range), 1.0F);
+            turret.fire_interval_seconds =
+                std::max(parse_float_property(entity, "fire_interval").value_or(turret.fire_interval_seconds), 0.05F);
+            turret.warmup_seconds =
+                std::max(parse_float_property(entity, "warmup").value_or(turret.warmup_seconds), 0.0F);
+            turret.damage = std::max(parse_float_property(entity, "damage").value_or(turret.damage), 1.0F);
+            turret.enabled = parse_bool_property(entity, "enabled", true);
+            turret.destroy_target = property_or(entity, "destroy_target", {});
+            turret.destroy_action = parse_target_action(entity);
+            result.turrets.push_back(std::move(turret));
+        }
+
+        return result;
+    }
+
+    void reset_player_combat_state(PlayerCombatState& state) noexcept
+    {
+        state.health = state.max_health;
+        state.weapon_cooldown_remaining_seconds = 0.0F;
+        state.hurt_flash_remaining_seconds = 0.0F;
+        state.respawn_remaining_seconds = 0.0F;
+        state.alive = true;
+        state.shots_fired = 0;
+        state.shots_hit = 0;
+        state.kills = 0;
+        state.deaths = 0;
+        state.damage_dealt = 0.0F;
+        state.damage_taken = 0.0F;
+        state.last_damage_source.clear();
+    }
+
+    void respawn_player_combat_state(PlayerCombatState& state) noexcept
+    {
+        state.health = state.max_health;
+        state.weapon_cooldown_remaining_seconds = 0.0F;
+        state.hurt_flash_remaining_seconds = 0.0F;
+        state.respawn_remaining_seconds = 0.0F;
+        state.alive = true;
+        state.last_damage_source.clear();
+    }
+
+    void tick_combat_state(const float dt, PlayerCombatState& player, const std::span<RuntimeTurret> turrets) noexcept
+    {
+        const float step = std::max(dt, 0.0F);
+        player.weapon_cooldown_remaining_seconds = std::max(0.0F, player.weapon_cooldown_remaining_seconds - step);
+        player.hurt_flash_remaining_seconds = std::max(0.0F, player.hurt_flash_remaining_seconds - step);
+        if (!player.alive)
+        {
+            player.respawn_remaining_seconds = std::max(0.0F, player.respawn_remaining_seconds - step);
+        }
+
+        for (RuntimeTurret& turret : turrets)
+        {
+            turret.cooldown_remaining_seconds = std::max(0.0F, turret.cooldown_remaining_seconds - step);
+            turret.warmup_remaining_seconds = std::max(0.0F, turret.warmup_remaining_seconds - step);
+            turret.hit_flash_remaining_seconds = std::max(0.0F, turret.hit_flash_remaining_seconds - step);
+            turret.fire_flash_remaining_seconds = std::max(0.0F, turret.fire_flash_remaining_seconds - step);
+
+            if (turret.destroyed || !turret.enabled)
+            {
+                turret.warmup_remaining_seconds = 0.0F;
+                turret.cooldown_remaining_seconds = 0.0F;
+                turret.warming_up = false;
+            }
+        }
+    }
+
+    auto apply_player_fire(
+        const BlockoutLevel& level,
+        const std::span<const RuntimeDoor> doors,
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        PlayerCombatState& player,
+        const std::span<RuntimeTurret> turrets
+    ) -> CombatFireResult
+    {
+        CombatFireResult result{};
+        if (!player.alive || player.weapon_cooldown_remaining_seconds > 0.0F)
+        {
+            return result;
+        }
+
+        result.fired = true;
+        player.weapon_cooldown_remaining_seconds = player.weapon_refire_seconds;
+        ++player.shots_fired;
+
+        const glm::vec3 shot_direction = glm::normalize(direction);
+        const float blocker_distance =
+            ray_hits_world_before_distance(level, doors, origin, shot_direction, player.weapon_range);
+
+        float best_hit_distance = blocker_distance;
+        int best_turret_index = -1;
+        for (std::size_t turret_index = 0; turret_index < turrets.size(); ++turret_index)
+        {
+            const RuntimeTurret& turret = turrets[turret_index];
+            if (!turret.enabled || turret.destroyed)
+            {
+                continue;
+            }
+
+            const auto hit =
+                physics::ray_intersection_distance(origin, shot_direction, turret.bounds, best_hit_distance);
+            if (!hit.has_value())
+            {
+                continue;
+            }
+
+            best_hit_distance = *hit;
+            best_turret_index = static_cast<int>(turret_index);
+        }
+
+        if (best_turret_index < 0)
+        {
+            return result;
+        }
+
+        RuntimeTurret& turret = turrets[static_cast<std::size_t>(best_turret_index)];
+        result.hit_turret = true;
+        result.turret_index = best_turret_index;
+        result.hit_distance = best_hit_distance;
+        ++player.shots_hit;
+        player.damage_dealt += apply_turret_damage(turret, player.weapon_damage, result);
+        if (result.killed_turret)
+        {
+            ++player.kills;
+        }
+
+        return result;
+    }
+
+    auto update_combat_threats(
+        const BlockoutLevel& level,
+        const std::span<const RuntimeDoor> doors,
+        const physics::Aabb& player_bounds,
+        const glm::vec3& player_eye_position,
+        PlayerCombatState& player,
+        const std::span<RuntimeTurret> turrets,
+        const std::span<const RuntimeHazardVolume> hazards,
+        const float dt
+    ) -> CombatThreatResult
+    {
+        CombatThreatResult result{};
+        if (!player.alive)
+        {
+            return result;
+        }
+
+        for (const RuntimeHazardVolume& hazard : hazards)
+        {
+            if (!physics::overlaps(player_bounds, hazard.bounds, 0.001F))
+            {
+                continue;
+            }
+
+            ++result.hazard_contacts;
+            result.damage_taken +=
+                apply_player_damage(player, hazard.damage_per_second * std::max(dt, 0.0F), hazard.label);
+            if (!player.alive)
+            {
+                result.player_died = true;
+                return result;
+            }
+        }
+
+        for (RuntimeTurret& turret : turrets)
+        {
+            if (!turret.enabled || turret.destroyed)
+            {
+                continue;
+            }
+
+            const glm::vec3 to_player = player_eye_position - turret_eye_position(turret);
+            const float distance = glm::length(to_player);
+            if (distance <= 0.001F || distance > turret.attack_range)
+            {
+                turret.warming_up = false;
+                turret.warmup_remaining_seconds = turret.warmup_seconds;
+                continue;
+            }
+
+            const glm::vec3 aim_direction = to_player / distance;
+            const float blocker_distance =
+                ray_hits_world_before_distance(level, doors, turret_eye_position(turret), aim_direction, distance);
+            if (blocker_distance + 0.02F < distance)
+            {
+                turret.warming_up = false;
+                turret.warmup_remaining_seconds = turret.warmup_seconds;
+                continue;
+            }
+
+            if (turret.cooldown_remaining_seconds > 0.0F)
+            {
+                continue;
+            }
+
+            if (turret.warmup_seconds > 0.0F)
+            {
+                if (!turret.warming_up)
+                {
+                    turret.warming_up = true;
+                    turret.warmup_remaining_seconds = turret.warmup_seconds;
+                    continue;
+                }
+                if (turret.warmup_remaining_seconds > 0.0F)
+                {
+                    continue;
+                }
+            }
+
+            turret.cooldown_remaining_seconds = turret.fire_interval_seconds;
+            turret.fire_flash_remaining_seconds = 0.16F;
+            turret.warmup_remaining_seconds = turret.warmup_seconds;
+            turret.warming_up = false;
+            ++result.turret_shots;
+            result.damage_taken +=
+                apply_player_damage(player, turret.damage, turret.label.empty() ? turret.name : turret.label);
+            if (!player.alive)
+            {
+                result.player_died = true;
+                return result;
+            }
+        }
+
+        return result;
+    }
+} // namespace RelayCore::gameplay

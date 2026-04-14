@@ -42,6 +42,11 @@ macro(relaycore_initialize_project)
         set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
     endif()
 
+    # RelayCore does not currently use C++20 modules. Disabling compiler-side
+    # module scanning keeps the Ninja/MSVC build graph simpler and avoids the
+    # extra scanned-object workflow for every translation unit.
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     set(CMAKE_MAP_IMPORTED_CONFIG_ASAN Debug)

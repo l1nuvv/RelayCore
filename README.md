@@ -68,6 +68,10 @@ cmake --preset msvc-debug
 cmake --build --preset demo-debug
 ```
 
+Для `msvc-*` preset'ов запуск должен идти из `Developer PowerShell for VS 2022` или `Developer Command Prompt for VS 2022`, чтобы `cl.exe`, `rc.exe` и Windows SDK tools уже были доступны в окружении.
+
+Локальные preset'ы в `CMakeUserPresets.json` могут также содержать машинно-специфичные пути к MSVC/Windows SDK. После обновления Visual Studio, Windows SDK или CLion эти пути нужно синхронизировать.
+
 Если есть тестовый preset:
 
 ```powershell

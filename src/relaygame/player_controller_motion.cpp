@@ -8,6 +8,7 @@ namespace RelayGame
 {
     void GroundedPlayerController::set_static_collision_world(const RelayCore::BlockoutLevel& level)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         static_collision_world_.clear();
         static_collision_world_.reserve(level.solids.size());
 
@@ -25,10 +26,16 @@ namespace RelayGame
         }
 
         collision_world_ = static_collision_world_;
+        collision_query_diagnostics_.static_world_solids = static_cast<std::uint32_t>(static_collision_world_.size());
+        collision_query_diagnostics_.collision_world_solids = static_cast<std::uint32_t>(collision_world_.size());
+        collision_query_diagnostics_.static_candidate_count =
+            static_cast<std::uint32_t>(static_collision_world_.size());
+        collision_query_diagnostics_.dynamic_blocker_count = 0;
     }
 
     void GroundedPlayerController::toggle_noclip() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (movement_mode_ == MovementMode::Noclip)
         {
             movement_mode_ = MovementMode::Air;
@@ -88,7 +95,8 @@ namespace RelayGame
             yaw_radians_,
             static_cast<float>(frame.delta_seconds),
             RelayCore::physics::CollisionWorld{collision_world_},
-            config
+            config,
+            &movement_diagnostics_
         );
 
         position_ = motion_state_.position;
@@ -96,10 +104,18 @@ namespace RelayGame
 
         grounded_ = motion_state_.grounded;
         movement_mode_ = grounded_ ? MovementMode::Grounded : MovementMode::Air;
+        collision_query_diagnostics_.ground_probe_hit = movement_diagnostics_.ground_probe_hit;
+        collision_query_diagnostics_.ground_snap_applied = movement_diagnostics_.ground_snap_applied;
+        collision_query_diagnostics_.attempted_step_move = movement_diagnostics_.attempted_step_move;
+        collision_query_diagnostics_.used_step_move = movement_diagnostics_.used_step_move;
+        collision_query_diagnostics_.hit_x = movement_diagnostics_.hit_x;
+        collision_query_diagnostics_.hit_y = movement_diagnostics_.hit_y;
+        collision_query_diagnostics_.hit_z = movement_diagnostics_.hit_z;
     }
 
     void GroundedPlayerController::update_noclip(const RelayCore::FrameInfo& frame)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const auto input = poll_move_input();
         const auto config = build_motion_config();
 
@@ -113,22 +129,41 @@ namespace RelayGame
             yaw_radians_,
             pitch_radians_,
             static_cast<float>(frame.delta_seconds),
-            config
+            config,
+            &movement_diagnostics_
         );
 
         position_ = motion_state_.position;
         velocity_ = glm::vec3{0.0F};
         grounded_ = false;
         movement_mode_ = MovementMode::Noclip;
+        collision_query_diagnostics_.static_world_solids = static_cast<std::uint32_t>(static_collision_world_.size());
+        collision_query_diagnostics_.static_candidate_count = 0;
+        collision_query_diagnostics_.dynamic_blocker_count = 0;
+        collision_query_diagnostics_.collision_world_solids = 0;
+        collision_query_diagnostics_.ground_probe_hit = false;
+        collision_query_diagnostics_.ground_snap_applied = false;
+        collision_query_diagnostics_.attempted_step_move = false;
+        collision_query_diagnostics_.used_step_move = false;
+        collision_query_diagnostics_.hit_x = false;
+        collision_query_diagnostics_.hit_y = false;
+        collision_query_diagnostics_.hit_z = false;
     }
 
     void GroundedPlayerController::refresh_collision_world(std::span<const RelayCore::physics::Aabb> dynamic_blockers)
     {
+        RELAYCORE_PROFILE_FUNCTION();
+        collision_query_diagnostics_.static_world_solids = static_cast<std::uint32_t>(static_collision_world_.size());
+        collision_query_diagnostics_.dynamic_blocker_count = static_cast<std::uint32_t>(dynamic_blockers.size());
+
         if (static_collision_index_.empty())
         {
             collision_world_.resize(static_collision_world_.size());
             std::copy(static_collision_world_.begin(), static_collision_world_.end(), collision_world_.begin());
             collision_world_.insert(collision_world_.end(), dynamic_blockers.begin(), dynamic_blockers.end());
+            collision_query_diagnostics_.static_candidate_count =
+                static_cast<std::uint32_t>(static_collision_world_.size());
+            collision_query_diagnostics_.collision_world_solids = static_cast<std::uint32_t>(collision_world_.size());
             return;
         }
 
@@ -139,6 +174,8 @@ namespace RelayGame
             .maxs = {position_.x + query_padding, position_.y + config_.collider_height, position_.z + query_padding},
         };
         static_collision_index_.query(query_bounds, static_collision_candidates_);
+        collision_query_diagnostics_.static_candidate_count =
+            static_cast<std::uint32_t>(static_collision_candidates_.size());
 
         collision_world_.clear();
         collision_world_.reserve(static_collision_world_.size() / 4 + dynamic_blockers.size() + 8);
@@ -153,10 +190,12 @@ namespace RelayGame
         }
 
         collision_world_.insert(collision_world_.end(), dynamic_blockers.begin(), dynamic_blockers.end());
+        collision_query_diagnostics_.collision_world_solids = static_cast<std::uint32_t>(collision_world_.size());
     }
 
     auto GroundedPlayerController::build_motion_config() const -> RelayCore::physics::PlayerMotionConfig
     {
+        RELAYCORE_PROFILE_FUNCTION();
         RelayCore::physics::PlayerMotionConfig motion_config{};
         motion_config.max_speed = config_.move_speed;
         motion_config.sprint_multiplier = config_.sprint_multiplier;
@@ -176,6 +215,7 @@ namespace RelayGame
 
     auto GroundedPlayerController::build_collision_config() const -> RelayCore::physics::CollisionConfig
     {
+        RELAYCORE_PROFILE_FUNCTION();
         RelayCore::physics::CollisionConfig collision_config{};
         collision_config.radius = config_.collider_radius;
         collision_config.height = config_.collider_height;

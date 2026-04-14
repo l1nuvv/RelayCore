@@ -2,21 +2,30 @@
 
 #include "relaycore/core/engine_config.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/gameplay/runtime_model.h"
+#include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 
+#include <filesystem>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <optional>
 #include <vector>
 
 namespace RelayGame
 {
     struct LevelSession {
+        std::filesystem::path level_path{};
         RelayCore::BlockoutLevel level{};
         glm::vec3 spawn_position{0.0F, 0.3F, 0.0F};
+        std::optional<glm::vec2> spawn_view_angles{}; // x = yaw radians, y = pitch radians
         std::vector<RelayCore::gameplay::RuntimeDoor> doors{};
         std::vector<RelayCore::gameplay::RuntimeTrigger> triggers{};
         std::vector<RelayCore::gameplay::RuntimeUsable> usables{};
         RelayCore::gameplay::InteractionSpatialIndex trigger_spatial_index{};
         RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index{};
+        RelayCore::gameplay::RuntimeObjectRegistry runtime_registry{};
+        std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
     };
 
     class LevelSessionBuilder {

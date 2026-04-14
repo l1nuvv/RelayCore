@@ -3,9 +3,11 @@
 #include "relaycore/core/profiling.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <glm/common.hpp>
+#include <glm/geometric.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -36,60 +38,10 @@ namespace RelayCore::render
             float v1;
         };
 
-        [[nodiscard]] auto material_base_color(const SurfaceMaterial material) -> glm::vec3
+        [[nodiscard]] auto
+        material_base_color(const SurfaceMaterial material, const RenderAuthoringConfig& authoring_config) -> glm::vec3
         {
-            switch (material)
-            {
-                case SurfaceMaterial::Concrete:
-                    return {0.62F, 0.64F, 0.67F};
-                case SurfaceMaterial::Metal:
-                    return {0.60F, 0.67F, 0.74F};
-                case SurfaceMaterial::Tile:
-                    return {0.73F, 0.76F, 0.78F};
-                case SurfaceMaterial::Glass:
-                    return {0.45F, 0.72F, 0.84F};
-                case SurfaceMaterial::Hazard:
-                    return {0.92F, 0.78F, 0.18F};
-
-                case SurfaceMaterial::Floor:
-                    return {0.29F, 0.30F, 0.32F};
-                case SurfaceMaterial::Ceiling:
-                    return {0.18F, 0.20F, 0.22F};
-                case SurfaceMaterial::Wall:
-                    return {0.43F, 0.46F, 0.50F};
-                case SurfaceMaterial::WallPanel:
-                    return {0.58F, 0.61F, 0.66F};
-                case SurfaceMaterial::Corridor:
-                    return {0.28F, 0.34F, 0.40F};
-
-                case SurfaceMaterial::Platform:
-                    return {0.37F, 0.38F, 0.43F};
-                case SurfaceMaterial::PlatformTop:
-                    return {0.72F, 0.63F, 0.24F};
-                case SurfaceMaterial::PlatformTop2:
-                    return {0.82F, 0.43F, 0.18F};
-
-                case SurfaceMaterial::Pillar:
-                    return {0.48F, 0.55F, 0.60F};
-                case SurfaceMaterial::Cover:
-                    return {0.25F, 0.38F, 0.31F};
-                case SurfaceMaterial::Block:
-                    return {0.46F, 0.39F, 0.31F};
-                case SurfaceMaterial::Beam:
-                    return {0.64F, 0.39F, 0.16F};
-                case SurfaceMaterial::Trim:
-                    return {0.26F, 0.29F, 0.33F};
-                case SurfaceMaterial::Divider:
-                    return {0.24F, 0.63F, 0.72F};
-                case SurfaceMaterial::LightStrip:
-                    return {0.74F, 0.82F, 0.66F};
-                case SurfaceMaterial::Crate:
-                    return {0.48F, 0.33F, 0.18F};
-                case SurfaceMaterial::Post:
-                    return {0.73F, 0.75F, 0.79F};
-            }
-
-            return {1.0F, 0.0F, 1.0F};
+            return material_authoring(authoring_config, material).base_color;
         }
 
         [[nodiscard]] auto shade(const glm::vec3& color, const float factor) -> glm::vec3
@@ -100,6 +52,13 @@ namespace RelayCore::render
         [[nodiscard]] auto clamp_color(const glm::vec3& color) -> glm::vec3
         {
             return glm::clamp(color, glm::vec3{0.0F}, glm::vec3{1.0F});
+        }
+
+        [[nodiscard]] auto same_surface_appearance(const BlockoutSolid& a, const BlockoutSolid& b) -> bool
+        {
+            return a.material == b.material && nearly_equal(a.brightness, b.brightness)
+                   && nearly_equal(a.tint.x, b.tint.x) && nearly_equal(a.tint.y, b.tint.y)
+                   && nearly_equal(a.tint.z, b.tint.z);
         }
 
         [[nodiscard]] auto face_normal(const FaceAxis face) -> glm::vec3
@@ -121,6 +80,90 @@ namespace RelayCore::render
             }
 
             return {0.0F, 0.0F, 1.0F};
+        }
+
+        [[nodiscard]] auto face_depth(const BlockoutSolid& solid, const FaceAxis face) -> float
+        {
+            switch (face)
+            {
+                case FaceAxis::PosX:
+                case FaceAxis::NegX:
+                    return solid.maxs.x - solid.mins.x;
+                case FaceAxis::PosY:
+                case FaceAxis::NegY:
+                    return solid.maxs.y - solid.mins.y;
+                case FaceAxis::PosZ:
+                case FaceAxis::NegZ:
+                    return solid.maxs.z - solid.mins.z;
+            }
+
+            return 0.0F;
+        }
+
+        [[nodiscard]] auto
+        material_uses_bevel(const SurfaceMaterial material, const RenderAuthoringConfig& authoring_config) -> bool
+        {
+            return material_authoring(authoring_config, material).bevel_enabled;
+        }
+
+        [[nodiscard]] auto solid_uses_bevel(const BlockoutSolid& solid, const RenderAuthoringConfig& authoring_config)
+            -> bool
+        {
+            if (!material_uses_bevel(solid.material, authoring_config))
+            {
+                return false;
+            }
+
+            const glm::vec3 extents = solid.maxs - solid.mins;
+            std::array<float, 3> dimensions{extents.x, extents.y, extents.z};
+            std::ranges::sort(dimensions);
+
+            return dimensions[2] >= 2.0F && dimensions[1] >= 1.0F && dimensions[0] >= 0.18F;
+        }
+
+        [[nodiscard]] auto bevel_size(
+            const BlockoutSolid& solid,
+            const FaceAxis face,
+            const Rect2D& rect,
+            const RenderAuthoringConfig& authoring_config
+        ) -> float
+        {
+            if (!solid_uses_bevel(solid, authoring_config))
+            {
+                return 0.0F;
+            }
+
+            const float rect_width = rect.u1 - rect.u0;
+            const float rect_height = rect.v1 - rect.v0;
+            const float depth = face_depth(solid, face);
+            if (rect_width <= kEpsilon || rect_height <= kEpsilon || depth <= kEpsilon)
+            {
+                return 0.0F;
+            }
+
+            return std::min({0.06F, rect_width * 0.12F, rect_height * 0.12F, depth * 0.22F});
+        }
+
+        enum class ThinAxis : std::uint8_t {
+            X,
+            Y,
+            Z,
+        };
+
+        [[nodiscard]] auto thinnest_axis(const BlockoutSolid& solid) -> ThinAxis
+        {
+            const glm::vec3 extents = solid.maxs - solid.mins;
+            if (extents.x <= extents.y && extents.x <= extents.z)
+            {
+                return ThinAxis::X;
+            }
+
+            if (extents.y <= extents.x && extents.y <= extents.z)
+            {
+                return ThinAxis::Y;
+            }
+
+            return ThinAxis::Z;
         }
 
         void append_quad(
@@ -147,6 +190,63 @@ namespace RelayCore::render
             mesh.indices.push_back(base_index + 0);
             mesh.indices.push_back(base_index + 2);
             mesh.indices.push_back(base_index + 3);
+        }
+
+        void append_oriented_quad(
+            CpuColorMeshData& mesh,
+            const glm::vec3& a,
+            const glm::vec3& b,
+            const glm::vec3& c,
+            const glm::vec3& d,
+            const glm::vec3& color,
+            const glm::vec3& desired_normal,
+            const float material_kind
+        )
+        {
+            const glm::vec3 normal = glm::normalize(desired_normal);
+            const glm::vec3 computed = glm::cross(b - a, c - a);
+            if (glm::dot(computed, normal) < 0.0F)
+            {
+                append_quad(mesh, a, d, c, b, color, normal, material_kind);
+                return;
+            }
+
+            append_quad(mesh, a, b, c, d, color, normal, material_kind);
+        }
+
+        void append_glass_panel(CpuColorMeshData& mesh, const BlockoutSolid& solid, const glm::vec3& color)
+        {
+            const float material_kind = static_cast<float>(static_cast<std::uint8_t>(solid.material));
+            const ThinAxis axis = thinnest_axis(solid);
+
+            if (axis == ThinAxis::X)
+            {
+                const float x = (solid.mins.x + solid.maxs.x) * 0.5F;
+                const glm::vec3 a{x, solid.mins.y, solid.mins.z};
+                const glm::vec3 b{x, solid.maxs.y, solid.mins.z};
+                const glm::vec3 c{x, solid.maxs.y, solid.maxs.z};
+                const glm::vec3 d{x, solid.mins.y, solid.maxs.z};
+                append_oriented_quad(mesh, a, b, c, d, color, {1.0F, 0.0F, 0.0F}, material_kind);
+                return;
+            }
+
+            if (axis == ThinAxis::Y)
+            {
+                const float y = (solid.mins.y + solid.maxs.y) * 0.5F;
+                const glm::vec3 a{solid.mins.x, y, solid.mins.z};
+                const glm::vec3 b{solid.maxs.x, y, solid.mins.z};
+                const glm::vec3 c{solid.maxs.x, y, solid.maxs.z};
+                const glm::vec3 d{solid.mins.x, y, solid.maxs.z};
+                append_oriented_quad(mesh, a, b, c, d, color, {0.0F, 1.0F, 0.0F}, material_kind);
+                return;
+            }
+
+            const float z = (solid.mins.z + solid.maxs.z) * 0.5F;
+            const glm::vec3 a{solid.mins.x, solid.mins.y, z};
+            const glm::vec3 b{solid.maxs.x, solid.mins.y, z};
+            const glm::vec3 c{solid.maxs.x, solid.maxs.y, z};
+            const glm::vec3 d{solid.mins.x, solid.maxs.y, z};
+            append_oriented_quad(mesh, a, b, c, d, color, {0.0F, 0.0F, 1.0F}, material_kind);
         }
 
         [[nodiscard]] auto rect_valid(const Rect2D& rect) -> bool
@@ -354,6 +454,34 @@ namespace RelayCore::render
             return false;
         }
 
+        [[nodiscard]] auto coplanar_face_is_overridden(
+            const BlockoutSolid& solid,
+            const std::size_t solid_index,
+            const BlockoutSolid& other,
+            const std::size_t other_index,
+            const FaceAxis face
+        ) -> bool
+        {
+            if (!solid_has_coplanar_face(solid, other, face))
+            {
+                return false;
+            }
+
+            const float solid_depth = face_depth(solid, face);
+            const float other_depth = face_depth(other, face);
+            if (other_depth + kEpsilon < solid_depth)
+            {
+                return true;
+            }
+            if (solid_depth + kEpsilon < other_depth)
+            {
+                return false;
+            }
+
+            // Later authored solids win exact coplanar ties so one visible owner remains.
+            return other_index > solid_index;
+        }
+
         void append_face_rect(
             CpuColorMeshData& mesh,
             const FaceAxis face,
@@ -363,7 +491,6 @@ namespace RelayCore::render
             const float material_kind
         )
         {
-            const glm::vec3 normal = face_normal(face);
             switch (face)
             {
                 case FaceAxis::PosZ:
@@ -374,7 +501,7 @@ namespace RelayCore::render
                         {rect.u1, rect.v1, plane},
                         {rect.u0, rect.v1, plane},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
@@ -386,7 +513,7 @@ namespace RelayCore::render
                         {rect.u0, rect.v1, plane},
                         {rect.u1, rect.v1, plane},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
@@ -398,7 +525,7 @@ namespace RelayCore::render
                         {plane, rect.v1, rect.u1},
                         {plane, rect.v1, rect.u0},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
@@ -410,7 +537,7 @@ namespace RelayCore::render
                         {plane, rect.v1, rect.u0},
                         {plane, rect.v1, rect.u1},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
@@ -422,7 +549,7 @@ namespace RelayCore::render
                         {rect.u1, plane, rect.v0},
                         {rect.u0, plane, rect.v0},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
@@ -434,10 +561,191 @@ namespace RelayCore::render
                         {rect.u1, plane, rect.v1},
                         {rect.u0, plane, rect.v1},
                         color,
-                        normal,
+                        face_normal(face),
                         material_kind
                     );
                     return;
+            }
+        }
+
+        [[nodiscard]] auto face_corners(const FaceAxis face, const float plane, const Rect2D& rect)
+            -> std::array<glm::vec3, 4>
+        {
+            switch (face)
+            {
+                case FaceAxis::PosZ:
+                    return {{
+                        {rect.u0, rect.v0, plane},
+                        {rect.u1, rect.v0, plane},
+                        {rect.u1, rect.v1, plane},
+                        {rect.u0, rect.v1, plane},
+                    }};
+                case FaceAxis::NegZ:
+                    return {{
+                        {rect.u1, rect.v0, plane},
+                        {rect.u0, rect.v0, plane},
+                        {rect.u0, rect.v1, plane},
+                        {rect.u1, rect.v1, plane},
+                    }};
+                case FaceAxis::NegX:
+                    return {{
+                        {plane, rect.v0, rect.u0},
+                        {plane, rect.v0, rect.u1},
+                        {plane, rect.v1, rect.u1},
+                        {plane, rect.v1, rect.u0},
+                    }};
+                case FaceAxis::PosX:
+                    return {{
+                        {plane, rect.v0, rect.u1},
+                        {plane, rect.v0, rect.u0},
+                        {plane, rect.v1, rect.u0},
+                        {plane, rect.v1, rect.u1},
+                    }};
+                case FaceAxis::PosY:
+                    return {{
+                        {rect.u0, plane, rect.v1},
+                        {rect.u1, plane, rect.v1},
+                        {rect.u1, plane, rect.v0},
+                        {rect.u0, plane, rect.v0},
+                    }};
+                case FaceAxis::NegY:
+                    return {{
+                        {rect.u0, plane, rect.v0},
+                        {rect.u1, plane, rect.v0},
+                        {rect.u1, plane, rect.v1},
+                        {rect.u0, plane, rect.v1},
+                    }};
+            }
+
+            throw std::runtime_error("Unsupported face axis");
+        }
+
+        [[nodiscard]] auto edge_adjacent_normal(const FaceAxis face, const std::size_t edge_index) -> glm::vec3
+        {
+            switch (face)
+            {
+                case FaceAxis::PosZ:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, -1.0F, 0.0F};
+                        case 1:
+                            return {1.0F, 0.0F, 0.0F};
+                        case 2:
+                            return {0.0F, 1.0F, 0.0F};
+                        default:
+                            return {-1.0F, 0.0F, 0.0F};
+                    }
+                case FaceAxis::NegZ:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, -1.0F, 0.0F};
+                        case 1:
+                            return {-1.0F, 0.0F, 0.0F};
+                        case 2:
+                            return {0.0F, 1.0F, 0.0F};
+                        default:
+                            return {1.0F, 0.0F, 0.0F};
+                    }
+                case FaceAxis::PosX:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, -1.0F, 0.0F};
+                        case 1:
+                            return {0.0F, 0.0F, -1.0F};
+                        case 2:
+                            return {0.0F, 1.0F, 0.0F};
+                        default:
+                            return {0.0F, 0.0F, 1.0F};
+                    }
+                case FaceAxis::NegX:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, -1.0F, 0.0F};
+                        case 1:
+                            return {0.0F, 0.0F, 1.0F};
+                        case 2:
+                            return {0.0F, 1.0F, 0.0F};
+                        default:
+                            return {0.0F, 0.0F, -1.0F};
+                    }
+                case FaceAxis::PosY:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, 0.0F, 1.0F};
+                        case 1:
+                            return {1.0F, 0.0F, 0.0F};
+                        case 2:
+                            return {0.0F, 0.0F, -1.0F};
+                        default:
+                            return {-1.0F, 0.0F, 0.0F};
+                    }
+                case FaceAxis::NegY:
+                    switch (edge_index)
+                    {
+                        case 0:
+                            return {0.0F, 0.0F, -1.0F};
+                        case 1:
+                            return {1.0F, 0.0F, 0.0F};
+                        case 2:
+                            return {0.0F, 0.0F, 1.0F};
+                        default:
+                            return {-1.0F, 0.0F, 0.0F};
+                    }
+            }
+
+            return {0.0F, 1.0F, 0.0F};
+        }
+
+        void append_beveled_face_rect(
+            CpuColorMeshData& mesh,
+            const FaceAxis face,
+            const float plane,
+            const Rect2D& rect,
+            const glm::vec3& color,
+            const float material_kind,
+            const float bevel
+        )
+        {
+            if (bevel <= kEpsilon || (rect.u1 - rect.u0) <= (bevel * 2.0F + kEpsilon)
+                || (rect.v1 - rect.v0) <= (bevel * 2.0F + kEpsilon))
+            {
+                append_face_rect(mesh, face, plane, rect, color, material_kind);
+                return;
+            }
+
+            Rect2D inner_rect{
+                rect.u0 + bevel,
+                rect.u1 - bevel,
+                rect.v0 + bevel,
+                rect.v1 - bevel,
+            };
+
+            const glm::vec3 face_dir = face_normal(face);
+            const float inner_plane = plane - bevel * (face_dir.x + face_dir.y + face_dir.z);
+            const auto outer = face_corners(face, plane, rect);
+            const auto inner = face_corners(face, inner_plane, inner_rect);
+
+            append_oriented_quad(mesh, inner[0], inner[1], inner[2], inner[3], color, face_dir, material_kind);
+
+            for (std::size_t edge_index = 0; edge_index < 4; ++edge_index)
+            {
+                const std::size_t next_index = (edge_index + 1) % 4;
+                const glm::vec3 bevel_normal = glm::normalize(face_dir + edge_adjacent_normal(face, edge_index));
+                append_oriented_quad(
+                    mesh,
+                    outer[edge_index],
+                    outer[next_index],
+                    inner[next_index],
+                    inner[edge_index],
+                    shade(color, 0.92F),
+                    bevel_normal,
+                    material_kind
+                );
             }
         }
 
@@ -447,10 +755,13 @@ namespace RelayCore::render
             const std::vector<BlockoutSolid>& solids,
             const std::size_t solid_index,
             const FaceAxis face,
-            const glm::vec3& color
+            const glm::vec3& color,
+            const RenderAuthoringConfig& authoring_config
         )
         {
-            std::vector<Rect2D> visible_rects{face_rect(solid, face)};
+            const Rect2D original_rect = face_rect(solid, face);
+            std::vector<Rect2D> visible_rects{original_rect};
+            bool face_was_cut = false;
 
             for (std::size_t other_index = 0; other_index < solids.size(); ++other_index)
             {
@@ -466,7 +777,7 @@ namespace RelayCore::render
                 // Для копланарных дубликатов нужен детерминированный "владелец" overlap.
                 // Иначе два solids вычтут друг друга и можно получить дырку.
                 const bool covered_by_coplanar_face =
-                    other_index < solid_index && solid_has_coplanar_face(solid, other, face);
+                    coplanar_face_is_overridden(solid, solid_index, other, other_index, face);
 
                 if (!covered_from_outside && !covered_by_coplanar_face)
                 {
@@ -474,6 +785,7 @@ namespace RelayCore::render
                 }
 
                 subtract_rect(visible_rects, face_cover_rect(solid, other, face));
+                face_was_cut = true;
                 if (visible_rects.empty())
                 {
                     return;
@@ -484,13 +796,25 @@ namespace RelayCore::render
             const float material_kind = static_cast<float>(static_cast<std::uint8_t>(solid.material));
             for (const Rect2D& rect : visible_rects)
             {
+                // Bevel only intact faces. Applying it to rects carved by overlaps creates visible trenches
+                // around props and panel inserts that read as gaps in the world.
+                const float bevel = face_was_cut ? 0.0F : bevel_size(solid, face, rect, authoring_config);
+                if (bevel > 0.0F)
+                {
+                    append_beveled_face_rect(mesh, face, plane, rect, color, material_kind, bevel);
+                    continue;
+                }
+
                 append_face_rect(mesh, face, plane, rect, color, material_kind);
             }
         }
     } // namespace
 
-    [[nodiscard]] auto build_blockout_mesh_for_solid(const BlockoutLevel& level, const std::size_t solid_index)
-        -> CpuColorMeshData
+    [[nodiscard]] auto build_blockout_mesh_for_solid(
+        const BlockoutLevel& level,
+        const std::size_t solid_index,
+        const RenderAuthoringConfig& authoring_config
+    ) -> CpuColorMeshData
     {
         const BlockoutSolid& solid = level.solids[solid_index];
         if (solid.mins.x >= solid.maxs.x || solid.mins.y >= solid.maxs.y || solid.mins.z >= solid.maxs.z)
@@ -502,7 +826,14 @@ namespace RelayCore::render
         mesh.vertices.reserve(24);
         mesh.indices.reserve(36);
 
-        const glm::vec3 base_color = clamp_color(material_base_color(solid.material) * solid.tint * solid.brightness);
+        const auto& material = material_authoring(authoring_config, solid.material);
+        const glm::vec3 base_color = clamp_color(material.base_color * solid.tint * solid.brightness);
+
+        if (material.transparent)
+        {
+            append_glass_panel(mesh, solid, shade(base_color, 1.0F));
+            return mesh;
+        }
 
         append_visible_face(
             mesh,
@@ -510,7 +841,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosZ,
-            shade(base_color, face_shade_factor(FaceAxis::PosZ))
+            shade(base_color, face_shade_factor(FaceAxis::PosZ)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -518,7 +850,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegZ,
-            shade(base_color, face_shade_factor(FaceAxis::NegZ))
+            shade(base_color, face_shade_factor(FaceAxis::NegZ)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -526,7 +859,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegX,
-            shade(base_color, face_shade_factor(FaceAxis::NegX))
+            shade(base_color, face_shade_factor(FaceAxis::NegX)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -534,7 +868,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosX,
-            shade(base_color, face_shade_factor(FaceAxis::PosX))
+            shade(base_color, face_shade_factor(FaceAxis::PosX)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -542,7 +877,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosY,
-            shade(base_color, face_shade_factor(FaceAxis::PosY))
+            shade(base_color, face_shade_factor(FaceAxis::PosY)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -550,13 +886,15 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegY,
-            shade(base_color, face_shade_factor(FaceAxis::NegY))
+            shade(base_color, face_shade_factor(FaceAxis::NegY)),
+            authoring_config
         );
 
         return mesh;
     }
 
-    auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
+    auto build_blockout_mesh(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
+        -> CpuColorMeshData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_mesh");
 
@@ -566,7 +904,7 @@ namespace RelayCore::render
 
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
-            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index);
+            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
 
             const std::uint32_t base_index = static_cast<std::uint32_t>(mesh.vertices.size());
             mesh.vertices.insert(mesh.vertices.end(), solid_mesh.vertices.begin(), solid_mesh.vertices.end());
@@ -580,7 +918,13 @@ namespace RelayCore::render
         return mesh;
     }
 
-    auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
+    auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
+    {
+        return build_blockout_mesh(level, default_render_authoring_config());
+    }
+
+    auto build_blockout_render_data(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
+        -> BlockoutRenderData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_render_data");
 
@@ -590,9 +934,10 @@ namespace RelayCore::render
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
             const BlockoutSolid& solid = level.solids[solid_index];
+            const auto& material = material_authoring(authoring_config, solid.material);
 
             BlockoutRenderChunkData chunk{};
-            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index);
+            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
             if (chunk.mesh.indices.empty())
             {
                 continue;
@@ -601,11 +946,17 @@ namespace RelayCore::render
             chunk.mins = solid.mins;
             chunk.maxs = solid.maxs;
             chunk.triangle_count = static_cast<std::uint32_t>(chunk.mesh.indices.size() / 3);
+            chunk.transparent = material.transparent;
 
             render_data.total_triangles += chunk.triangle_count;
             render_data.chunks.push_back(std::move(chunk));
         }
 
         return render_data;
+    }
+
+    auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
+    {
+        return build_blockout_render_data(level, default_render_authoring_config());
     }
 } // namespace RelayCore::render

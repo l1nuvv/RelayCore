@@ -5,10 +5,11 @@
 
 #include "relaycore/render/gl_debug.h"
 
+#include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
+
 #include <SDL3/SDL.h>
 #include <glad/gl.h>
-
-#include "relaycore/core/log.h"
 
 namespace RelayCore::render::gl_debug
 {
@@ -27,13 +28,19 @@ namespace RelayCore::render::gl_debug
          */
         [[nodiscard]] auto to_text(const GLenum severity) -> const char*
         {
+            RELAYCORE_PROFILE_FUNCTION();
             switch (severity)
             {
-                case GL_DEBUG_SEVERITY_HIGH: return "high";
-                case GL_DEBUG_SEVERITY_MEDIUM: return "medium";
-                case GL_DEBUG_SEVERITY_LOW: return "low";
-                case GL_DEBUG_SEVERITY_NOTIFICATION: return "notification";
-                default: return "unknown";
+                case GL_DEBUG_SEVERITY_HIGH:
+                    return "high";
+                case GL_DEBUG_SEVERITY_MEDIUM:
+                    return "medium";
+                case GL_DEBUG_SEVERITY_LOW:
+                    return "low";
+                case GL_DEBUG_SEVERITY_NOTIFICATION:
+                    return "notification";
+                default:
+                    return "unknown";
             }
         }
 
@@ -57,6 +64,7 @@ namespace RelayCore::render::gl_debug
             const void* /*user_param*/
         )
         {
+            RELAYCORE_PROFILE_FUNCTION();
             if (type == GL_DEBUG_TYPE_ERROR || severity == GL_DEBUG_SEVERITY_HIGH)
             {
                 log::error("OpenGL debug [{}] id={} | {}", to_text(severity), id, message);
@@ -75,7 +83,11 @@ namespace RelayCore::render::gl_debug
 
     void initialize()
     {
-        if (g_available) { return; }
+        RELAYCORE_PROFILE_FUNCTION();
+        if (g_available)
+        {
+            return;
+        }
 
         int context_flags = 0;
         if (!SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &context_flags))
@@ -104,5 +116,8 @@ namespace RelayCore::render::gl_debug
         log::info("OpenGL debug output enabled");
     }
 
-    auto is_available() noexcept -> bool { return g_available; }
+    auto is_available() noexcept -> bool
+    {
+        return g_available;
+    }
 } // namespace RelayCore::render::gl_debug

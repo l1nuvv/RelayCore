@@ -6,8 +6,8 @@
 #include "relaycore/render/shader_program.h"
 
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/shader_source_loader.h"
 
-#include <fstream>
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <sstream>
@@ -31,6 +31,7 @@ namespace RelayCore::render
             const std::string& info_log
         ) -> std::string
         {
+            RELAYCORE_PROFILE_FUNCTION();
             std::ostringstream stream;
             stream << "Failed to compile " << stage << " shader '" << source_path.string() << "':\n" << info_log;
             return stream.str();
@@ -49,6 +50,7 @@ namespace RelayCore::render
             const std::string& info_log
         ) -> std::string
         {
+            RELAYCORE_PROFILE_FUNCTION();
             std::ostringstream stream;
             stream << "Failed to link shader program ('" << vertex_shader_path.string() << "', '"
                    << fragment_shader_path.string() << "'):\n"
@@ -59,16 +61,20 @@ namespace RelayCore::render
 
     ShaderProgram::~ShaderProgram() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         reset();
     }
 
     ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept :
         program_id_(std::exchange(other.program_id_, 0)),
         uniform_location_cache_(std::move(other.uniform_location_cache_))
-    {}
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+    }
 
     auto ShaderProgram::operator=(ShaderProgram&& other) noexcept -> ShaderProgram&
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (this != &other)
         {
             reset();
@@ -81,13 +87,16 @@ namespace RelayCore::render
 
     void ShaderProgram::load_from_files(
         const std::filesystem::path& vertex_shader_path,
-        const std::filesystem::path& fragment_shader_path
+        const std::filesystem::path& fragment_shader_path,
+        const ShaderFileSourcePatches& source_patches
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         reset();
 
-        const std::string vertex_source = read_text_file(vertex_shader_path);
-        const std::string fragment_source = read_text_file(fragment_shader_path);
+        const std::string vertex_source = load_shader_source(vertex_shader_path, source_patches.vertex_injected_source);
+        const std::string fragment_source =
+            load_shader_source(fragment_shader_path, source_patches.fragment_injected_source);
 
         const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
         const unsigned int fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path);
@@ -136,6 +145,12 @@ namespace RelayCore::render
         glUseProgram(program_id_);
     }
 
+    void ShaderProgram::set_mat4(const std::string_view name, const glm::mat4& value) const
+    {
+        RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_mat4_named");
+        set_mat4(uniform_location(name), value);
+    }
+
     void ShaderProgram::set_mat4(const int location, const glm::mat4& value) const
     {
         RELAYCORE_PROFILE_ZONE_N("ShaderProgram::set_mat4");
@@ -174,6 +189,7 @@ namespace RelayCore::render
 
     void ShaderProgram::reset() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (program_id_ != 0)
         {
             glDeleteProgram(program_id_);
@@ -185,6 +201,7 @@ namespace RelayCore::render
 
     auto ShaderProgram::uniform_location(const std::string_view name) const -> int
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const std::string key(name);
         if (const auto cached = uniform_location_cache_.find(key); cached != uniform_location_cache_.end())
         {
@@ -196,25 +213,13 @@ namespace RelayCore::render
         return location;
     }
 
-    auto ShaderProgram::read_text_file(const std::filesystem::path& path) -> std::string
-    {
-        std::ifstream input(path, std::ios::in | std::ios::binary);
-        if (!input)
-        {
-            throw std::runtime_error("Failed to open file: " + path.string());
-        }
-
-        std::ostringstream buffer;
-        buffer << input.rdbuf();
-        return buffer.str();
-    }
-
     auto ShaderProgram::compile_shader(
         const unsigned int shader_type,
         const std::string& source,
         const std::filesystem::path& source_path
     ) -> unsigned int
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const unsigned int shader = glCreateShader(shader_type);
         if (shader == 0)
         {

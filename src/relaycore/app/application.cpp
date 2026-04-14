@@ -51,6 +51,7 @@ namespace RelayCore
     Application::Application(std::unique_ptr<AppDelegate> app_delegate) :
         app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>())
     {
+        RELAYCORE_PROFILE_FUNCTION();
         config_.emplace(core::load_default_engine_config());
         window_.emplace(config_->window);
         renderer_.emplace(config_->renderer);
@@ -103,8 +104,8 @@ namespace RelayCore
                 app_delegate_->on_render(frame, services);
             }
             {
-                RELAYCORE_PROFILE_ZONE_N("render_debug");
-                renderer_->draw_debug_overlay(frame, *audio_system_);
+                RELAYCORE_PROFILE_ZONE_N("render_ui");
+                renderer_->draw_ui(frame, *audio_system_);
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
@@ -126,6 +127,7 @@ namespace RelayCore
 
     void Application::process_events(EngineServices& services)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         SDL_Event event{};
         while (SDL_PollEvent(&event))
         {
@@ -135,6 +137,7 @@ namespace RelayCore
 
     void Application::handle_event(const SDL_Event& event, EngineServices& services)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         renderer_->process_event(event);
 
         switch (event.type)
@@ -155,6 +158,16 @@ namespace RelayCore
                     RelayCore::log::info(
                         "Diagnostics overlay {}",
                         renderer_->diagnostics_visible() ? "enabled" : "disabled"
+                    );
+                    RelayCore::log::flush();
+                    return;
+                }
+                if (!event.key.repeat && event.key.scancode == SDL_SCANCODE_F6)
+                {
+                    renderer_->toggle_advanced_diagnostics_visible();
+                    RelayCore::log::info(
+                        "Advanced diagnostics {}",
+                        renderer_->advanced_diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();
                     return;

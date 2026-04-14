@@ -14,6 +14,11 @@
 
 namespace RelayCore::render
 {
+    struct ShaderFileSourcePatches {
+        std::string vertex_injected_source{};
+        std::string fragment_injected_source{};
+    };
+
     /**
      * @brief Owns an OpenGL shader program and its cached uniform locations.
      */
@@ -54,10 +59,12 @@ namespace RelayCore::render
          * @brief Loads, compiles, and links shaders from source files.
          * @param vertex_shader_path Path to the vertex shader source.
          * @param fragment_shader_path Path to the fragment shader source.
+         * @param source_patches Optional injected source blocks inserted after each root `#version`.
          */
         void load_from_files(
             const std::filesystem::path& vertex_shader_path,
-            const std::filesystem::path& fragment_shader_path
+            const std::filesystem::path& fragment_shader_path,
+            const ShaderFileSourcePatches& source_patches = {}
         );
 
         /**
@@ -112,13 +119,6 @@ namespace RelayCore::render
          * @return Uniform location, or a negative value if not found.
          */
         [[nodiscard]] auto uniform_location(std::string_view name) const -> int;
-
-        /**
-         * @brief Reads a text file into memory.
-         * @param path File to read.
-         * @return Entire file contents.
-         */
-        [[nodiscard]] static auto read_text_file(const std::filesystem::path& path) -> std::string;
 
         /**
          * @brief Compiles a shader stage from source code.

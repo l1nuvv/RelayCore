@@ -5,6 +5,8 @@
 
 #include "relaycore/core/log.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <algorithm>
 #include <ctime>
 #include <filesystem>

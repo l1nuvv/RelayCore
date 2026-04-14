@@ -1,5 +1,6 @@
 #pragma once
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/physics/collision.h"
 
 #include <algorithm>
@@ -20,16 +21,19 @@ namespace RelayCore::core
 
         void set_cell_size(const float cell_size) noexcept
         {
+            RELAYCORE_PROFILE_FUNCTION();
             cell_size_ = std::max(cell_size, 0.01F);
         }
 
         [[nodiscard]] auto empty() const noexcept -> bool
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return cells_.empty();
         }
 
         void reset(const std::size_t item_count)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             cells_.clear();
             marks_.assign(item_count, 0);
             query_id_ = 0;
@@ -37,6 +41,7 @@ namespace RelayCore::core
 
         void insert(const physics::Aabb& bounds, const Id item_id)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const int min_cell_x = cell_coord(bounds.mins.x);
             const int max_cell_x = cell_coord(bounds.maxs.x);
             const int min_cell_z = cell_coord(bounds.mins.z);
@@ -53,6 +58,7 @@ namespace RelayCore::core
 
         void query(const physics::Aabb& bounds, std::vector<Id>& out_indices)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             begin_query();
             out_indices.clear();
 
@@ -104,6 +110,7 @@ namespace RelayCore::core
 
         void begin_query()
         {
+            RELAYCORE_PROFILE_FUNCTION();
             ++query_id_;
             if (query_id_ != 0)
             {

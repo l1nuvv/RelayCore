@@ -1,0 +1,215 @@
+[lighting]
+cool_ambient_color = [0.08, 0.11, 0.15]
+cool_ambient_floor = 0.40
+cool_ambient_zenith = 0.36
+warm_bounce_color = [0.11, 0.08, 0.06]
+warm_bounce_floor = 0.08
+warm_bounce_underside = 0.18
+bounce_neutral_color = [0.06, 0.06, 0.07]
+bounce_floor = 0.04
+bounce_underside = 0.18
+bounce_darkness = 0.06
+ambient_floor = 0.54
+ambient_zenith = 0.82
+ambient_min = 0.32
+ambient_max = 1.02
+cavity_broad_strength = 0.12
+cavity_micro_strength = 0.05
+cavity_underside_strength = 0.10
+cavity_ambient_darken = 0.78
+local_light_wrap = 0.55
+local_light_fill = 0.45
+local_light_gain = 1.28
+
+[render_light]
+default_color = [0.18, 0.22, 0.30]
+default_intensity = 1.00
+default_radius = 3.50
+min_radius = 0.50
+max_radius = 48.0
+min_intensity = 0.0
+max_intensity = 8.0
+
+[[materials]]
+name = "concrete"
+profile = "default"
+base_color = [0.62, 0.64, 0.67]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "metal"
+profile = "default"
+base_color = [0.60, 0.67, 0.74]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "tile"
+profile = "default"
+base_color = [0.73, 0.76, 0.78]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "glass"
+profile = "glass"
+base_color = [0.45, 0.72, 0.84]
+transparent = true
+bevel_enabled = false
+atlas_world_scale = 1.8
+atlas_mix = 0.0
+ambient_bias = 0.92
+bounce_mix = 0.15
+emissive_strength = 0.03
+
+[[materials]]
+name = "hazard"
+profile = "default"
+base_color = [0.92, 0.78, 0.18]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "floor"
+profile = "floor_grid"
+base_color = [0.29, 0.30, 0.32]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.35
+
+[[materials]]
+name = "ceiling"
+profile = "ceiling_grid"
+base_color = [0.18, 0.20, 0.22]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.15
+
+[[materials]]
+name = "wall"
+profile = "panel"
+base_color = [0.43, 0.46, 0.50]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.6
+
+[[materials]]
+name = "wall_panel"
+profile = "panel_inset"
+base_color = [0.58, 0.61, 0.66]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.6
+
+[[materials]]
+name = "corridor"
+profile = "panel_service"
+base_color = [0.28, 0.34, 0.40]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.6
+
+[[materials]]
+name = "platform"
+profile = "panel"
+base_color = [0.37, 0.38, 0.43]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.35
+
+[[materials]]
+name = "platform_top"
+profile = "platform_top"
+base_color = [0.72, 0.63, 0.24]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.35
+
+[[materials]]
+name = "platform_top_2"
+profile = "platform_top"
+base_color = [0.82, 0.43, 0.18]
+transparent = false
+bevel_enabled = true
+atlas_world_scale = 1.35
+
+[[materials]]
+name = "pillar"
+profile = "default"
+base_color = [0.48, 0.55, 0.60]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "cover"
+profile = "default"
+base_color = [0.25, 0.38, 0.31]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "block"
+profile = "default"
+base_color = [0.46, 0.39, 0.31]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "beam"
+profile = "structural"
+base_color = [0.64, 0.39, 0.16]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 0.75
+
+[[materials]]
+name = "trim"
+profile = "structural"
+base_color = [0.26, 0.29, 0.33]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 0.75
+
+[[materials]]
+name = "divider"
+profile = "divider"
+base_color = [0.24, 0.63, 0.72]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 0.75
+
+[[materials]]
+name = "light_strip"
+profile = "light_strip"
+base_color = [0.74, 0.82, 0.66]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 0.75
+ambient_bias = 1.04
+bounce_mix = 0.65
+emissive_strength = 0.24
+emissive_pulse_speed = 2.4
+
+[[materials]]
+name = "crate"
+profile = "default"
+base_color = [0.48, 0.33, 0.18]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0
+
+[[materials]]
+name = "post"
+profile = "default"
+base_color = [0.73, 0.75, 0.79]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.0

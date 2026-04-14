@@ -6,7 +6,10 @@
 #include "relaycore/audio/audio_system.h"
 
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <miniaudio.h>
 #include <stdexcept>
@@ -14,19 +17,63 @@
 
 namespace RelayCore
 {
+    namespace
+    {
+        void destroy_sound(std::unique_ptr<ma_sound>& sound) noexcept
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            if (!sound)
+            {
+                return;
+            }
+
+            ma_sound_stop(sound.get());
+            ma_sound_uninit(sound.get());
+            sound.reset();
+        }
+
+        [[nodiscard]] auto create_loop_sound(ma_engine& engine, const std::filesystem::path& file_path)
+            -> std::unique_ptr<ma_sound>
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            auto loop_sound = std::make_unique<ma_sound>();
+            const std::string utf8_path = file_path.string();
+            if (ma_sound_init_from_file(&engine, utf8_path.c_str(), 0, nullptr, nullptr, loop_sound.get())
+                != MA_SUCCESS)
+            {
+                log::warn("Failed to initialize looping sound: {}", utf8_path);
+                return {};
+            }
+
+            ma_sound_set_looping(loop_sound.get(), MA_TRUE);
+            return loop_sound;
+        }
+    } // namespace
+
     AudioSystem::AudioSystem(const AudioSystemConfig& config) : config_(config) {}
 
     AudioSystem::~AudioSystem() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         shutdown();
     }
 
     AudioSystem::AudioSystem(AudioSystem&& other) noexcept :
-        config_(std::move(other.config_)), engine_(std::move(other.engine_)), loop_sound_(std::move(other.loop_sound_))
-    {}
+        config_(std::move(other.config_)), engine_(std::move(other.engine_)), loop_sound_(std::move(other.loop_sound_)),
+        fading_loop_sound_(std::move(other.fading_loop_sound_)), active_loop_path_(std::move(other.active_loop_path_)),
+        fading_loop_path_(std::move(other.fading_loop_path_)), active_loop_volume_(other.active_loop_volume_),
+        target_loop_volume_(other.target_loop_volume_), fading_loop_start_volume_(other.fading_loop_start_volume_),
+        fade_in_total_seconds_(other.fade_in_total_seconds_),
+        fade_in_remaining_seconds_(other.fade_in_remaining_seconds_),
+        fade_out_total_seconds_(other.fade_out_total_seconds_),
+        fade_out_remaining_seconds_(other.fade_out_remaining_seconds_)
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+    }
 
     auto AudioSystem::operator=(AudioSystem&& other) noexcept -> AudioSystem&
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (this == &other)
         {
             return *this;
@@ -36,11 +83,22 @@ namespace RelayCore
         config_ = std::move(other.config_);
         engine_ = std::move(other.engine_);
         loop_sound_ = std::move(other.loop_sound_);
+        fading_loop_sound_ = std::move(other.fading_loop_sound_);
+        active_loop_path_ = std::move(other.active_loop_path_);
+        fading_loop_path_ = std::move(other.fading_loop_path_);
+        active_loop_volume_ = other.active_loop_volume_;
+        target_loop_volume_ = other.target_loop_volume_;
+        fading_loop_start_volume_ = other.fading_loop_start_volume_;
+        fade_in_total_seconds_ = other.fade_in_total_seconds_;
+        fade_in_remaining_seconds_ = other.fade_in_remaining_seconds_;
+        fade_out_total_seconds_ = other.fade_out_total_seconds_;
+        fade_out_remaining_seconds_ = other.fade_out_remaining_seconds_;
         return *this;
     }
 
     void AudioSystem::initialize()
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (!config_.enabled || engine_)
         {
             return;
@@ -59,6 +117,7 @@ namespace RelayCore
 
     void AudioSystem::shutdown() noexcept
     {
+        RELAYCORE_PROFILE_FUNCTION();
         stop_loop();
         if (!engine_)
         {
@@ -71,6 +130,7 @@ namespace RelayCore
 
     void AudioSystem::play_one_shot(const std::filesystem::path& file_path) const
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (!engine_ || file_path.empty())
         {
             return;
@@ -83,45 +143,153 @@ namespace RelayCore
         }
     }
 
-    void AudioSystem::play_loop(const std::filesystem::path& file_path)
+    void AudioSystem::play_loop(const std::filesystem::path& file_path, const float volume, const float fade_seconds)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (!engine_ || file_path.empty())
         {
             return;
         }
 
-        stop_loop();
+        const float clamped_volume = std::clamp(volume, 0.0F, 1.0F);
+        const float clamped_fade = std::max(fade_seconds, 0.0F);
 
-        const std::string utf8_path = file_path.string();
-        auto loop_sound = std::make_unique<ma_sound>();
-        if (ma_sound_init_from_file(engine_.get(), utf8_path.c_str(), 0, nullptr, nullptr, loop_sound.get())
-            != MA_SUCCESS)
+        if (loop_sound_ && active_loop_path_ == file_path)
         {
-            log::warn("Failed to initialize looping sound: {}", utf8_path);
+            if (std::abs(target_loop_volume_ - clamped_volume) <= 0.0001F)
+            {
+                return;
+            }
+
+            target_loop_volume_ = clamped_volume;
+            if (clamped_fade <= 0.0001F)
+            {
+                fade_in_total_seconds_ = 0.0F;
+                fade_in_remaining_seconds_ = 0.0F;
+                active_loop_volume_ = clamped_volume;
+                ma_sound_set_volume(loop_sound_.get(), active_loop_volume_);
+            }
             return;
         }
 
-        ma_sound_set_looping(loop_sound.get(), MA_TRUE);
-        if (ma_sound_start(loop_sound.get()) != MA_SUCCESS)
+        auto next_loop_sound = create_loop_sound(*engine_, file_path);
+        if (!next_loop_sound)
         {
-            log::warn("Failed to start looping sound: {}", utf8_path);
-            ma_sound_uninit(loop_sound.get());
             return;
         }
 
-        loop_sound_ = std::move(loop_sound);
+        destroy_sound(fading_loop_sound_);
+
+        if (loop_sound_)
+        {
+            if (clamped_fade > 0.0001F)
+            {
+                fading_loop_sound_ = std::move(loop_sound_);
+                fading_loop_path_ = active_loop_path_;
+                fading_loop_start_volume_ = active_loop_volume_;
+                fade_out_total_seconds_ = clamped_fade;
+                fade_out_remaining_seconds_ = clamped_fade;
+            } else
+            {
+                destroy_sound(loop_sound_);
+            }
+        }
+
+        active_loop_path_ = file_path;
+        target_loop_volume_ = clamped_volume;
+        active_loop_volume_ = clamped_fade > 0.0001F ? 0.0F : clamped_volume;
+        fade_in_total_seconds_ = clamped_fade;
+        fade_in_remaining_seconds_ = clamped_fade;
+
+        ma_sound_set_volume(next_loop_sound.get(), active_loop_volume_);
+        if (ma_sound_start(next_loop_sound.get()) != MA_SUCCESS)
+        {
+            log::warn("Failed to start looping sound: {}", file_path.string());
+            ma_sound_uninit(next_loop_sound.get());
+            return;
+        }
+
+        loop_sound_ = std::move(next_loop_sound);
     }
 
-    void AudioSystem::stop_loop() noexcept
+    void AudioSystem::stop_loop(const float fade_seconds) noexcept
     {
-        if (!loop_sound_)
+        RELAYCORE_PROFILE_FUNCTION();
+        const float clamped_fade = std::max(fade_seconds, 0.0F);
+        if (!loop_sound_ && !fading_loop_sound_)
         {
             return;
         }
 
-        ma_sound_stop(loop_sound_.get());
-        ma_sound_uninit(loop_sound_.get());
-        loop_sound_.reset();
+        if (clamped_fade <= 0.0001F || !loop_sound_)
+        {
+            destroy_sound(loop_sound_);
+            destroy_sound(fading_loop_sound_);
+            active_loop_path_.clear();
+            fading_loop_path_.clear();
+            active_loop_volume_ = 0.0F;
+            target_loop_volume_ = 0.0F;
+            fading_loop_start_volume_ = 0.0F;
+            fade_in_total_seconds_ = 0.0F;
+            fade_in_remaining_seconds_ = 0.0F;
+            fade_out_total_seconds_ = 0.0F;
+            fade_out_remaining_seconds_ = 0.0F;
+            return;
+        }
+
+        destroy_sound(fading_loop_sound_);
+        fading_loop_sound_ = std::move(loop_sound_);
+        fading_loop_path_ = active_loop_path_;
+        fading_loop_start_volume_ = active_loop_volume_;
+        fade_out_total_seconds_ = clamped_fade;
+        fade_out_remaining_seconds_ = clamped_fade;
+        active_loop_path_.clear();
+        active_loop_volume_ = 0.0F;
+        target_loop_volume_ = 0.0F;
+        fade_in_total_seconds_ = 0.0F;
+        fade_in_remaining_seconds_ = 0.0F;
+    }
+
+    void AudioSystem::update(const float delta_seconds) noexcept
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const float step = std::max(delta_seconds, 0.0F);
+
+        if (loop_sound_)
+        {
+            if (fade_in_remaining_seconds_ > 0.0F && fade_in_total_seconds_ > 0.0001F)
+            {
+                fade_in_remaining_seconds_ = std::max(0.0F, fade_in_remaining_seconds_ - step);
+                const float alpha = 1.0F - (fade_in_remaining_seconds_ / fade_in_total_seconds_);
+                active_loop_volume_ = std::lerp(0.0F, target_loop_volume_, std::clamp(alpha, 0.0F, 1.0F));
+                ma_sound_set_volume(loop_sound_.get(), active_loop_volume_);
+            } else if (std::abs(active_loop_volume_ - target_loop_volume_) > 0.0001F)
+            {
+                active_loop_volume_ = target_loop_volume_;
+                ma_sound_set_volume(loop_sound_.get(), active_loop_volume_);
+            }
+        }
+
+        if (fading_loop_sound_)
+        {
+            if (fade_out_remaining_seconds_ > 0.0F && fade_out_total_seconds_ > 0.0001F)
+            {
+                fade_out_remaining_seconds_ = std::max(0.0F, fade_out_remaining_seconds_ - step);
+                const float alpha = fade_out_remaining_seconds_ / fade_out_total_seconds_;
+                ma_sound_set_volume(
+                    fading_loop_sound_.get(),
+                    fading_loop_start_volume_ * std::clamp(alpha, 0.0F, 1.0F)
+                );
+            }
+
+            if (fade_out_remaining_seconds_ <= 0.0F)
+            {
+                destroy_sound(fading_loop_sound_);
+                fading_loop_path_.clear();
+                fading_loop_start_volume_ = 0.0F;
+                fade_out_total_seconds_ = 0.0F;
+            }
+        }
     }
 
     auto AudioSystem::is_initialized() const noexcept -> bool
@@ -132,5 +300,20 @@ namespace RelayCore
     auto AudioSystem::config() const noexcept -> const AudioSystemConfig&
     {
         return config_;
+    }
+
+    auto AudioSystem::has_active_loop() const noexcept -> bool
+    {
+        return static_cast<bool>(loop_sound_);
+    }
+
+    auto AudioSystem::current_loop_path() const noexcept -> const std::filesystem::path&
+    {
+        return active_loop_path_;
+    }
+
+    auto AudioSystem::current_loop_volume() const noexcept -> float
+    {
+        return active_loop_volume_;
     }
 } // namespace RelayCore

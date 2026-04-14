@@ -5,6 +5,8 @@
 
 #include "relaycore/app/frame_timer.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <algorithm>
 
 namespace RelayCore
@@ -13,17 +15,18 @@ namespace RelayCore
 
     auto FrameTimer::begin_frame() -> FrameInfo
     {
-        const auto now       = Clock::now();
+        RELAYCORE_PROFILE_FUNCTION();
+        const auto now = Clock::now();
         const auto raw_delta = now - previous_frame_time_;
-        const auto delta     = std::min(raw_delta, std::chrono::duration_cast<Clock::duration>(kMaxDelta));
-        const auto elapsed   = std::chrono::duration<double>(now - start_time_).count();
+        const auto delta = std::min(raw_delta, std::chrono::duration_cast<Clock::duration>(kMaxDelta));
+        const auto elapsed = std::chrono::duration<double>(now - start_time_).count();
 
         previous_frame_time_ = now;
 
         return FrameInfo{
-            .delta_seconds   = std::chrono::duration<double>(delta).count(),
+            .delta_seconds = std::chrono::duration<double>(delta).count(),
             .elapsed_seconds = elapsed,
-            .frame_index     = frame_index_++,
+            .frame_index = frame_index_++,
         };
     }
 } // namespace RelayCore

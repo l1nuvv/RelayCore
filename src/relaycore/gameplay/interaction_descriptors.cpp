@@ -1,5 +1,6 @@
 #include "relaycore/gameplay/interaction_descriptors.h"
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_level.h"
 
 #include <algorithm>
@@ -21,14 +22,7 @@ namespace RelayCore::gameplay
             Trigger,
             Usable,
             Panel,
-        };
-
-        enum class PanelMountAxis : std::uint8_t {
-            Centered,
-            PositiveX,
-            NegativeX,
-            PositiveZ,
-            NegativeZ,
+            Pickup,
         };
 
         [[nodiscard]] auto make_centered_aabb(const glm::vec3& center, const glm::vec3& half_extents) -> physics::Aabb
@@ -86,6 +80,14 @@ namespace RelayCore::gameplay
             {
                 return DescriptorEntityKind::Panel;
             }
+            if (normalized == "terminal" || normalized == "console")
+            {
+                return DescriptorEntityKind::Panel;
+            }
+            if (normalized == "pickup" || normalized == "item" || normalized == "keycard")
+            {
+                return DescriptorEntityKind::Pickup;
+            }
             return DescriptorEntityKind::Unknown;
         }
 
@@ -95,6 +97,10 @@ namespace RelayCore::gameplay
             if (kind == DescriptorEntityKind::Panel)
             {
                 return UsableVisualKind::Panel;
+            }
+            if (kind == DescriptorEntityKind::Pickup)
+            {
+                return UsableVisualKind::Pickup;
             }
 
             const std::string* value = find_property(entity, "visual");
@@ -115,6 +121,10 @@ namespace RelayCore::gameplay
             if (normalized == "panel" || normalized == "button")
             {
                 return UsableVisualKind::Panel;
+            }
+            if (normalized == "pickup" || normalized == "keycard" || normalized == "card")
+            {
+                return UsableVisualKind::Pickup;
             }
             return UsableVisualKind::None;
         }
@@ -190,6 +200,102 @@ namespace RelayCore::gameplay
             return fallback;
         }
 
+        [[nodiscard]] auto parse_usable_action_kind(const EntitySpawnData& entity, const DescriptorEntityKind kind)
+            -> UsableActionKind
+        {
+            if (kind == DescriptorEntityKind::Pickup)
+            {
+                return UsableActionKind::PickupItem;
+            }
+
+            const std::string* value = find_property(entity, "action");
+            if (value == nullptr || value->empty())
+            {
+                value = find_property(entity, "action_kind");
+            }
+            if (value == nullptr || value->empty())
+            {
+                return UsableActionKind::ActivateTarget;
+            }
+
+            std::string normalized = *value;
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (normalized == "signal" || normalized == "signal_target" || normalized == "signal-target")
+            {
+                return UsableActionKind::SignalTarget;
+            }
+            if (normalized == "activate_target" || normalized == "activate-target" || normalized == "activate")
+            {
+                return UsableActionKind::ActivateTarget;
+            }
+            if (normalized == "pickup" || normalized == "pickup_item" || normalized == "pickup-item")
+            {
+                return UsableActionKind::PickupItem;
+            }
+
+            return UsableActionKind::ActivateTarget;
+        }
+
+        [[nodiscard]] auto parse_trigger_action_kind(const EntitySpawnData& entity) -> TriggerActionKind
+        {
+            const std::string* value = find_property(entity, "action");
+            if (value == nullptr || value->empty())
+            {
+                value = find_property(entity, "action_kind");
+            }
+            if (value == nullptr || value->empty())
+            {
+                return TriggerActionKind::ActivateTarget;
+            }
+
+            std::string normalized = *value;
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (normalized == "signal" || normalized == "signal_target" || normalized == "signal-target")
+            {
+                return TriggerActionKind::SignalTarget;
+            }
+            return TriggerActionKind::ActivateTarget;
+        }
+
+        [[nodiscard]] auto parse_usable_signal_action(const EntitySpawnData& entity) -> UsableSignalAction
+        {
+            const std::string* value = find_property(entity, "signal_action");
+            if (value == nullptr || value->empty())
+            {
+                value = find_property(entity, "signal_response");
+            }
+            if (value == nullptr || value->empty())
+            {
+                return UsableSignalAction::None;
+            }
+
+            std::string normalized = *value;
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (normalized == "unlock")
+            {
+                return UsableSignalAction::Unlock;
+            }
+            if (normalized == "lock")
+            {
+                return UsableSignalAction::Lock;
+            }
+            if (normalized == "toggle_lock" || normalized == "toggle-lock" || normalized == "toggle")
+            {
+                return UsableSignalAction::ToggleLock;
+            }
+
+            return UsableSignalAction::None;
+        }
+
         [[nodiscard]] auto parse_move_offset(const EntitySpawnData& entity, const glm::vec3& fallback) -> glm::vec3
         {
             if (const auto offset = parse_vec3_property(entity, "move_offset"); offset.has_value())
@@ -246,7 +352,73 @@ namespace RelayCore::gameplay
             return (bounds.mins + bounds.maxs) * 0.5F;
         }
 
-        [[nodiscard]] auto parse_panel_bounds(const EntitySpawnData& entity) -> physics::Aabb
+        [[nodiscard]] auto parse_centered_box_bounds(
+            const EntitySpawnData& entity,
+            const glm::vec3& fallback_size,
+            const glm::vec3& min_size
+        ) -> physics::Aabb
+        {
+            glm::vec3 size{
+                parse_float_property(entity, "width").value_or(fallback_size.x),
+                parse_float_property(entity, "height").value_or(fallback_size.y),
+                parse_float_property(entity, "depth")
+                    .value_or(parse_float_property(entity, "thickness").value_or(fallback_size.z)),
+            };
+            if (const auto compact_size = parse_vec3_property(entity, "size"); compact_size.has_value())
+            {
+                size = *compact_size;
+            }
+
+            const glm::vec3 clamped_size{
+                std::max(size.x, min_size.x),
+                std::max(size.y, min_size.y),
+                std::max(size.z, min_size.z),
+            };
+            return make_centered_aabb(entity.origin, clamped_size * 0.5F);
+        }
+
+        [[nodiscard]] auto parse_panel_mount_axis(const EntitySpawnData& entity) -> PanelMountAxis
+        {
+            const std::string* mount_axis_value = find_property(entity, "mount_axis");
+            if (mount_axis_value == nullptr || mount_axis_value->empty())
+            {
+                mount_axis_value = find_property(entity, "panel_axis");
+            }
+
+            PanelMountAxis mount_axis = PanelMountAxis::Centered;
+            if (mount_axis_value != nullptr && !mount_axis_value->empty())
+            {
+                std::string normalized = *mount_axis_value;
+                std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+
+                if (normalized == "x" || normalized == "+x" || normalized == "positive_x" || normalized == "pos_x")
+                {
+                    return PanelMountAxis::PositiveX;
+                } else if (normalized == "-x" || normalized == "negative_x" || normalized == "neg_x"
+                           || normalized == "minus_x")
+                {
+                    return PanelMountAxis::NegativeX;
+                } else if (normalized == "z" || normalized == "+z" || normalized == "positive_z"
+                           || normalized == "pos_z")
+                {
+                    return PanelMountAxis::PositiveZ;
+                } else if (normalized == "-z" || normalized == "negative_z" || normalized == "neg_z"
+                           || normalized == "minus_z")
+                {
+                    return PanelMountAxis::NegativeZ;
+                } else
+                {
+                    throw std::runtime_error("Unsupported panel mount_axis value: " + *mount_axis_value);
+                }
+            }
+
+            return mount_axis;
+        }
+
+        [[nodiscard]] auto parse_panel_bounds(const EntitySpawnData& entity, const PanelMountAxis mount_axis)
+            -> physics::Aabb
         {
             constexpr float kWallMountClearance = 0.006F;
 
@@ -267,41 +439,6 @@ namespace RelayCore::gameplay
             const float half_width = width * 0.5F;
             const float half_height = height * 0.5F;
             const float half_thickness = thickness * 0.5F;
-
-            const std::string* mount_axis_value = find_property(entity, "mount_axis");
-            if (mount_axis_value == nullptr || mount_axis_value->empty())
-            {
-                mount_axis_value = find_property(entity, "panel_axis");
-            }
-
-            PanelMountAxis mount_axis = PanelMountAxis::Centered;
-            if (mount_axis_value != nullptr && !mount_axis_value->empty())
-            {
-                std::string normalized = *mount_axis_value;
-                std::ranges::transform(normalized, normalized.begin(), [](const unsigned char c) {
-                    return static_cast<char>(std::tolower(c));
-                });
-
-                if (normalized == "x" || normalized == "+x" || normalized == "positive_x" || normalized == "pos_x")
-                {
-                    mount_axis = PanelMountAxis::PositiveX;
-                } else if (normalized == "-x" || normalized == "negative_x" || normalized == "neg_x"
-                           || normalized == "minus_x")
-                {
-                    mount_axis = PanelMountAxis::NegativeX;
-                } else if (normalized == "z" || normalized == "+z" || normalized == "positive_z"
-                           || normalized == "pos_z")
-                {
-                    mount_axis = PanelMountAxis::PositiveZ;
-                } else if (normalized == "-z" || normalized == "negative_z" || normalized == "neg_z"
-                           || normalized == "minus_z")
-                {
-                    mount_axis = PanelMountAxis::NegativeZ;
-                } else
-                {
-                    throw std::runtime_error("Unsupported panel mount_axis value: " + *mount_axis_value);
-                }
-            }
 
             switch (mount_axis)
             {
@@ -330,6 +467,11 @@ namespace RelayCore::gameplay
                     return make_centered_aabb(entity.origin, glm::vec3{half_width, half_height, half_thickness});
             }
         }
+
+        [[nodiscard]] auto parse_pickup_bounds(const EntitySpawnData& entity) -> physics::Aabb
+        {
+            return parse_centered_box_bounds(entity, glm::vec3{0.22F, 0.12F, 0.02F}, glm::vec3{0.08F, 0.05F, 0.01F});
+        }
     } // namespace
 
     InteractionDescriptorBuilder::InteractionDescriptorBuilder(const BlockoutLevel& level) noexcept : level_(level) {}
@@ -342,14 +484,16 @@ namespace RelayCore::gameplay
         descriptors.usables.reserve(level_.entities.size());
 
         std::size_t door_index = 0;
-        for (const EntitySpawnData& entity : level_.entities)
+        for (std::size_t entity_index = 0; entity_index < level_.entities.size(); ++entity_index)
         {
+            const EntitySpawnData& entity = level_.entities[entity_index];
             if (parse_entity_kind(entity) != DescriptorEntityKind::Door)
             {
                 continue;
             }
 
             DoorDesc door{};
+            door.authored_entity_index = static_cast<int>(entity_index);
             door.name = property_or(entity, "targetname", "door_" + std::to_string(door_index++));
 
             glm::vec3 size{
@@ -383,51 +527,123 @@ namespace RelayCore::gameplay
         }
 
         std::size_t use_index = 0;
+        std::size_t pickup_index = 0;
         std::size_t trigger_index = 0;
-        for (const EntitySpawnData& entity : level_.entities)
+        for (std::size_t entity_index = 0; entity_index < level_.entities.size(); ++entity_index)
         {
+            const EntitySpawnData& entity = level_.entities[entity_index];
             const DescriptorEntityKind kind = parse_entity_kind(entity);
             if (kind == DescriptorEntityKind::Unknown || kind == DescriptorEntityKind::Door)
             {
                 continue;
             }
 
-            if (kind == DescriptorEntityKind::Usable || kind == DescriptorEntityKind::Panel)
+            if (kind == DescriptorEntityKind::Usable || kind == DescriptorEntityKind::Panel
+                || kind == DescriptorEntityKind::Pickup)
             {
                 UsableDesc usable{};
-                const std::size_t target_index =
-                    descriptors.doors.empty() ? 0 : std::min(use_index, descriptors.doors.size() - 1);
-                usable.label = property_or(
-                    entity,
-                    "label",
-                    property_or(entity, "message", kind == DescriptorEntityKind::Panel ? "Use panel" : "Use")
-                );
+                usable.authored_entity_index = static_cast<int>(entity_index);
+                usable.name = property_or(entity, "targetname", std::string{});
                 usable.origin = entity.origin;
-                usable.use_radius = std::max(parse_float_property(entity, "use_radius").value_or(1.75F), 0.25F);
-                usable.target = property_or(
-                    entity,
-                    "target",
-                    descriptors.doors.empty() ? std::string{} : descriptors.doors[target_index].name
-                );
                 usable.visual_kind = parse_usable_visual_kind(entity, kind);
-                usable.track_target_door = parse_bool_property(
-                    entity,
-                    "track_target_door",
-                    usable.visual_kind == UsableVisualKind::Panel ? false : true
+                usable.panel_mount_axis = usable.visual_kind == UsableVisualKind::Panel ? parse_panel_mount_axis(entity)
+                                                                                        : PanelMountAxis::Centered;
+                usable.action_kind = parse_usable_action_kind(entity, kind);
+                usable.signal_action = parse_usable_signal_action(entity);
+                usable.use_radius = std::max(
+                    parse_float_property(entity, "use_radius")
+                        .value_or(kind == DescriptorEntityKind::Pickup ? 1.40F : 1.75F),
+                    0.25F
                 );
+                usable.locked =
+                    parse_bool_property(entity, "starts_locked", false) || parse_bool_property(entity, "locked", false);
+                usable.single_use = kind == DescriptorEntityKind::Pickup
+                                    || parse_bool_property(entity, "single_use", false)
+                                    || parse_bool_property(entity, "once", false);
 
-                if (usable.visual_kind == UsableVisualKind::Panel)
+                if (usable.action_kind == UsableActionKind::PickupItem)
                 {
-                    usable.visual_bounds = parse_panel_bounds(entity);
-                    usable.has_visual_bounds = true;
+                    usable.item_id = property_or(
+                        entity,
+                        "item_id",
+                        property_or(
+                            entity,
+                            "item",
+                            property_or(entity, "targetname", "item_" + std::to_string(pickup_index))
+                        )
+                    );
+                    usable.item_name = property_or(
+                        entity,
+                        "item_name",
+                        property_or(entity, "name", property_or(entity, "label", "Предмет"))
+                    );
+                    usable.label = property_or(entity, "label", "Взять: " + usable.item_name);
+                    usable.success_message =
+                        property_or(entity, "success_message", property_or(entity, "success_text", std::string{}));
+                    usable.chain_target =
+                        property_or(entity, "chain_target", property_or(entity, "on_activate_target", std::string{}));
+
+                    if (usable.visual_kind == UsableVisualKind::Pickup)
+                    {
+                        usable.visual_bounds = parse_pickup_bounds(entity);
+                        usable.has_visual_bounds = true;
+                    }
+
+                    ++pickup_index;
+                } else
+                {
+                    const std::size_t target_index =
+                        descriptors.doors.empty() ? 0 : std::min(use_index, descriptors.doors.size() - 1);
+                    usable.label = property_or(
+                        entity,
+                        "label",
+                        property_or(
+                            entity,
+                            "message",
+                            kind == DescriptorEntityKind::Panel ? "Использовать панель" : "Использовать"
+                        )
+                    );
+                    usable.target = property_or(
+                        entity,
+                        "target",
+                        descriptors.doors.empty() ? std::string{} : descriptors.doors[target_index].name
+                    );
+                    usable.required_item =
+                        property_or(entity, "required_item", property_or(entity, "requires", std::string{}));
+                    usable.required_item_name = property_or(
+                        entity,
+                        "required_item_name",
+                        property_or(entity, "required_item_label", usable.required_item)
+                    );
+                    usable.chain_target =
+                        property_or(entity, "chain_target", property_or(entity, "on_activate_target", std::string{}));
+                    usable.locked_message =
+                        property_or(entity, "locked_message", property_or(entity, "locked_text", std::string{}));
+                    usable.success_message =
+                        property_or(entity, "success_message", property_or(entity, "success_text", std::string{}));
+                    usable.denied_message =
+                        property_or(entity, "denied_message", property_or(entity, "denied_text", std::string{}));
+                    usable.track_target_door = parse_bool_property(
+                        entity,
+                        "track_target_door",
+                        usable.visual_kind == UsableVisualKind::Panel ? false : true
+                    );
+
+                    if (usable.visual_kind == UsableVisualKind::Panel)
+                    {
+                        usable.visual_bounds = parse_panel_bounds(entity, usable.panel_mount_axis);
+                        usable.has_visual_bounds = true;
+                    }
+
+                    ++use_index;
                 }
 
                 descriptors.usables.push_back(std::move(usable));
-                ++use_index;
                 continue;
             }
 
             TriggerDesc trigger{};
+            trigger.authored_entity_index = static_cast<int>(entity_index);
             const std::size_t target_index =
                 descriptors.doors.empty() ? 0 : std::min(trigger_index, descriptors.doors.size() - 1);
             trigger.name = property_or(entity, "targetname", "trigger_" + std::to_string(trigger_index));
@@ -436,6 +652,7 @@ namespace RelayCore::gameplay
                 "target",
                 descriptors.doors.empty() ? std::string{} : descriptors.doors[target_index].name
             );
+            trigger.action_kind = parse_trigger_action_kind(entity);
 
             glm::vec3 size{
                 parse_float_property(entity, "width").value_or(1.5F),
@@ -471,7 +688,8 @@ namespace RelayCore::gameplay
             }
 
             UsableDesc usable{};
-            usable.label = "Use";
+            usable.generated_from_entity_index = door.authored_entity_index;
+            usable.label = "Использовать";
             usable.target = door.name;
             usable.origin = descriptor_bounds_center(door.closed_bounds);
             usable.origin.y = std::clamp(usable.origin.y, door.closed_bounds.mins.y + 1.0F, door.closed_bounds.maxs.y);

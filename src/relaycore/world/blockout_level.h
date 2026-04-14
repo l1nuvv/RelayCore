@@ -14,6 +14,31 @@
 namespace RelayCore
 {
     /**
+     * @brief Source location for an authored level entry.
+     */
+    struct AuthoredSourceLocation {
+        std::string file_path{};            ///< TOML file path that produced the entry.
+        std::uint32_t line = 0;             ///< 1-based source line.
+        std::uint32_t column = 0;           ///< 1-based source column.
+        std::string source_kind{"direct"};  ///< Direct authoring or instancing path that produced the entry.
+        std::string template_name{};        ///< Template name when the entry came from an instance.
+        std::string instance_name{};        ///< Optional named placement when the entry came from an instance.
+        std::string placement_file_path{};  ///< TOML file path for the placement site when instanced.
+        std::uint32_t placement_line = 0;   ///< 1-based placement source line.
+        std::uint32_t placement_column = 0; ///< 1-based placement source column.
+
+        [[nodiscard]] auto valid() const noexcept -> bool
+        {
+            return !file_path.empty() && line > 0 && column > 0;
+        }
+
+        [[nodiscard]] auto has_placement() const noexcept -> bool
+        {
+            return !placement_file_path.empty() && placement_line > 0 && placement_column > 0;
+        }
+    };
+
+    /**
      * @brief Material tag assigned to a blockout solid.
      */
     enum class SurfaceMaterial : std::uint8_t {
@@ -60,6 +85,7 @@ namespace RelayCore
         std::string classname;                                   ///< Entity class name.
         glm::vec3 origin{};                                      ///< Spawn origin in world space.
         glm::vec3 angles{};                                      ///< Euler angles in degrees.
+        bool has_angles = false;                                 ///< True when the level explicitly authored angles.
         std::unordered_map<std::string, std::string> properties; ///< Additional arbitrary string properties.
     };
 
@@ -67,7 +93,9 @@ namespace RelayCore
      * @brief In-memory representation of a blockout level.
      */
     struct BlockoutLevel {
-        std::vector<BlockoutSolid> solids;     ///< Loaded blockout solids.
-        std::vector<EntitySpawnData> entities; ///< Loaded entity definitions.
+        std::vector<BlockoutSolid> solids;                  ///< Loaded blockout solids.
+        std::vector<AuthoredSourceLocation> solid_sources;  ///< Source location per solid when available.
+        std::vector<EntitySpawnData> entities;              ///< Loaded entity definitions.
+        std::vector<AuthoredSourceLocation> entity_sources; ///< Source location per entity when available.
     };
 } // namespace RelayCore

@@ -378,6 +378,67 @@ classname = "player_spawn"
 origin = [0.0, 0.21, -36.0]
 angles = [0.0, 0.0, 0.0]
 
+[[entity]]
+classname = "mission_settings"
+completion_title = "Turbine hall stabilized"
+completion_detail = "The cargo spine is secure and the northern relay stack is back online."
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 4.0, -34.0]
+name = "south_entry_ambient"
+size = [20.0, 8.0, 20.0]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.28
+priority = 1
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 4.0, 44.0]
+name = "spine_ambient"
+size = [12.0, 8.0, 104.0]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.34
+priority = 0
+
+[[entity]]
+classname = "audio_zone"
+origin = [-16.0, 4.0, 52.0]
+name = "west_cargo_ambient"
+size = [20.0, 8.0, 108.0]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.40
+priority = 1
+
+[[entity]]
+classname = "audio_zone"
+origin = [16.0, 4.0, 58.0]
+name = "east_cargo_ambient"
+size = [20.0, 8.0, 104.0]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.38
+priority = 1
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 4.0, 142.0]
+name = "turbine_hall_ambient"
+size = [32.0, 8.0, 28.0]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.54
+priority = 3
+
+[[entity_group]]
+classname = "mission_step"
+entries = [
+  { kind = "door_open", target = "south_bulkhead", title = "Open the south bulkhead", detail = "Use the entry panel to unlock the main service spine." },
+  { kind = "zone", origin = [0.0, 0.1, 52.0], size = [12.0, 3.0, 18.0], title = "Reach the cargo junction", detail = "Move up the spine and secure the central cargo crossover." },
+  { kind = "pickup_item", target = "turbine_badge", title = "Pick up the turbine badge", detail = "Collect the maintenance badge from the west cargo lane." },
+  { kind = "activate_target", target = "spine_checkpoint_event", title = "Cross the north checkpoint", detail = "Push past the checkpoint trigger in the upper spine." },
+  { kind = "door_open", target = "north_bulkhead", title = "Authorize turbine hall access", detail = "Use the north reader after collecting the turbine badge." },
+  { kind = "activate_target", target = "turbine_sync_console", title = "Stabilize the turbine relay", detail = "Use the hall terminal to bring the relay stack back online." },
+]
+
 [[entity_group]]
 classname = "gameplay_entity"
 kind = "door"
@@ -395,9 +456,41 @@ use_radius = 1.9
 entries = [
   { origin = [-5.74, 1.35, -30.0], target = "south_bulkhead", label = "Spine access" },
   { origin = [-5.74, 1.35, 28.0], target = "south_bulkhead", label = "Reopen south bulkhead" },
-  { origin = [5.74, 1.35, 84.0], target = "north_bulkhead", label = "Turbine access" },
+  { origin = [5.74, 1.35, 84.0], targetname = "turbine_access_reader", target = "north_bulkhead", required_item = "turbine_badge", required_item_name = "turbine service badge", denied_message = "Turbine badge required", single_use = true, label = "Authorize turbine access", success_message = "North bulkhead access granted" },
   { origin = [5.74, 1.35, 132.0], target = "north_bulkhead", label = "Reopen turbine bulkhead" },
 ]
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "trigger"
+size = [5.6, 3.0, 4.8]
+once = true
+action = "activate_target"
+entries = [
+  { origin = [0.0, 0.1, 74.0], targetname = "spine_checkpoint_trigger", target = "spine_checkpoint_event" },
+]
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "pickup"
+size = [0.18, 0.10, 0.02]
+use_radius = 1.75
+success_message = "Turbine badge acquired. Use it on the north access reader."
+entries = [
+  { origin = [-18.0, 1.05, 56.0], item_id = "turbine_badge", item_name = "Turbine service badge" },
+]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+origin = [0.0, 1.35, 154.7]
+size = [0.42, 0.34, 0.10]
+use_radius = 2.2
+mount_axis = "-z"
+target = "turbine_sync_console"
+action = "activate_target"
+label = "Stabilize turbine relay"
+success_message = "Turbine relay stabilized"
 
 [[entity_group]]
 classname = "render_light"
@@ -406,4 +499,7 @@ entries = [
   { origin = [0.0, 6.4, 52.0], color = [0.13, 0.19, 0.28], radius = 42.0, intensity = 0.84 },
   { origin = [18.0, 6.0, 58.0], color = [0.24, 0.18, 0.11], radius = 24.0, intensity = 0.96 },
   { origin = [0.0, 6.8, 142.0], color = [0.26, 0.18, 0.10], radius = 26.0, intensity = 1.10 },
+  { origin = [-18.0, 1.75, 56.0], color = [0.16, 0.32, 0.42], radius = 2.6, intensity = 0.90 },
+  { origin = [5.1, 1.75, 84.0], color = [0.18, 0.30, 0.16], radius = 2.2, intensity = 0.86 },
+  { origin = [0.0, 1.85, 154.0], color = [0.16, 0.34, 0.38], radius = 2.8, intensity = 0.96 },
 ]

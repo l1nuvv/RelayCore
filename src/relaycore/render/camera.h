@@ -14,12 +14,12 @@ namespace RelayCore::render
      * @brief Startup configuration for a perspective camera.
      */
     struct PerspectiveCameraConfig {
-        glm::vec3 position{1.7F, 1.2F, 2.8F};           ///< Initial camera position.
-        glm::vec3 target{0.0F, 0.0F, 0.0F};             ///< Initial look-at target.
-        glm::vec3 world_up{0.0F, 1.0F, 0.0F};           ///< World-space up direction.
-        float     vertical_fov_radians = 1.0471975512F; ///< Vertical field of view in radians.
-        float     near_plane           = 0.1F;          ///< Near clipping plane distance.
-        float     far_plane            = 100.0F;        ///< Far clipping plane distance.
+        glm::vec3 position{1.7F, 1.2F, 2.8F};       ///< Initial camera position.
+        glm::vec3 target{0.0F, 0.0F, 0.0F};         ///< Initial look-at target.
+        glm::vec3 world_up{0.0F, 1.0F, 0.0F};       ///< World-space up direction.
+        float vertical_fov_radians = 1.0471975512F; ///< Vertical field of view in radians.
+        float near_plane = 0.1F;                    ///< Near clipping plane distance.
+        float far_plane = 100.0F;                   ///< Far clipping plane distance.
     };
 
     /**
@@ -58,6 +58,12 @@ namespace RelayCore::render
          * @param pitch_radians Pitch angle in radians.
          */
         void set_orientation(float yaw_radians, float pitch_radians) noexcept;
+
+        /**
+         * @brief Applies projection-related settings without resetting the current transform.
+         * @param config Updated camera configuration.
+         */
+        void apply_projection_config(const PerspectiveCameraConfig& config) noexcept;
 
         /**
          * @brief Applies incremental yaw and pitch deltas to the camera.
@@ -155,24 +161,24 @@ namespace RelayCore::render
          */
         void mark_projection_dirty() noexcept;
 
-        glm::vec3 position_{};                            ///< Camera origin in world space.
-        glm::vec3 world_up_{0.0F, 1.0F, 0.0F};            ///< Up vector used to derive the basis.
-        float     vertical_fov_radians_ = 1.0471975512F;  ///< Vertical field of view in radians.
-        float     near_plane_           = 0.1F;           ///< Near clipping plane distance.
-        float     far_plane_            = 100.0F;         ///< Far clipping plane distance.
-        float     aspect_ratio_         = 16.0F / 9.0F;   ///< Current viewport aspect ratio.
-        float     yaw_radians_          = -1.5707963268F; ///< Camera yaw in radians.
-        float     pitch_radians_        = 0.0F;           ///< Camera pitch in radians.
+        glm::vec3 position_{};                           ///< Camera origin in world space.
+        glm::vec3 world_up_{0.0F, 1.0F, 0.0F};           ///< Up vector used to derive the basis.
+        float vertical_fov_radians_ = 1.0471975512F;     ///< Vertical field of view in radians.
+        float near_plane_ = 0.1F;                        ///< Near clipping plane distance.
+        float far_plane_ = 100.0F;                       ///< Far clipping plane distance.
+        float aspect_ratio_ = 16.0F / 9.0F;              ///< Current viewport aspect ratio.
+        float yaw_radians_ = -1.5707963268F;             ///< Camera yaw in radians.
+        float pitch_radians_ = 0.0F;                     ///< Camera pitch in radians.
 
-        mutable bool      basis_dirty_           = true;  ///< True when the basis vectors must be recomputed.
-        mutable bool      view_dirty_            = true;  ///< True when the view matrix must be recomputed.
-        mutable bool      projection_dirty_      = true;  ///< True when the projection matrix must be recomputed.
-        mutable bool      view_projection_dirty_ = true;  ///< True when the combined matrix must be recomputed.
-        mutable glm::vec3 forward_{0.0F, 0.0F, -1.0F};    ///< Cached forward vector.
-        mutable glm::vec3 right_{1.0F, 0.0F, 0.0F};       ///< Cached right vector.
-        mutable glm::vec3 up_{0.0F, 1.0F, 0.0F};          ///< Cached up vector.
-        mutable glm::mat4 view_matrix_{1.0F};             ///< Cached view matrix.
-        mutable glm::mat4 projection_matrix_{1.0F};       ///< Cached projection matrix.
-        mutable glm::mat4 view_projection_matrix_{1.0F};  ///< Cached combined matrix.
+        mutable bool basis_dirty_ = true;                ///< True when the basis vectors must be recomputed.
+        mutable bool view_dirty_ = true;                 ///< True when the view matrix must be recomputed.
+        mutable bool projection_dirty_ = true;           ///< True when the projection matrix must be recomputed.
+        mutable bool view_projection_dirty_ = true;      ///< True when the combined matrix must be recomputed.
+        mutable glm::vec3 forward_{0.0F, 0.0F, -1.0F};   ///< Cached forward vector.
+        mutable glm::vec3 right_{1.0F, 0.0F, 0.0F};      ///< Cached right vector.
+        mutable glm::vec3 up_{0.0F, 1.0F, 0.0F};         ///< Cached up vector.
+        mutable glm::mat4 view_matrix_{1.0F};            ///< Cached view matrix.
+        mutable glm::mat4 projection_matrix_{1.0F};      ///< Cached projection matrix.
+        mutable glm::mat4 view_projection_matrix_{1.0F}; ///< Cached combined matrix.
     };
 } // namespace RelayCore::render

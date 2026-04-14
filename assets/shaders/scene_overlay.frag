@@ -1,0 +1,9 @@
+#version 460 core
+
+#define RELAYCORE_SCENE_APPLY_POSTFX 0
+#define RELAYCORE_SCENE_FOG_SCALE 0.18
+#define RELAYCORE_SCENE_FORCE_ALPHA 1.0
+#define RELAYCORE_SCENE_COLOR_LIFT 0.05
+#define RELAYCORE_SCENE_EMISSIVE_BOOST 0.18
+
+#include "scene_fragment_shared.glsl"
