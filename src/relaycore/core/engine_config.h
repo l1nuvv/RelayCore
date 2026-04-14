@@ -75,19 +75,33 @@ namespace RelayCore::core
         std::string slow_alt{"Right Alt"};
         std::string noclip_down{"Left Ctrl"};
         std::string noclip_down_alt{"Right Ctrl"};
+        std::string primary_attack{"Mouse Left"};
         std::string use{"E"};
         std::string toggle_capture{"F1"};
         std::string toggle_vsync{"V"};
         std::string toggle_noclip{"F3"};
+        std::string toggle_inspector{"F4"};
+        std::string pin_inspector{"F5"};
+        std::string reload_level{"F7"};
+        std::string open_inspector_source{"F8"};
+        std::string save_runtime_snapshot{"F9"};
+        std::string restore_runtime_snapshot{"F10"};
         std::string quit{"Escape"};
     };
 
     struct GameplayAudioConfig {
         std::string ambient_loop{};
         std::string panel_press{};
+        std::string pickup{};
         std::string door_open{};
         std::string door_close{};
         std::string access_denied{};
+        std::string mission_complete{};
+        std::string weapon_fire{};
+        std::string turret_fire{};
+        std::string turret_destroyed{};
+        std::string player_hurt{};
+        std::string player_respawn{};
     };
 
     /**

@@ -1,5 +1,6 @@
 #include "relaycore/world/blockout_loader_transform.h"
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_loader_parse.h"
 
 #include <algorithm>

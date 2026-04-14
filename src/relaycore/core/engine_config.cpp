@@ -7,6 +7,7 @@
 
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 
 #include <array>
 #include <glm/trigonometric.hpp>
@@ -30,6 +31,7 @@ namespace RelayCore::core
         void
         assign_if_present(const toml::node_view<const toml::node>& view, const std::string_view key, T& destination)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             if (const auto value = view[key].template value<T>())
             {
                 destination = *value;
@@ -47,6 +49,7 @@ namespace RelayCore::core
         read_vec3(const toml::node_view<const toml::node>& view, const std::string_view key, const glm::vec3& fallback)
             -> glm::vec3
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const toml::node_view<const toml::node> node = view[key];
             if (const toml::array* array = node.as_array(); array != nullptr && array->size() >= 3)
             {
@@ -65,6 +68,7 @@ namespace RelayCore::core
 
     auto load_engine_config(const std::filesystem::path& config_path) -> EngineConfig
     {
+        RELAYCORE_PROFILE_FUNCTION();
         EngineConfig config{};
 
         if (!std::filesystem::exists(config_path))
@@ -167,18 +171,33 @@ namespace RelayCore::core
             assign_if_present(controls, "slow_alt", config.gameplay.controls.slow_alt);
             assign_if_present(controls, "noclip_down", config.gameplay.controls.noclip_down);
             assign_if_present(controls, "noclip_down_alt", config.gameplay.controls.noclip_down_alt);
+            assign_if_present(controls, "primary_attack", config.gameplay.controls.primary_attack);
             assign_if_present(controls, "use", config.gameplay.controls.use);
             assign_if_present(controls, "toggle_capture", config.gameplay.controls.toggle_capture);
             assign_if_present(controls, "toggle_vsync", config.gameplay.controls.toggle_vsync);
             assign_if_present(controls, "toggle_noclip", config.gameplay.controls.toggle_noclip);
+            assign_if_present(controls, "toggle_inspector", config.gameplay.controls.toggle_inspector);
+            assign_if_present(controls, "pin_inspector", config.gameplay.controls.pin_inspector);
+            assign_if_present(controls, "reload_level", config.gameplay.controls.reload_level);
+            assign_if_present(controls, "open_inspector_source", config.gameplay.controls.open_inspector_source);
+            assign_if_present(controls, "copy_inspector_source", config.gameplay.controls.open_inspector_source);
+            assign_if_present(controls, "save_runtime_snapshot", config.gameplay.controls.save_runtime_snapshot);
+            assign_if_present(controls, "restore_runtime_snapshot", config.gameplay.controls.restore_runtime_snapshot);
             assign_if_present(controls, "quit", config.gameplay.controls.quit);
 
             const auto gameplay_audio = game["audio"];
             assign_if_present(gameplay_audio, "ambient_loop", config.gameplay.audio.ambient_loop);
             assign_if_present(gameplay_audio, "panel_press", config.gameplay.audio.panel_press);
+            assign_if_present(gameplay_audio, "pickup", config.gameplay.audio.pickup);
             assign_if_present(gameplay_audio, "door_open", config.gameplay.audio.door_open);
             assign_if_present(gameplay_audio, "door_close", config.gameplay.audio.door_close);
             assign_if_present(gameplay_audio, "access_denied", config.gameplay.audio.access_denied);
+            assign_if_present(gameplay_audio, "mission_complete", config.gameplay.audio.mission_complete);
+            assign_if_present(gameplay_audio, "weapon_fire", config.gameplay.audio.weapon_fire);
+            assign_if_present(gameplay_audio, "turret_fire", config.gameplay.audio.turret_fire);
+            assign_if_present(gameplay_audio, "turret_destroyed", config.gameplay.audio.turret_destroyed);
+            assign_if_present(gameplay_audio, "player_hurt", config.gameplay.audio.player_hurt);
+            assign_if_present(gameplay_audio, "player_respawn", config.gameplay.audio.player_respawn);
 
             log::info("Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)
@@ -198,6 +217,7 @@ namespace RelayCore::core
 
     auto load_default_engine_config() -> EngineConfig
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return load_engine_config(asset_path("config/engine.toml"));
     }
 } // namespace RelayCore::core

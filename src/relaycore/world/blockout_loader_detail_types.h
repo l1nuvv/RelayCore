@@ -9,6 +9,11 @@
 
 namespace RelayCore::detail
 {
+    struct SolidTemplateData {
+        std::vector<BlockoutSolid> solids{};
+        std::vector<AuthoredSourceLocation> solid_sources{};
+    };
+
     struct SolidDefaults {
         std::optional<SurfaceMaterial> material{};
         std::optional<glm::vec3> tint{};
@@ -24,7 +29,9 @@ namespace RelayCore::detail
         };
 
         std::vector<BlockoutSolid> solids{};
+        std::vector<AuthoredSourceLocation> solid_sources{};
         std::vector<EntitySpawnData> entities{};
+        std::vector<AuthoredSourceLocation> entity_sources{};
         std::vector<Anchor> anchors{};
     };
 

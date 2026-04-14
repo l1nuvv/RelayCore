@@ -1,5 +1,8 @@
 #include "relaycore/world/blockout_loader_parse.h"
 
+#include "relaycore/core/profiling.h"
+#include "relaycore/world/surface_material_utils.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -11,6 +14,38 @@
 
 namespace RelayCore::detail
 {
+    auto make_authored_source_location(const toml::node& node) -> AuthoredSourceLocation
+    {
+        const toml::source_region& region = node.source();
+
+        AuthoredSourceLocation location{};
+        if (region.path != nullptr)
+        {
+            location.file_path = *region.path;
+        }
+        location.line = region.begin.line;
+        location.column = region.begin.column;
+        return location;
+    }
+
+    auto make_instanced_authored_source_location(
+        AuthoredSourceLocation definition_source,
+        const toml::node& placement_node,
+        const std::string_view source_kind,
+        const std::string_view template_name,
+        const std::string_view instance_name
+    ) -> AuthoredSourceLocation
+    {
+        const AuthoredSourceLocation placement_source = make_authored_source_location(placement_node);
+        definition_source.source_kind = std::string{source_kind};
+        definition_source.template_name = std::string{template_name};
+        definition_source.instance_name = std::string{instance_name};
+        definition_source.placement_file_path = placement_source.file_path;
+        definition_source.placement_line = placement_source.line;
+        definition_source.placement_column = placement_source.column;
+        return definition_source;
+    }
+
     const toml::node& get_required_node(const toml::table& table, std::string_view key, std::string_view table_name)
     {
         const toml::node* node = table.get(key);
@@ -77,89 +112,10 @@ namespace RelayCore::detail
 
     SurfaceMaterial parse_surface_material(std::string_view value)
     {
-        std::string normalized{value};
-        std::ranges::transform(normalized, normalized.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-
-        if (normalized == "concrete")
-            return SurfaceMaterial::Concrete;
-        if (normalized == "metal")
-            return SurfaceMaterial::Metal;
-        if (normalized == "tile")
-            return SurfaceMaterial::Tile;
-        if (normalized == "glass")
-            return SurfaceMaterial::Glass;
-        if (normalized == "hazard")
-            return SurfaceMaterial::Hazard;
-        if (normalized == "floor")
-            return SurfaceMaterial::Floor;
-        if (normalized == "ceiling")
-            return SurfaceMaterial::Ceiling;
-        if (normalized == "wall")
-            return SurfaceMaterial::Wall;
-        if (normalized == "wallpanel" || normalized == "wall_panel")
-            return SurfaceMaterial::WallPanel;
-        if (normalized == "corridor")
-            return SurfaceMaterial::Corridor;
-        if (normalized == "platform")
-            return SurfaceMaterial::Platform;
-        if (normalized == "platformtop" || normalized == "platform_top")
-            return SurfaceMaterial::PlatformTop;
-        if (normalized == "platformtop2" || normalized == "platform_top2")
-            return SurfaceMaterial::PlatformTop2;
-        if (normalized == "pillar")
-            return SurfaceMaterial::Pillar;
-        if (normalized == "cover")
-            return SurfaceMaterial::Cover;
-        if (normalized == "block")
-            return SurfaceMaterial::Block;
-        if (normalized == "beam")
-            return SurfaceMaterial::Beam;
-        if (normalized == "trim")
-            return SurfaceMaterial::Trim;
-        if (normalized == "divider")
-            return SurfaceMaterial::Divider;
-        if (normalized == "lightstrip" || normalized == "light_strip")
-            return SurfaceMaterial::LightStrip;
-        if (normalized == "crate")
-            return SurfaceMaterial::Crate;
-        if (normalized == "post")
-            return SurfaceMaterial::Post;
-        if (normalized == "dev/floor")
-            return SurfaceMaterial::Floor;
-        if (normalized == "dev/ceiling")
-            return SurfaceMaterial::Ceiling;
-        if (normalized == "dev/wall")
-            return SurfaceMaterial::Wall;
-        if (normalized == "dev/wall_panel")
-            return SurfaceMaterial::WallPanel;
-        if (normalized == "dev/corridor")
-            return SurfaceMaterial::Corridor;
-        if (normalized == "dev/platform")
-            return SurfaceMaterial::Platform;
-        if (normalized == "dev/platform_top")
-            return SurfaceMaterial::PlatformTop;
-        if (normalized == "dev/platform_top2")
-            return SurfaceMaterial::PlatformTop2;
-        if (normalized == "dev/pillar")
-            return SurfaceMaterial::Pillar;
-        if (normalized == "dev/cover")
-            return SurfaceMaterial::Cover;
-        if (normalized == "dev/block")
-            return SurfaceMaterial::Block;
-        if (normalized == "dev/beam")
-            return SurfaceMaterial::Beam;
-        if (normalized == "dev/trim")
-            return SurfaceMaterial::Trim;
-        if (normalized == "dev/divider")
-            return SurfaceMaterial::Divider;
-        if (normalized == "dev/light_strip")
-            return SurfaceMaterial::LightStrip;
-        if (normalized == "dev/crate")
-            return SurfaceMaterial::Crate;
-        if (normalized == "dev/post")
-            return SurfaceMaterial::Post;
+        if (const auto material = RelayCore::try_parse_surface_material_name(value); material.has_value())
+        {
+            return *material;
+        }
 
         throw std::runtime_error("Unknown surface material: " + std::string(value));
     }
@@ -250,7 +206,8 @@ namespace RelayCore::detail
         const toml::table& table,
         std::string_view table_name,
         const SolidDefaults* defaults,
-        std::vector<BlockoutSolid>& solids
+        std::vector<BlockoutSolid>& solids,
+        std::vector<AuthoredSourceLocation>* solid_sources
     )
     {
         BlockoutSolid out{};
@@ -321,6 +278,10 @@ namespace RelayCore::detail
         out.brightness =
             parse_optional_float(table, "brightness", std::string(table_name) + ".brightness", out.brightness);
         solids.push_back(out);
+        if (solid_sources != nullptr)
+        {
+            solid_sources->push_back(make_authored_source_location(table));
+        }
     }
 
     void apply_entity_fields(const toml::table& table, std::string_view table_name, EntitySpawnData& out)
@@ -368,7 +329,9 @@ namespace RelayCore::detail
         }
     }
 
-    auto parse_entity_table(const toml::table& table, std::string_view table_name) -> EntitySpawnData
+    auto
+    parse_entity_table(const toml::table& table, std::string_view table_name, AuthoredSourceLocation* source_location)
+        -> EntitySpawnData
     {
         EntitySpawnData out{};
         apply_entity_fields(table, table_name, out);
@@ -377,6 +340,10 @@ namespace RelayCore::detail
             throw std::runtime_error("Missing required field '" + std::string(table_name) + ".classname'");
         }
 
+        if (source_location != nullptr)
+        {
+            *source_location = make_authored_source_location(table);
+        }
         return out;
     }
 

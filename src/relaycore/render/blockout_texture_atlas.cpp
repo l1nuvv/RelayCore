@@ -2,6 +2,7 @@
 
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_surface.h>
@@ -10,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <glm/common.hpp>
 
 namespace RelayCore::render
 {
@@ -25,6 +27,7 @@ namespace RelayCore::render
         template<typename... Args>
         void log_warn_if_available(spdlog::format_string_t<Args...> fmt, Args&&... args)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             if (spdlog::default_logger_raw() != nullptr)
             {
                 log::warn(fmt, std::forward<Args>(args)...);
@@ -34,6 +37,7 @@ namespace RelayCore::render
         template<typename... Args>
         void log_info_if_available(spdlog::format_string_t<Args...> fmt, Args&&... args)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             if (spdlog::default_logger_raw() != nullptr)
             {
                 log::info(fmt, std::forward<Args>(args)...);
@@ -49,6 +53,7 @@ namespace RelayCore::render
             const std::uint8_t b
         )
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const std::size_t index = static_cast<std::size_t>(((y * atlas.width) + x) * 4);
             atlas.pixels[index + 0] = r;
             atlas.pixels[index + 1] = g;
@@ -58,11 +63,13 @@ namespace RelayCore::render
 
         [[nodiscard]] auto vary(const std::uint8_t value, const int delta) -> std::uint8_t
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return static_cast<std::uint8_t>(std::clamp(static_cast<int>(value) + delta, 0, 255));
         }
 
         void fill_tile(CpuRgbaTextureData& atlas, const int tile_index, const std::array<std::uint8_t, 3>& base_color)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const int tile_x = (tile_index % kAtlasColumns) * kTileSize;
             const int tile_y = (tile_index / kAtlasColumns) * kTileSize;
 
@@ -146,41 +153,33 @@ namespace RelayCore::render
             }
         }
 
-        [[nodiscard]] auto generate_blockout_texture_atlas() -> CpuRgbaTextureData
+        [[nodiscard]] auto to_rgb8(const glm::vec3& color) -> std::array<std::uint8_t, 3>
         {
+            const glm::vec3 clamped = glm::clamp(color, glm::vec3{0.0F}, glm::vec3{1.0F});
+            return {
+                static_cast<std::uint8_t>(clamped.r * 255.0F),
+                static_cast<std::uint8_t>(clamped.g * 255.0F),
+                static_cast<std::uint8_t>(clamped.b * 255.0F),
+            };
+        }
+
+        [[nodiscard]] auto generate_blockout_texture_atlas(const RenderAuthoringConfig& authoring_config)
+            -> CpuRgbaTextureData
+        {
+            RELAYCORE_PROFILE_FUNCTION();
             CpuRgbaTextureData atlas{};
             atlas.width = kExpectedWidth;
             atlas.height = kExpectedHeight;
             atlas.pixels.resize(static_cast<std::size_t>(atlas.width * atlas.height * 4), 0);
 
-            constexpr std::array<std::array<std::uint8_t, 3>, 22> kTileBases{{
-                {158, 162, 168}, // concrete
-                {148, 158, 170}, // metal
-                {188, 192, 196}, // tile
-                {146, 182, 196}, // glass
-                {206, 172, 56},  // hazard
-                {104, 108, 114}, // floor
-                {76, 82, 90},    // ceiling
-                {124, 130, 138}, // wall
-                {154, 160, 170}, // wall panel
-                {104, 120, 132}, // corridor
-                {118, 122, 132}, // platform
-                {182, 162, 96},  // platform top
-                {192, 108, 76},  // platform top2
-                {132, 146, 156}, // pillar
-                {94, 124, 112},  // cover
-                {132, 114, 96},  // block
-                {162, 116, 74},  // beam
-                {98, 104, 112},  // trim
-                {96, 170, 182},  // divider
-                {182, 194, 150}, // light strip
-                {142, 104, 76},  // crate
-                {176, 182, 188}, // post
-            }};
-
-            for (int tile_index = 0; tile_index < static_cast<int>(kTileBases.size()); ++tile_index)
+            for (const SurfaceMaterial material : RelayCore::all_surface_materials())
             {
-                fill_tile(atlas, tile_index, kTileBases[static_cast<std::size_t>(tile_index)]);
+                const std::size_t tile_index = static_cast<std::size_t>(material);
+                fill_tile(
+                    atlas,
+                    static_cast<int>(tile_index),
+                    to_rgb8(material_authoring(authoring_config, material).base_color)
+                );
             }
 
             return atlas;
@@ -189,6 +188,7 @@ namespace RelayCore::render
 
     auto load_blockout_texture_atlas(const std::filesystem::path& path) -> std::optional<CpuRgbaTextureData>
     {
+        RELAYCORE_PROFILE_FUNCTION();
         SDL_Surface* loaded_surface = SDL_LoadBMP(path.string().c_str());
         if (loaded_surface == nullptr)
         {
@@ -210,6 +210,7 @@ namespace RelayCore::render
         if (atlas.width <= 0 || atlas.height <= 0 || (atlas.width % kAtlasColumns) != 0
             || (atlas.height % kAtlasRows) != 0)
         {
+            RELAYCORE_PROFILE_FUNCTION();
             log_warn_if_available(
                 "Blockout atlas '{}' has unsupported dimensions {}x{} (expected dimensions divisible by {}x{})",
                 path.string(),
@@ -237,15 +238,22 @@ namespace RelayCore::render
         return atlas;
     }
 
-    auto build_blockout_texture_atlas() -> CpuRgbaTextureData
+    auto build_blockout_texture_atlas(const RenderAuthoringConfig& authoring_config) -> CpuRgbaTextureData
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (const auto loaded_atlas = load_blockout_texture_atlas(core::asset_path("textures/blockout_atlas.bmp"));
             loaded_atlas.has_value())
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return *loaded_atlas;
         }
 
         log_warn_if_available("Using generated fallback blockout atlas");
-        return generate_blockout_texture_atlas();
+        return generate_blockout_texture_atlas(authoring_config);
+    }
+
+    auto build_blockout_texture_atlas() -> CpuRgbaTextureData
+    {
+        return build_blockout_texture_atlas(default_render_authoring_config());
     }
 } // namespace RelayCore::render

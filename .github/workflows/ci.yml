@@ -88,20 +88,8 @@ jobs:
           key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
-      - name: Configure
+      - name: Run debug discipline workflow
         shell: pwsh
         run: |
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
-          cmake --preset msvc-debug
-
-      - name: Build tests
-        shell: pwsh
-        run: |
-          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
-          cmake --build --preset tests-debug --parallel
-
-      - name: Test
-        shell: pwsh
-        run: |
-          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
-          ctest --preset test-debug --output-on-failure
+          cmake --workflow --preset debug-discipline-workflow

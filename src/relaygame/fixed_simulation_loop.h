@@ -1,6 +1,7 @@
 #pragma once
 
 #include "relaycore/app/frame_timer.h"
+#include "relaycore/core/profiling.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -16,13 +17,16 @@ namespace RelayGame
 
         void reset() noexcept
         {
+            RELAYCORE_PROFILE_FUNCTION();
             accumulator_seconds_ = 0.0;
             tick_index_ = 0;
+            last_steps_executed_ = 0;
         }
 
         template<typename Callback>
         auto advance(const RelayCore::FrameInfo& frame, Callback&& callback) -> std::uint32_t
         {
+            RELAYCORE_PROFILE_FUNCTION();
             accumulator_seconds_ = std::min(
                 accumulator_seconds_ + frame.delta_seconds,
                 step_seconds_ * static_cast<double>(max_steps_per_frame_)
@@ -41,7 +45,38 @@ namespace RelayGame
                 ++steps_executed;
             }
 
+            last_steps_executed_ = steps_executed;
             return steps_executed;
+        }
+
+        [[nodiscard]] auto step_seconds() const noexcept -> double
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            return step_seconds_;
+        }
+
+        [[nodiscard]] auto max_steps_per_frame() const noexcept -> std::uint32_t
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            return max_steps_per_frame_;
+        }
+
+        [[nodiscard]] auto pending_seconds() const noexcept -> double
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            return accumulator_seconds_;
+        }
+
+        [[nodiscard]] auto tick_index() const noexcept -> std::uint64_t
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            return tick_index_;
+        }
+
+        [[nodiscard]] auto last_steps_executed() const noexcept -> std::uint32_t
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            return last_steps_executed_;
         }
 
     private:
@@ -49,5 +84,6 @@ namespace RelayGame
         std::uint32_t max_steps_per_frame_ = 8;
         double accumulator_seconds_ = 0.0;
         std::uint64_t tick_index_ = 0;
+        std::uint32_t last_steps_executed_ = 0;
     };
 } // namespace RelayGame

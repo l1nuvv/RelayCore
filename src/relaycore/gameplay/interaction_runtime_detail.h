@@ -57,4 +57,22 @@ namespace RelayCore::gameplay::detail
         }
         return &(*it);
     }
+
+    [[nodiscard]] inline auto contains_string(const std::vector<std::string>& values, const std::string_view value)
+        -> bool
+    {
+        return !value.empty() && std::ranges::find_if(values, [value](const std::string& candidate) {
+                                     return candidate == value;
+                                 }) != values.end();
+    }
+
+    inline void append_unique_string(std::vector<std::string>& values, const std::string_view value)
+    {
+        if (value.empty() || contains_string(values, value))
+        {
+            return;
+        }
+
+        values.emplace_back(value);
+    }
 } // namespace RelayCore::gameplay::detail

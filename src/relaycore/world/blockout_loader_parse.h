@@ -9,6 +9,16 @@
 
 namespace RelayCore::detail
 {
+    [[nodiscard]] auto make_authored_source_location(const toml::node& node) -> AuthoredSourceLocation;
+
+    [[nodiscard]] auto make_instanced_authored_source_location(
+        AuthoredSourceLocation definition_source,
+        const toml::node& placement_node,
+        std::string_view source_kind,
+        std::string_view template_name,
+        std::string_view instance_name = {}
+    ) -> AuthoredSourceLocation;
+
     [[nodiscard]] const toml::node&
     get_required_node(const toml::table& table, std::string_view key, std::string_view table_name);
 
@@ -50,12 +60,17 @@ namespace RelayCore::detail
         const toml::table& table,
         std::string_view table_name,
         const SolidDefaults* defaults,
-        std::vector<BlockoutSolid>& solids
+        std::vector<BlockoutSolid>& solids,
+        std::vector<AuthoredSourceLocation>* solid_sources = nullptr
     );
 
     void apply_entity_fields(const toml::table& table, std::string_view table_name, EntitySpawnData& out);
 
-    [[nodiscard]] auto parse_entity_table(const toml::table& table, std::string_view table_name) -> EntitySpawnData;
+    [[nodiscard]] auto parse_entity_table(
+        const toml::table& table,
+        std::string_view table_name,
+        AuthoredSourceLocation* source_location = nullptr
+    ) -> EntitySpawnData;
 
     [[nodiscard]] auto
     parse_required_string(const toml::table& table, std::string_view key, std::string_view table_name) -> std::string;

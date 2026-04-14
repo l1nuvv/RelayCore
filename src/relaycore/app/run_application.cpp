@@ -7,6 +7,7 @@
 
 #include "relaycore/app/application.h"
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 
 #include <cstdio>
 #include <exception>
@@ -24,6 +25,7 @@ namespace
          */
         LogLifetime()
         {
+            RELAYCORE_PROFILE_FUNCTION();
             RelayCore::log::init();
         }
 
@@ -32,6 +34,7 @@ namespace
          */
         ~LogLifetime() noexcept
         {
+            RELAYCORE_PROFILE_FUNCTION();
             RelayCore::log::shutdown();
         }
 
@@ -45,6 +48,7 @@ namespace RelayCore
 {
     auto run_application(std::unique_ptr<AppDelegate> app_delegate, int argc, char** argv) -> int
     {
+        RELAYCORE_PROFILE_FUNCTION();
         (void) argc;
         (void) argv;
 

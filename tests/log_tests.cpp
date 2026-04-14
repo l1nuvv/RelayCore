@@ -1,4 +1,5 @@
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 
 #include <chrono>
 #include <doctest/doctest.h>

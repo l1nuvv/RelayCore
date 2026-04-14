@@ -1,10 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "relaycore/core/profiling.h"
+#include "relaycore/render/camera.h"
+
 #include <doctest/doctest.h>
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
-
-#include "relaycore/render/camera.h"
 
 namespace
 {
@@ -34,7 +35,7 @@ TEST_CASE("camera local translation moves in camera space")
 {
     RelayCore::render::PerspectiveCameraConfig config{};
     config.position = {0.0F, 0.0F, 0.0F};
-    config.target   = {0.0F, 0.0F, -1.0F};
+    config.target = {0.0F, 0.0F, -1.0F};
 
     RelayCore::render::PerspectiveCamera camera{config};
     camera.translate_local(2.0F, 0.0F, 0.0F);

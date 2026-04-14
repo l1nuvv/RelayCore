@@ -5,12 +5,14 @@
 
 #include "relaycore/world/blockout_loader.h"
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_loader_detail.h"
 
 namespace RelayCore
 {
     BlockoutLevel load_blockout_level(const std::filesystem::path& path)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return detail::load_blockout_level_data(path);
     }
 } // namespace RelayCore

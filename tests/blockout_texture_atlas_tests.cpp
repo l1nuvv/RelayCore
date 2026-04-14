@@ -1,5 +1,6 @@
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/render/blockout_texture_atlas.h"
 
 #include <doctest/doctest.h>

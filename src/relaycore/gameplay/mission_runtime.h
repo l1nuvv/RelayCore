@@ -21,6 +21,7 @@ namespace RelayCore::gameplay
         EnterZone,
         AcquireItem,
         ActivateTarget,
+        SignalTarget,
     };
 
     struct MissionStep {
@@ -46,6 +47,12 @@ namespace RelayCore::gameplay
         std::string detail{};
     };
 
+    struct MissionRuntimeSnapshot {
+        bool active = false;
+        bool completed = false;
+        std::uint32_t current_step = 0;
+    };
+
     class MissionBuilder {
     public:
         explicit MissionBuilder(const BlockoutLevel& level) noexcept;
@@ -64,19 +71,25 @@ namespace RelayCore::gameplay
             const physics::Aabb& player_bounds,
             std::span<const RuntimeDoor> doors,
             std::span<const std::string> inventory_items,
-            std::span<const std::string> activated_targets
+            std::span<const std::string> activated_targets,
+            std::span<const std::string> signaled_targets
         );
 
         [[nodiscard]] auto status() const -> MissionStatus;
 
         [[nodiscard]] auto completed() const noexcept -> bool;
 
+        [[nodiscard]] auto snapshot() const -> MissionRuntimeSnapshot;
+
+        [[nodiscard]] auto restore(const MissionRuntimeSnapshot& snapshot, std::string& out_error) -> bool;
+
     private:
         [[nodiscard]] auto current_step_complete(
             const physics::Aabb& player_bounds,
             std::span<const RuntimeDoor> doors,
             std::span<const std::string> inventory_items,
-            std::span<const std::string> activated_targets
+            std::span<const std::string> activated_targets,
+            std::span<const std::string> signaled_targets
         ) const -> bool;
 
         MissionDefinition definition_{};

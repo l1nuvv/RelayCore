@@ -38,60 +38,10 @@ namespace RelayCore::render
             float v1;
         };
 
-        [[nodiscard]] auto material_base_color(const SurfaceMaterial material) -> glm::vec3
+        [[nodiscard]] auto
+        material_base_color(const SurfaceMaterial material, const RenderAuthoringConfig& authoring_config) -> glm::vec3
         {
-            switch (material)
-            {
-                case SurfaceMaterial::Concrete:
-                    return {0.62F, 0.64F, 0.67F};
-                case SurfaceMaterial::Metal:
-                    return {0.60F, 0.67F, 0.74F};
-                case SurfaceMaterial::Tile:
-                    return {0.73F, 0.76F, 0.78F};
-                case SurfaceMaterial::Glass:
-                    return {0.45F, 0.72F, 0.84F};
-                case SurfaceMaterial::Hazard:
-                    return {0.92F, 0.78F, 0.18F};
-
-                case SurfaceMaterial::Floor:
-                    return {0.29F, 0.30F, 0.32F};
-                case SurfaceMaterial::Ceiling:
-                    return {0.18F, 0.20F, 0.22F};
-                case SurfaceMaterial::Wall:
-                    return {0.43F, 0.46F, 0.50F};
-                case SurfaceMaterial::WallPanel:
-                    return {0.58F, 0.61F, 0.66F};
-                case SurfaceMaterial::Corridor:
-                    return {0.28F, 0.34F, 0.40F};
-
-                case SurfaceMaterial::Platform:
-                    return {0.37F, 0.38F, 0.43F};
-                case SurfaceMaterial::PlatformTop:
-                    return {0.72F, 0.63F, 0.24F};
-                case SurfaceMaterial::PlatformTop2:
-                    return {0.82F, 0.43F, 0.18F};
-
-                case SurfaceMaterial::Pillar:
-                    return {0.48F, 0.55F, 0.60F};
-                case SurfaceMaterial::Cover:
-                    return {0.25F, 0.38F, 0.31F};
-                case SurfaceMaterial::Block:
-                    return {0.46F, 0.39F, 0.31F};
-                case SurfaceMaterial::Beam:
-                    return {0.64F, 0.39F, 0.16F};
-                case SurfaceMaterial::Trim:
-                    return {0.26F, 0.29F, 0.33F};
-                case SurfaceMaterial::Divider:
-                    return {0.24F, 0.63F, 0.72F};
-                case SurfaceMaterial::LightStrip:
-                    return {0.74F, 0.82F, 0.66F};
-                case SurfaceMaterial::Crate:
-                    return {0.48F, 0.33F, 0.18F};
-                case SurfaceMaterial::Post:
-                    return {0.73F, 0.75F, 0.79F};
-            }
-
-            return {1.0F, 0.0F, 1.0F};
+            return material_authoring(authoring_config, material).base_color;
         }
 
         [[nodiscard]] auto shade(const glm::vec3& color, const float factor) -> glm::vec3
@@ -150,42 +100,16 @@ namespace RelayCore::render
             return 0.0F;
         }
 
-        [[nodiscard]] auto material_uses_bevel(const SurfaceMaterial material) -> bool
+        [[nodiscard]] auto
+        material_uses_bevel(const SurfaceMaterial material, const RenderAuthoringConfig& authoring_config) -> bool
         {
-            switch (material)
-            {
-                case SurfaceMaterial::Floor:
-                case SurfaceMaterial::Ceiling:
-                case SurfaceMaterial::Wall:
-                case SurfaceMaterial::WallPanel:
-                case SurfaceMaterial::Corridor:
-                case SurfaceMaterial::Platform:
-                case SurfaceMaterial::PlatformTop:
-                case SurfaceMaterial::PlatformTop2:
-                    return true;
-                case SurfaceMaterial::Pillar:
-                case SurfaceMaterial::Cover:
-                case SurfaceMaterial::Block:
-                case SurfaceMaterial::Beam:
-                case SurfaceMaterial::Trim:
-                case SurfaceMaterial::Divider:
-                case SurfaceMaterial::LightStrip:
-                case SurfaceMaterial::Crate:
-                case SurfaceMaterial::Post:
-                case SurfaceMaterial::Concrete:
-                case SurfaceMaterial::Metal:
-                case SurfaceMaterial::Tile:
-                case SurfaceMaterial::Glass:
-                case SurfaceMaterial::Hazard:
-                    return false;
-            }
-
-            return false;
+            return material_authoring(authoring_config, material).bevel_enabled;
         }
 
-        [[nodiscard]] auto solid_uses_bevel(const BlockoutSolid& solid) -> bool
+        [[nodiscard]] auto solid_uses_bevel(const BlockoutSolid& solid, const RenderAuthoringConfig& authoring_config)
+            -> bool
         {
-            if (!material_uses_bevel(solid.material))
+            if (!material_uses_bevel(solid.material, authoring_config))
             {
                 return false;
             }
@@ -197,9 +121,14 @@ namespace RelayCore::render
             return dimensions[2] >= 2.0F && dimensions[1] >= 1.0F && dimensions[0] >= 0.18F;
         }
 
-        [[nodiscard]] auto bevel_size(const BlockoutSolid& solid, const FaceAxis face, const Rect2D& rect) -> float
+        [[nodiscard]] auto bevel_size(
+            const BlockoutSolid& solid,
+            const FaceAxis face,
+            const Rect2D& rect,
+            const RenderAuthoringConfig& authoring_config
+        ) -> float
         {
-            if (!solid_uses_bevel(solid))
+            if (!solid_uses_bevel(solid, authoring_config))
             {
                 return 0.0F;
             }
@@ -826,8 +755,8 @@ namespace RelayCore::render
             const std::vector<BlockoutSolid>& solids,
             const std::size_t solid_index,
             const FaceAxis face,
-
-            const glm::vec3& color
+            const glm::vec3& color,
+            const RenderAuthoringConfig& authoring_config
         )
         {
             const Rect2D original_rect = face_rect(solid, face);
@@ -869,7 +798,7 @@ namespace RelayCore::render
             {
                 // Bevel only intact faces. Applying it to rects carved by overlaps creates visible trenches
                 // around props and panel inserts that read as gaps in the world.
-                const float bevel = face_was_cut ? 0.0F : bevel_size(solid, face, rect);
+                const float bevel = face_was_cut ? 0.0F : bevel_size(solid, face, rect, authoring_config);
                 if (bevel > 0.0F)
                 {
                     append_beveled_face_rect(mesh, face, plane, rect, color, material_kind, bevel);
@@ -881,8 +810,11 @@ namespace RelayCore::render
         }
     } // namespace
 
-    [[nodiscard]] auto build_blockout_mesh_for_solid(const BlockoutLevel& level, const std::size_t solid_index)
-        -> CpuColorMeshData
+    [[nodiscard]] auto build_blockout_mesh_for_solid(
+        const BlockoutLevel& level,
+        const std::size_t solid_index,
+        const RenderAuthoringConfig& authoring_config
+    ) -> CpuColorMeshData
     {
         const BlockoutSolid& solid = level.solids[solid_index];
         if (solid.mins.x >= solid.maxs.x || solid.mins.y >= solid.maxs.y || solid.mins.z >= solid.maxs.z)
@@ -894,9 +826,10 @@ namespace RelayCore::render
         mesh.vertices.reserve(24);
         mesh.indices.reserve(36);
 
-        const glm::vec3 base_color = clamp_color(material_base_color(solid.material) * solid.tint * solid.brightness);
+        const auto& material = material_authoring(authoring_config, solid.material);
+        const glm::vec3 base_color = clamp_color(material.base_color * solid.tint * solid.brightness);
 
-        if (solid.material == SurfaceMaterial::Glass)
+        if (material.transparent)
         {
             append_glass_panel(mesh, solid, shade(base_color, 1.0F));
             return mesh;
@@ -908,7 +841,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosZ,
-            shade(base_color, face_shade_factor(FaceAxis::PosZ))
+            shade(base_color, face_shade_factor(FaceAxis::PosZ)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -916,7 +850,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegZ,
-            shade(base_color, face_shade_factor(FaceAxis::NegZ))
+            shade(base_color, face_shade_factor(FaceAxis::NegZ)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -924,7 +859,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegX,
-            shade(base_color, face_shade_factor(FaceAxis::NegX))
+            shade(base_color, face_shade_factor(FaceAxis::NegX)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -932,7 +868,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosX,
-            shade(base_color, face_shade_factor(FaceAxis::PosX))
+            shade(base_color, face_shade_factor(FaceAxis::PosX)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -940,7 +877,8 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::PosY,
-            shade(base_color, face_shade_factor(FaceAxis::PosY))
+            shade(base_color, face_shade_factor(FaceAxis::PosY)),
+            authoring_config
         );
         append_visible_face(
             mesh,
@@ -948,13 +886,15 @@ namespace RelayCore::render
             level.solids,
             solid_index,
             FaceAxis::NegY,
-            shade(base_color, face_shade_factor(FaceAxis::NegY))
+            shade(base_color, face_shade_factor(FaceAxis::NegY)),
+            authoring_config
         );
 
         return mesh;
     }
 
-    auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
+    auto build_blockout_mesh(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
+        -> CpuColorMeshData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_mesh");
 
@@ -964,7 +904,7 @@ namespace RelayCore::render
 
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
-            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index);
+            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
 
             const std::uint32_t base_index = static_cast<std::uint32_t>(mesh.vertices.size());
             mesh.vertices.insert(mesh.vertices.end(), solid_mesh.vertices.begin(), solid_mesh.vertices.end());
@@ -978,7 +918,13 @@ namespace RelayCore::render
         return mesh;
     }
 
-    auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
+    auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
+    {
+        return build_blockout_mesh(level, default_render_authoring_config());
+    }
+
+    auto build_blockout_render_data(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
+        -> BlockoutRenderData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_render_data");
 
@@ -988,9 +934,10 @@ namespace RelayCore::render
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
             const BlockoutSolid& solid = level.solids[solid_index];
+            const auto& material = material_authoring(authoring_config, solid.material);
 
             BlockoutRenderChunkData chunk{};
-            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index);
+            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
             if (chunk.mesh.indices.empty())
             {
                 continue;
@@ -999,12 +946,17 @@ namespace RelayCore::render
             chunk.mins = solid.mins;
             chunk.maxs = solid.maxs;
             chunk.triangle_count = static_cast<std::uint32_t>(chunk.mesh.indices.size() / 3);
-            chunk.transparent = solid.material == SurfaceMaterial::Glass;
+            chunk.transparent = material.transparent;
 
             render_data.total_triangles += chunk.triangle_count;
             render_data.chunks.push_back(std::move(chunk));
         }
 
         return render_data;
+    }
+
+    auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
+    {
+        return build_blockout_render_data(level, default_render_authoring_config());
     }
 } // namespace RelayCore::render

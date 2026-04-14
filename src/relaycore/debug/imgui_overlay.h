@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace RelayCore
 {
@@ -47,6 +48,8 @@ namespace RelayCore::debug
 
         void shutdown() noexcept;
 
+        void apply_config(const ImGuiOverlayConfig& config) noexcept;
+
         void process_event(const SDL_Event& event);
 
         void begin_frame();
@@ -57,8 +60,12 @@ namespace RelayCore::debug
             const AudioSystem& audio_system,
             render::RendererConfig& renderer_config,
             const render::WorldDiagnostics& world,
+            const render::RuntimeDiagnostics& runtime,
             const render::PlayerDiagnostics& player,
-            const render::InteractionDiagnostics& interaction
+            const render::InteractionDiagnostics& interaction,
+            const render::InspectorDiagnostics& inspector,
+            const render::AudioDiagnostics& audio,
+            const render::IterationDiagnostics& iteration
         );
 
         void render() const;
@@ -73,9 +80,39 @@ namespace RelayCore::debug
 
         void toggle_diagnostics_visible() noexcept;
 
+        [[nodiscard]] auto advanced_diagnostics_visible() const noexcept -> bool;
+
+        void set_advanced_diagnostics_visible(bool visible) noexcept;
+
+        void toggle_advanced_diagnostics_visible() noexcept;
+
         void update_diagnostics(const FrameInfo& frame) noexcept;
 
         [[nodiscard]] auto should_render() const noexcept -> bool;
+
+        [[nodiscard]] auto consume_save_runtime_snapshot_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_restore_runtime_snapshot_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_open_first_authoring_warning_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_dump_authoring_warnings_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_open_first_runtime_registry_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_dump_runtime_registry_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_open_first_runtime_binding_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_dump_runtime_bindings_requested() noexcept -> bool;
+
+        [[nodiscard]] auto consume_dump_render_authoring_contract_requested() noexcept -> bool;
+
+        [[nodiscard]] auto authoring_warning_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
+
+        [[nodiscard]] auto runtime_registry_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
+
+        [[nodiscard]] auto runtime_binding_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
 
     private:
         static constexpr std::size_t kFrameTimeSampleCount = 120;
@@ -94,9 +131,23 @@ namespace RelayCore::debug
         std::size_t frame_time_sample_count_ = 0;
         std::size_t frame_time_sample_cursor_ = 0;
         bool diagnostics_visible_ = true;
+        bool advanced_diagnostics_visible_ = false;
+        render::DiagnosticsSourceFilter inspector_source_filter_ = render::DiagnosticsSourceFilter::All;
+        render::DiagnosticsSourceFilter authoring_warning_source_filter_ = render::DiagnosticsSourceFilter::All;
+        render::DiagnosticsSourceFilter runtime_registry_source_filter_ = render::DiagnosticsSourceFilter::All;
+        render::DiagnosticsSourceFilter runtime_binding_source_filter_ = render::DiagnosticsSourceFilter::All;
         float frame_time_ms_ = 0.0F;
         float avg_frame_time_ms_ = 0.0F;
         float fps_ = 0.0F;
         float avg_fps_ = 0.0F;
+        bool save_runtime_snapshot_requested_ = false;
+        bool restore_runtime_snapshot_requested_ = false;
+        bool open_first_authoring_warning_requested_ = false;
+        bool dump_authoring_warnings_requested_ = false;
+        bool open_first_runtime_registry_requested_ = false;
+        bool dump_runtime_registry_requested_ = false;
+        bool open_first_runtime_binding_requested_ = false;
+        bool dump_runtime_bindings_requested_ = false;
+        bool dump_render_authoring_contract_requested_ = false;
     };
 } // namespace RelayCore::debug

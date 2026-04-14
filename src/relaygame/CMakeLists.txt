@@ -7,6 +7,8 @@ set(RELAYCORE_DEMO_SOURCES
         player_controller.cpp
         player_controller_config.cpp
         player_controller_motion.cpp
+        world_audio_zones.cpp
+        world_inspector.cpp
         world_scene_renderer.cpp
         world_scene_renderer_interactives.cpp
 )
@@ -18,6 +20,8 @@ set(RELAYCORE_DEMO_HEADERS
         level_session_builder.h
         player_controller.h
         player_controller_config.h
+        world_audio_zones.h
+        world_inspector.h
         world_scene_renderer.h
 )
 

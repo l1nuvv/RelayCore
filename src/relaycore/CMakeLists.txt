@@ -10,11 +10,14 @@ set(RELAYCORE_ENGINE_SOURCES
     core/log.cpp
     core/paths.cpp
     debug/imgui_overlay.cpp
+    debug/inspector_source_reference.cpp
+    gameplay/combat_runtime.cpp
     gameplay/interaction_descriptors.cpp
     gameplay/interaction_runtime_doors.cpp
     gameplay/interaction_runtime_factory.cpp
     gameplay/interaction_runtime_queries.cpp
     gameplay/mission_runtime.cpp
+    gameplay/runtime_model.cpp
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
@@ -26,13 +29,16 @@ set(RELAYCORE_ENGINE_SOURCES
     render/gl_debug.cpp
     render/gl_loader.cpp
     render/mesh.cpp
+    render/render_authoring_config.cpp
     render/renderer.cpp
     render/shader_program.cpp
+    render/shader_source_loader.cpp
     render/texture2d.cpp
     world/blockout_loader.cpp
     world/blockout_loader_parse.cpp
     world/blockout_loader_transform.cpp
     world/blockout_loader_pipeline.cpp
+    world/surface_material_utils.cpp
 )
 
 set(RELAYCORE_ENGINE_HEADERS
@@ -50,9 +56,12 @@ set(RELAYCORE_ENGINE_HEADERS
     core/sdl_error.h
     core/spatial_index_2d.h
     debug/imgui_overlay.h
+    debug/inspector_source_reference.h
+    gameplay/combat_runtime.h
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
     gameplay/mission_runtime.h
+    gameplay/runtime_model.h
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h
@@ -64,13 +73,16 @@ set(RELAYCORE_ENGINE_HEADERS
     render/gl_debug.h
     render/gl_loader.h
     render/mesh.h
+    render/render_authoring_config.h
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h
     render/shader_program.h
+    render/shader_source_loader.h
     render/texture2d.h
     world/blockout_level.h
     world/blockout_loader.h
+    world/surface_material_utils.h
 )
 
 add_library(relaycore_engine STATIC)

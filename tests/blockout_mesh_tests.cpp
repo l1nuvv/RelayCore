@@ -1,3 +1,4 @@
+#include "relaycore/core/profiling.h"
 #include "relaycore/render/blockout_mesh_builder.h"
 
 #include <algorithm>

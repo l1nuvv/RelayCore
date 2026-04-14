@@ -37,6 +37,7 @@
       "hidden": true,
       "inherits": "windows-base",
       "environment": {
+        "PATH": "C:/Program Files/CMake/bin;$penv{PATH}",
         "VSLANG": "1033"
       },
       "cacheVariables": {
@@ -131,6 +132,24 @@
       "displayName": "Build Tests (ASan)",
       "configurePreset": "msvc-asan",
       "targets": ["relaycore_tests"]
+    },
+    {
+      "name": "validation-debug",
+      "displayName": "Build Content Validation (Debug)",
+      "configurePreset": "msvc-debug",
+      "targets": ["relaycore_content_validation"]
+    },
+    {
+      "name": "validation-relwithdebinfo",
+      "displayName": "Build Content Validation (RelWithDebInfo)",
+      "configurePreset": "msvc-relwithdebinfo",
+      "targets": ["relaycore_content_validation"]
+    },
+    {
+      "name": "validation-asan",
+      "displayName": "Build Content Validation (ASan)",
+      "configurePreset": "msvc-asan",
+      "targets": ["relaycore_content_validation"]
     }
   ],
   "testPresets": [
@@ -154,15 +173,93 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "validation-debug",
+      "configurePreset": "msvc-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^validation\\."
+        }
+      }
+    },
+    {
+      "name": "validation-relwithdebinfo",
+      "configurePreset": "msvc-relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^validation\\."
+        }
+      }
+    },
+    {
+      "name": "validation-asan",
+      "configurePreset": "msvc-asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^validation\\."
+        }
+      }
     }
   ],
   "workflowPresets": [
+    {
+      "name": "tests-debug-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-debug" },
+        { "type": "build", "name": "tests-debug" },
+        { "type": "test", "name": "test-debug" }
+      ]
+    },
+    {
+      "name": "validation-debug-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-debug" },
+        { "type": "build", "name": "validation-debug" },
+        { "type": "test", "name": "validation-debug" }
+      ]
+    },
+    {
+      "name": "demo-debug-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-debug" },
+        { "type": "build", "name": "demo-debug" }
+      ]
+    },
+    {
+      "name": "debug-discipline-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-debug" },
+        { "type": "build", "name": "tests-debug" },
+        { "type": "test", "name": "test-debug" },
+        { "type": "build", "name": "validation-debug" },
+        { "type": "test", "name": "validation-debug" },
+        { "type": "build", "name": "demo-debug" }
+      ]
+    },
     {
       "name": "tests-relwithdebinfo-workflow",
       "steps": [
         { "type": "configure", "name": "msvc-relwithdebinfo" },
         { "type": "build", "name": "tests-relwithdebinfo" },
         { "type": "test", "name": "test-relwithdebinfo" }
+      ]
+    },
+    {
+      "name": "validation-relwithdebinfo-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-relwithdebinfo" },
+        { "type": "build", "name": "validation-relwithdebinfo" },
+        { "type": "test", "name": "validation-relwithdebinfo" }
       ]
     },
     {
@@ -181,6 +278,14 @@
       ]
     },
     {
+      "name": "validation-asan-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-asan" },
+        { "type": "build", "name": "validation-asan" },
+        { "type": "test", "name": "validation-asan" }
+      ]
+    },
+    {
       "name": "demo-asan-workflow",
       "steps": [
         { "type": "configure", "name": "msvc-asan" },
@@ -189,4 +294,3 @@
     }
   ]
 }
-

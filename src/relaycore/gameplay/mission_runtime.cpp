@@ -1,5 +1,6 @@
 #include "relaycore/gameplay/mission_runtime.h"
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_level.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@ namespace RelayCore::gameplay
         [[nodiscard]] auto find_mission_property(const EntitySpawnData& entity, std::string_view key)
             -> const std::string*
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const auto it = entity.properties.find(std::string{key});
             if (it == entity.properties.end())
             {
@@ -28,6 +30,7 @@ namespace RelayCore::gameplay
         [[nodiscard]] auto
         mission_property_or(const EntitySpawnData& entity, std::string_view key, std::string fallback) -> std::string
         {
+            RELAYCORE_PROFILE_FUNCTION();
             if (const std::string* value = find_mission_property(entity, key); value != nullptr && !value->empty())
             {
                 return *value;
@@ -39,6 +42,7 @@ namespace RelayCore::gameplay
         [[nodiscard]] auto parse_mission_float_property(const EntitySpawnData& entity, std::string_view key)
             -> std::optional<float>
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const std::string* value = find_mission_property(entity, key);
             if (value == nullptr || value->empty())
             {
@@ -57,6 +61,7 @@ namespace RelayCore::gameplay
         [[nodiscard]] auto parse_mission_vec3_property(const EntitySpawnData& entity, std::string_view key)
             -> std::optional<glm::vec3>
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const std::string* value = find_mission_property(entity, key);
             if (value == nullptr || value->empty())
             {
@@ -84,6 +89,7 @@ namespace RelayCore::gameplay
 
         [[nodiscard]] auto parse_step_kind(const EntitySpawnData& entity) -> MissionStepKind
         {
+            RELAYCORE_PROFILE_FUNCTION();
             const std::string* kind = find_mission_property(entity, "kind");
             if (kind == nullptr || kind->empty())
             {
@@ -108,10 +114,13 @@ namespace RelayCore::gameplay
             {
                 return MissionStepKind::AcquireItem;
             }
-            if (normalized == "activate_target" || normalized == "activate-target" || normalized == "activate"
-                || normalized == "signal")
+            if (normalized == "activate_target" || normalized == "activate-target" || normalized == "activate")
             {
                 return MissionStepKind::ActivateTarget;
+            }
+            if (normalized == "signal" || normalized == "signal_target" || normalized == "signal-target")
+            {
+                return MissionStepKind::SignalTarget;
             }
 
             throw std::runtime_error("Unsupported mission_step.kind value: " + *kind);
@@ -119,6 +128,7 @@ namespace RelayCore::gameplay
 
         [[nodiscard]] auto parse_zone_bounds(const EntitySpawnData& entity) -> physics::Aabb
         {
+            RELAYCORE_PROFILE_FUNCTION();
             glm::vec3 size{
                 parse_mission_float_property(entity, "width").value_or(2.4F),
                 parse_mission_float_property(entity, "height").value_or(2.2F),
@@ -141,6 +151,7 @@ namespace RelayCore::gameplay
 
         [[nodiscard]] auto aabb_overlaps(const physics::Aabb& a, const physics::Aabb& b) -> bool
         {
+            RELAYCORE_PROFILE_FUNCTION();
             return a.mins.x < b.maxs.x && a.maxs.x > b.mins.x && a.mins.y < b.maxs.y && a.maxs.y > b.mins.y
                    && a.mins.z < b.maxs.z && a.maxs.z > b.mins.z;
         }
@@ -150,6 +161,7 @@ namespace RelayCore::gameplay
 
     auto MissionBuilder::build() const -> MissionDefinition
     {
+        RELAYCORE_PROFILE_FUNCTION();
         MissionDefinition definition{};
 
         for (const EntitySpawnData& entity : level_.entities)
@@ -174,13 +186,13 @@ namespace RelayCore::gameplay
             step.detail = mission_property_or(entity, "detail", std::string{});
 
             if (step.kind == MissionStepKind::DoorOpened || step.kind == MissionStepKind::AcquireItem
-                || step.kind == MissionStepKind::ActivateTarget)
+                || step.kind == MissionStepKind::ActivateTarget || step.kind == MissionStepKind::SignalTarget)
             {
                 step.target = mission_property_or(entity, "target", mission_property_or(entity, "item", std::string{}));
                 if (step.target.empty())
                 {
                     throw std::runtime_error(
-                        "mission_step target is required for door_open, pickup and activate_target steps"
+                        "mission_step target is required for door_open, pickup, activate_target and signal steps"
                     );
                 }
             } else
@@ -196,6 +208,7 @@ namespace RelayCore::gameplay
 
     void MissionRuntime::reset(MissionDefinition definition)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         definition_ = std::move(definition);
         current_step_index_ = 0;
         completed_ = false;
@@ -205,17 +218,20 @@ namespace RelayCore::gameplay
         const physics::Aabb& player_bounds,
         const std::span<const RuntimeDoor> doors,
         const std::span<const std::string> inventory_items,
-        const std::span<const std::string> activated_targets
+        const std::span<const std::string> activated_targets,
+        const std::span<const std::string> signaled_targets
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (definition_.steps.empty() || completed_)
         {
             return;
         }
 
         while (current_step_index_ < definition_.steps.size()
-               && current_step_complete(player_bounds, doors, inventory_items, activated_targets))
+               && current_step_complete(player_bounds, doors, inventory_items, activated_targets, signaled_targets))
         {
+            RELAYCORE_PROFILE_FUNCTION();
             ++current_step_index_;
         }
 
@@ -224,6 +240,7 @@ namespace RelayCore::gameplay
 
     auto MissionRuntime::status() const -> MissionStatus
     {
+        RELAYCORE_PROFILE_FUNCTION();
         MissionStatus result{};
         result.active = !definition_.steps.empty();
         result.completed = completed_;
@@ -251,16 +268,70 @@ namespace RelayCore::gameplay
 
     auto MissionRuntime::completed() const noexcept -> bool
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return completed_;
+    }
+
+    auto MissionRuntime::snapshot() const -> MissionRuntimeSnapshot
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        MissionRuntimeSnapshot snapshot{};
+        snapshot.active = !definition_.steps.empty();
+        snapshot.completed = completed_;
+        snapshot.current_step = completed_ ? static_cast<std::uint32_t>(definition_.steps.size())
+                                           : static_cast<std::uint32_t>(current_step_index_);
+        return snapshot;
+    }
+
+    auto MissionRuntime::restore(const MissionRuntimeSnapshot& snapshot, std::string& out_error) -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        if (snapshot.active != !definition_.steps.empty())
+        {
+            out_error = "Snapshot mission activity does not match the current level mission";
+            return false;
+        }
+
+        if (!snapshot.active)
+        {
+            current_step_index_ = 0;
+            completed_ = false;
+            return true;
+        }
+
+        const std::size_t total_steps = definition_.steps.size();
+        if (snapshot.completed)
+        {
+            if (snapshot.current_step != total_steps)
+            {
+                out_error = "Completed mission snapshot has an invalid current step";
+                return false;
+            }
+            current_step_index_ = total_steps;
+            completed_ = true;
+            return true;
+        }
+
+        if (snapshot.current_step >= total_steps)
+        {
+            out_error = "Mission snapshot current step is out of range";
+            return false;
+        }
+
+        current_step_index_ = snapshot.current_step;
+        completed_ = false;
+        return true;
     }
 
     auto MissionRuntime::current_step_complete(
         const physics::Aabb& player_bounds,
         const std::span<const RuntimeDoor> doors,
         const std::span<const std::string> inventory_items,
-        const std::span<const std::string> activated_targets
+        const std::span<const std::string> activated_targets,
+        const std::span<const std::string> signaled_targets
     ) const -> bool
     {
+        RELAYCORE_PROFILE_FUNCTION();
         if (current_step_index_ >= definition_.steps.size())
         {
             return true;
@@ -282,6 +353,10 @@ namespace RelayCore::gameplay
         if (step.kind == MissionStepKind::ActivateTarget)
         {
             return std::ranges::find(activated_targets, step.target) != activated_targets.end();
+        }
+        if (step.kind == MissionStepKind::SignalTarget)
+        {
+            return std::ranges::find(signaled_targets, step.target) != signaled_targets.end();
         }
 
         return aabb_overlaps(player_bounds, step.bounds);

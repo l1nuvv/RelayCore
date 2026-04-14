@@ -13,10 +13,10 @@ solids = [
   { origin = [0.0, 0.09, -0.24], size = [2.8, 0.08, 0.24], material = "Hazard", tint = [1.00, 0.96, 0.82], brightness = 1.00 },
 ]
 entities = [
-  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "outer_bulkhead", move_speed = 2.8, move_offset = [2.6, 0.0, 0.0] },
-  { classname = "gameplay_entity", kind = "panel", origin = [-5.0, 1.35, -1.3], size = [0.34, 0.52, 0.12], use_radius = 1.9, mount_axis = "+x", target = "outer_bulkhead", label = "Открыть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
-  { classname = "gameplay_entity", kind = "panel", origin = [-1.6, 1.35, 1.3], size = [0.32, 0.50, 0.12], use_radius = 1.8, mount_axis = "+x", target = "outer_bulkhead", label = "Вернуть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
-  { classname = "gameplay_entity", kind = "trigger", origin = [0.0, 0.1, 2.8], targetname = "seal_intake_trigger", target = "outer_bulkhead", size = [2.4, 2.4, 1.6], once = true },
+  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "outer_bulkhead", move_speed = 1.75, move_offset = [2.6, 0.0, 0.0] },
+  { classname = "gameplay_entity", kind = "panel", origin = [-5.0, 1.35, -1.3], size = [0.34, 0.52, 0.12], use_radius = 2.45, mount_axis = "+x", target = "outer_bulkhead", label = "Открыть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
+  { classname = "gameplay_entity", kind = "panel", origin = [-1.6, 1.35, 1.3], size = [0.32, 0.50, 0.12], use_radius = 2.10, mount_axis = "+x", target = "outer_bulkhead", label = "Вернуть внешний шлюз", success_message = "Команда на внешний шлюз принята" },
+  { classname = "gameplay_entity", kind = "trigger", origin = [0.0, 0.1, 3.05], targetname = "seal_intake_trigger", target = "outer_bulkhead", size = [2.8, 2.6, 2.2], once = true },
   { classname = "render_light", origin = [0.0, 2.78, 0.1], color = [0.30, 0.18, 0.09], radius = 2.4, intensity = 0.62 },
   { classname = "render_light", origin = [-4.55, 1.70, -1.3], color = [0.16, 0.38, 0.46], radius = 1.9, intensity = 0.92 },
 ]
@@ -35,15 +35,14 @@ solids = [
   { origin = [-1.53, 1.42, -0.04], size = [0.22, 2.68, 0.12], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
   { origin = [1.53, 1.42, -0.04], size = [0.22, 2.68, 0.12], material = "Post", tint = [0.94, 0.90, 0.84], brightness = 0.94 },
   { origin = [0.0, 2.72, -0.04], size = [2.84, 0.18, 0.12], material = "Beam", tint = [1.10, 0.90, 0.72], brightness = 0.98 },
-  { origin = [0.0, 2.18, -0.25], size = [1.60, 0.24, 0.03], material = "Divider", tint = [0.76, 0.96, 1.08], brightness = 1.02 },
+  { origin = [0.0, 2.86, -0.04], size = [1.60, 0.12, 0.04], material = "Trim", tint = [0.86, 0.92, 0.98], brightness = 0.98 },
   { origin = [-2.3, 1.22, -0.24], size = [1.8, 0.16, 0.03], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
   { origin = [2.3, 1.22, -0.24], size = [1.8, 0.16, 0.03], material = "Trim", tint = [0.78, 0.74, 0.68], brightness = 0.96 },
 ]
 entities = [
-  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "inner_bulkhead", move_speed = 2.6, move_offset = [-2.6, 0.0, 0.0] },
-  { classname = "gameplay_entity", kind = "panel", origin = [1.6, 1.35, -1.3], size = [0.32, 0.50, 0.12], use_radius = 1.8, mount_axis = "-x", target = "inner_bulkhead", required_item = "lab_keycard", required_item_name = "Ключ-карта лаборатории", label = "Разблокировать внутренний шлюз", success_message = "Команда на внутренний шлюз принята", denied_message = "Нужна ключ-карта лаборатории" },
-  { classname = "gameplay_entity", kind = "panel", origin = [5.6, 1.35, 1.5], size = [0.34, 0.52, 0.12], use_radius = 1.9, mount_axis = "-x", target = "inner_bulkhead", required_item = "lab_keycard", required_item_name = "Ключ-карта лаборатории", label = "Открыть внутренний шлюз", success_message = "Команда на внутренний шлюз принята", denied_message = "Нужна ключ-карта лаборатории" },
-  { classname = "gameplay_entity", kind = "trigger", origin = [0.0, 0.1, 2.0], targetname = "seal_lab_trigger", target = "inner_bulkhead", size = [2.6, 2.6, 1.8], once = true },
+  { classname = "gameplay_entity", kind = "door", origin = [0.0, 0.0, 0.0], size = [2.78, 2.54, 0.18], targetname = "inner_bulkhead", move_speed = 1.90, move_offset = [-3.4, 0.0, 0.0], activation_policy = "open_only" },
+  { classname = "gameplay_entity", kind = "panel", origin = [1.6, 1.35, -1.3], size = [0.32, 0.50, 0.12], use_radius = 2.30, mount_axis = "-x", targetname = "lab_access_reader", target = "inner_bulkhead", required_item = "lab_keycard", required_item_name = "ключ-карта лаборатории", denied_message = "Нужна ключ-карта лаборатории", single_use = true, label = "Подтвердить допуск", success_message = "Допуск подтвержден. Внутренний шлюз открыт" },
+  { classname = "gameplay_entity", kind = "panel", origin = [5.6, 1.35, 1.5], size = [0.34, 0.52, 0.12], use_radius = 2.35, mount_axis = "-x", target = "inner_bulkhead", label = "Открыть внутренний шлюз", success_message = "Команда на внутренний шлюз принята" },
   { classname = "render_light", origin = [1.15, 1.72, -1.3], color = [0.20, 0.34, 0.16], radius = 1.5, intensity = 0.82 },
   { classname = "render_light", origin = [5.15, 1.72, 1.5], color = [0.42, 0.24, 0.12], radius = 1.9, intensity = 0.96 },
 ]
@@ -136,7 +135,7 @@ solids = [
   { origin = [-3.2, 0.54, 4.18], size = [4.0, 1.08, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
   { origin = [3.2, 0.54, 4.18], size = [4.0, 1.08, 0.08], material = "Wall", tint = [0.92, 0.96, 1.00], brightness = 0.90 },
   { origin = [0.0, 0.035, -1.5], size = [0.32, 0.02, 4.2], material = "Divider", tint = [0.76, 0.94, 1.04], brightness = 0.98 },
-  { origin = [0.0, 2.98, 0.0], size = [0.62, 0.24, 7.4], material = "Post", tint = [0.88, 0.92, 0.98], brightness = 0.86 },
+  { origin = [0.0, 2.98, -0.20], size = [0.62, 0.24, 1.80], material = "Post", tint = [0.88, 0.92, 0.98], brightness = 0.86 },
   { origin = [-5.58, 1.22, 0.0], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
   { origin = [5.58, 1.22, 0.0], size = [0.04, 0.18, 7.0], material = "Trim", tint = [0.80, 0.86, 0.92], brightness = 0.94 },
   { origin = [-3.1, 2.9, 4.18], size = [3.6, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
@@ -147,8 +146,8 @@ solids = [
   { origin = [0.0, 3.08, -2.0], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
   { origin = [0.0, 3.08, 2.0], size = [9.4, 0.12, 0.04], material = "Trim", tint = [0.74, 0.78, 0.84], brightness = 0.90 },
   { origin = [0.0, 0.04, -3.4], size = [4.6, 0.02, 0.24], material = "LightStrip", tint = [0.78, 0.86, 0.74], brightness = 1.14 },
-  { origin = [-5.4, 1.65, -0.5], size = [0.16, 1.3, 3.4], material = "Divider", tint = [0.84, 0.98, 1.08], brightness = 1.06 },
-  { origin = [5.4, 1.6, 0.3], size = [0.16, 1.2, 3.0], material = "Divider", tint = [1.02, 0.92, 0.82], brightness = 1.04 },
+  { origin = [-5.4, 0.62, -0.5], size = [0.10, 0.24, 3.4], material = "Trim", tint = [0.84, 0.90, 0.96], brightness = 0.92 },
+  { origin = [5.4, 0.60, 0.3], size = [0.10, 0.24, 3.0], material = "Trim", tint = [0.92, 0.86, 0.80], brightness = 0.92 },
   { origin = [0.0, 0.56, -0.05], size = [3.9, 0.12, 3.8], material = "Trim", tint = [0.84, 0.88, 0.92], brightness = 0.94 },
   { origin = [0.0, 0.275, -0.05], size = [3.6, 0.55, 3.5], material = "PlatformTop", tint = [1.04, 0.90, 0.72], brightness = 1.08 },
   { origin = [0.0, 1.525, -0.05], size = [0.9, 1.95, 1.3], material = "Pillar", tint = [0.82, 1.00, 1.16], brightness = 1.20 },
@@ -162,8 +161,10 @@ solids = [
 entities = [
   { classname = "render_light", origin = [0.0, 1.6, 0.0], color = [0.28, 0.18, 0.08], radius = 4.8, intensity = 0.92 },
   { classname = "render_light", origin = [0.0, 2.10, 3.4], color = [0.10, 0.26, 0.30], radius = 4.4, intensity = 0.80 },
-  { classname = "gameplay_entity", kind = "terminal", origin = [0.0, 1.32, -0.74], size = [0.42, 0.34, 0.10], use_radius = 1.8, mount_axis = "-z", target = "lab_relay_console", action = "signal", label = "Стабилизировать ядро ретранслятора", success_message = "Ядро ретранслятора стабилизировано" },
+  { classname = "gameplay_entity", kind = "terminal", origin = [0.0, 1.32, -0.74], size = [0.42, 0.34, 0.10], use_radius = 2.20, mount_axis = "-z", targetname = "lab_console_lock", target = "lab_relay_console", action = "activate_target", locked = true, signal_action = "unlock", label = "Стабилизировать ядро ретранслятора", denied_message = "Очистите зал от защитной турели", success_message = "Ядро ретранслятора стабилизировано" },
+  { classname = "gameplay_entity", kind = "turret", origin = [3.7, 1.55, 2.05], size = [0.78, 0.92, 0.78], targetname = "lab_defense_turret", label = "Дежурная турель лаборатории", health = 50, damage = 16, attack_range = 14.0, fire_interval = 0.82, warmup = 0.22, destroy_target = "lab_console_lock", destroy_action = "signal_target" },
   { classname = "render_light", origin = [0.0, 1.72, -1.55], color = [0.14, 0.38, 0.42], radius = 2.2, intensity = 0.96 },
+  { classname = "render_light", origin = [3.7, 1.90, 2.05], color = [0.42, 0.14, 0.10], radius = 2.6, intensity = 0.92 },
 ]
 anchors = [
   { name = "entry_zone", origin = [0.0, 0.1, -0.9] },
@@ -211,14 +212,50 @@ classname = "mission_settings"
 completion_title = "Лаборатория наблюдения защищена"
 completion_detail = "Маршрут завершен. Сектор комплекса зачищен."
 
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 1.6, -0.3]
+name = "intake_ambient"
+size = [10.0, 3.2, 8.6]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.28
+priority = 0
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 1.6, 6.5]
+name = "airlock_ambient"
+size = [3.4, 3.0, 4.4]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.62
+priority = 3
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 1.8, 13.2]
+name = "lab_ambient"
+size = [11.0, 3.4, 8.4]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.46
+priority = 1
+
+[[entity]]
+classname = "audio_zone"
+origin = [0.0, 1.9, 21.5]
+name = "gallery_ambient"
+size = [8.0, 3.6, 7.2]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.38
+priority = 1
+
 [[entity_group]]
 classname = "mission_step"
 entries = [
   { kind = "door_open", target = "intake/outer_bulkhead", title = "Открыть внешний шлюз", detail = "Используйте настенную панель у входа, чтобы разгерметизировать шлюз." },
-  { kind = "zone", anchor = "airlock_room:center", origin = [0.0, 0.1, 0.0], size = [2.6, 2.4, 2.8], title = "Войти в шлюзовую камеру", detail = "Перейдите в сервисную камеру до того, как входной отсек закроется." },
+  { kind = "zone", anchor = "airlock_room:center", origin = [0.0, 0.1, 0.0], size = [2.8, 2.6, 3.4], title = "Войти в шлюзовую камеру", detail = "Пройдите в сервисную камеру и закрепитесь внутри шлюза." },
   { kind = "pickup_item", target = "lab_keycard", title = "Забрать ключ-карту лаборатории", detail = "Возьмите карту доступа со стойки обслуживания в шлюзе." },
-  { kind = "door_open", target = "inner_bulkhead", title = "Разблокировать внутренний шлюз", detail = "Используйте правую панель, когда считыватель примет карту." },
-  { kind = "activate_target", target = "lab_relay_console", title = "Стабилизировать ядро ретранслятора", detail = "Используйте лабораторный терминал на центральной платформе, чтобы завершить маршрут." },
+  { kind = "door_open", target = "inner_bulkhead", title = "Разблокировать внутренний шлюз", detail = "Возьмите карту и подтвердите допуск на считывателе у внутреннего шлюза." },
+  { kind = "activate_target", target = "lab_relay_console", title = "Стабилизировать ядро ретранслятора", detail = "Очистите лабораторию от защитной турели и используйте терминал на центральной платформе." },
 ]
 
 [[module_instance]]
@@ -260,7 +297,8 @@ anchor = "airlock_room:rack_mount"
 classname = "gameplay_entity"
 kind = "pickup"
 size = [0.22, 0.12, 0.02]
-use_radius = 1.45
+use_radius = 1.65
+success_message = "Ключ-карта получена. Подтвердите допуск на считывателе у внутреннего шлюза."
 entries = [
   { anchor = "airlock_rack:pickup_slot", origin = [0.0, 0.0, 0.0], size = [0.12, 0.06, 0.012], item_id = "lab_keycard", item_name = "Ключ-карта лаборатории" },
 ]

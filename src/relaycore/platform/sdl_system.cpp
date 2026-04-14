@@ -5,15 +5,17 @@
 
 #include "relaycore/platform/sdl_system.h"
 
-#include <SDL3/SDL.h>
-
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/core/sdl_error.h"
+
+#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
     SdlSystem::SdlSystem()
     {
+        RELAYCORE_PROFILE_FUNCTION();
         core::require_sdl(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS), "Failed to initialize SDL");
 
         if (!SDL_SetAppMetadata("RelayCore", "0.1.0", "com.example.RelayCore"))
@@ -24,5 +26,8 @@ namespace RelayCore
         log::info("SDL initialized");
     }
 
-    SdlSystem::~SdlSystem() noexcept { SDL_Quit(); }
+    SdlSystem::~SdlSystem() noexcept
+    {
+        SDL_Quit();
+    }
 } // namespace RelayCore

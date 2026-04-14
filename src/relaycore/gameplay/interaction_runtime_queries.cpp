@@ -1,3 +1,4 @@
+#include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/gameplay/interaction_runtime_detail.h"
 
@@ -21,6 +22,7 @@ namespace RelayCore::gameplay
             const float min_facing_dot
         ) -> InteractionQueryResult
         {
+            RELAYCORE_PROFILE_FUNCTION();
             InteractionQueryResult result{};
             float best_distance = std::numeric_limits<float>::max();
 
@@ -73,8 +75,13 @@ namespace RelayCore::gameplay
                 }
 
                 const float lateral_distance = glm::length(target_point - probe_point);
-                const float focus_radius =
-                    usable.has_focus_bounds ? 0.15F : glm::clamp(usable.use_radius * 0.45F, 0.35F, 0.90F);
+                float focus_radius = glm::clamp(usable.use_radius * 0.45F, 0.35F, 0.90F);
+                if (usable.has_focus_bounds)
+                {
+                    const glm::vec3 focus_size = usable.focus_bounds.maxs - usable.focus_bounds.mins;
+                    const float panel_radius = std::max({focus_size.x, focus_size.y, focus_size.z}) * 0.75F;
+                    focus_radius = std::max(0.24F, panel_radius);
+                }
                 if (lateral_distance > focus_radius)
                 {
                     continue;
@@ -98,9 +105,13 @@ namespace RelayCore::gameplay
             IndexProvider&& index_provider,
             std::vector<RuntimeTrigger>& triggers,
             std::vector<RuntimeDoor>& doors,
-            std::string& last_target
+            std::vector<RuntimeUsable>& usables,
+            std::vector<std::string>& activated_target_ids,
+            std::vector<std::string>& signaled_target_ids,
+            InteractionEvent& last_event
         ) -> std::uint32_t
         {
+            RELAYCORE_PROFILE_FUNCTION();
             std::uint32_t fired_count = 0;
 
             for (std::size_t candidate = 0; candidate < candidate_count; ++candidate)
@@ -121,9 +132,32 @@ namespace RelayCore::gameplay
                     continue;
                 }
 
-                if (!trigger.target.empty() && activate_target(trigger.target, doors))
+                bool action_applied = false;
+                if (trigger.action_kind == TriggerActionKind::SignalTarget)
                 {
-                    last_target = trigger.target;
+                    action_applied = !trigger.target.empty() && signal_target(trigger.target, doors, usables);
+                    if (action_applied)
+                    {
+                        detail::append_unique_string(signaled_target_ids, trigger.target);
+                    }
+                } else if (!trigger.target.empty())
+                {
+                    (void) activate_target(trigger.target, doors);
+                    detail::append_unique_string(activated_target_ids, trigger.target);
+                    action_applied = true;
+                }
+
+                if (action_applied)
+                {
+                    last_event = InteractionEvent{
+                        .kind = trigger.action_kind == TriggerActionKind::SignalTarget
+                                    ? UseInteractionOutcome::SignaledTarget
+                                    : UseInteractionOutcome::ActivatedTarget,
+                        .source_kind = InteractionEventSourceKind::Trigger,
+                        .source_name = trigger.name,
+                        .target = trigger.target,
+                        .primary_applied = true,
+                    };
                 }
 
                 trigger.fired = true;
@@ -136,6 +170,7 @@ namespace RelayCore::gameplay
 
     void update_runtime_usables(const std::vector<RuntimeDoor>& doors, std::vector<RuntimeUsable>& usables)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         for (RuntimeUsable& usable : usables)
         {
             usable.enabled = !usable.consumed;
@@ -160,6 +195,7 @@ namespace RelayCore::gameplay
 
     void rebuild_trigger_spatial_index(const std::vector<RuntimeTrigger>& triggers, InteractionSpatialIndex& index)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         index.reset(triggers.size());
         for (std::size_t i = 0; i < triggers.size(); ++i)
         {
@@ -169,6 +205,7 @@ namespace RelayCore::gameplay
 
     void rebuild_usable_spatial_index(const std::vector<RuntimeUsable>& usables, InteractionSpatialIndex& index)
     {
+        RELAYCORE_PROFILE_FUNCTION();
         index.reset(usables.size());
         for (std::size_t i = 0; i < usables.size(); ++i)
         {
@@ -186,6 +223,7 @@ namespace RelayCore::gameplay
         std::vector<std::uint32_t>& out_indices
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         index.query(bounds, out_indices);
     }
 
@@ -196,6 +234,7 @@ namespace RelayCore::gameplay
         std::vector<std::uint32_t>& out_indices
     )
     {
+        RELAYCORE_PROFILE_FUNCTION();
         const glm::vec3 half_extents{max_distance, std::max(max_distance * 0.75F, 1.0F), max_distance};
         index.query({eye_position - half_extents, eye_position + half_extents}, out_indices);
     }
@@ -209,6 +248,7 @@ namespace RelayCore::gameplay
         const float min_facing_dot
     ) -> InteractionQueryResult
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return find_focused_usable_impl(
             eye_position,
             view_forward,
@@ -230,6 +270,7 @@ namespace RelayCore::gameplay
         const float min_facing_dot
     ) -> InteractionQueryResult
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return find_focused_usable_impl(
             eye_position,
             view_forward,
@@ -248,9 +289,13 @@ namespace RelayCore::gameplay
         const std::span<const std::uint32_t> candidate_indices,
         std::vector<RuntimeTrigger>& triggers,
         std::vector<RuntimeDoor>& doors,
-        std::string& last_target
+        std::vector<RuntimeUsable>& usables,
+        std::vector<std::string>& activated_target_ids,
+        std::vector<std::string>& signaled_target_ids,
+        InteractionEvent& last_event
     ) -> std::uint32_t
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return update_trigger_overlaps_impl(
             player_bounds,
             candidate_indices.size(),
@@ -259,7 +304,10 @@ namespace RelayCore::gameplay
             },
             triggers,
             doors,
-            last_target
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
         );
     }
 
@@ -267,9 +315,13 @@ namespace RelayCore::gameplay
         const physics::Aabb& player_bounds,
         std::vector<RuntimeTrigger>& triggers,
         std::vector<RuntimeDoor>& doors,
-        std::string& last_target
+        std::vector<RuntimeUsable>& usables,
+        std::vector<std::string>& activated_target_ids,
+        std::vector<std::string>& signaled_target_ids,
+        InteractionEvent& last_event
     ) -> std::uint32_t
     {
+        RELAYCORE_PROFILE_FUNCTION();
         return update_trigger_overlaps_impl(
             player_bounds,
             triggers.size(),
@@ -278,7 +330,10 @@ namespace RelayCore::gameplay
             },
             triggers,
             doors,
-            last_target
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
         );
     }
 } // namespace RelayCore::gameplay
