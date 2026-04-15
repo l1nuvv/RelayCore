@@ -10,6 +10,12 @@ set(RELAYCORE_ENGINE_SOURCES
     core/log.cpp
     core/paths.cpp
     debug/imgui_overlay.cpp
+    debug/imgui_overlay_gameplay_panel.cpp
+    debug/imgui_overlay_inspector_panel.cpp
+    debug/imgui_overlay_iteration_panel.cpp
+    debug/imgui_overlay_summary_panel.cpp
+    debug/imgui_overlay_system_panel.cpp
+    debug/imgui_overlay_widgets.cpp
     debug/inspector_source_reference.cpp
     gameplay/combat_runtime.cpp
     gameplay/interaction_descriptors.cpp
@@ -38,6 +44,7 @@ set(RELAYCORE_ENGINE_SOURCES
     world/blockout_loader_parse.cpp
     world/blockout_loader_transform.cpp
     world/blockout_loader_pipeline.cpp
+    world/blockout_loader_validation.cpp
     world/surface_material_utils.cpp
 )
 
@@ -56,8 +63,15 @@ set(RELAYCORE_ENGINE_HEADERS
     core/sdl_error.h
     core/spatial_index_2d.h
     debug/imgui_overlay.h
+    debug/imgui_overlay_gameplay_panel.h
+    debug/imgui_overlay_inspector_panel.h
+    debug/imgui_overlay_iteration_panel.h
+    debug/imgui_overlay_summary_panel.h
+    debug/imgui_overlay_system_panel.h
+    debug/imgui_overlay_widgets.h
     debug/inspector_source_reference.h
     gameplay/combat_runtime.h
+    gameplay/entity_spawn_parsing.h
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
     gameplay/mission_runtime.h
@@ -82,6 +96,8 @@ set(RELAYCORE_ENGINE_HEADERS
     render/texture2d.h
     world/blockout_level.h
     world/blockout_loader.h
+    world/blockout_loader_entity_props.h
+    world/blockout_loader_validation.h
     world/surface_material_utils.h
 )
 
