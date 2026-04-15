@@ -234,6 +234,18 @@ namespace RelayGame
 
         [[nodiscard]] auto build_audio_diagnostics() const -> RelayCore::render::AudioDiagnostics;
 
+        void import_level_session(LevelSession session);
+
+        void reset_runtime_for_loaded_level(
+            const RelayCore::core::EngineConfig& config,
+            const glm::vec3& spawn_position,
+            const std::optional<glm::vec2>& spawn_view_angles
+        );
+
+        void refresh_audio_runtime_state(RelayCore::EngineServices& services);
+
+        void clear_loaded_level_state() noexcept;
+
         RelayGame::GroundedPlayerController player_controller_{};
         RelayCore::BlockoutLevel level_{};
         std::vector<RelayCore::gameplay::RuntimeDoor> doors_{};

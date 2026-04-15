@@ -1,7 +1,11 @@
 set(RELAYCORE_DEMO_SOURCES
         ../relaycore/render/main.cpp
         demo_game.cpp
+        demo_game_debug_commands.cpp
+        demo_game_iteration_tools.cpp
+        demo_game_runtime_ops.cpp
         game_world_runtime.cpp
+        game_world_runtime_diagnostics.cpp
         game_world_runtime_feedback.cpp
         level_session_builder.cpp
         player_controller.cpp
@@ -15,6 +19,8 @@ set(RELAYCORE_DEMO_SOURCES
 
 set(RELAYCORE_DEMO_HEADERS
         demo_game.h
+        demo_game_iteration_internal.h
+        demo_game_runtime_ops.h
         fixed_simulation_loop.h
         game_world_runtime.h
         level_session_builder.h
