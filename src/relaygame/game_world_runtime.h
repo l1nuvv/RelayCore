@@ -295,6 +295,10 @@ namespace RelayGame
 
         void begin_frame_update(float delta_seconds);
 
+        void sync_imgui_capture(RelayCore::EngineServices& services) noexcept;
+
+        void clear_pending_gameplay_actions() noexcept;
+
         [[nodiscard]] auto capture_frame_gameplay_actions() noexcept -> FrameGameplayActions;
 
         [[nodiscard]] auto capture_frame_iteration_commands() noexcept -> IterationCommandRequests;
@@ -339,6 +343,8 @@ namespace RelayGame
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FrameGameplayActions frame_actions_{};
         IterationCommandRequests frame_iteration_commands_{};
+        bool imgui_keyboard_captured_ = false;
+        bool imgui_mouse_captured_ = false;
         FixedSimulationLoop simulation_loop_{1.0 / 120.0, 8};
     };
 } // namespace RelayGame

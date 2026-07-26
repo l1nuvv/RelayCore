@@ -113,6 +113,8 @@ namespace RelayGame
 
         void enable_capture(RelayCore::Window& window) const;
 
+        void set_imgui_capture(bool keyboard_captured, bool mouse_captured) noexcept;
+
         void on_event(const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services);
 
         void flush_pending_look() noexcept;
@@ -160,6 +162,18 @@ namespace RelayGame
 
         void toggle_noclip() noexcept;
 
+        void clear_keyboard_transient_input() noexcept;
+
+        void clear_mouse_transient_input() noexcept;
+
+        void clear_transient_input() noexcept;
+
+        void clear_focus_loss_input() noexcept;
+
+        [[nodiscard]] auto gameplay_keyboard_input_enabled() const noexcept -> bool;
+
+        [[nodiscard]] auto gameplay_mouse_input_enabled() const noexcept -> bool;
+
         void update_grounded(
             const RelayCore::FrameInfo& frame,
             const RelayCore::BlockoutLevel& level,
@@ -196,6 +210,10 @@ namespace RelayGame
         bool open_inspector_source_pressed_ = false;
         bool save_runtime_snapshot_pressed_ = false;
         bool restore_runtime_snapshot_pressed_ = false;
+        bool imgui_keyboard_captured_ = false;
+        bool imgui_mouse_captured_ = false;
+        bool window_has_focus_ = true;
+        bool window_minimized_ = false;
         std::vector<RelayCore::physics::Aabb> static_collision_world_{};
         std::vector<RelayCore::physics::Aabb> collision_world_{};
         RelayCore::core::SpatialIndex2D<std::uint32_t> static_collision_index_{kStaticCollisionCellSize};

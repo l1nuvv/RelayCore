@@ -158,7 +158,43 @@ namespace RelayGame
     void GameWorldRuntime::on_event(const SDL_Event& event, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_FUNCTION();
+        sync_imgui_capture(services);
+        if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_MINIMIZED)
+        {
+            clear_pending_gameplay_actions();
+        }
         player_controller_.on_event(event, services.window(), services);
+    }
+
+    void GameWorldRuntime::sync_imgui_capture(RelayCore::EngineServices& services) noexcept
+    {
+        const bool keyboard_captured = services.renderer().wants_keyboard_capture();
+        const bool mouse_captured = services.renderer().wants_mouse_capture();
+
+        if (!imgui_keyboard_captured_ && keyboard_captured)
+        {
+            frame_actions_.use_pressed = false;
+            interaction_state_.use_pressed = false;
+        }
+        if (!imgui_mouse_captured_ && mouse_captured)
+        {
+            frame_actions_.fire_pressed = false;
+            combat_state_.fire_pressed = false;
+        }
+
+        player_controller_.set_imgui_capture(keyboard_captured, mouse_captured);
+        imgui_keyboard_captured_ = keyboard_captured;
+        imgui_mouse_captured_ = mouse_captured;
+    }
+
+    void GameWorldRuntime::clear_pending_gameplay_actions() noexcept
+    {
+        frame_actions_.use_pressed = false;
+        frame_actions_.fire_pressed = false;
+        frame_actions_.inspector_pin_pressed = false;
+        frame_iteration_commands_ = {};
+        interaction_state_.use_pressed = false;
+        combat_state_.fire_pressed = false;
     }
 
     void GameWorldRuntime::publish_diagnostics(RelayCore::Renderer& renderer) const

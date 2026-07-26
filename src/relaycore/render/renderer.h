@@ -116,6 +116,10 @@ namespace RelayCore
 
         [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
 
+        [[nodiscard]] auto wants_keyboard_capture() const noexcept -> bool;
+
+        [[nodiscard]] auto wants_mouse_capture() const noexcept -> bool;
+
         void set_diagnostics_visible(bool visible) noexcept;
 
         void toggle_diagnostics_visible() noexcept;

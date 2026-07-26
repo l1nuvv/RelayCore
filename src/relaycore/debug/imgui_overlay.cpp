@@ -298,6 +298,16 @@ namespace RelayCore::debug
         return config_.enabled;
     }
 
+    auto ImGuiOverlay::wants_keyboard_capture() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantCaptureKeyboard;
+    }
+
+    auto ImGuiOverlay::wants_mouse_capture() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantCaptureMouse;
+    }
+
     auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool
     {
         return diagnostics_visible_;

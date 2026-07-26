@@ -13,6 +13,7 @@ namespace RelayGame
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::update");
 
         const float delta_seconds = static_cast<float>(frame.delta_seconds);
+        sync_imgui_capture(services);
         begin_frame_update(delta_seconds);
 
         runtime_state_.fixed_steps_last_frame =
