@@ -12,6 +12,7 @@ target_sources(
         ../src/relaygame/world_audio_zones.cpp
         ../src/relaygame/world_inspector.cpp
         camera_tests.cpp
+        diagnostics_publication_policy_tests.cpp
         audio_system_tests.cpp
         blockout_loader_tests.cpp
         blockout_mesh_tests.cpp
@@ -23,6 +24,7 @@ target_sources(
         mission_runtime_tests.cpp
         player_motion_tests.cpp
         render_authoring_config_tests.cpp
+        renderer_diagnostics_api_tests.cpp
         runtime_model_tests.cpp
         combat_runtime_tests.cpp
         engine_config_tests.cpp

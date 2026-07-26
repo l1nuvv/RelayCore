@@ -1027,9 +1027,9 @@ namespace RelayCore
         return world_diagnostics_;
     }
 
-    void Renderer::set_runtime_diagnostics(const render::RuntimeDiagnostics& diagnostics) noexcept
+    void Renderer::set_runtime_diagnostics(render::RuntimeDiagnostics diagnostics)
     {
-        runtime_diagnostics_ = diagnostics;
+        runtime_diagnostics_ = std::move(diagnostics);
     }
 
     auto Renderer::runtime_diagnostics() const noexcept -> const render::RuntimeDiagnostics&
@@ -1037,9 +1037,9 @@ namespace RelayCore
         return runtime_diagnostics_;
     }
 
-    void Renderer::set_player_diagnostics(const render::PlayerDiagnostics& diagnostics) noexcept
+    void Renderer::set_player_diagnostics(render::PlayerDiagnostics diagnostics)
     {
-        player_diagnostics_ = diagnostics;
+        player_diagnostics_ = std::move(diagnostics);
     }
 
     auto Renderer::player_diagnostics() const noexcept -> const render::PlayerDiagnostics&
@@ -1047,9 +1047,9 @@ namespace RelayCore
         return player_diagnostics_;
     }
 
-    void Renderer::set_interaction_diagnostics(const render::InteractionDiagnostics& diagnostics) noexcept
+    void Renderer::set_interaction_diagnostics(render::InteractionDiagnostics diagnostics)
     {
-        interaction_diagnostics_ = diagnostics;
+        interaction_diagnostics_ = std::move(diagnostics);
     }
 
     auto Renderer::interaction_diagnostics() const noexcept -> const render::InteractionDiagnostics&
@@ -1057,9 +1057,9 @@ namespace RelayCore
         return interaction_diagnostics_;
     }
 
-    void Renderer::set_inspector_diagnostics(const render::InspectorDiagnostics& diagnostics) noexcept
+    void Renderer::set_inspector_diagnostics(render::InspectorDiagnostics diagnostics)
     {
-        inspector_diagnostics_ = diagnostics;
+        inspector_diagnostics_ = std::move(diagnostics);
     }
 
     auto Renderer::inspector_diagnostics() const noexcept -> const render::InspectorDiagnostics&
@@ -1067,9 +1067,9 @@ namespace RelayCore
         return inspector_diagnostics_;
     }
 
-    void Renderer::set_audio_diagnostics(const render::AudioDiagnostics& diagnostics) noexcept
+    void Renderer::set_audio_diagnostics(render::AudioDiagnostics diagnostics)
     {
-        audio_diagnostics_ = diagnostics;
+        audio_diagnostics_ = std::move(diagnostics);
     }
 
     auto Renderer::audio_diagnostics() const noexcept -> const render::AudioDiagnostics&
@@ -1077,7 +1077,7 @@ namespace RelayCore
         return audio_diagnostics_;
     }
 
-    void Renderer::set_iteration_diagnostics(const render::IterationDiagnostics& diagnostics) noexcept
+    void Renderer::set_iteration_diagnostics(const render::IterationDiagnostics& diagnostics)
     {
         iteration_diagnostics_ = diagnostics;
     }

@@ -7,12 +7,14 @@
 #include "relaycore/debug/inspector_source_reference.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/render/renderer.h"
+#include "relaygame/diagnostics_publication_policy.h"
 #include "relaygame/player_controller_config.h"
 #include "relaygame/world_inspector.h"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <utility>
 
 namespace RelayGame
 {
@@ -200,21 +202,17 @@ namespace RelayGame
     void GameWorldRuntime::publish_diagnostics(RelayCore::Renderer& renderer) const
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const RelayCore::render::PlayerDiagnostics player = build_player_diagnostics();
-        const RelayCore::render::RuntimeDiagnostics runtime = build_runtime_diagnostics();
-        const RelayCore::render::InteractionDiagnostics interaction = build_interaction_diagnostics();
-        const RelayCore::render::InspectorDiagnostics inspector = build_inspector_diagnostics();
-        const RelayCore::render::AudioDiagnostics audio = build_audio_diagnostics();
+        const DiagnosticsPublicationNeeds needs = diagnostics_publication_needs(
+            renderer.diagnostics_visible(),
+            renderer.advanced_diagnostics_visible(),
+            renderer.inspector_visualization_enabled()
+        );
+        RelayCore::render::PlayerDiagnostics player = build_player_diagnostics();
+        RelayCore::render::InteractionDiagnostics interaction = build_interaction_diagnostics();
 
-        renderer.set_player_diagnostics(player);
-        renderer.set_runtime_diagnostics(runtime);
-        renderer.set_interaction_diagnostics(interaction);
-        renderer.set_inspector_diagnostics(inspector);
-        renderer.set_audio_diagnostics(audio);
-
-        RELAYCORE_PROFILE_PLOT("Runtime/FixedSteps", runtime.fixed_steps);
-        RELAYCORE_PROFILE_PLOT("Runtime/SimBacklogMs", runtime.simulation_backlog_ms);
-        RELAYCORE_PROFILE_PLOT("Runtime/ActiveTriggerOverlaps", runtime.active_trigger_overlaps);
+        RELAYCORE_PROFILE_PLOT("Runtime/FixedSteps", runtime_state_.fixed_steps_last_frame);
+        RELAYCORE_PROFILE_PLOT("Runtime/SimBacklogMs", simulation_loop_.pending_seconds() * 1000.0);
+        RELAYCORE_PROFILE_PLOT("Runtime/ActiveTriggerOverlaps", runtime_state_.active_trigger_overlaps);
         RELAYCORE_PROFILE_PLOT("Gameplay/ActiveDoors", interaction.active_doors);
         RELAYCORE_PROFILE_PLOT("Gameplay/UsablesEnabled", interaction.enabled_usables);
         RELAYCORE_PROFILE_PLOT("Gameplay/UsablesBlocked", interaction.blocked_usables);
@@ -222,6 +220,20 @@ namespace RelayGame
         RELAYCORE_PROFILE_PLOT("Player/CollisionWorldSolids", player.collision_world_solids);
         RELAYCORE_PROFILE_PLOT("Player/Health", player.health);
         RELAYCORE_PROFILE_PLOT("Gameplay/TurretsDestroyed", player.destroyed_turrets);
+
+        renderer.set_player_diagnostics(std::move(player));
+        renderer.set_interaction_diagnostics(std::move(interaction));
+
+        if (needs.runtime_and_audio)
+        {
+            renderer.set_runtime_diagnostics(build_runtime_diagnostics());
+            renderer.set_audio_diagnostics(build_audio_diagnostics());
+        }
+
+        if (needs.inspector)
+        {
+            renderer.set_inspector_diagnostics(build_inspector_diagnostics());
+        }
     }
 
     auto GameWorldRuntime::level() const noexcept -> const RelayCore::BlockoutLevel&

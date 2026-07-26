@@ -84,27 +84,27 @@ namespace RelayCore
 
         [[nodiscard]] auto world_diagnostics() const noexcept -> const render::WorldDiagnostics&;
 
-        void set_runtime_diagnostics(const render::RuntimeDiagnostics& diagnostics) noexcept;
+        void set_runtime_diagnostics(render::RuntimeDiagnostics diagnostics);
 
         [[nodiscard]] auto runtime_diagnostics() const noexcept -> const render::RuntimeDiagnostics&;
 
-        void set_player_diagnostics(const render::PlayerDiagnostics& diagnostics) noexcept;
+        void set_player_diagnostics(render::PlayerDiagnostics diagnostics);
 
         [[nodiscard]] auto player_diagnostics() const noexcept -> const render::PlayerDiagnostics&;
 
-        void set_interaction_diagnostics(const render::InteractionDiagnostics& diagnostics) noexcept;
+        void set_interaction_diagnostics(render::InteractionDiagnostics diagnostics);
 
         [[nodiscard]] auto interaction_diagnostics() const noexcept -> const render::InteractionDiagnostics&;
 
-        void set_inspector_diagnostics(const render::InspectorDiagnostics& diagnostics) noexcept;
+        void set_inspector_diagnostics(render::InspectorDiagnostics diagnostics);
 
         [[nodiscard]] auto inspector_diagnostics() const noexcept -> const render::InspectorDiagnostics&;
 
-        void set_audio_diagnostics(const render::AudioDiagnostics& diagnostics) noexcept;
+        void set_audio_diagnostics(render::AudioDiagnostics diagnostics);
 
         [[nodiscard]] auto audio_diagnostics() const noexcept -> const render::AudioDiagnostics&;
 
-        void set_iteration_diagnostics(const render::IterationDiagnostics& diagnostics) noexcept;
+        void set_iteration_diagnostics(const render::IterationDiagnostics& diagnostics);
 
         [[nodiscard]] auto iteration_diagnostics() const noexcept -> const render::IterationDiagnostics&;
 
