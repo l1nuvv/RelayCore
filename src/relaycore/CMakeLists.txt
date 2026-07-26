@@ -126,18 +126,6 @@ target_include_directories(
         $<INSTALL_INTERFACE:include>
 )
 
-if (NOT RELAYCORE_ENABLE_AUDIO)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_AUDIO_DISABLED)
-endif()
-
-if (NOT RELAYCORE_ENABLE_CONFIG)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_CONFIG_DISABLED)
-endif()
-
-if (NOT RELAYCORE_ENABLE_IMGUI)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_IMGUI_DISABLED)
-endif()
-
 target_link_libraries(
     relaycore_engine
     PUBLIC
@@ -150,12 +138,8 @@ target_link_libraries(
         RelayCore::glad
     PRIVATE
         RelayCore::miniaudio_headers
+        ${RELAYCORE_IMGUI_TARGET}
 )
-
-if (RELAYCORE_ENABLE_IMGUI)
-    target_link_libraries(relaycore_engine PRIVATE ${RELAYCORE_IMGUI_TARGET})
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ENABLE_IMGUI=1)
-endif()
 
 if (RELAYCORE_ENABLE_TRACY)
     target_link_libraries(relaycore_engine PRIVATE Tracy::TracyClient)

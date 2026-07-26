@@ -64,9 +64,6 @@ macro(relaycore_initialize_project)
     option(RELAYCORE_ENABLE_PCH "Enable precompiled headers for RelayCore targets" OFF)
     option(RELAYCORE_ENABLE_TRACY "Enable Tracy instrumentation and linking" OFF)
     option(RELAYCORE_ENABLE_MSVC_ANALYZE "Enable MSVC /analyze static analysis" OFF)
-    option(RELAYCORE_ENABLE_IMGUI "Enable Dear ImGui debug overlay" ON)
-    option(RELAYCORE_ENABLE_AUDIO "Enable miniaudio audio system" ON)
-    option(RELAYCORE_ENABLE_CONFIG "Enable TOML engine config loading" ON)
 
     check_ipo_supported(
         RESULT RELAYCORE_IPO_SUPPORTED

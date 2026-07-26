@@ -295,7 +295,7 @@ Critical замечаний не найдено.
 - Category: Build
 - Confidence: High
 - Location: `cmake/RelayCoreOptions.cmake:67-69`; `src/relaycore/CMakeLists.txt:136-165`; весь `debug/`, `renderer.cpp`, `game_hud.cpp`, `audio_system.cpp`, `engine_config.cpp`
-- Evidence: при OFF определяются `RELAYCORE_AUDIO_DISABLED`, `RELAYCORE_CONFIG_DISABLED`, `RELAYCORE_IMGUI_DISABLED`, но product source нигде их не читает. ImGui headers/calls остаются unconditional; miniaudio/toml++ всё равно находятся и исходники компилируются.
+- Evidence: при OFF определяются три compile definitions, но product source нигде их не читает. ImGui headers/calls остаются unconditional; miniaudio/toml++ всё равно находятся и исходники компилируются.
 - Current behavior: Audio/config OFF ничего функционально не выключают; ImGui OFF, вероятно, ломает compile/link, потому что пакет не находится/не линкуется, а код его требует.
 - Impact: misleading build matrix, ложная возможность headless/minimal build, дополнительная сложность.
 - Trigger: configure с любым из трёх options OFF.
