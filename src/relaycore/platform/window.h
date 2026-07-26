@@ -14,20 +14,38 @@ namespace RelayCore
      * @brief Parameters used to create the main application window.
      */
     struct WindowConfig {
-        std::string title    = "RelayCore"; ///< Window title text.
-        int         width    = 1280;        ///< Requested window width in logical units.
-        int         height   = 720;         ///< Requested window height in logical units.
-        bool        high_dpi = true;        ///< Requests a high-DPI-capable window.
-        bool        vsync    = true;        ///< Enables swap-interval synchronization.
+        std::string title = "RelayCore"; ///< Window title text.
+        int width = 1280;                ///< Requested window width in logical units.
+        int height = 720;                ///< Requested window height in logical units.
+        bool high_dpi = true;            ///< Requests a high-DPI-capable window.
+        bool vsync = true;               ///< Enables swap-interval synchronization.
     };
 
     /**
      * @brief Pixel size of a window framebuffer.
      */
     struct PixelExtent {
-        int width  = 0; ///< Framebuffer width in pixels.
+        int width = 0;  ///< Framebuffer width in pixels.
         int height = 0; ///< Framebuffer height in pixels.
     };
+
+    /**
+     * @brief Current window properties that determine whether OpenGL presentation is possible.
+     */
+    struct WindowPresentationState {
+        int pixel_width = 0;    ///< Current drawable width in pixels.
+        int pixel_height = 0;   ///< Current drawable height in pixels.
+        bool minimized = false; ///< True while the window is minimized.
+        bool hidden = false;    ///< True while the window is hidden.
+    };
+
+    /**
+     * @brief Reports whether a window has a drawable surface suitable for presentation.
+     */
+    [[nodiscard]] constexpr auto can_present(const WindowPresentationState& state) noexcept -> bool
+    {
+        return state.pixel_width > 0 && state.pixel_height > 0 && !state.minimized && !state.hidden;
+    }
 
     /**
      * @brief Owns an SDL window together with its OpenGL context.
@@ -80,6 +98,12 @@ namespace RelayCore
         [[nodiscard]] auto pixel_extent() const -> PixelExtent;
 
         /**
+         * @brief Returns the current presentation-relevant window state.
+         * @return Drawable pixel extent and minimized/hidden flags.
+         */
+        [[nodiscard]] auto presentation_state() const -> WindowPresentationState;
+
+        /**
          * @brief Reports whether relative mouse mode is enabled for the window.
          * @return True when SDL relative mouse mode is active.
          */
@@ -107,7 +131,6 @@ namespace RelayCore
 
         [[nodiscard]] auto toggle_vsync() -> bool;
 
-
         /**
          * @brief Enables or disables relative mouse mode for the window.
          * @param enabled Desired relative mouse mode state.
@@ -125,7 +148,7 @@ namespace RelayCore
          */
         void log_context_info() const;
 
-        SDL_Window*   window_     = nullptr; ///< Owned SDL window handle.
+        SDL_Window* window_ = nullptr;       ///< Owned SDL window handle.
         SDL_GLContext gl_context_ = nullptr; ///< Owned OpenGL context handle.
     };
 } // namespace RelayCore

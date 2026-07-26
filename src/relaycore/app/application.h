@@ -44,7 +44,7 @@ namespace RelayCore
          * @brief Polls and dispatches SDL events for the current frame.
          * @param services Runtime services exposed to the game layer.
          */
-        void process_events(EngineServices& services);
+        void process_events(EngineServices& services, bool wait_for_first_event);
 
         /**
          * @brief Routes one SDL event through engine and game handlers.

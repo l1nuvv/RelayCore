@@ -28,6 +28,7 @@ target_sources(
         engine_config_tests.cpp
         shader_source_loader_tests.cpp
         player_controller_tests.cpp
+        window_presentation_tests.cpp
         world_audio_zones_tests.cpp
         world_inspector_tests.cpp
         interaction_runtime_tests.cpp

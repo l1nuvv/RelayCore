@@ -5,11 +5,11 @@
 
 #include "relaycore/platform/window.h"
 
-#include <SDL3/SDL.h>
-
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/core/sdl_error.h"
+
+#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
@@ -47,10 +47,16 @@ namespace RelayCore
         set_gl_attributes();
 
         SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
-        if (config.high_dpi) { flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY; }
+        if (config.high_dpi)
+        {
+            flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        }
 
         SDL_Window* created_window = SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags);
-        if (created_window == nullptr) { core::throw_sdl_error("Failed to create SDL window"); }
+        if (created_window == nullptr)
+        {
+            core::throw_sdl_error("Failed to create SDL window");
+        }
 
         SDL_GLContext created_context = SDL_GL_CreateContext(created_window);
         if (created_context == nullptr)
@@ -67,7 +73,7 @@ namespace RelayCore
             core::throw_sdl_error("Failed to set swap interval");
         }
 
-        window_     = created_window;
+        window_ = created_window;
         gl_context_ = created_context;
 
         log_context_info();
@@ -75,14 +81,26 @@ namespace RelayCore
 
     Window::~Window() noexcept
     {
-        if (gl_context_ != nullptr) { SDL_GL_DestroyContext(gl_context_); }
+        if (gl_context_ != nullptr)
+        {
+            SDL_GL_DestroyContext(gl_context_);
+        }
 
-        if (window_ != nullptr) { SDL_DestroyWindow(window_); }
+        if (window_ != nullptr)
+        {
+            SDL_DestroyWindow(window_);
+        }
     }
 
-    auto Window::handle() const noexcept -> SDL_Window* { return window_; }
+    auto Window::handle() const noexcept -> SDL_Window*
+    {
+        return window_;
+    }
 
-    auto Window::gl_context() const noexcept -> SDL_GLContext { return gl_context_; }
+    auto Window::gl_context() const noexcept -> SDL_GLContext
+    {
+        return gl_context_;
+    }
 
     auto Window::pixel_extent() const -> PixelExtent
     {
@@ -91,15 +109,36 @@ namespace RelayCore
         return extent;
     }
 
-    auto Window::relative_mouse_mode() const -> bool { return SDL_GetWindowRelativeMouseMode(window_); }
+    auto Window::presentation_state() const -> WindowPresentationState
+    {
+        const PixelExtent extent = pixel_extent();
+        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
+        return WindowPresentationState{
+            .pixel_width = extent.width,
+            .pixel_height = extent.height,
+            .minimized = (flags & SDL_WINDOW_MINIMIZED) != 0,
+            .hidden = (flags & SDL_WINDOW_HIDDEN) != 0,
+        };
+    }
+
+    auto Window::relative_mouse_mode() const -> bool
+    {
+        return SDL_GetWindowRelativeMouseMode(window_);
+    }
 
     auto Window::refresh_rate_hz() const -> float
     {
         const SDL_DisplayID display_id = SDL_GetDisplayForWindow(window_);
-        if (display_id == 0) { return 0.0F; }
+        if (display_id == 0)
+        {
+            return 0.0F;
+        }
 
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display_id);
-        if (mode == nullptr) { return 0.0F; }
+        if (mode == nullptr)
+        {
+            return 0.0F;
+        }
 
         return mode->refresh_rate;
     }
@@ -107,15 +146,24 @@ namespace RelayCore
     auto Window::swap_interval() const -> int
     {
         int interval = 0;
-        if (!SDL_GL_GetSwapInterval(&interval)) { return 0; }
+        if (!SDL_GL_GetSwapInterval(&interval))
+        {
+            return 0;
+        }
         return interval;
     }
 
-    auto Window::vsync_enabled() const -> bool { return swap_interval() != 0; }
+    auto Window::vsync_enabled() const -> bool
+    {
+        return swap_interval() != 0;
+    }
 
     auto Window::set_swap_interval(int interval) -> bool
     {
-        if (SDL_GL_SetSwapInterval(interval)) { return true; }
+        if (SDL_GL_SetSwapInterval(interval))
+        {
+            return true;
+        }
 
         log::warn("SDL_GL_SetSwapInterval({}) failed: {}", interval, SDL_GetError());
         return false;
@@ -124,9 +172,12 @@ namespace RelayCore
     auto Window::toggle_vsync() -> bool
     {
         const int current = swap_interval();
-        const int next    = (current == 0) ? 1 : 0;
+        const int next = (current == 0) ? 1 : 0;
 
-        if (!set_swap_interval(next)) { return false; }
+        if (!set_swap_interval(next))
+        {
+            return false;
+        }
 
         log::info("VSync: {}", next == 0 ? "off" : "on");
         return true;
@@ -140,14 +191,17 @@ namespace RelayCore
     void Window::swap_buffers() const
     {
         RELAYCORE_PROFILE_ZONE_N("SDL_GL_SwapWindow");
-        if (!SDL_GL_SwapWindow(window_)) { core::throw_sdl_error("Failed to swap OpenGL window buffers"); }
+        if (!SDL_GL_SwapWindow(window_))
+        {
+            core::throw_sdl_error("Failed to swap OpenGL window buffers");
+        }
     }
 
     void Window::log_context_info() const
     {
         int major_version = 0;
         int minor_version = 0;
-        int profile_mask  = 0;
+        int profile_mask = 0;
         int context_flags = 0;
 
         if (!SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major_version)

@@ -16,6 +16,8 @@ namespace RelayCore
 {
     namespace
     {
+        constexpr Sint32 kNonPresentableEventWaitTimeoutMs = 20;
+
         /**
          * @brief Ensures the active delegate receives on_shutdown() exactly once.
          */
@@ -85,16 +87,33 @@ namespace RelayCore
         {
             RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
 
-            const auto frame_cpu_start = Clock::now();
-            const FrameInfo frame = frame_timer_.begin_frame();
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
-                process_events(services);
+                process_events(services, !can_present(window_->presentation_state()));
             }
+            if (!is_running_)
+            {
+                break;
+            }
+
+            const WindowPresentationState presentation_state = window_->presentation_state();
+            const FrameInfo frame = frame_timer_.begin_frame();
+            const auto frame_cpu_start = Clock::now();
             {
                 RELAYCORE_PROFILE_ZONE_N("app_update");
                 app_delegate_->on_update(frame, services);
             }
+            if (!is_running_)
+            {
+                break;
+            }
+
+            if (!can_present(presentation_state))
+            {
+                RELAYCORE_PROFILE_FRAME();
+                continue;
+            }
+
             {
                 RELAYCORE_PROFILE_ZONE_N("begin_frame");
                 renderer_->begin_frame();
@@ -125,11 +144,16 @@ namespace RelayCore
         return 0;
     }
 
-    void Application::process_events(EngineServices& services)
+    void Application::process_events(EngineServices& services, const bool wait_for_first_event)
     {
         RELAYCORE_PROFILE_FUNCTION();
         SDL_Event event{};
-        while (SDL_PollEvent(&event))
+        if (wait_for_first_event && SDL_WaitEventTimeout(&event, kNonPresentableEventWaitTimeoutMs))
+        {
+            handle_event(event, services);
+        }
+
+        while (is_running_ && SDL_PollEvent(&event))
         {
             handle_event(event, services);
         }
@@ -143,6 +167,7 @@ namespace RelayCore
         switch (event.type)
         {
             case SDL_EVENT_QUIT:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 services.request_quit();
                 break;
 

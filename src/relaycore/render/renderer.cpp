@@ -436,6 +436,11 @@ namespace RelayCore
     void Renderer::on_resize(const int width, const int height) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
         viewport_width_ = width;
         viewport_height_ = height;
         camera_.set_viewport(width, height);
