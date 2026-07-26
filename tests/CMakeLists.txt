@@ -12,6 +12,7 @@ target_sources(
         ../src/relaygame/world_audio_zones.cpp
         ../src/relaygame/world_inspector.cpp
         camera_tests.cpp
+        audio_system_tests.cpp
         blockout_loader_tests.cpp
         blockout_mesh_tests.cpp
         blockout_texture_atlas_tests.cpp

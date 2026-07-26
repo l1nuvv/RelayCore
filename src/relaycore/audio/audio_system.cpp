@@ -12,7 +12,6 @@
 #include <cmath>
 #include <memory>
 #include <miniaudio.h>
-#include <stdexcept>
 #include <utility>
 
 namespace RelayCore
@@ -105,9 +104,15 @@ namespace RelayCore
         }
 
         auto engine = std::make_unique<ma_engine>();
-        if (ma_engine_init(nullptr, engine.get()) != MA_SUCCESS)
+        const ma_result result = ma_engine_init(nullptr, engine.get());
+        if (result != MA_SUCCESS)
         {
-            throw std::runtime_error("Failed to initialize miniaudio engine");
+            log::warn(
+                "Failed to initialize miniaudio engine (ma_result={}): {}. Audio disabled.",
+                static_cast<int>(result),
+                ma_result_description(result)
+            );
+            return;
         }
 
         ma_engine_set_volume(engine.get(), config_.master_volume);
