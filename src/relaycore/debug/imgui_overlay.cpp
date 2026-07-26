@@ -47,8 +47,20 @@ namespace RelayCore::debug
 
         ImGui::StyleColorsDark();
 
-        ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context());
-        ImGui_ImplOpenGL3_Init("#version 460 core");
+        if (!ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context()))
+        {
+            log::warn("ImGui overlay disabled: SDL3 backend initialization failed");
+            ImGui::DestroyContext();
+            return;
+        }
+
+        if (!ImGui_ImplOpenGL3_Init("#version 460 core"))
+        {
+            log::warn("ImGui overlay disabled: OpenGL3 backend initialization failed");
+            ImGui_ImplSDL3_Shutdown();
+            ImGui::DestroyContext();
+            return;
+        }
 
         window_ = &window;
         fps_log_accumulator_ = 0.0F;
