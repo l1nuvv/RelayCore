@@ -101,6 +101,15 @@ ctest --preset validation-debug --output-on-failure
 cmake --workflow --preset debug-discipline-workflow
 ```
 
+Дополнительные CI-конфигурации можно проверить локально:
+
+```powershell
+cmake --workflow --preset relwithdebinfo-discipline-workflow
+cmake --workflow --preset asan-discipline-workflow
+```
+
+CI собирает demo в RelWithDebInfo, но не запускает графическое приложение. ASan проверяет unit-тесты и content validation без сборки или запуска demo.
+
 Локальные preset'ы в `CMakeUserPresets.json` могут также содержать машинно-специфичные пути к MSVC/Windows SDK. После обновления Visual Studio, Windows SDK или CLion эти пути нужно синхронизировать.
 
 `BUILD_TESTING` обычно приходит из `include(CTest)`, а сам `CTest` рекомендуют подключать именно в верхнем `CMakeLists.txt`.

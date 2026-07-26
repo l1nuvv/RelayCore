@@ -93,3 +93,93 @@ jobs:
         run: |
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
           cmake --workflow --preset debug-discipline-workflow
+
+  msvc-relwithdebinfo:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          ninja --version
+          cl
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.vcpkg-bincache
+            ~\AppData\Local\vcpkg\downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Run RelWithDebInfo discipline workflow
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --workflow --preset relwithdebinfo-discipline-workflow
+
+  msvc-asan:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          ninja --version
+          cl
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.vcpkg-bincache
+            ~\AppData\Local\vcpkg\downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Run ASan discipline workflow
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --workflow --preset asan-discipline-workflow
