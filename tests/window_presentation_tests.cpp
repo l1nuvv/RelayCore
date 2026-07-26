@@ -28,8 +28,11 @@ TEST_CASE("window presentation policy requires a visible positive drawable exten
         .pixel_height = 720,
         .hidden = true,
     }));
-    CHECK(RelayCore::can_present(WindowPresentationState{
+    const WindowPresentationState restored{
         .pixel_width = 1280,
         .pixel_height = 720,
-    }));
+        .minimized = false,
+        .hidden = false,
+    };
+    CHECK(RelayCore::can_present(restored));
 }
