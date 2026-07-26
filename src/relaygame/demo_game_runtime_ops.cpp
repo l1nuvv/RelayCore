@@ -126,9 +126,9 @@ namespace RelayGame::detail
         {
             PreparedLevelReload staged = prepare_level_reload(services, pinned_inspector);
 
+            services.renderer().commit_live_content_reload(std::move(staged.renderer));
             state.runtime.shutdown(services);
             state.world_scene.shutdown();
-            services.renderer().commit_live_content_reload(std::move(staged.renderer));
             state.runtime = std::move(staged.runtime);
             state.world_scene = std::move(staged.world_scene);
             state.runtime.activate_level_session(services);

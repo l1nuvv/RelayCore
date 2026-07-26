@@ -55,6 +55,8 @@ namespace RelayCore
 
         explicit Renderer(const render::RendererConfig& config = render::RendererConfig{});
 
+        ~Renderer() noexcept;
+
         void initialize(const Window& window);
 
         [[nodiscard]] auto prepare_live_content_reload(
@@ -135,6 +137,25 @@ namespace RelayCore
     private:
         static constexpr std::size_t kShadowCascadeCount = 2;
 
+        struct ShadowResources {
+            ~ShadowResources() noexcept;
+
+            ShadowResources() = default;
+            ShadowResources(const ShadowResources&) = delete;
+            auto operator=(const ShadowResources&) -> ShadowResources& = delete;
+            ShadowResources(ShadowResources&& other) noexcept;
+            auto operator=(ShadowResources&& other) noexcept -> ShadowResources&;
+
+            void reset() noexcept;
+
+            [[nodiscard]] auto complete() const noexcept -> bool;
+
+            std::array<unsigned int, kShadowCascadeCount> framebuffer_ids{};
+            std::array<unsigned int, kShadowCascadeCount> depth_texture_ids{};
+        };
+
+        [[nodiscard]] static auto create_shadow_resources(const render::RendererConfig& config) -> ShadowResources;
+
         void initialize_shadow_resources();
 
         void release_shadow_resources() noexcept;
@@ -171,8 +192,7 @@ namespace RelayCore
         render::IterationDiagnostics iteration_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
         render::Texture2D blockout_atlas_{};
-        std::array<unsigned int, kShadowCascadeCount> shadow_framebuffer_ids_{};
-        std::array<unsigned int, kShadowCascadeCount> shadow_depth_texture_ids_{};
+        ShadowResources shadow_resources_{};
         std::array<glm::mat4, kShadowCascadeCount> shadow_light_view_projections_{};
         float scene_time_seconds_ = 0.0F;
         bool inspector_visualization_enabled_ = false;

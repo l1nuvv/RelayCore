@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace RelayCore
 {
@@ -27,6 +28,35 @@ namespace RelayCore
     {
         constexpr std::size_t kNearShadowCascadeIndex = 0;
         constexpr std::size_t kFarShadowCascadeIndex = 1;
+
+        class ShadowResourceBindingGuard {
+        public:
+            ShadowResourceBindingGuard()
+            {
+                glGetIntegerv(GL_ACTIVE_TEXTURE, &active_texture_);
+                glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_framebuffer_);
+                glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_framebuffer_);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture_2d_);
+            }
+
+            ~ShadowResourceBindingGuard() noexcept
+            {
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<unsigned int>(draw_framebuffer_));
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<unsigned int>(read_framebuffer_));
+                glActiveTexture(static_cast<unsigned int>(active_texture_));
+                glBindTexture(GL_TEXTURE_2D, static_cast<unsigned int>(texture_2d_));
+            }
+
+            ShadowResourceBindingGuard(const ShadowResourceBindingGuard&) = delete;
+
+            auto operator=(const ShadowResourceBindingGuard&) -> ShadowResourceBindingGuard& = delete;
+
+        private:
+            GLint active_texture_ = GL_TEXTURE0;
+            GLint draw_framebuffer_ = 0;
+            GLint read_framebuffer_ = 0;
+            GLint texture_2d_ = 0;
+        };
 
         void apply_render_pass_state(const render::RenderPass pass)
         {
@@ -284,6 +314,11 @@ namespace RelayCore
         RELAYCORE_PROFILE_FUNCTION();
     }
 
+    Renderer::~Renderer() noexcept
+    {
+        release_shadow_resources();
+    }
+
     void Renderer::initialize(const Window& window)
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -376,6 +411,8 @@ namespace RelayCore
     void Renderer::commit_live_content_reload(PreparedLiveContentReload staged_reload)
     {
         RELAYCORE_PROFILE_FUNCTION();
+        ShadowResources staged_shadow_resources = create_shadow_resources(staged_reload.config);
+
         opaque_shader_program_ = std::move(staged_reload.opaque_shader_program);
         overlay_shader_program_ = std::move(staged_reload.overlay_shader_program);
         transparent_shader_program_ = std::move(staged_reload.transparent_shader_program);
@@ -383,16 +420,11 @@ namespace RelayCore
         blockout_atlas_ = std::move(staged_reload.blockout_atlas);
         config_ = std::move(staged_reload.config);
         authoring_config_ = std::move(staged_reload.authoring_config);
+        shadow_resources_ = std::move(staged_shadow_resources);
 
-        release_shadow_resources();
         camera_.apply_projection_config(config_.camera);
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.apply_config(config_.imgui);
-
-        if (config_.shadow_enabled)
-        {
-            initialize_shadow_resources();
-        }
     }
 
     void Renderer::process_event(const SDL_Event& event)
@@ -433,11 +465,7 @@ namespace RelayCore
             return;
         }
 
-        if (config_.shadow_enabled
-            && (shadow_depth_texture_ids_[kNearShadowCascadeIndex] == 0
-                || shadow_framebuffer_ids_[kNearShadowCascadeIndex] == 0
-                || shadow_depth_texture_ids_[kFarShadowCascadeIndex] == 0
-                || shadow_framebuffer_ids_[kFarShadowCascadeIndex] == 0))
+        if (config_.shadow_enabled && !shadow_resources_.complete())
         {
             RELAYCORE_PROFILE_FUNCTION();
             initialize_shadow_resources();
@@ -450,11 +478,13 @@ namespace RelayCore
         world_diagnostics_.shadow_map_resolution =
             config_.shadow_enabled ? static_cast<std::uint32_t>(std::max(config_.shadow_map_resolution, 256)) : 0U;
         world_diagnostics_.shadow_preview_texture_id =
-            config_.shadow_enabled ? static_cast<std::uintptr_t>(shadow_depth_texture_ids_[kNearShadowCascadeIndex])
-                                   : 0U;
+            config_.shadow_enabled
+                ? static_cast<std::uintptr_t>(shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex])
+                : 0U;
         world_diagnostics_.shadow_far_preview_texture_id =
-            config_.shadow_enabled ? static_cast<std::uintptr_t>(shadow_depth_texture_ids_[kFarShadowCascadeIndex])
-                                   : 0U;
+            config_.shadow_enabled
+                ? static_cast<std::uintptr_t>(shadow_resources_.depth_texture_ids[kFarShadowCascadeIndex])
+                : 0U;
         world_diagnostics_.shadow_contact_strength =
             config_.shadow_enabled ? std::max(config_.shadow_contact_strength, 0.0F) : 0.0F;
         world_diagnostics_.shadow_bias_near = config_.shadow_enabled ? std::max(config_.shadow_bias_near, 0.0F) : 0.0F;
@@ -568,25 +598,74 @@ namespace RelayCore
         scene_time_seconds_ = seconds;
     }
 
-    void Renderer::initialize_shadow_resources()
+    Renderer::ShadowResources::~ShadowResources() noexcept
     {
-        RELAYCORE_PROFILE_FUNCTION();
-        if (!config_.shadow_enabled)
+        reset();
+    }
+
+    Renderer::ShadowResources::ShadowResources(ShadowResources&& other) noexcept :
+        framebuffer_ids(std::exchange(other.framebuffer_ids, {})),
+        depth_texture_ids(std::exchange(other.depth_texture_ids, {}))
+    {}
+
+    auto Renderer::ShadowResources::operator=(ShadowResources&& other) noexcept -> ShadowResources&
+    {
+        if (this != &other)
         {
-            return;
+            reset();
+            framebuffer_ids = std::exchange(other.framebuffer_ids, {});
+            depth_texture_ids = std::exchange(other.depth_texture_ids, {});
         }
 
-        const int shadow_map_resolution = std::max(config_.shadow_map_resolution, 256);
+        return *this;
+    }
+
+    void Renderer::ShadowResources::reset() noexcept
+    {
+        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
+        {
+            if (framebuffer_ids[cascade_index] != 0)
+            {
+                glDeleteFramebuffers(1, &framebuffer_ids[cascade_index]);
+                framebuffer_ids[cascade_index] = 0;
+            }
+            if (depth_texture_ids[cascade_index] != 0)
+            {
+                glDeleteTextures(1, &depth_texture_ids[cascade_index]);
+                depth_texture_ids[cascade_index] = 0;
+            }
+        }
+    }
+
+    auto Renderer::ShadowResources::complete() const noexcept -> bool
+    {
+        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
+        {
+            if (framebuffer_ids[cascade_index] == 0 || depth_texture_ids[cascade_index] == 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    auto Renderer::create_shadow_resources(const render::RendererConfig& config) -> ShadowResources
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        ShadowResourceBindingGuard binding_guard{};
+        ShadowResources resources{};
+        if (!config.shadow_enabled)
+        {
+            return resources;
+        }
+
+        const int shadow_map_resolution = std::max(config.shadow_map_resolution, 256);
 
         for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
         {
-            if (shadow_depth_texture_ids_[cascade_index] != 0 || shadow_framebuffer_ids_[cascade_index] != 0)
-            {
-                continue;
-            }
-
-            glGenTextures(1, &shadow_depth_texture_ids_[cascade_index]);
-            glBindTexture(GL_TEXTURE_2D, shadow_depth_texture_ids_[cascade_index]);
+            glGenTextures(1, &resources.depth_texture_ids[cascade_index]);
+            glBindTexture(GL_TEXTURE_2D, resources.depth_texture_ids[cascade_index]);
             glTexImage2D(
                 GL_TEXTURE_2D,
                 0,
@@ -609,13 +688,13 @@ namespace RelayCore
             constexpr float border_color[4] = {1.0F, 1.0F, 1.0F, 1.0F};
             glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
 
-            glGenFramebuffers(1, &shadow_framebuffer_ids_[cascade_index]);
-            glBindFramebuffer(GL_FRAMEBUFFER, shadow_framebuffer_ids_[cascade_index]);
+            glGenFramebuffers(1, &resources.framebuffer_ids[cascade_index]);
+            glBindFramebuffer(GL_FRAMEBUFFER, resources.framebuffer_ids[cascade_index]);
             glFramebufferTexture2D(
                 GL_FRAMEBUFFER,
                 GL_DEPTH_ATTACHMENT,
                 GL_TEXTURE_2D,
-                shadow_depth_texture_ids_[cascade_index],
+                resources.depth_texture_ids[cascade_index],
                 0
             );
             glDrawBuffer(GL_NONE);
@@ -625,25 +704,24 @@ namespace RelayCore
                 throw std::runtime_error("Directional shadow framebuffer is incomplete");
             }
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return resources;
+    }
+
+    void Renderer::initialize_shadow_resources()
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        if (!config_.shadow_enabled || shadow_resources_.complete())
+        {
+            return;
+        }
+
+        shadow_resources_ = create_shadow_resources(config_);
     }
 
     void Renderer::release_shadow_resources() noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
-        {
-            if (shadow_framebuffer_ids_[cascade_index] != 0)
-            {
-                glDeleteFramebuffers(1, &shadow_framebuffer_ids_[cascade_index]);
-                shadow_framebuffer_ids_[cascade_index] = 0;
-            }
-            if (shadow_depth_texture_ids_[cascade_index] != 0)
-            {
-                glDeleteTextures(1, &shadow_depth_texture_ids_[cascade_index]);
-                shadow_depth_texture_ids_[cascade_index] = 0;
-            }
-        }
+        shadow_resources_.reset();
     }
 
     void Renderer::render_shadow_map(const std::span<const render::RenderItem> items)
@@ -653,10 +731,7 @@ namespace RelayCore
         {
             return;
         }
-        if (shadow_framebuffer_ids_[kNearShadowCascadeIndex] == 0
-            || shadow_depth_texture_ids_[kNearShadowCascadeIndex] == 0
-            || shadow_framebuffer_ids_[kFarShadowCascadeIndex] == 0
-            || shadow_depth_texture_ids_[kFarShadowCascadeIndex] == 0)
+        if (!shadow_resources_.complete())
         {
             return;
         }
@@ -682,7 +757,7 @@ namespace RelayCore
         constexpr GLint kShadowMvpLocation = 0;
         for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
         {
-            glBindFramebuffer(GL_FRAMEBUFFER, shadow_framebuffer_ids_[cascade_index]);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadow_resources_.framebuffer_ids[cascade_index]);
             glViewport(0, 0, shadow_map_resolution, shadow_map_resolution);
             glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -827,7 +902,7 @@ namespace RelayCore
         program.set_float(kPostfxSaturationLocation, config_.postfx_saturation);
         program.set_int(
             kShadowEnabledLocation,
-            config_.shadow_enabled && shadow_depth_texture_ids_[kNearShadowCascadeIndex] != 0 ? 1 : 0
+            config_.shadow_enabled && shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex] != 0 ? 1 : 0
         );
         program.set_mat4(
             kShadowNearLightViewProjectionLocation,
@@ -842,7 +917,7 @@ namespace RelayCore
         program.set_float(kShadowNearNormalOffsetLocation, config_.shadow_normal_offset_near);
         program.set_int(
             kShadowFarEnabledLocation,
-            config_.shadow_enabled && shadow_depth_texture_ids_[kFarShadowCascadeIndex] != 0 ? 1 : 0
+            config_.shadow_enabled && shadow_resources_.depth_texture_ids[kFarShadowCascadeIndex] != 0 ? 1 : 0
         );
         program.set_float(kShadowCascadeSplitDistanceLocation, std::max(config_.shadow_cascade_split_distance, 0.0F));
         program.set_float(kShadowCascadeBlendRangeLocation, std::max(config_.shadow_cascade_blend_range, 0.0F));
@@ -859,16 +934,16 @@ namespace RelayCore
             blockout_atlas_.bind(0);
             program.set_int(kBlockoutAtlasLocation, 0);
         }
-        if (shadow_depth_texture_ids_[kNearShadowCascadeIndex] != 0)
+        if (shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex] != 0)
         {
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, shadow_depth_texture_ids_[kNearShadowCascadeIndex]);
+            glBindTexture(GL_TEXTURE_2D, shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex]);
             program.set_int(kShadowNearMapLocation, 1);
         }
-        if (shadow_depth_texture_ids_[kFarShadowCascadeIndex] != 0)
+        if (shadow_resources_.depth_texture_ids[kFarShadowCascadeIndex] != 0)
         {
             glActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, shadow_depth_texture_ids_[kFarShadowCascadeIndex]);
+            glBindTexture(GL_TEXTURE_2D, shadow_resources_.depth_texture_ids[kFarShadowCascadeIndex]);
             program.set_int(kShadowFarMapLocation, 2);
         }
         glActiveTexture(GL_TEXTURE0);
