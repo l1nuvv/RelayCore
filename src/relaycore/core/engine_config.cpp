@@ -322,7 +322,6 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_CONTROL("pin_inspector", pin_inspector);
             RELAYCORE_ASSIGN_CONTROL("reload_level", reload_level);
             RELAYCORE_ASSIGN_CONTROL("open_inspector_source", open_inspector_source);
-            RELAYCORE_ASSIGN_CONTROL("copy_inspector_source", open_inspector_source);
             RELAYCORE_ASSIGN_CONTROL("save_runtime_snapshot", save_runtime_snapshot);
             RELAYCORE_ASSIGN_CONTROL("restore_runtime_snapshot", restore_runtime_snapshot);
             RELAYCORE_ASSIGN_CONTROL("quit", quit);

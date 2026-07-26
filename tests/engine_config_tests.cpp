@@ -65,6 +65,18 @@ TEST_CASE("engine config keeps defaults for absent keys")
     RelayCore::log::shutdown();
 }
 
+TEST_CASE("engine config ignores unsupported copy inspector source binding")
+{
+    init_test_logger();
+    const std::filesystem::path path = write_engine_config("[game.controls]\n"
+                                                           "open_inspector_source = \"F8\"\n"
+                                                           "copy_inspector_source = \"F9\"\n");
+    const RelayCore::core::EngineConfig config = RelayCore::core::load_engine_config(path);
+    CHECK(config.gameplay.controls.open_inspector_source == "F8");
+    static_cast<void>(std::filesystem::remove(path));
+    RelayCore::log::shutdown();
+}
+
 TEST_CASE("engine config rejects invalid TOML types")
 {
     SUBCASE("scalar")
