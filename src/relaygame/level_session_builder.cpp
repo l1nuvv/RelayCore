@@ -4,6 +4,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaygame/level_session_authoring_warnings.h"
+#include "relaygame/world_audio_zones.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -80,7 +81,16 @@ namespace RelayGame
         RelayCore::gameplay::rebuild_trigger_spatial_index(session.triggers, session.trigger_spatial_index);
         RelayCore::gameplay::rebuild_usable_spatial_index(session.usables, session.usable_spatial_index);
         session.runtime_registry.build(session.level, session.doors, session.triggers, session.usables);
-        session.authoring_warnings = detail::collect_authoring_warnings(session.level, session.doors, session.triggers);
+        session.mission_definition = RelayCore::gameplay::MissionBuilder{session.level}.build();
+        session.authoring_warnings = detail::collect_authoring_warnings(
+            session.level,
+            session.doors,
+            session.triggers,
+            session.runtime_registry.bindings(),
+            session.mission_definition
+        );
+        session.combat = RelayCore::gameplay::build_runtime_combat(session.level);
+        session.audio_zones = RelayGame::build_audio_zones(session.level, RelayCore::core::asset_root_path());
         return session;
     }
 } // namespace RelayGame

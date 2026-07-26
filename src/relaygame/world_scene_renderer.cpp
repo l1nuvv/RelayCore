@@ -216,84 +216,15 @@ namespace RelayGame
         }
     } // namespace
 
-    void WorldSceneRenderer::initialize(
+    auto build_prepared_world_scene_data(
         const RelayCore::BlockoutLevel& level,
         const RelayCore::render::RenderAuthoringConfig& authoring_config
-    )
+    ) -> PreparedWorldSceneData
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const RelayCore::render::BlockoutRenderData render_data =
-            RelayCore::render::build_blockout_render_data(level, authoring_config);
-        RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData panel_mesh_data =
-            RelayCore::render::make_color_double_sided_quad_mesh_data();
-        RelayCore::render::CpuColorMeshData panel_blocked_mesh_data =
-            RelayCore::render::make_color_double_sided_quad_mesh_data();
-        RelayCore::render::CpuColorMeshData panel_highlight_mesh_data =
-            RelayCore::render::make_color_double_sided_quad_mesh_data();
-        RelayCore::render::CpuColorMeshData panel_success_mesh_data =
-            RelayCore::render::make_color_double_sided_quad_mesh_data();
-        RelayCore::render::CpuColorMeshData panel_warning_mesh_data =
-            RelayCore::render::make_color_double_sided_quad_mesh_data();
-        RelayCore::render::CpuColorMeshData pickup_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData pickup_highlight_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_destroyed_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_alert_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData inspector_usable_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData inspector_door_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData inspector_trigger_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData inspector_solid_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData inspector_hit_mesh_data = RelayCore::render::make_color_box_mesh_data();
-
-        tint_mesh_data(panel_mesh_data, {1.80F, 0.72F, 0.34F}, 0.02F);
-        tint_mesh_data(panel_blocked_mesh_data, {0.62F, 0.44F, 0.34F}, -0.02F);
-        tint_mesh_data(panel_highlight_mesh_data, {2.25F, 1.90F, 0.55F}, 0.10F);
-        tint_mesh_data(panel_success_mesh_data, {0.58F, 1.95F, 1.08F}, 0.06F);
-        tint_mesh_data(panel_warning_mesh_data, {2.18F, 0.78F, 0.48F}, 0.04F);
-        tint_mesh_data(pickup_mesh_data, {0.52F, 1.82F, 1.90F}, 0.06F);
-        tint_mesh_data(pickup_highlight_mesh_data, {0.86F, 2.20F, 2.30F}, 0.14F);
-        tint_mesh_data(turret_mesh_data, {1.84F, 0.52F, 0.42F}, -0.01F);
-        tint_mesh_data(turret_destroyed_mesh_data, {0.48F, 0.42F, 0.40F}, -0.18F);
-        tint_mesh_data(turret_alert_mesh_data, {2.55F, 0.72F, 0.62F}, 0.14F);
-        tint_mesh_data(inspector_usable_mesh_data, {2.25F, 1.82F, 0.62F}, 0.12F);
-        tint_mesh_data(inspector_door_mesh_data, {0.62F, 2.08F, 2.28F}, 0.10F);
-        tint_mesh_data(inspector_trigger_mesh_data, {2.28F, 0.92F, 0.58F}, 0.08F);
-        tint_mesh_data(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
-        tint_mesh_data(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
-
-        door_mesh_.initialize(door_mesh_data);
-        panel_mesh_.initialize(panel_mesh_data);
-        panel_blocked_mesh_.initialize(panel_blocked_mesh_data);
-        panel_highlight_mesh_.initialize(panel_highlight_mesh_data);
-        panel_success_mesh_.initialize(panel_success_mesh_data);
-        panel_warning_mesh_.initialize(panel_warning_mesh_data);
-        pickup_mesh_.initialize(pickup_mesh_data);
-        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data);
-        turret_mesh_.initialize(turret_mesh_data);
-        turret_destroyed_mesh_.initialize(turret_destroyed_mesh_data);
-        turret_alert_mesh_.initialize(turret_alert_mesh_data);
-        inspector_usable_mesh_.initialize(inspector_usable_mesh_data);
-        inspector_door_mesh_.initialize(inspector_door_mesh_data);
-        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data);
-        inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
-        inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
-
-        render_chunks_.clear();
-        render_chunks_.reserve(render_data.chunks.size());
-        local_lights_.clear();
-        authoring_warnings_.clear();
-
-        for (const auto& chunk_data : render_data.chunks)
-        {
-            RenderChunk chunk{};
-            chunk.mesh.initialize(chunk_data.mesh);
-            chunk.mins = chunk_data.mins;
-            chunk.maxs = chunk_data.maxs;
-            chunk.triangle_count = chunk_data.triangle_count;
-            chunk.transparent = chunk_data.transparent;
-            render_chunks_.push_back(std::move(chunk));
-        }
+        PreparedWorldSceneData scene_data{};
+        scene_data.blockout = RelayCore::render::build_blockout_render_data(level, authoring_config);
+        scene_data.total_solids = static_cast<std::uint32_t>(level.solids.size());
 
         for (std::size_t entity_index = 0; entity_index < level.entities.size(); ++entity_index)
         {
@@ -318,7 +249,7 @@ namespace RelayGame
                 warning.message = message;
                 warning.source_bucket = warning_source_bucket(source);
                 assign_warning_source(warning, entity_label, source);
-                authoring_warnings_.push_back(std::move(warning));
+                scene_data.authoring_warnings.push_back(std::move(warning));
             };
 
             glm::vec3 light_color = authored_color.value_or(authoring_config.render_light.default_color);
@@ -381,29 +312,105 @@ namespace RelayGame
 
             light.color = light_color * intensity;
             light.radius = radius;
-            local_lights_.push_back(light);
+            scene_data.local_lights.push_back(light);
         }
 
-        if (local_lights_.size() > kMaxActiveLocalLights)
+        if (scene_data.local_lights.size() > kMaxActiveLocalLights)
         {
-            authoring_warnings_.push_back(
-                RelayCore::render::AuthoringWarningDiagnostics{
-                    .message = "Map authors " + std::to_string(local_lights_.size())
-                               + " render_light entities, but the renderer"
-                                 " only evaluates the nearest "
-                               + std::to_string(kMaxActiveLocalLights) + " per frame",
-                    .source_bucket = "generated",
-                }
-            );
+            scene_data.authoring_warnings.push_back(RelayCore::render::AuthoringWarningDiagnostics{
+                .message = "Map authors " + std::to_string(scene_data.local_lights.size())
+                           + " render_light entities, but the renderer"
+                             " only evaluates the nearest "
+                           + std::to_string(kMaxActiveLocalLights) + " per frame",
+                .source_bucket = "generated",
+            });
         }
 
-        diagnostics_.total_solids = static_cast<std::uint32_t>(level.solids.size());
+        return scene_data;
+    }
+
+    void WorldSceneRenderer::initialize(const PreparedWorldSceneData& scene_data)
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData panel_mesh_data =
+            RelayCore::render::make_color_double_sided_quad_mesh_data();
+        RelayCore::render::CpuColorMeshData panel_blocked_mesh_data =
+            RelayCore::render::make_color_double_sided_quad_mesh_data();
+        RelayCore::render::CpuColorMeshData panel_highlight_mesh_data =
+            RelayCore::render::make_color_double_sided_quad_mesh_data();
+        RelayCore::render::CpuColorMeshData panel_success_mesh_data =
+            RelayCore::render::make_color_double_sided_quad_mesh_data();
+        RelayCore::render::CpuColorMeshData panel_warning_mesh_data =
+            RelayCore::render::make_color_double_sided_quad_mesh_data();
+        RelayCore::render::CpuColorMeshData pickup_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData pickup_highlight_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData turret_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData turret_destroyed_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData turret_alert_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData inspector_usable_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData inspector_door_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData inspector_trigger_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData inspector_solid_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData inspector_hit_mesh_data = RelayCore::render::make_color_box_mesh_data();
+
+        tint_mesh_data(panel_mesh_data, {1.80F, 0.72F, 0.34F}, 0.02F);
+        tint_mesh_data(panel_blocked_mesh_data, {0.62F, 0.44F, 0.34F}, -0.02F);
+        tint_mesh_data(panel_highlight_mesh_data, {2.25F, 1.90F, 0.55F}, 0.10F);
+        tint_mesh_data(panel_success_mesh_data, {0.58F, 1.95F, 1.08F}, 0.06F);
+        tint_mesh_data(panel_warning_mesh_data, {2.18F, 0.78F, 0.48F}, 0.04F);
+        tint_mesh_data(pickup_mesh_data, {0.52F, 1.82F, 1.90F}, 0.06F);
+        tint_mesh_data(pickup_highlight_mesh_data, {0.86F, 2.20F, 2.30F}, 0.14F);
+        tint_mesh_data(turret_mesh_data, {1.84F, 0.52F, 0.42F}, -0.01F);
+        tint_mesh_data(turret_destroyed_mesh_data, {0.48F, 0.42F, 0.40F}, -0.18F);
+        tint_mesh_data(turret_alert_mesh_data, {2.55F, 0.72F, 0.62F}, 0.14F);
+        tint_mesh_data(inspector_usable_mesh_data, {2.25F, 1.82F, 0.62F}, 0.12F);
+        tint_mesh_data(inspector_door_mesh_data, {0.62F, 2.08F, 2.28F}, 0.10F);
+        tint_mesh_data(inspector_trigger_mesh_data, {2.28F, 0.92F, 0.58F}, 0.08F);
+        tint_mesh_data(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
+        tint_mesh_data(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
+
+        door_mesh_.initialize(door_mesh_data);
+        panel_mesh_.initialize(panel_mesh_data);
+        panel_blocked_mesh_.initialize(panel_blocked_mesh_data);
+        panel_highlight_mesh_.initialize(panel_highlight_mesh_data);
+        panel_success_mesh_.initialize(panel_success_mesh_data);
+        panel_warning_mesh_.initialize(panel_warning_mesh_data);
+        pickup_mesh_.initialize(pickup_mesh_data);
+        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data);
+        turret_mesh_.initialize(turret_mesh_data);
+        turret_destroyed_mesh_.initialize(turret_destroyed_mesh_data);
+        turret_alert_mesh_.initialize(turret_alert_mesh_data);
+        inspector_usable_mesh_.initialize(inspector_usable_mesh_data);
+        inspector_door_mesh_.initialize(inspector_door_mesh_data);
+        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data);
+        inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
+        inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
+
+        render_chunks_.clear();
+        render_chunks_.reserve(scene_data.blockout.chunks.size());
+        local_lights_ = scene_data.local_lights;
+        authoring_warnings_ = scene_data.authoring_warnings;
+
+        for (const auto& chunk_data : scene_data.blockout.chunks)
+        {
+            RenderChunk chunk{};
+            chunk.mesh.initialize(chunk_data.mesh);
+            chunk.mins = chunk_data.mins;
+            chunk.maxs = chunk_data.maxs;
+            chunk.triangle_count = chunk_data.triangle_count;
+            chunk.transparent = chunk_data.transparent;
+            render_chunks_.push_back(std::move(chunk));
+        }
+        diagnostics_.total_solids = scene_data.total_solids;
         diagnostics_.total_chunks = static_cast<std::uint32_t>(render_chunks_.size());
-        diagnostics_.opaque_total_chunks = static_cast<std::uint32_t>(
-            std::count_if(render_chunks_.begin(), render_chunks_.end(), [](const RenderChunk& chunk) {
+        diagnostics_.opaque_total_chunks = static_cast<std::uint32_t>(std::count_if(
+            render_chunks_.begin(),
+            render_chunks_.end(),
+            [](const RenderChunk& chunk) {
                 return !chunk.transparent;
-            })
-        );
+            }
+        ));
         diagnostics_.transparent_total_chunks = diagnostics_.total_chunks - diagnostics_.opaque_total_chunks;
         diagnostics_.visible_solids = static_cast<std::uint32_t>(render_chunks_.size());
         diagnostics_.visible_chunks = static_cast<std::uint32_t>(render_chunks_.size());
@@ -412,7 +419,7 @@ namespace RelayGame
         diagnostics_.draw_calls = diagnostics_.visible_solids;
         diagnostics_.opaque_draw_calls = diagnostics_.opaque_visible_chunks;
         diagnostics_.transparent_draw_calls = diagnostics_.transparent_visible_chunks;
-        diagnostics_.triangles = render_data.total_triangles;
+        diagnostics_.triangles = scene_data.blockout.total_triangles;
         diagnostics_.total_render_lights = static_cast<std::uint32_t>(local_lights_.size());
         diagnostics_.active_local_light_budget = static_cast<std::uint32_t>(kMaxActiveLocalLights);
         diagnostics_.local_light_count =
@@ -522,7 +529,7 @@ namespace RelayGame
 
         render_doors(camera, doors);
         render_turrets(camera, turrets);
-        render_interactive_usables(camera, scene_time_seconds, usables, focused_usable_index);
+        render_interactive_usables(camera, scene_time_seconds, usables, focused_usable_index, inspector_visible);
         if (inspector_visible)
         {
             render_inspector_pick(camera, scene_time_seconds, inspector);

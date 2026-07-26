@@ -229,7 +229,8 @@ namespace RelayGame
         const RelayCore::render::PerspectiveCamera& camera,
         const float scene_time_seconds,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const int focused_usable_index
+        const int focused_usable_index,
+        const bool highlight_visible
     )
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -250,7 +251,7 @@ namespace RelayGame
                 continue;
             }
 
-            const bool is_focused = static_cast<int>(usable_index) == focused_usable_index;
+            const bool is_focused = highlight_visible && static_cast<int>(usable_index) == focused_usable_index;
             const bool is_panel = usable.visual_kind == RelayCore::gameplay::UsableVisualKind::Panel;
             const bool is_blocked = usable.locked || !usable.requirement_met;
             const RelayCore::render::StaticColorMesh& base_mesh =

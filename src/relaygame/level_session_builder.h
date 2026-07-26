@@ -1,10 +1,13 @@
 #pragma once
 
 #include "relaycore/core/engine_config.h"
+#include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/gameplay/mission_runtime.h"
 #include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/world_audio_zones.h"
 
 #include <filesystem>
 #include <glm/vec2.hpp>
@@ -26,6 +29,9 @@ namespace RelayGame
         RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index{};
         RelayCore::gameplay::RuntimeObjectRegistry runtime_registry{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
+        RelayCore::gameplay::CombatBuildResult combat{};
+        RelayCore::gameplay::MissionDefinition mission_definition{};
+        std::vector<RelayGame::RuntimeAudioZone> audio_zones{};
     };
 
     class LevelSessionBuilder {

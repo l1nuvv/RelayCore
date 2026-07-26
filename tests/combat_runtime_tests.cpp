@@ -73,6 +73,28 @@ TEST_CASE("combat runtime builds authored turrets and hazard volumes")
     CHECK(built_turret.destroy_action == CombatTargetActionKind::SignalTarget);
 }
 
+TEST_CASE("combat runtime ignores thin hazard trim strips when building damaging volumes")
+{
+    BlockoutLevel level{};
+    level.solids = {
+        BlockoutSolid{
+            .mins = {-1.4F, 0.0F, -0.12F},
+            .maxs = {1.4F, 0.08F, 0.12F},
+            .material = SurfaceMaterial::Hazard,
+        },
+        BlockoutSolid{
+            .mins = {-1.0F, 0.0F, 2.5F},
+            .maxs = {1.0F, 0.2F, 4.0F},
+            .material = SurfaceMaterial::Hazard,
+        },
+    };
+
+    const RelayCore::gameplay::CombatBuildResult result = RelayCore::gameplay::build_runtime_combat(level);
+
+    REQUIRE(result.hazards.size() == 1);
+    CHECK(result.hazards[0].authored_solid_index == 1);
+}
+
 TEST_CASE("player fire respects blocking doors and emits turret destroy events")
 {
     BlockoutLevel level{};

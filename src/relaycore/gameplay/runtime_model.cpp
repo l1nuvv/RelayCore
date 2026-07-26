@@ -281,6 +281,21 @@ namespace RelayCore::gameplay
         }
     }
 
+    auto runtime_binding_requires_resolved_target(const RuntimeBindingKind kind) -> bool
+    {
+        switch (kind)
+        {
+            case RuntimeBindingKind::ActivateTarget:
+            case RuntimeBindingKind::SignalTarget:
+            case RuntimeBindingKind::ChainTarget:
+                return true;
+            case RuntimeBindingKind::RequireItem:
+            case RuntimeBindingKind::PickupItem:
+            default:
+                return false;
+        }
+    }
+
     void RuntimeObjectRegistry::clear() noexcept
     {
         objects_.clear();
@@ -419,23 +434,21 @@ namespace RelayCore::gameplay
                                   const std::string_view target,
                                   const std::vector<std::string>& resolved_handles
                               ) {
-            bindings_.push_back(
-                RuntimeBindingInfo{
-                    .kind = kind,
-                    .source_id = handle.id,
-                    .source_kind = handle.kind,
-                    .source_handle = handle.debug_handle,
-                    .source_name = handle.name.empty() ? handle.label : handle.name,
-                    .source_bucket = handle.source_bucket,
-                    .source_reference = handle.source_reference,
-                    .source_file_path = handle.source_file_path,
-                    .source_line = handle.source_line,
-                    .source_column = handle.source_column,
-                    .target = std::string{target},
-                    .resolved_target_count = static_cast<std::uint32_t>(resolved_handles.size()),
-                    .resolved_targets_summary = join_handle_summary(resolved_handles),
-                }
-            );
+            bindings_.push_back(RuntimeBindingInfo{
+                .kind = kind,
+                .source_id = handle.id,
+                .source_kind = handle.kind,
+                .source_handle = handle.debug_handle,
+                .source_name = handle.name.empty() ? handle.label : handle.name,
+                .source_bucket = handle.source_bucket,
+                .source_reference = handle.source_reference,
+                .source_file_path = handle.source_file_path,
+                .source_line = handle.source_line,
+                .source_column = handle.source_column,
+                .target = std::string{target},
+                .resolved_target_count = static_cast<std::uint32_t>(resolved_handles.size()),
+                .resolved_targets_summary = join_handle_summary(resolved_handles),
+            });
         };
 
         for (std::size_t index = 0; index < triggers.size(); ++index)
@@ -592,13 +605,11 @@ namespace RelayCore::gameplay
         {
             if (const RuntimeObjectHandle* handle = registry.find_door(index); handle != nullptr)
             {
-                snapshot.doors.push_back(
-                    RuntimeDoorSnapshot{
-                        .runtime_id = handle->id,
-                        .open_fraction = doors[index].open_fraction,
-                        .state = doors[index].state,
-                    }
-                );
+                snapshot.doors.push_back(RuntimeDoorSnapshot{
+                    .runtime_id = handle->id,
+                    .open_fraction = doors[index].open_fraction,
+                    .state = doors[index].state,
+                });
             }
         }
 
@@ -606,12 +617,10 @@ namespace RelayCore::gameplay
         {
             if (const RuntimeObjectHandle* handle = registry.find_trigger(index); handle != nullptr)
             {
-                snapshot.triggers.push_back(
-                    RuntimeTriggerSnapshot{
-                        .runtime_id = handle->id,
-                        .fired = triggers[index].fired,
-                    }
-                );
+                snapshot.triggers.push_back(RuntimeTriggerSnapshot{
+                    .runtime_id = handle->id,
+                    .fired = triggers[index].fired,
+                });
             }
         }
 
@@ -619,29 +628,25 @@ namespace RelayCore::gameplay
         {
             if (const RuntimeObjectHandle* handle = registry.find_usable(index); handle != nullptr)
             {
-                snapshot.usables.push_back(
-                    RuntimeUsableSnapshot{
-                        .runtime_id = handle->id,
-                        .locked = usables[index].locked,
-                        .consumed = usables[index].consumed,
-                    }
-                );
+                snapshot.usables.push_back(RuntimeUsableSnapshot{
+                    .runtime_id = handle->id,
+                    .locked = usables[index].locked,
+                    .consumed = usables[index].consumed,
+                });
             }
         }
 
         for (const RuntimeTurret& turret : turrets)
         {
-            snapshot.turrets.push_back(
-                RuntimeTurretSnapshot{
-                    .authored_entity_index = turret.authored_entity_index,
-                    .health = turret.health,
-                    .cooldown_remaining_seconds = turret.cooldown_remaining_seconds,
-                    .warmup_remaining_seconds = turret.warmup_remaining_seconds,
-                    .enabled = turret.enabled,
-                    .destroyed = turret.destroyed,
-                    .warming_up = turret.warming_up,
-                }
-            );
+            snapshot.turrets.push_back(RuntimeTurretSnapshot{
+                .authored_entity_index = turret.authored_entity_index,
+                .health = turret.health,
+                .cooldown_remaining_seconds = turret.cooldown_remaining_seconds,
+                .warmup_remaining_seconds = turret.warmup_remaining_seconds,
+                .enabled = turret.enabled,
+                .destroyed = turret.destroyed,
+                .warming_up = turret.warming_up,
+            });
         }
 
         snapshot.player_combat = PlayerCombatSnapshot{

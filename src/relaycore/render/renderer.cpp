@@ -314,8 +314,7 @@ namespace RelayCore
         log::info("GLSL version: {}", glsl_version != nullptr ? glsl_version : "unknown");
         log::debug("Asset root: {}", core::asset_root_path().string());
 
-        commit_live_content_reload(
-            prepare_live_content_reload(config_, render::load_default_render_authoring_config())
+        commit_live_content_reload(prepare_live_content_reload(config_, render::load_default_render_authoring_config())
         );
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window);
@@ -708,11 +707,8 @@ namespace RelayCore
         glViewport(0, 0, viewport_width_, viewport_height_);
     }
 
-    auto Renderer::build_shadow_light_view_projection(
-        const float focus_distance,
-        const float radius,
-        const float depth
-    ) const -> glm::mat4
+    auto Renderer::build_shadow_light_view_projection(const float focus_distance, const float radius, const float depth)
+        const -> glm::mat4
     {
         RELAYCORE_PROFILE_FUNCTION();
         const glm::vec3 light_direction = safe_shadow_direction(config_.shadow_light_direction);
@@ -1071,63 +1067,23 @@ namespace RelayCore
         inspector_visualization_enabled_ = !inspector_visualization_enabled_;
     }
 
-    auto Renderer::consume_save_runtime_snapshot_requested() noexcept -> bool
+    auto Renderer::consume_iteration_command_requests() noexcept -> IterationCommandRequests
     {
-        return imgui_overlay_.consume_save_runtime_snapshot_requested();
-    }
-
-    auto Renderer::consume_restore_runtime_snapshot_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_restore_runtime_snapshot_requested();
-    }
-
-    auto Renderer::consume_open_first_authoring_warning_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_open_first_authoring_warning_requested();
-    }
-
-    auto Renderer::consume_dump_authoring_warnings_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_dump_authoring_warnings_requested();
-    }
-
-    auto Renderer::consume_open_first_runtime_registry_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_open_first_runtime_registry_requested();
-    }
-
-    auto Renderer::consume_dump_runtime_registry_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_dump_runtime_registry_requested();
-    }
-
-    auto Renderer::consume_open_first_runtime_binding_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_open_first_runtime_binding_requested();
-    }
-
-    auto Renderer::consume_dump_runtime_bindings_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_dump_runtime_bindings_requested();
-    }
-
-    auto Renderer::consume_dump_render_authoring_contract_requested() noexcept -> bool
-    {
-        return imgui_overlay_.consume_dump_render_authoring_contract_requested();
-    }
-
-    auto Renderer::authoring_warning_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return imgui_overlay_.authoring_warning_source_filter();
-    }
-
-    auto Renderer::runtime_registry_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return imgui_overlay_.runtime_registry_source_filter();
-    }
-
-    auto Renderer::runtime_binding_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return imgui_overlay_.runtime_binding_source_filter();
+        const debug::ImGuiOverlay::IterationCommandRequests overlay_requests =
+            imgui_overlay_.consume_iteration_command_requests();
+        IterationCommandRequests requests{};
+        requests.save_runtime_snapshot = overlay_requests.save_runtime_snapshot;
+        requests.restore_runtime_snapshot = overlay_requests.restore_runtime_snapshot;
+        requests.open_first_authoring_warning = overlay_requests.open_first_authoring_warning;
+        requests.dump_authoring_warnings = overlay_requests.dump_authoring_warnings;
+        requests.open_first_runtime_registry = overlay_requests.open_first_runtime_registry;
+        requests.dump_runtime_registry = overlay_requests.dump_runtime_registry;
+        requests.open_first_runtime_binding = overlay_requests.open_first_runtime_binding;
+        requests.dump_runtime_bindings = overlay_requests.dump_runtime_bindings;
+        requests.dump_render_authoring_contract = overlay_requests.dump_render_authoring_contract;
+        requests.authoring_warning_source_filter = overlay_requests.authoring_warning_source_filter;
+        requests.runtime_registry_source_filter = overlay_requests.runtime_registry_source_filter;
+        requests.runtime_binding_source_filter = overlay_requests.runtime_binding_source_filter;
+        return requests;
     }
 } // namespace RelayCore

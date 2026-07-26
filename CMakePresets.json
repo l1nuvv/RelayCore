@@ -156,6 +156,11 @@
     {
       "name": "test-debug",
       "configurePreset": "msvc-debug",
+      "filter": {
+        "exclude": {
+          "name": "^validation\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -163,6 +168,11 @@
     {
       "name": "test-relwithdebinfo",
       "configurePreset": "msvc-relwithdebinfo",
+      "filter": {
+        "exclude": {
+          "name": "^validation\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -170,6 +180,11 @@
     {
       "name": "test-asan",
       "configurePreset": "msvc-asan",
+      "filter": {
+        "exclude": {
+          "name": "^validation\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }

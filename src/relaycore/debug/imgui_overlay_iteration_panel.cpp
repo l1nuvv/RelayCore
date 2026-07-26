@@ -2,11 +2,26 @@
 
 #include "relaycore/debug/imgui_overlay_widgets.h"
 
+#include <algorithm>
 #include <imgui.h>
 #include <string_view>
 
 namespace RelayCore::debug
 {
+    namespace
+    {
+        [[nodiscard]] auto count_problem_runtime_bindings(const render::IterationDiagnostics& iteration) -> std::size_t
+        {
+            return static_cast<std::size_t>(std::count_if(
+                iteration.runtime_bindings.begin(),
+                iteration.runtime_bindings.end(),
+                [](const render::RuntimeBindingDiagnostics& binding) {
+                    return binding.unresolved_target || binding.ambiguous_target;
+                }
+            ));
+        }
+    } // namespace
+
     void draw_iteration_diagnostics_section(
         const render::IterationDiagnostics& iteration,
         ImGuiOverlayIterationPanelState& state
@@ -33,6 +48,8 @@ namespace RelayCore::debug
             );
             begin_metric_row("Warnings");
             ImGui::Text("%u", static_cast<unsigned>(iteration.authoring_warnings.size()));
+            begin_metric_row("Binding issues");
+            ImGui::Text("%u", static_cast<unsigned>(count_problem_runtime_bindings(iteration)));
             ImGui::EndTable();
         }
 
@@ -276,11 +293,27 @@ namespace RelayCore::debug
                     value_or_none(binding.source_kind),
                     value_or_none(binding.target)
                 );
-                ImGui::TextWrapped(
-                    "Resolved: %u | %s",
-                    binding.resolved_target_count,
-                    value_or_none(binding.resolved_targets_summary)
-                );
+                if (binding.unresolved_target)
+                {
+                    ImGui::TextColored(
+                        ImVec4(1.0F, 0.55F, 0.35F, 1.0F),
+                        "Resolved: 0 | unresolved runtime object link"
+                    );
+                } else if (binding.ambiguous_target)
+                {
+                    ImGui::TextColored(
+                        ImVec4(1.0F, 0.78F, 0.28F, 1.0F),
+                        "Resolved: %u | ambiguous runtime object link",
+                        binding.resolved_target_count
+                    );
+                } else
+                {
+                    ImGui::TextWrapped(
+                        "Resolved: %u | %s",
+                        binding.resolved_target_count,
+                        value_or_none(binding.resolved_targets_summary)
+                    );
+                }
                 ImGui::TextDisabled("Bucket: %s", bucket.data());
                 draw_source_open_button(
                     "Open Source",

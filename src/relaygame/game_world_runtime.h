@@ -57,9 +57,14 @@ namespace RelayGame
 
         [[nodiscard]] auto focused_usable_index() const noexcept -> int;
 
-        [[nodiscard]] auto consume_reload_level_requested() noexcept -> bool;
+        struct IterationCommandRequests {
+            bool reload_level = false;
+            bool open_inspector_source = false;
+            bool save_runtime_snapshot = false;
+            bool restore_runtime_snapshot = false;
+        };
 
-        [[nodiscard]] auto consume_open_inspector_source_requested() noexcept -> bool;
+        [[nodiscard]] auto consume_iteration_command_requests() noexcept -> IterationCommandRequests;
 
         struct InspectorRestoreState {
             RelayCore::gameplay::RuntimeObjectId runtime_object_id = 0;
@@ -87,12 +92,42 @@ namespace RelayGame
 
         [[nodiscard]] auto simulation_tick() const noexcept -> std::uint64_t;
 
-        [[nodiscard]] auto consume_save_runtime_snapshot_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_restore_runtime_snapshot_requested() noexcept -> bool;
-
         [[nodiscard]] auto authoring_warnings() const noexcept
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
+
+        [[nodiscard]] auto mission_status() const -> RelayCore::gameplay::MissionStatus;
+
+        [[nodiscard]] auto player_combat_state() const noexcept -> const RelayCore::gameplay::PlayerCombatState&;
+
+        [[nodiscard]] auto inventory_item_ids() const noexcept -> const std::vector<std::string>&;
+
+        [[nodiscard]] auto activated_target_ids() const noexcept -> const std::vector<std::string>&;
+
+        [[nodiscard]] auto signaled_target_ids() const noexcept -> const std::vector<std::string>&;
+
+        [[nodiscard]] auto debug_apply_usable_interaction(std::size_t usable_index)
+            -> RelayCore::gameplay::InteractionEvent;
+
+        [[nodiscard]] auto debug_apply_player_fire(const glm::vec3& origin, const glm::vec3& direction)
+            -> RelayCore::gameplay::CombatFireResult;
+
+        [[nodiscard]] auto debug_player_position() const noexcept -> glm::vec3;
+
+        [[nodiscard]] auto debug_player_eye_position() const noexcept -> glm::vec3;
+
+        void debug_set_player_position(const glm::vec3& position) noexcept;
+
+        [[nodiscard]] auto debug_apply_combat_threats(
+            const RelayCore::physics::Aabb& player_bounds,
+            const glm::vec3& player_eye_position,
+            float dt
+        ) -> RelayCore::gameplay::CombatThreatResult;
+
+        [[nodiscard]] auto debug_advance_player_respawn(float dt) noexcept -> bool;
+
+        void debug_tick_combat(float dt) noexcept;
+
+        void debug_update_mission(const RelayCore::physics::Aabb& actor_bounds);
 
     private:
         struct AudioCueSet {
@@ -166,7 +201,17 @@ namespace RelayGame
             RelayCore::render::InspectorDiagnostics pinned_diagnostics{};
         };
 
-        void simulate_fixed_step(const RelayCore::FrameInfo& sim_frame, RelayCore::EngineServices& services);
+        struct FrameGameplayActions {
+            bool use_pressed = false;
+            bool fire_pressed = false;
+            bool inspector_pin_pressed = false;
+        };
+
+        void simulate_fixed_step(
+            const RelayCore::FrameInfo& sim_frame,
+            FrameGameplayActions& actions,
+            RelayCore::EngineServices& services
+        );
 
         void refresh_runtime_usables_and_focus();
 
@@ -205,6 +250,8 @@ namespace RelayGame
             RelayCore::render::HudEventStyle style,
             float duration_seconds
         );
+
+        [[nodiscard]] auto advance_dead_player_state(float sim_delta_seconds) noexcept -> bool;
 
         void respawn_player_at_spawn() noexcept;
 
@@ -246,6 +293,22 @@ namespace RelayGame
 
         void clear_loaded_level_state() noexcept;
 
+        void begin_frame_update(float delta_seconds);
+
+        [[nodiscard]] auto capture_frame_gameplay_actions() noexcept -> FrameGameplayActions;
+
+        [[nodiscard]] auto capture_frame_iteration_commands() noexcept -> IterationCommandRequests;
+
+        void handle_inspector_pin_input();
+
+        void update_trigger_overlap_count();
+
+        void refresh_active_door_count() noexcept;
+
+        void update_door_runtime(float sim_delta_seconds) noexcept;
+
+        void finalize_frame_update(RelayCore::EngineServices& services, float delta_seconds);
+
         RelayGame::GroundedPlayerController player_controller_{};
         RelayCore::BlockoutLevel level_{};
         std::vector<RelayCore::gameplay::RuntimeDoor> doors_{};
@@ -270,7 +333,12 @@ namespace RelayGame
         RuntimeState runtime_state_{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings_{};
         std::vector<RelayGame::RuntimeAudioZone> audio_zones_{};
+        RelayCore::gameplay::MissionDefinition loaded_mission_definition_{};
+        std::vector<RelayCore::gameplay::RuntimeTurret> loaded_level_turrets_{};
+        std::vector<RelayCore::gameplay::RuntimeHazardVolume> loaded_level_hazards_{};
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
+        FrameGameplayActions frame_actions_{};
+        IterationCommandRequests frame_iteration_commands_{};
         FixedSimulationLoop simulation_loop_{1.0 / 120.0, 8};
     };
 } // namespace RelayGame

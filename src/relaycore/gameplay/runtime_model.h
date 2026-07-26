@@ -174,6 +174,8 @@ namespace RelayCore::gameplay
 
     [[nodiscard]] auto runtime_binding_kind_label(RuntimeBindingKind kind) -> const char*;
 
+    [[nodiscard]] auto runtime_binding_requires_resolved_target(RuntimeBindingKind kind) -> bool;
+
     [[nodiscard]] auto capture_runtime_level_snapshot(
         std::string level_path,
         const RuntimeObjectRegistry& registry,

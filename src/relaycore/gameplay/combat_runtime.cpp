@@ -19,6 +19,8 @@ namespace RelayCore::gameplay
         using detail::parse_float_property;
         using detail::property_or;
 
+        constexpr float kMinHazardDamageSpan = 0.25F;
+
         [[nodiscard]] auto is_turret_entity(const EntitySpawnData& entity) -> bool
         {
             if (entity.classname != "gameplay_entity")
@@ -67,6 +69,12 @@ namespace RelayCore::gameplay
                 turret.bounds.maxs.y - 0.12F,
                 turret.origin.z,
             };
+        }
+
+        [[nodiscard]] auto is_damage_hazard_solid(const BlockoutSolid& solid) -> bool
+        {
+            const glm::vec3 extents = solid.maxs - solid.mins;
+            return extents.x >= kMinHazardDamageSpan && extents.z >= kMinHazardDamageSpan;
         }
 
         [[nodiscard]] auto ray_hits_world_before_distance(
@@ -172,7 +180,7 @@ namespace RelayCore::gameplay
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
             const BlockoutSolid& solid = level.solids[solid_index];
-            if (solid.material != SurfaceMaterial::Hazard)
+            if (solid.material != SurfaceMaterial::Hazard || !is_damage_hazard_solid(solid))
             {
                 continue;
             }

@@ -358,22 +358,20 @@ namespace RelayGame
         diagnostics.reserve(runtime_registry_.objects().size());
         for (const RelayCore::gameplay::RuntimeObjectHandle& handle : runtime_registry_.objects())
         {
-            diagnostics.push_back(
-                RelayCore::render::RuntimeRegistryEntryDiagnostics{
-                    .runtime_id = handle.id,
-                    .storage_index = static_cast<std::uint32_t>(handle.storage_index),
-                    .runtime_handle = handle.debug_handle,
-                    .object_kind = RelayCore::gameplay::runtime_object_kind_label(handle.kind),
-                    .source_bucket = handle.source_bucket,
-                    .name = handle.name,
-                    .label = handle.label,
-                    .target = handle.target,
-                    .source_reference = handle.source_reference,
-                    .source_file_path = handle.source_file_path,
-                    .source_line = handle.source_line,
-                    .source_column = handle.source_column,
-                }
-            );
+            diagnostics.push_back(RelayCore::render::RuntimeRegistryEntryDiagnostics{
+                .runtime_id = handle.id,
+                .storage_index = static_cast<std::uint32_t>(handle.storage_index),
+                .runtime_handle = handle.debug_handle,
+                .object_kind = RelayCore::gameplay::runtime_object_kind_label(handle.kind),
+                .source_bucket = handle.source_bucket,
+                .name = handle.name,
+                .label = handle.label,
+                .target = handle.target,
+                .source_reference = handle.source_reference,
+                .source_file_path = handle.source_file_path,
+                .source_line = handle.source_line,
+                .source_column = handle.source_column,
+            });
         }
         return diagnostics;
     }
@@ -386,22 +384,26 @@ namespace RelayGame
         diagnostics.reserve(runtime_registry_.bindings().size());
         for (const RelayCore::gameplay::RuntimeBindingInfo& binding : runtime_registry_.bindings())
         {
-            diagnostics.push_back(
-                RelayCore::render::RuntimeBindingDiagnostics{
-                    .source_handle = binding.source_handle,
-                    .source_kind = RelayCore::gameplay::runtime_object_kind_label(binding.source_kind),
-                    .source_name = binding.source_name,
-                    .source_bucket = binding.source_bucket,
-                    .binding_kind = RelayCore::gameplay::runtime_binding_kind_label(binding.kind),
-                    .target = binding.target,
-                    .source_reference = binding.source_reference,
-                    .source_file_path = binding.source_file_path,
-                    .source_line = binding.source_line,
-                    .source_column = binding.source_column,
-                    .resolved_target_count = binding.resolved_target_count,
-                    .resolved_targets_summary = binding.resolved_targets_summary,
-                }
-            );
+            const bool expects_resolved_target =
+                RelayCore::gameplay::runtime_binding_requires_resolved_target(binding.kind);
+            diagnostics.push_back(RelayCore::render::RuntimeBindingDiagnostics{
+                .source_handle = binding.source_handle,
+                .source_kind = RelayCore::gameplay::runtime_object_kind_label(binding.source_kind),
+                .source_name = binding.source_name,
+                .source_bucket = binding.source_bucket,
+                .binding_kind = RelayCore::gameplay::runtime_binding_kind_label(binding.kind),
+                .target = binding.target,
+                .source_reference = binding.source_reference,
+                .source_file_path = binding.source_file_path,
+                .source_line = binding.source_line,
+                .source_column = binding.source_column,
+                .expects_resolved_target = expects_resolved_target,
+                .unresolved_target =
+                    expects_resolved_target && !binding.target.empty() && binding.resolved_target_count == 0,
+                .ambiguous_target = expects_resolved_target && binding.resolved_target_count > 1,
+                .resolved_target_count = binding.resolved_target_count,
+                .resolved_targets_summary = binding.resolved_targets_summary,
+            });
         }
         return diagnostics;
     }

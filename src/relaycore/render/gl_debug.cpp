@@ -16,6 +16,7 @@ namespace RelayCore::render::gl_debug
     namespace
     {
         bool g_available = false; ///< True after the debug callback has been installed.
+        constexpr GLuint kNvidiaShaderStateRecompileWarningId = 131218;
 
 #ifndef APIENTRY
 #define APIENTRY __stdcall
@@ -42,6 +43,22 @@ namespace RelayCore::render::gl_debug
                 default:
                     return "unknown";
             }
+        }
+
+        void suppress_known_driver_noise()
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            // NVIDIA commonly emits this one-time startup advisory when shader variants
+            // are specialized against render-pass state. It is useful when profiling
+            // driver behavior, but too noisy for normal runtime diagnostics.
+            glDebugMessageControl(
+                GL_DEBUG_SOURCE_API,
+                GL_DEBUG_TYPE_PERFORMANCE,
+                GL_DONT_CARE,
+                1,
+                &kNvidiaShaderStateRecompileWarningId,
+                GL_FALSE
+            );
         }
 
         /**
@@ -112,6 +129,7 @@ namespace RelayCore::render::gl_debug
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
         glDebugMessageCallback(debug_callback, nullptr);
         glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, GL_FALSE);
+        suppress_known_driver_noise();
         g_available = true;
         log::info("OpenGL debug output enabled");
     }

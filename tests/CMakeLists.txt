@@ -34,8 +34,16 @@ target_sources(
 target_sources(
     relaycore_content_validation
     PRIVATE
+        ../src/relaygame/game_world_runtime.cpp
+        ../src/relaygame/game_world_runtime_diagnostics.cpp
+        ../src/relaygame/game_world_runtime_feedback.cpp
+        ../src/relaygame/game_world_runtime_update.cpp
         ../src/relaygame/level_session_builder.cpp
+        ../src/relaygame/player_controller.cpp
+        ../src/relaygame/player_controller_config.cpp
+        ../src/relaygame/player_controller_motion.cpp
         ../src/relaygame/world_audio_zones.cpp
+        ../src/relaygame/world_inspector.cpp
         content_validation_main.cpp
         shipped_content_validation_tests.cpp
 )

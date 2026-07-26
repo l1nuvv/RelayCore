@@ -27,6 +27,21 @@ namespace RelayCore
 {
     class Renderer {
     public:
+        struct IterationCommandRequests {
+            bool save_runtime_snapshot = false;
+            bool restore_runtime_snapshot = false;
+            bool open_first_authoring_warning = false;
+            bool dump_authoring_warnings = false;
+            bool open_first_runtime_registry = false;
+            bool dump_runtime_registry = false;
+            bool open_first_runtime_binding = false;
+            bool dump_runtime_bindings = false;
+            bool dump_render_authoring_contract = false;
+            render::DiagnosticsSourceFilter authoring_warning_source_filter = render::DiagnosticsSourceFilter::All;
+            render::DiagnosticsSourceFilter runtime_registry_source_filter = render::DiagnosticsSourceFilter::All;
+            render::DiagnosticsSourceFilter runtime_binding_source_filter = render::DiagnosticsSourceFilter::All;
+        };
+
         struct PreparedLiveContentReload {
             render::RendererConfig config{};
             render::RenderAuthoringConfig authoring_config{};
@@ -115,29 +130,7 @@ namespace RelayCore
 
         void toggle_inspector_visualization_enabled() noexcept;
 
-        [[nodiscard]] auto consume_save_runtime_snapshot_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_restore_runtime_snapshot_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_open_first_authoring_warning_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_dump_authoring_warnings_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_open_first_runtime_registry_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_dump_runtime_registry_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_open_first_runtime_binding_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_dump_runtime_bindings_requested() noexcept -> bool;
-
-        [[nodiscard]] auto consume_dump_render_authoring_contract_requested() noexcept -> bool;
-
-        [[nodiscard]] auto authoring_warning_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
-
-        [[nodiscard]] auto runtime_registry_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
-
-        [[nodiscard]] auto runtime_binding_source_filter() const noexcept -> render::DiagnosticsSourceFilter;
+        [[nodiscard]] auto consume_iteration_command_requests() noexcept -> IterationCommandRequests;
 
     private:
         static constexpr std::size_t kShadowCascadeCount = 2;
@@ -182,6 +175,6 @@ namespace RelayCore
         std::array<unsigned int, kShadowCascadeCount> shadow_depth_texture_ids_{};
         std::array<glm::mat4, kShadowCascadeCount> shadow_light_view_projections_{};
         float scene_time_seconds_ = 0.0F;
-        bool inspector_visualization_enabled_ = true;
+        bool inspector_visualization_enabled_ = false;
     };
 } // namespace RelayCore

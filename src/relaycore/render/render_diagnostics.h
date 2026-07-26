@@ -264,6 +264,9 @@ namespace RelayCore::render
         std::string source_file_path{};
         int source_line = 0;
         int source_column = 0;
+        bool expects_resolved_target = false;
+        bool unresolved_target = false;
+        bool ambiguous_target = false;
         std::uint32_t resolved_target_count = 0;
         std::string resolved_targets_summary{};
     };

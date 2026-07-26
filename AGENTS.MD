@@ -21,6 +21,21 @@ Current stack:
 - vcpkg manifest mode
 - GitHub Actions
 
+## Agent execution context
+Assume work may happen through a repository-aware coding agent in an IDE/chat workflow.
+
+Implications:
+- prefer repository-local evidence over assumptions
+- inspect code, build output, logs, configs, and file layout before proposing a fix
+- use explicit repository-relative paths when referring to files
+- prefer copy-pasteable commands
+- do not rely on hidden IDE state or unstated environment assumptions
+- if a command depends on working directory, preset, target, or toolchain, state that explicitly
+- when validation cannot be run locally, say exactly what is missing
+
+Treat agent help as implementation support, not autonomous product direction.
+Keep reasoning grounded in the current repository state.
+
 ## Identity and direction
 RelayCore is not a historical recreation of GoldSrc.
 
@@ -166,6 +181,30 @@ Treat the repository roughly as having these responsibilities:
 
 Respect existing boundaries instead of spreading responsibilities across unrelated modules.
 
+## Deterministic execution
+When a task is fundamentally deterministic, prefer explicit commands and scripts over free-form reasoning.
+
+Examples:
+- configure/build/test flows
+- formatting
+- documentation generation
+- asset copy/validation steps
+- CI-like verification
+- searching for compiler or CMake errors in logs
+
+When a command is the source of truth, use the command.
+Do not replace concrete verification with confidence language.
+
+## Structured reasoning protocol
+For non-trivial tasks, reason in this order:
+1. what is known from code, logs, build output, config, or file layout
+2. what the most likely cause or design pressure is
+3. which checks were performed
+4. which smallest viable patch best fits the current architecture
+5. which validation step can confirm or reject it
+
+Do not skip directly from intuition to implementation when repository evidence is available.
+
 ## Frame/update phase guidance
 Prefer a stable and explicit frame pipeline.
 
@@ -212,6 +251,7 @@ Avoid:
 - hidden ownership or ambiguous lifetime
 - excessive pointer chasing in update/render critical paths
 - mixing authored data concerns with runtime simulation logic
+- raw binary persistence of in-memory structs as a default data boundary
 
 ## Authored data and content contract
 Prefer data-driven behavior where it improves iteration and clarity, especially for:
@@ -423,6 +463,23 @@ Prefer small patches by default, but refactor when one or more of these become t
 
 When refactoring, prefer the smallest split that restores clarity.
 
+## Tooling and repository config guidance
+When editing tooling/config files, prefer narrowly scoped changes and call out workflow impact.
+
+Pay special attention to:
+- CMakeLists.txt and preset behavior
+- vcpkg manifest and dependency changes
+- .clang-format and resulting diff churn
+- .clangd compile database assumptions
+- Doxyfile INPUT / RECURSIVE / path alignment
+- CI workflow behavior
+
+Rules:
+- do not silently raise minimum tool versions without a clear reason
+- do not silently change dependency baselines or triplet assumptions
+- do not assume generated files are present unless the build flow creates them
+- when changing docs/build tooling, provide the exact command needed to verify the change
+
 ## Working style
 For non-trivial tasks:
 1. inspect the existing code and summarize how the relevant subsystem currently works
@@ -441,6 +498,30 @@ Rules:
 - keep scope tight
 - prefer a small correct patch over a large theoretically cleaner rewrite
 - when blocked by ambiguity, analyze current code and propose the narrowest practical next move
+
+## Validation and evidence
+If claiming that something works, provide evidence.
+
+Include when possible:
+- which command(s) were run
+- which preset/target/configuration was used
+- what passed
+- what failed
+- what could not be validated locally
+
+Prefer concrete outputs over confidence statements.
+If validation was not possible, say that explicitly.
+
+## Red lines
+These are absolute constraints unless the user explicitly asks otherwise:
+- do not delete files without saying so clearly
+- do not silently change working config values just because they look suspicious
+- do not silently change presets, CI behavior, dependency versions, asset formats, or runtime paths
+- do not claim success without stating what was verified
+- do not present guesses as confirmed facts
+- do not rewrite unrelated files to make a patch look cleaner
+
+If something looks wrong but its purpose is unclear, inspect first, then act.
 
 ## Communication style
 Be concise, technical, practical, and implementation-focused.
@@ -508,6 +589,7 @@ After code changes, use the most relevant checks available, such as:
 - run relevant doctest targets if affected
 - verify the app still launches if startup/runtime code changed
 - verify no obvious regressions in overlay/logging if diagnostics were touched
+- run doxygen when changing documentation tooling or Doxygen comments
 
 Prefer tests around:
 - parsing/loading
@@ -530,6 +612,14 @@ For implementation tasks, done usually means:
 - risks and follow-ups were called out
 - the result is still understandable by a solo developer maintaining the codebase
 
+## End-of-task handoff
+For substantial tasks, end with:
+- done
+- unresolved risks / what did not work
+- next recommended step
+
+When relevant, include failed hypotheses or dead ends so future work does not repeat them.
+
 ## Good task patterns
 Good examples:
 - “Analyze the door interaction path, find why close/open toggling fails, propose a minimal fix, then validate the build.”
@@ -537,3 +627,4 @@ Good examples:
 - “Inspect rendering of blockout chunks, explain visibility/culling flow, and suggest the next incremental step toward room-scale indoor FPS content.”
 - “Analyze how this subsystem supports or weakens the intended GoldSource/Half-Life-1-like feel, then propose the smallest practical improvement.”
 - “Inspect how authored level data becomes runtime data, identify stringly-typed or weakly validated areas, and propose the smallest practical conversion toward typed structures.”
+- “Inspect the current CMake or Doxygen setup, explain the exact failure cause from config + logs, and propose the smallest practical fix.”

@@ -44,6 +44,7 @@ set(RELAYCORE_ENGINE_SOURCES
     world/blockout_loader_parse.cpp
     world/blockout_loader_transform.cpp
     world/blockout_loader_pipeline.cpp
+    world/blockout_loader_templates.cpp
     world/blockout_loader_validation.cpp
     world/surface_material_utils.cpp
 )
@@ -97,6 +98,7 @@ set(RELAYCORE_ENGINE_HEADERS
     world/blockout_level.h
     world/blockout_loader.h
     world/blockout_loader_entity_props.h
+    world/blockout_loader_templates.h
     world/blockout_loader_validation.h
     world/surface_material_utils.h
 )

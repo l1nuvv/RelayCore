@@ -3,8 +3,10 @@
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/gameplay/mission_runtime.h"
+#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaygame/game_world_runtime.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/world_audio_zones.h"
 
@@ -12,8 +14,11 @@
 #include <array>
 #include <doctest/doctest.h>
 #include <filesystem>
+#include <glm/geometric.hpp>
 #include <string_view>
 #include <vector>
+
+#include "acceptance_slice_harness.h"
 
 namespace
 {
@@ -26,6 +31,7 @@ namespace
     using RelayCore::gameplay::MissionRuntime;
     using RelayCore::gameplay::PlayerCombatState;
     using RelayCore::gameplay::RuntimeDoor;
+    using RelayCore::gameplay::RuntimeHazardVolume;
     using RelayCore::gameplay::RuntimeTrigger;
     using RelayCore::gameplay::RuntimeTurret;
     using RelayCore::gameplay::RuntimeUsable;
@@ -54,7 +60,7 @@ namespace
             .pickup_count = 1,
             .turret_count = 1,
             .audio_zone_count = 4,
-            .mission_step_count = 5,
+            .mission_step_count = 6,
         },
         ShippedMapExpectation{
             .file_name = "stress_room_01.toml",
@@ -85,6 +91,87 @@ namespace
         return std::filesystem::path(__FILE__).parent_path().parent_path();
     }
 
+    auto find_usable_index(const RelayGame::GameWorldRuntime& runtime, const auto& predicate) -> std::size_t
+    {
+        const auto& usables = runtime.usables();
+        const auto it = std::find_if(usables.begin(), usables.end(), predicate);
+        REQUIRE(it != usables.end());
+        return static_cast<std::size_t>(std::distance(usables.begin(), it));
+    }
+
+    auto find_door_index(const RelayGame::GameWorldRuntime& runtime, const auto& predicate) -> std::size_t
+    {
+        const auto& doors = runtime.doors();
+        const auto it = std::find_if(doors.begin(), doors.end(), predicate);
+        REQUIRE(it != doors.end());
+        return static_cast<std::size_t>(std::distance(doors.begin(), it));
+    }
+
+    auto find_farthest_hazard(const RelayGame::LevelSession& session) -> const RuntimeHazardVolume&
+    {
+        REQUIRE_FALSE(session.combat.hazards.empty());
+        const auto it = std::max_element(
+            session.combat.hazards.begin(),
+            session.combat.hazards.end(),
+            [&session](const RuntimeHazardVolume& lhs, const RuntimeHazardVolume& rhs) {
+                const float lhs_distance =
+                    glm::distance(AcceptanceHarness::bounds_center(lhs.bounds), session.spawn_position);
+                const float rhs_distance =
+                    glm::distance(AcceptanceHarness::bounds_center(rhs.bounds), session.spawn_position);
+                return lhs_distance < rhs_distance;
+            }
+        );
+        REQUIRE(it != session.combat.hazards.end());
+        return *it;
+    }
+
+    void progress_test_room_runtime_to_turret_unlock(
+        RelayGame::GameWorldRuntime& runtime,
+        const RelayGame::LevelSession& session
+    )
+    {
+        const std::size_t outer_panel_index = find_usable_index(runtime, [](const RuntimeUsable& usable) {
+            return usable.label == "Открыть внешний шлюз";
+        });
+        const std::size_t pickup_index = find_usable_index(runtime, [](const RuntimeUsable& usable) {
+            return usable.action_kind == UsableActionKind::PickupItem && usable.item_id == "lab_keycard";
+        });
+        const std::size_t reader_index = find_usable_index(runtime, [](const RuntimeUsable& usable) {
+            return usable.label == "Подтвердить допуск";
+        });
+
+        const RelayCore::physics::Aabb spawn_bounds =
+            AcceptanceHarness::make_actor_bounds({0.0F, 1.0F, -1.4F}, {0.3F, 0.9F, 0.3F});
+        const RelayCore::physics::Aabb airlock_bounds = AcceptanceHarness::make_actor_bounds(
+            AcceptanceHarness::bounds_center(session.mission_definition.steps[1].bounds),
+            {0.3F, 0.9F, 0.3F}
+        );
+
+        CHECK(runtime.debug_apply_usable_interaction(outer_panel_index).kind == UseInteractionOutcome::ActivatedTarget);
+        runtime.debug_update_mission(spawn_bounds);
+        runtime.debug_update_mission(airlock_bounds);
+        CHECK(runtime.debug_apply_usable_interaction(pickup_index).kind == UseInteractionOutcome::PickedUpItem);
+        runtime.debug_update_mission(spawn_bounds);
+        CHECK(runtime.debug_apply_usable_interaction(reader_index).kind == UseInteractionOutcome::ActivatedTarget);
+        runtime.debug_update_mission(spawn_bounds);
+
+        REQUIRE(runtime.turrets().size() == 1);
+        const glm::vec3 shot_origin = runtime.turrets()[0].origin + glm::vec3{-1.8F, 0.0F, -1.2F};
+        const glm::vec3 shot_direction = runtime.turrets()[0].origin - shot_origin;
+
+        const auto first_shot = runtime.debug_apply_player_fire(shot_origin, shot_direction);
+        CHECK(first_shot.fired);
+        CHECK(first_shot.hit_turret);
+        CHECK_FALSE(first_shot.killed_turret);
+
+        runtime.debug_tick_combat(0.30F);
+
+        const auto second_shot = runtime.debug_apply_player_fire(shot_origin, shot_direction);
+        CHECK(second_shot.fired);
+        CHECK(second_shot.hit_turret);
+        CHECK(second_shot.killed_turret);
+    }
+
     void init_test_log()
     {
         RelayCore::log::shutdown();
@@ -95,48 +182,6 @@ namespace
         RelayCore::log::init(log_config);
     }
 
-    auto make_actor_bounds(const glm::vec3& center, const glm::vec3& half_extents) -> RelayCore::physics::Aabb
-    {
-        return {center - half_extents, center + half_extents};
-    }
-
-    auto bounds_center(const RelayCore::physics::Aabb& bounds) -> glm::vec3
-    {
-        return (bounds.mins + bounds.maxs) * 0.5F;
-    }
-
-    void apply_combat_target_event(
-        const CombatTargetEvent& event,
-        std::vector<RuntimeDoor>& doors,
-        std::vector<RuntimeUsable>& usables,
-        std::vector<std::string>& activated_targets,
-        std::vector<std::string>& signaled_targets
-    )
-    {
-        if (event.target.empty())
-        {
-            return;
-        }
-
-        switch (event.action)
-        {
-            case CombatTargetActionKind::ActivateTarget:
-                if (RelayCore::gameplay::activate_target(event.target, doors))
-                {
-                    activated_targets.push_back(event.target);
-                }
-                break;
-            case CombatTargetActionKind::SignalTarget:
-                if (RelayCore::gameplay::signal_target(event.target, doors, usables))
-                {
-                    signaled_targets.push_back(event.target);
-                }
-                break;
-            case CombatTargetActionKind::None:
-            default:
-                break;
-        }
-    }
 } // namespace
 
 TEST_CASE("all shipped maps build clean runtime content")
@@ -215,6 +260,13 @@ TEST_CASE("all shipped maps build clean runtime content")
         CHECK(session.triggers.size() == expectation.trigger_count);
         CHECK(session.authoring_warnings.empty());
         CHECK_FALSE(session.runtime_registry.empty());
+        CHECK(session.combat.turrets.size() == expectation.turret_count);
+        CHECK(session.mission_definition.steps.size() == expectation.mission_step_count);
+        CHECK(session.audio_zones.size() == expectation.audio_zone_count);
+        for (const RelayGame::RuntimeAudioZone& zone : session.audio_zones)
+        {
+            CHECK(std::filesystem::exists(zone.loop_path));
+        }
     }
 
     RelayCore::log::shutdown();
@@ -276,7 +328,8 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     MissionRuntime mission_runtime{};
     mission_runtime.reset(definition);
 
-    const RelayCore::physics::Aabb spawn_bounds = make_actor_bounds({0.0F, 1.0F, -36.0F}, {0.3F, 0.9F, 0.3F});
+    const RelayCore::physics::Aabb spawn_bounds =
+        AcceptanceHarness::make_actor_bounds({0.0F, 1.0F, -36.0F}, {0.3F, 0.9F, 0.3F});
     CHECK(mission_runtime.status().title == "Open the south bulkhead");
 
     CHECK(
@@ -296,9 +349,9 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     mission_runtime.update(spawn_bounds, doors, inventory_items, activated_targets, signaled_targets);
     CHECK(mission_runtime.status().title == "Reach the cargo junction");
 
-    const glm::vec3 zone_center = bounds_center(definition.steps[1].bounds);
+    const glm::vec3 zone_center = AcceptanceHarness::bounds_center(definition.steps[1].bounds);
     mission_runtime.update(
-        make_actor_bounds(zone_center, {0.3F, 0.9F, 0.3F}),
+        AcceptanceHarness::make_actor_bounds(zone_center, {0.3F, 0.9F, 0.3F}),
         doors,
         inventory_items,
         activated_targets,
@@ -323,7 +376,8 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     CHECK(mission_runtime.status().title == "Cross the north checkpoint");
 
     InteractionEvent last_event{};
-    const RelayCore::physics::Aabb checkpoint_bounds = make_actor_bounds({0.0F, 1.0F, 74.0F}, {0.3F, 0.9F, 0.3F});
+    const RelayCore::physics::Aabb checkpoint_bounds =
+        AcceptanceHarness::make_actor_bounds({0.0F, 1.0F, 74.0F}, {0.3F, 0.9F, 0.3F});
     CHECK(
         RelayCore::gameplay::update_trigger_overlaps(
             checkpoint_bounds,
@@ -399,176 +453,405 @@ TEST_CASE("test_room preserves the combat acceptance slice")
     init_test_log();
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
-    const RelayCore::BlockoutLevel level = RelayCore::load_blockout_level(level_path);
+    auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
 
-    std::vector<RuntimeDoor> doors;
-    std::vector<RuntimeTrigger> triggers;
-    std::vector<RuntimeUsable> usables;
-    RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
-    std::vector<RuntimeTurret> turrets = RelayCore::gameplay::build_runtime_combat(level).turrets;
+    REQUIRE(scenario.find_outer_panel() != nullptr);
+    REQUIRE(scenario.find_pickup() != nullptr);
+    REQUIRE(scenario.find_reader() != nullptr);
+    REQUIRE(scenario.find_terminal() != nullptr);
+    REQUIRE(scenario.find_outer_door() != nullptr);
+    REQUIRE(scenario.find_inner_door() != nullptr);
+    REQUIRE(scenario.turrets.size() == 1);
+    CHECK(scenario.find_terminal()->locked);
 
-    const MissionDefinition definition = MissionBuilder{level}.build();
-    REQUIRE(definition.steps.size() == 5);
-    CHECK(definition.steps[0].target == "intake/outer_bulkhead");
-    CHECK(definition.steps[2].target == "lab_keycard");
-    CHECK(definition.steps[3].target == "inner_bulkhead");
-    CHECK(definition.steps[4].target == "lab_relay_console");
+    CHECK(scenario.mission_runtime.status().title == "Открыть внешний шлюз");
+    CHECK(scenario.open_outer_bulkhead() == UseInteractionOutcome::ActivatedTarget);
+    CHECK(scenario.find_outer_door()->state == DoorState::Opening);
 
-    auto outer_panel = std::find_if(usables.begin(), usables.end(), [](const RuntimeUsable& usable) {
-        return usable.label == "Открыть внешний шлюз";
-    });
-    auto pickup = std::find_if(usables.begin(), usables.end(), [](const RuntimeUsable& usable) {
-        return usable.action_kind == UsableActionKind::PickupItem && usable.item_id == "lab_keycard";
-    });
-    auto reader = std::find_if(usables.begin(), usables.end(), [](const RuntimeUsable& usable) {
-        return usable.label == "Подтвердить допуск";
-    });
-    auto terminal = std::find_if(usables.begin(), usables.end(), [](const RuntimeUsable& usable) {
+    scenario.update_mission_at_spawn();
+    CHECK(scenario.mission_runtime.status().title == "Войти в шлюзовую камеру");
+
+    scenario.update_mission_at_airlock();
+    CHECK(scenario.mission_runtime.status().title == "Забрать ключ-карту лаборатории");
+
+    CHECK(scenario.pick_up_lab_keycard() == UseInteractionOutcome::PickedUpItem);
+    CHECK(scenario.find_pickup()->consumed);
+    CHECK(scenario.mission_runtime.status().title == "Разблокировать внутренний шлюз");
+
+    CHECK(scenario.authorize_inner_bulkhead() == UseInteractionOutcome::ActivatedTarget);
+    CHECK(scenario.find_reader()->consumed);
+    CHECK(scenario.find_inner_door()->state == DoorState::Opening);
+    CHECK(scenario.mission_runtime.status().title == "Стабилизировать ядро ретранслятора");
+
+    CHECK(scenario.activate_terminal() == UseInteractionOutcome::Locked);
+    CHECK(scenario.find_terminal()->locked);
+
+    const AcceptanceHarness::TurretKillSequence shots = scenario.destroy_turret();
+    CHECK(shots.first_shot.fired);
+    CHECK(shots.first_shot.hit_turret);
+    CHECK_FALSE(shots.first_shot.killed_turret);
+    CHECK(shots.second_shot.fired);
+    CHECK(shots.second_shot.hit_turret);
+    CHECK(shots.second_shot.killed_turret);
+    CHECK(scenario.turrets[0].destroyed);
+    CHECK_FALSE(scenario.find_terminal()->locked);
+    CHECK(
+        std::find(scenario.signaled_targets.begin(), scenario.signaled_targets.end(), "lab_console_lock")
+        != scenario.signaled_targets.end()
+    );
+
+    CHECK(scenario.activate_terminal() == UseInteractionOutcome::ActivatedTarget);
+    scenario.update_mission_at_spawn();
+
+    const auto post_console_status = scenario.mission_runtime.status();
+    CHECK_FALSE(post_console_status.completed);
+    CHECK(post_console_status.current_step == 6);
+    CHECK(post_console_status.title == "Выйти к реакторной галерее");
+
+    scenario.update_mission_at_gallery();
+
+    const auto status = scenario.mission_runtime.status();
+    CHECK(status.completed);
+    CHECK(status.current_step == scenario.session.mission_definition.steps.size());
+    CHECK(status.title == "Проход к реакторной галерее открыт");
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room level session preserves the typed acceptance contract")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = level_path.string();
+
+    const RelayGame::LevelSession session = RelayGame::LevelSessionBuilder{config}.build();
+
+    CHECK(session.level_path == level_path);
+    CHECK(session.spawn_view_angles.has_value());
+    CHECK(session.doors.size() == 2);
+    CHECK(session.triggers.size() == 1);
+    CHECK(session.usables.size() >= 4);
+    CHECK(session.combat.turrets.size() == 1);
+    CHECK_FALSE(session.combat.hazards.empty());
+    CHECK(session.mission_definition.steps.size() == 6);
+    CHECK(session.mission_definition.steps[0].target == "intake/outer_bulkhead");
+    CHECK(session.mission_definition.steps[4].target == "lab_relay_console");
+    CHECK(session.audio_zones.size() == 4);
+    CHECK(session.authoring_warnings.empty());
+    CHECK_FALSE(session.runtime_registry.empty());
+
+    const auto console = std::find_if(session.usables.begin(), session.usables.end(), [](const RuntimeUsable& usable) {
         return usable.name == "lab_console_lock";
     });
-    auto outer_door = std::find_if(doors.begin(), doors.end(), [](const RuntimeDoor& door) {
+    REQUIRE(console != session.usables.end());
+    CHECK(console->locked);
+
+    for (const RelayGame::RuntimeAudioZone& zone : session.audio_zones)
+    {
+        CHECK(std::filesystem::exists(zone.loop_path));
+    }
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room snapshot restore preserves mid-slice runtime progress")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
+
+    REQUIRE(scenario.find_outer_panel() != nullptr);
+    REQUIRE(scenario.find_pickup() != nullptr);
+    REQUIRE(scenario.find_reader() != nullptr);
+    REQUIRE(scenario.find_terminal() != nullptr);
+    REQUIRE(scenario.find_outer_door() != nullptr);
+    REQUIRE(scenario.find_inner_door() != nullptr);
+    REQUIRE(scenario.turrets.size() == 1);
+
+    scenario.progress_to_turret_unlock_state();
+    CHECK(scenario.mission_runtime.status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(scenario.turrets[0].destroyed);
+    CHECK_FALSE(scenario.find_terminal()->locked);
+
+    const auto snapshot = scenario.capture_snapshot(77);
+    scenario.corrupt_runtime_state_after_snapshot();
+
+    const auto restore = scenario.restore_snapshot(snapshot);
+
+    CHECK(restore.restored);
+    CHECK(restore.restored_doors == 2);
+    CHECK(restore.restored_usables >= 3);
+    CHECK(restore.restored_turrets == 1);
+    REQUIRE(scenario.find_outer_door() != nullptr);
+    REQUIRE(scenario.find_inner_door() != nullptr);
+    REQUIRE(scenario.find_pickup() != nullptr);
+    REQUIRE(scenario.find_reader() != nullptr);
+    REQUIRE(scenario.find_terminal() != nullptr);
+    CHECK(scenario.find_outer_door()->state == DoorState::Opening);
+    CHECK(scenario.find_inner_door()->state == DoorState::Opening);
+    CHECK(scenario.find_pickup()->consumed);
+    CHECK(scenario.find_reader()->consumed);
+    CHECK_FALSE(scenario.find_terminal()->locked);
+    REQUIRE(scenario.inventory_items.size() == 1);
+    CHECK(scenario.inventory_items[0] == "lab_keycard");
+    CHECK(
+        std::find(scenario.signaled_targets.begin(), scenario.signaled_targets.end(), "lab_console_lock")
+        != scenario.signaled_targets.end()
+    );
+    CHECK(scenario.turrets[0].destroyed);
+    CHECK(scenario.player_combat.alive);
+    CHECK(scenario.player_combat.kills == 1);
+    CHECK(scenario.player_combat.shots_fired == 2);
+    CHECK(scenario.mission_runtime.status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(scenario.mission_runtime.status().current_step == 5);
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room snapshot restore preserves the completed acceptance slice")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
+
+    scenario.complete_acceptance_slice();
+    const auto completed_status = scenario.mission_runtime.status();
+    REQUIRE(completed_status.completed);
+    REQUIRE(completed_status.current_step == scenario.session.mission_definition.steps.size());
+
+    const auto snapshot = scenario.capture_snapshot(128);
+    scenario.corrupt_runtime_state_after_snapshot();
+    scenario.mission_runtime.reset(scenario.session.mission_definition);
+    scenario.player_combat.kills = 0;
+    scenario.player_combat.shots_fired = 0;
+
+    const auto restore = scenario.restore_snapshot(snapshot);
+
+    CHECK(restore.restored);
+    CHECK(scenario.mission_runtime.status().completed);
+    CHECK(scenario.mission_runtime.status().current_step == scenario.session.mission_definition.steps.size());
+    CHECK(scenario.mission_runtime.status().title == "Проход к реакторной галерее открыт");
+    CHECK_FALSE(scenario.find_terminal()->locked);
+    CHECK(scenario.turrets[0].destroyed);
+    CHECK(scenario.player_combat.alive);
+    CHECK(scenario.player_combat.kills == 1);
+    CHECK(scenario.player_combat.shots_fired == 2);
+    REQUIRE(scenario.inventory_items.size() == 1);
+    CHECK(scenario.inventory_items[0] == "lab_keycard");
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room game world runtime preserves the golden path progression")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    RelayCore::core::EngineConfig config{};
+    config.gameplay.level_path = level_path.string();
+
+    const RelayGame::LevelSession session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    RelayGame::GameWorldRuntime runtime{};
+    runtime.load_level_session(config, session);
+
+    const std::size_t outer_door_index = find_door_index(runtime, [](const RuntimeDoor& door) {
         return door.name == "intake/outer_bulkhead";
     });
-    auto inner_door = std::find_if(doors.begin(), doors.end(), [](const RuntimeDoor& door) {
+    const std::size_t inner_door_index = find_door_index(runtime, [](const RuntimeDoor& door) {
         return door.name == "inner_bulkhead";
     });
+    const std::size_t terminal_index = find_usable_index(runtime, [](const RuntimeUsable& usable) {
+        return usable.name == "lab_console_lock";
+    });
 
-    REQUIRE(outer_panel != usables.end());
-    REQUIRE(pickup != usables.end());
-    REQUIRE(reader != usables.end());
-    REQUIRE(terminal != usables.end());
-    REQUIRE(outer_door != doors.end());
-    REQUIRE(inner_door != doors.end());
-    REQUIRE(turrets.size() == 1);
-    CHECK(terminal->locked);
+    const RelayCore::physics::Aabb spawn_bounds =
+        AcceptanceHarness::make_actor_bounds({0.0F, 1.0F, -1.4F}, {0.3F, 0.9F, 0.3F});
+    const RelayCore::physics::Aabb gallery_bounds = AcceptanceHarness::make_actor_bounds(
+        AcceptanceHarness::bounds_center(session.mission_definition.steps.back().bounds),
+        {0.3F, 0.9F, 0.3F}
+    );
 
-    std::vector<std::string> inventory_items;
-    std::vector<std::string> activated_targets;
-    std::vector<std::string> signaled_targets;
-    MissionRuntime mission_runtime{};
-    mission_runtime.reset(definition);
+    CHECK(runtime.mission_status().title == "Открыть внешний шлюз");
+    progress_test_room_runtime_to_turret_unlock(runtime, session);
 
-    const RelayCore::physics::Aabb spawn_bounds = make_actor_bounds({0.0F, 1.0F, -1.4F}, {0.3F, 0.9F, 0.3F});
-    CHECK(mission_runtime.status().title == "Открыть внешний шлюз");
-
+    CHECK(runtime.doors()[outer_door_index].state == DoorState::Opening);
+    CHECK(runtime.doors()[inner_door_index].state == DoorState::Opening);
+    CHECK(runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(runtime.turrets()[0].destroyed);
+    CHECK_FALSE(runtime.usables()[terminal_index].locked);
+    CHECK(runtime.player_combat_state().shots_fired == 2);
+    CHECK(runtime.player_combat_state().kills == 1);
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
-            *outer_panel,
-            doors,
-            usables,
-            inventory_items,
-            activated_targets,
-            signaled_targets
-        )
-            .kind
-        == UseInteractionOutcome::ActivatedTarget
+        std::find(runtime.inventory_item_ids().begin(), runtime.inventory_item_ids().end(), "lab_keycard")
+        != runtime.inventory_item_ids().end()
     );
-    CHECK(outer_door->state == DoorState::Opening);
-
-    mission_runtime.update(spawn_bounds, doors, inventory_items, activated_targets, signaled_targets);
-    CHECK(mission_runtime.status().title == "Войти в шлюзовую камеру");
-
-    const glm::vec3 airlock_center = bounds_center(definition.steps[1].bounds);
-    mission_runtime.update(
-        make_actor_bounds(airlock_center, {0.3F, 0.9F, 0.3F}),
-        doors,
-        inventory_items,
-        activated_targets,
-        signaled_targets
-    );
-    CHECK(mission_runtime.status().title == "Забрать ключ-карту лаборатории");
-
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
-            *pickup,
-            doors,
-            usables,
-            inventory_items,
-            activated_targets,
-            signaled_targets
-        )
-            .kind
-        == UseInteractionOutcome::PickedUpItem
+        std::find(runtime.signaled_target_ids().begin(), runtime.signaled_target_ids().end(), "lab_console_lock")
+        != runtime.signaled_target_ids().end()
     );
-    mission_runtime.update(spawn_bounds, doors, inventory_items, activated_targets, signaled_targets);
-    CHECK(mission_runtime.status().title == "Разблокировать внутренний шлюз");
 
-    CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
-            *reader,
-            doors,
-            usables,
-            inventory_items,
-            activated_targets,
-            signaled_targets
-        )
-            .kind
-        == UseInteractionOutcome::ActivatedTarget
-    );
-    CHECK(inner_door->state == DoorState::Opening);
+    CHECK(runtime.debug_apply_usable_interaction(terminal_index).kind == UseInteractionOutcome::ActivatedTarget);
+    runtime.debug_update_mission(spawn_bounds);
 
-    mission_runtime.update(spawn_bounds, doors, inventory_items, activated_targets, signaled_targets);
-    CHECK(mission_runtime.status().title == "Стабилизировать ядро ретранслятора");
+    const auto post_console_status = runtime.mission_status();
+    CHECK_FALSE(post_console_status.completed);
+    CHECK(post_console_status.current_step == 6);
+    CHECK(post_console_status.title == "Выйти к реакторной галерее");
 
-    CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
-            *terminal,
-            doors,
-            usables,
-            inventory_items,
-            activated_targets,
-            signaled_targets
-        )
-            .kind
-        == UseInteractionOutcome::Locked
-    );
-    CHECK(terminal->locked);
+    runtime.debug_update_mission(gallery_bounds);
 
-    PlayerCombatState player_combat{};
-    RelayCore::gameplay::reset_player_combat_state(player_combat);
-    player_combat.weapon_range = 16.0F;
-    player_combat.weapon_damage = 25.0F;
-
-    const glm::vec3 shot_origin = turrets[0].origin + glm::vec3{-1.8F, 0.0F, -1.2F};
-    const glm::vec3 shot_direction = turrets[0].origin - shot_origin;
-
-    const RelayCore::gameplay::CombatFireResult first_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, shot_origin, shot_direction, player_combat, turrets);
-    CHECK(first_shot.fired);
-    CHECK(first_shot.hit_turret);
-    CHECK_FALSE(first_shot.killed_turret);
-
-    RelayCore::gameplay::tick_combat_state(0.30F, player_combat, turrets);
-
-    const RelayCore::gameplay::CombatFireResult second_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, shot_origin, shot_direction, player_combat, turrets);
-    CHECK(second_shot.fired);
-    CHECK(second_shot.hit_turret);
-    CHECK(second_shot.killed_turret);
-    apply_combat_target_event(second_shot.target_event, doors, usables, activated_targets, signaled_targets);
-
-    CHECK(turrets[0].destroyed);
-    CHECK_FALSE(terminal->locked);
-    CHECK(std::find(signaled_targets.begin(), signaled_targets.end(), "lab_console_lock") != signaled_targets.end());
-
-    CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
-            *terminal,
-            doors,
-            usables,
-            inventory_items,
-            activated_targets,
-            signaled_targets
-        )
-            .kind
-        == UseInteractionOutcome::ActivatedTarget
-    );
-    mission_runtime.update(spawn_bounds, doors, inventory_items, activated_targets, signaled_targets);
-
-    const auto status = mission_runtime.status();
+    const auto status = runtime.mission_status();
     CHECK(status.completed);
-    CHECK(status.current_step == definition.steps.size());
-    CHECK(status.title == "Лаборатория наблюдения защищена");
+    CHECK(status.current_step == session.mission_definition.steps.size());
+    CHECK(status.title == "Проход к реакторной галерее открыт");
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room game world runtime snapshot restore preserves mid-slice progression")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    RelayCore::core::EngineConfig config{};
+    config.gameplay.level_path = level_path.string();
+
+    const RelayGame::LevelSession session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    RelayGame::GameWorldRuntime runtime{};
+    runtime.load_level_session(config, session);
+    progress_test_room_runtime_to_turret_unlock(runtime, session);
+
+    const auto snapshot = runtime.capture_runtime_snapshot();
+
+    RelayGame::GameWorldRuntime restored_runtime{};
+    restored_runtime.load_level_session(config, RelayGame::LevelSessionBuilder{config.gameplay}.build());
+    const auto restore = restored_runtime.restore_runtime_snapshot(snapshot);
+
+    const std::size_t outer_door_index = find_door_index(restored_runtime, [](const RuntimeDoor& door) {
+        return door.name == "intake/outer_bulkhead";
+    });
+    const std::size_t inner_door_index = find_door_index(restored_runtime, [](const RuntimeDoor& door) {
+        return door.name == "inner_bulkhead";
+    });
+    const std::size_t pickup_index = find_usable_index(restored_runtime, [](const RuntimeUsable& usable) {
+        return usable.action_kind == UsableActionKind::PickupItem && usable.item_id == "lab_keycard";
+    });
+    const std::size_t reader_index = find_usable_index(restored_runtime, [](const RuntimeUsable& usable) {
+        return usable.label == "Подтвердить допуск";
+    });
+    const std::size_t terminal_index = find_usable_index(restored_runtime, [](const RuntimeUsable& usable) {
+        return usable.name == "lab_console_lock";
+    });
+
+    CHECK(restore.restored);
+    CHECK(restore.restored_doors == 2);
+    CHECK(restore.restored_usables >= 3);
+    CHECK(restore.restored_turrets == 1);
+    CHECK(restored_runtime.doors()[outer_door_index].state == DoorState::Opening);
+    CHECK(restored_runtime.doors()[inner_door_index].state == DoorState::Opening);
+    CHECK(restored_runtime.usables()[pickup_index].consumed);
+    CHECK(restored_runtime.usables()[reader_index].consumed);
+    CHECK_FALSE(restored_runtime.usables()[terminal_index].locked);
+    CHECK(restored_runtime.turrets()[0].destroyed);
+    CHECK(restored_runtime.player_combat_state().alive);
+    CHECK(restored_runtime.player_combat_state().kills == 1);
+    CHECK(restored_runtime.player_combat_state().shots_fired == 2);
+    CHECK(restored_runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(restored_runtime.mission_status().current_step == 5);
+    CHECK(
+        std::find(
+            restored_runtime.inventory_item_ids().begin(),
+            restored_runtime.inventory_item_ids().end(),
+            "lab_keycard"
+        )
+        != restored_runtime.inventory_item_ids().end()
+    );
+    CHECK(
+        std::find(
+            restored_runtime.signaled_target_ids().begin(),
+            restored_runtime.signaled_target_ids().end(),
+            "lab_console_lock"
+        )
+        != restored_runtime.signaled_target_ids().end()
+    );
+
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("test_room game world runtime respawn preserves mid-slice progression")
+{
+    init_test_log();
+
+    const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
+    RelayCore::core::EngineConfig config{};
+    config.gameplay.level_path = level_path.string();
+
+    const RelayGame::LevelSession session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    RelayGame::GameWorldRuntime runtime{};
+    runtime.load_level_session(config, session);
+    progress_test_room_runtime_to_turret_unlock(runtime, session);
+
+    const std::size_t terminal_index = find_usable_index(runtime, [](const RuntimeUsable& usable) {
+        return usable.name == "lab_console_lock";
+    });
+    const RuntimeHazardVolume& hazard = find_farthest_hazard(session);
+    const glm::vec3 hazard_center = AcceptanceHarness::bounds_center(hazard.bounds);
+    const glm::vec3 hazard_position{hazard_center.x, session.spawn_position.y, hazard_center.z};
+    const RelayCore::physics::Aabb hazard_bounds =
+        AcceptanceHarness::make_actor_bounds(hazard_position, {0.3F, 0.9F, 0.3F});
+
+    runtime.debug_set_player_position(hazard_position);
+    const glm::vec3 position_before_death = runtime.debug_player_position();
+    CHECK(position_before_death.x == doctest::Approx(hazard_position.x));
+    CHECK(position_before_death.y == doctest::Approx(hazard_position.y));
+    CHECK(position_before_death.z == doctest::Approx(hazard_position.z));
+
+    const auto threat = runtime.debug_apply_combat_threats(hazard_bounds, runtime.debug_player_eye_position(), 6.0F);
+    CHECK(threat.player_died);
+    CHECK(threat.damage_taken >= runtime.player_combat_state().max_health);
+    CHECK(threat.hazard_contacts >= 1);
+    CHECK_FALSE(runtime.player_combat_state().alive);
+    CHECK(runtime.player_combat_state().deaths == 1);
+    CHECK(runtime.player_combat_state().last_damage_source == hazard.label);
+    CHECK(runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(runtime.mission_status().current_step == 5);
+    CHECK(runtime.turrets()[0].destroyed);
+    CHECK_FALSE(runtime.usables()[terminal_index].locked);
+    CHECK(
+        std::find(runtime.inventory_item_ids().begin(), runtime.inventory_item_ids().end(), "lab_keycard")
+        != runtime.inventory_item_ids().end()
+    );
+    CHECK(
+        std::find(runtime.signaled_target_ids().begin(), runtime.signaled_target_ids().end(), "lab_console_lock")
+        != runtime.signaled_target_ids().end()
+    );
+
+    CHECK_FALSE(runtime.debug_advance_player_respawn(0.60F));
+    CHECK_FALSE(runtime.player_combat_state().alive);
+    CHECK(runtime.player_combat_state().respawn_remaining_seconds == doctest::Approx(0.60F));
+
+    CHECK(runtime.debug_advance_player_respawn(0.60F));
+    CHECK(runtime.player_combat_state().alive);
+    CHECK(runtime.player_combat_state().health == doctest::Approx(runtime.player_combat_state().max_health));
+    CHECK(runtime.player_combat_state().deaths == 1);
+    CHECK(runtime.player_combat_state().last_damage_source.empty());
+
+    const glm::vec3 respawn_position = runtime.debug_player_position();
+    CHECK(respawn_position.x == doctest::Approx(session.spawn_position.x));
+    CHECK(respawn_position.y == doctest::Approx(session.spawn_position.y));
+    CHECK(respawn_position.z == doctest::Approx(session.spawn_position.z));
+    CHECK(runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
+    CHECK(runtime.mission_status().current_step == 5);
+    CHECK(runtime.turrets()[0].destroyed);
+    CHECK_FALSE(runtime.usables()[terminal_index].locked);
+    CHECK(
+        std::find(runtime.inventory_item_ids().begin(), runtime.inventory_item_ids().end(), "lab_keycard")
+        != runtime.inventory_item_ids().end()
+    );
 
     RelayCore::log::shutdown();
 }

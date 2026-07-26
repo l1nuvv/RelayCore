@@ -2,6 +2,7 @@
 
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/render/blockout_mesh_builder.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/render/render_diagnostics.h"
@@ -27,12 +28,21 @@ namespace RelayCore::render
 
 namespace RelayGame
 {
+    struct PreparedWorldSceneData {
+        RelayCore::render::BlockoutRenderData blockout{};
+        std::vector<RelayCore::render::LocalLight> local_lights{};
+        std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
+        std::uint32_t total_solids = 0;
+    };
+
+    [[nodiscard]] auto build_prepared_world_scene_data(
+        const RelayCore::BlockoutLevel& level,
+        const RelayCore::render::RenderAuthoringConfig& authoring_config
+    ) -> PreparedWorldSceneData;
+
     class WorldSceneRenderer {
     public:
-        void initialize(
-            const RelayCore::BlockoutLevel& level,
-            const RelayCore::render::RenderAuthoringConfig& authoring_config
-        );
+        void initialize(const PreparedWorldSceneData& scene_data);
 
         void shutdown() noexcept;
 
@@ -63,7 +73,8 @@ namespace RelayGame
             const RelayCore::render::PerspectiveCamera& camera,
             float scene_time_seconds,
             std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-            int focused_usable_index
+            int focused_usable_index,
+            bool highlight_visible
         );
 
         void render_turrets(

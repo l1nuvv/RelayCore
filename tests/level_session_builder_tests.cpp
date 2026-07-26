@@ -104,3 +104,50 @@ TEST_CASE("level session builder collects authoring overlap warnings")
     std::filesystem::remove(path);
     RelayCore::log::shutdown();
 }
+
+TEST_CASE("level session builder collects unresolved authored target warnings")
+{
+    RelayCore::log::shutdown();
+    RelayCore::log::Config log_config{};
+    log_config.enable_console_sink = false;
+    log_config.enable_timestamped_log = false;
+    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
+    RelayCore::log::init(log_config);
+
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_unresolved_target.toml";
+
+    {
+        std::ofstream out{path, std::ios::trunc};
+        REQUIRE(out.is_open());
+        out << "[[solid]]\n";
+        out << "origin = [0.0, -0.1, 0.0]\n";
+        out << "size = [8.0, 0.2, 8.0]\n";
+        out << "material = \"Floor\"\n\n";
+        out << "[[entity]]\n";
+        out << "classname = \"gameplay_entity\"\n";
+        out << "kind = \"usable\"\n";
+        out << "origin = [0.0, 1.0, 1.0]\n";
+        out << "size = [0.4, 0.6, 0.2]\n";
+        out << "label = \"Broken panel\"\n";
+        out << "targetname = \"broken_panel\"\n";
+        out << "target = \"missing_bulkhead\"\n";
+        out << "action = \"activate_target\"\n";
+    }
+
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = path.string();
+    RelayGame::LevelSessionBuilder builder{config};
+    const RelayGame::LevelSession session = builder.build();
+
+    REQUIRE(session.authoring_warnings.size() == 1);
+    CHECK(
+        session.authoring_warnings.front().message.find("Unresolved authored activate_target link") != std::string::npos
+    );
+    CHECK(session.authoring_warnings.front().message.find("missing_bulkhead") != std::string::npos);
+    CHECK(session.authoring_warnings.front().primary_line > 0);
+    CHECK(session.authoring_warnings.front().primary_column > 0);
+
+    std::filesystem::remove(path);
+    RelayCore::log::shutdown();
+}

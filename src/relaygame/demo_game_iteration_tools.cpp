@@ -1,4 +1,5 @@
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/renderer.h"
 #include "relaygame/demo_game_iteration_internal.h"
 
 namespace RelayGame::detail
