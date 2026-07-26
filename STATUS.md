@@ -16,7 +16,7 @@ RelayCore — приватный учебный проект, проходящи
 - RC-009 — закрыт: reusable trigger использует enter/exit semantics.
 - RC-010 — закрыт: vertical collision покрыта защитой от tunneling.
 - RC-011 — закрыт: ImGui backend initialization проверяется и откатывается при ошибке.
-- RC-012 — закрыт: gameplay input отделён от захвата ImGui.
+- RC-012 — закрыт: gameplay input отделён от ImGui с учётом relative mouse mode и реального UI interaction.
 - RC-013a — закрыт: CI выполняет Debug, RelWithDebInfo и ASan workflows.
 - RC-013b — закрыт: CI запускает targeted clang-tidy.
 - RC-014 — пропущен: проект приватный и не планируется к распространению.

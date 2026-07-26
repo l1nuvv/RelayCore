@@ -4,6 +4,7 @@
 #include "relaycore/core/spatial_index_2d.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/physics/player_motion.h"
+#include "relaygame/gameplay_input_ownership.h"
 
 #include <SDL3/SDL.h>
 #include <cstdint>
@@ -113,7 +114,7 @@ namespace RelayGame
 
         void enable_capture(RelayCore::Window& window) const;
 
-        void set_imgui_capture(bool keyboard_captured, bool mouse_captured) noexcept;
+        void set_input_ownership(GameplayInputOwnership ownership) noexcept;
 
         void on_event(const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services);
 
@@ -210,10 +211,8 @@ namespace RelayGame
         bool open_inspector_source_pressed_ = false;
         bool save_runtime_snapshot_pressed_ = false;
         bool restore_runtime_snapshot_pressed_ = false;
-        bool imgui_keyboard_captured_ = false;
-        bool imgui_mouse_captured_ = false;
-        bool window_has_focus_ = true;
-        bool window_minimized_ = false;
+        bool keyboard_input_blocked_ = false;
+        bool mouse_input_blocked_ = false;
         std::vector<RelayCore::physics::Aabb> static_collision_world_{};
         std::vector<RelayCore::physics::Aabb> collision_world_{};
         RelayCore::core::SpatialIndex2D<std::uint32_t> static_collision_index_{kStaticCollisionCellSize};

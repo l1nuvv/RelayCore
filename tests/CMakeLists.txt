@@ -18,6 +18,7 @@ target_sources(
         blockout_mesh_tests.cpp
         blockout_texture_atlas_tests.cpp
         fixed_simulation_loop_tests.cpp
+        gameplay_input_ownership_tests.cpp
         inspector_source_reference_tests.cpp
         level_session_builder_tests.cpp
         log_tests.cpp

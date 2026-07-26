@@ -9,6 +9,7 @@
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaygame/fixed_simulation_loop.h"
+#include "relaygame/gameplay_input_ownership.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/player_controller.h"
 #include "relaygame/world_audio_zones.h"
@@ -343,8 +344,9 @@ namespace RelayGame
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FrameGameplayActions frame_actions_{};
         IterationCommandRequests frame_iteration_commands_{};
-        bool imgui_keyboard_captured_ = false;
-        bool imgui_mouse_captured_ = false;
+        GameplayInputOwnership input_ownership_{};
+        bool window_has_focus_ = true;
+        bool window_minimized_ = false;
         FixedSimulationLoop simulation_loop_{1.0 / 120.0, 8};
     };
 } // namespace RelayGame

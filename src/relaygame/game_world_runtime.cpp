@@ -160,6 +160,23 @@ namespace RelayGame
     void GameWorldRuntime::on_event(const SDL_Event& event, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_FUNCTION();
+        switch (event.type)
+        {
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                window_has_focus_ = false;
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                window_has_focus_ = true;
+                break;
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                window_minimized_ = true;
+                break;
+            case SDL_EVENT_WINDOW_RESTORED:
+                window_minimized_ = false;
+                break;
+            default:
+                break;
+        }
         sync_imgui_capture(services);
         if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_MINIMIZED)
         {
@@ -170,23 +187,28 @@ namespace RelayGame
 
     void GameWorldRuntime::sync_imgui_capture(RelayCore::EngineServices& services) noexcept
     {
-        const bool keyboard_captured = services.renderer().wants_keyboard_capture();
-        const bool mouse_captured = services.renderer().wants_mouse_capture();
+        const GameplayInputOwnership ownership = resolve_gameplay_input_ownership(
+            window_has_focus_,
+            window_minimized_,
+            services.window().relative_mouse_mode(),
+            services.renderer().wants_keyboard_capture(),
+            services.renderer().wants_mouse_capture(),
+            services.renderer().wants_text_input()
+        );
 
-        if (!imgui_keyboard_captured_ && keyboard_captured)
+        if (!input_ownership_.keyboard_blocked && ownership.keyboard_blocked)
         {
             frame_actions_.use_pressed = false;
             interaction_state_.use_pressed = false;
         }
-        if (!imgui_mouse_captured_ && mouse_captured)
+        if (!input_ownership_.mouse_blocked && ownership.mouse_blocked)
         {
             frame_actions_.fire_pressed = false;
             combat_state_.fire_pressed = false;
         }
 
-        player_controller_.set_imgui_capture(keyboard_captured, mouse_captured);
-        imgui_keyboard_captured_ = keyboard_captured;
-        imgui_mouse_captured_ = mouse_captured;
+        player_controller_.set_input_ownership(ownership);
+        input_ownership_ = ownership;
     }
 
     void GameWorldRuntime::clear_pending_gameplay_actions() noexcept

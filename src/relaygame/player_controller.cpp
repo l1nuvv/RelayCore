@@ -71,10 +71,8 @@ namespace RelayGame
         open_inspector_source_pressed_ = false;
         save_runtime_snapshot_pressed_ = false;
         restore_runtime_snapshot_pressed_ = false;
-        imgui_keyboard_captured_ = false;
-        imgui_mouse_captured_ = false;
-        window_has_focus_ = true;
-        window_minimized_ = false;
+        keyboard_input_blocked_ = false;
+        mouse_input_blocked_ = false;
         pending_yaw_delta_ = 0.0F;
         pending_pitch_delta_ = 0.0F;
         movement_diagnostics_ = {};
@@ -93,20 +91,20 @@ namespace RelayGame
         RelayCore::log::info("Player capture enabled (movement bindings loaded from config)");
     }
 
-    void GroundedPlayerController::set_imgui_capture(const bool keyboard_captured, const bool mouse_captured) noexcept
+    void GroundedPlayerController::set_input_ownership(const GameplayInputOwnership ownership) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (!imgui_keyboard_captured_ && keyboard_captured)
+        if (!keyboard_input_blocked_ && ownership.keyboard_blocked)
         {
             clear_keyboard_transient_input();
         }
-        if (!imgui_mouse_captured_ && mouse_captured)
+        if (!mouse_input_blocked_ && ownership.mouse_blocked)
         {
             clear_mouse_transient_input();
         }
 
-        imgui_keyboard_captured_ = keyboard_captured;
-        imgui_mouse_captured_ = mouse_captured;
+        keyboard_input_blocked_ = ownership.keyboard_blocked;
+        mouse_input_blocked_ = ownership.mouse_blocked;
     }
 
     void GroundedPlayerController::on_event(
@@ -119,21 +117,17 @@ namespace RelayGame
         switch (event.type)
         {
             case SDL_EVENT_WINDOW_FOCUS_LOST:
-                window_has_focus_ = false;
                 clear_focus_loss_input();
                 break;
 
             case SDL_EVENT_WINDOW_FOCUS_GAINED:
-                window_has_focus_ = true;
                 break;
 
             case SDL_EVENT_WINDOW_MINIMIZED:
-                window_minimized_ = true;
                 clear_focus_loss_input();
                 break;
 
             case SDL_EVENT_WINDOW_RESTORED:
-                window_minimized_ = false;
                 break;
 
             case SDL_EVENT_MOUSE_MOTION:
@@ -170,6 +164,7 @@ namespace RelayGame
                 {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
+                    clear_mouse_transient_input();
                     RelayCore::log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");
                 } else if (binding_matches(config_.bindings.toggle_vsync, event.key.scancode))
                 {
@@ -252,12 +247,12 @@ namespace RelayGame
 
     auto GroundedPlayerController::gameplay_keyboard_input_enabled() const noexcept -> bool
     {
-        return window_has_focus_ && !window_minimized_ && !imgui_keyboard_captured_;
+        return !keyboard_input_blocked_;
     }
 
     auto GroundedPlayerController::gameplay_mouse_input_enabled() const noexcept -> bool
     {
-        return window_has_focus_ && !window_minimized_ && !imgui_mouse_captured_;
+        return !mouse_input_blocked_;
     }
 
     void GroundedPlayerController::flush_pending_look() noexcept

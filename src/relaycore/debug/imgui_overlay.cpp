@@ -308,6 +308,11 @@ namespace RelayCore::debug
         return config_.enabled && should_render() && ImGui::GetIO().WantCaptureMouse;
     }
 
+    auto ImGuiOverlay::wants_text_input() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantTextInput;
+    }
+
     auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool
     {
         return diagnostics_visible_;

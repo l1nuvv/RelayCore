@@ -28,6 +28,7 @@ set(RELAYCORE_DEMO_HEADERS
         demo_game_iteration_internal.h
         demo_game_runtime_ops.h
         fixed_simulation_loop.h
+        gameplay_input_ownership.h
         game_world_runtime.h
         level_session_builder.h
         player_controller.h

@@ -1117,6 +1117,11 @@ namespace RelayCore
         return imgui_overlay_.wants_mouse_capture();
     }
 
+    auto Renderer::wants_text_input() const noexcept -> bool
+    {
+        return imgui_overlay_.wants_text_input();
+    }
+
     void Renderer::set_diagnostics_visible(const bool visible) noexcept
     {
         imgui_overlay_.set_diagnostics_visible(visible);

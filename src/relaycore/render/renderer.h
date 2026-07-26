@@ -120,6 +120,8 @@ namespace RelayCore
 
         [[nodiscard]] auto wants_mouse_capture() const noexcept -> bool;
 
+        [[nodiscard]] auto wants_text_input() const noexcept -> bool;
+
         void set_diagnostics_visible(bool visible) noexcept;
 
         void toggle_diagnostics_visible() noexcept;

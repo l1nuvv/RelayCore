@@ -93,6 +93,8 @@ namespace RelayCore::debug
 
         [[nodiscard]] auto wants_mouse_capture() const noexcept -> bool;
 
+        [[nodiscard]] auto wants_text_input() const noexcept -> bool;
+
         [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
 
         void set_diagnostics_visible(bool visible) noexcept;
