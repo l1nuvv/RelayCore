@@ -699,6 +699,11 @@ namespace RelayCore::gameplay
         std::vector<RuntimeTrigger> staged_triggers = triggers;
         std::vector<RuntimeUsable> staged_usables = usables;
         std::vector<RuntimeTurret> staged_turrets = turrets;
+        for (RuntimeTrigger& trigger : staged_triggers)
+        {
+            trigger.was_overlapping = false;
+            trigger.overlapping = false;
+        }
         std::vector<std::string> staged_inventory(
             snapshot.inventory_item_ids.begin(),
             snapshot.inventory_item_ids.end()

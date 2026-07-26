@@ -114,6 +114,12 @@ namespace RelayCore::gameplay
             RELAYCORE_PROFILE_FUNCTION();
             std::uint32_t fired_count = 0;
 
+            for (RuntimeTrigger& trigger : triggers)
+            {
+                trigger.was_overlapping = trigger.overlapping;
+                trigger.overlapping = false;
+            }
+
             for (std::size_t candidate = 0; candidate < candidate_count; ++candidate)
             {
                 const std::size_t index = static_cast<std::size_t>(index_provider(candidate));
@@ -123,11 +129,17 @@ namespace RelayCore::gameplay
                 }
 
                 RuntimeTrigger& trigger = triggers[index];
-                if (trigger.once && trigger.fired)
+                if (!detail::aabb_overlaps(player_bounds, trigger.bounds))
                 {
                     continue;
                 }
-                if (!detail::aabb_overlaps(player_bounds, trigger.bounds))
+                if (trigger.overlapping)
+                {
+                    continue;
+                }
+
+                trigger.overlapping = true;
+                if (trigger.was_overlapping || (trigger.once && trigger.fired))
                 {
                     continue;
                 }

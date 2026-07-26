@@ -44,6 +44,8 @@ namespace RelayCore::gameplay
         physics::Aabb bounds{};
         bool once = true;
         bool fired = false;
+        bool was_overlapping = false;
+        bool overlapping = false;
         TriggerActionKind action_kind = TriggerActionKind::ActivateTarget;
     };
 

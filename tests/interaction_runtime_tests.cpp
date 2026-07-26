@@ -97,6 +97,7 @@ TEST_CASE("trigger overlap fires once and opens door")
     std::vector<std::string> signaled_target_ids;
     InteractionEvent last_event;
     const Aabb player = make_bounds({0.0F, 1.0F, 0.0F}, {0.3F, 0.9F, 0.3F});
+    const Aabb outside = make_bounds({3.0F, 1.0F, 0.0F}, {0.3F, 0.9F, 0.3F});
 
     CHECK(
         RelayCore::gameplay::update_trigger_overlaps(
@@ -130,6 +131,107 @@ TEST_CASE("trigger overlap fires once and opens door")
         )
         == 0
     );
+    CHECK(
+        RelayCore::gameplay::update_trigger_overlaps(
+            outside,
+            triggers,
+            doors,
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
+        )
+        == 0
+    );
+    CHECK(
+        RelayCore::gameplay::update_trigger_overlaps(
+            player,
+            triggers,
+            doors,
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
+        )
+        == 0
+    );
+}
+
+TEST_CASE("reusable trigger fires on entry, including the initial overlap")
+{
+    std::vector<RuntimeDoor> doors{
+        RuntimeDoor{.name = "door_0"},
+    };
+    std::vector<RuntimeUsable> usables;
+    std::vector<RuntimeTrigger> triggers{
+        RuntimeTrigger{
+            .target = "door_0",
+            .bounds = make_bounds({0.0F, 1.0F, 0.0F}, {0.5F, 1.0F, 0.5F}),
+            .once = false,
+        },
+    };
+    std::vector<std::string> activated_target_ids;
+    std::vector<std::string> signaled_target_ids;
+    InteractionEvent last_event;
+    const Aabb inside = make_bounds({0.0F, 1.0F, 0.0F}, {0.3F, 0.9F, 0.3F});
+    const Aabb outside = make_bounds({3.0F, 1.0F, 0.0F}, {0.3F, 0.9F, 0.3F});
+
+    CHECK(
+        RelayCore::gameplay::update_trigger_overlaps(
+            inside,
+            triggers,
+            doors,
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
+        )
+        == 1
+    );
+    CHECK(doors[0].state == DoorState::Opening);
+
+    for (int tick = 0; tick < 3; ++tick)
+    {
+        CHECK(
+            RelayCore::gameplay::update_trigger_overlaps(
+                inside,
+                triggers,
+                doors,
+                usables,
+                activated_target_ids,
+                signaled_target_ids,
+                last_event
+            )
+            == 0
+        );
+    }
+    CHECK(doors[0].state == DoorState::Opening);
+
+    CHECK(
+        RelayCore::gameplay::update_trigger_overlaps(
+            outside,
+            triggers,
+            doors,
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
+        )
+        == 0
+    );
+    CHECK(
+        RelayCore::gameplay::update_trigger_overlaps(
+            inside,
+            triggers,
+            doors,
+            usables,
+            activated_target_ids,
+            signaled_target_ids,
+            last_event
+        )
+        == 1
+    );
+    CHECK(doors[0].state == DoorState::Closing);
 }
 
 TEST_CASE("trigger signal action records signaled targets and updates receivers")
@@ -449,18 +551,17 @@ TEST_CASE("open-only door strategy never starts closing on repeated activation")
 TEST_CASE("door becomes usable even without explicit use entity")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "door_auto_use"},
                 {"width", "2.0"},
                 {"height", "2.0"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -543,42 +644,39 @@ TEST_CASE("closed door overlapping actor remains in dynamic blockers")
 TEST_CASE("runtime interactions read target links from entity properties")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 0.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 0.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "airlock_main"},
                 {"move_speed", "2.5"},
                 {"travel_distance", "3.0"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 1.0F, -1.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 1.0F, -1.0F},
+        .properties =
+            {
                 {"kind", "usable"},
                 {"target", "airlock_main"},
                 {"label", "Open airlock"},
                 {"use_radius", "3.5"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 2.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 2.0F},
+        .properties =
+            {
                 {"kind", "trigger"},
                 {"target", "airlock_main"},
                 {"targetname", "airlock_trigger"},
                 {"once", "false"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -612,11 +710,11 @@ TEST_CASE("runtime interactions read target links from entity properties")
 TEST_CASE("door bounds and slide offset can be configured from entity properties")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"width", "2.0"},
                 {"height", "2.6"},
@@ -625,8 +723,7 @@ TEST_CASE("door bounds and slide offset can be configured from entity properties
                 {"move_offset_y", "0.0"},
                 {"move_offset_z", "0.0"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -647,30 +744,28 @@ TEST_CASE("door bounds and slide offset can be configured from entity properties
 TEST_CASE("compact size and move_offset properties are supported by interaction runtime")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "door_compact"},
                 {"size", "2.0 2.6 0.18"},
                 {"move_offset", "2.25 0.0 0.0"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {-2.9F, 1.35F, 3.2F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {-2.9F, 1.35F, 3.2F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"target", "door_compact"},
                 {"label", "Open airlock"},
                 {"size", "0.18 0.45 0.28"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -694,19 +789,18 @@ TEST_CASE("compact size and move_offset properties are supported by interaction 
 TEST_CASE("panel mount_axis builds wall-mounted bounds")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {-5.0F, 1.35F, 2.8F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {-5.0F, 1.35F, 2.8F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"target", "outer_bulkhead"},
                 {"label", "Outer bulkhead"},
                 {"size", "0.34 0.52 0.12"},
                 {"mount_axis", "+x"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -729,36 +823,33 @@ TEST_CASE("panel mount_axis builds wall-mounted bounds")
 TEST_CASE("runtime interactions can be defined by kind property without dev classnames")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "marker",
-            .origin = {0.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "marker",
+        .origin = {0.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "door_schema"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "marker",
-            .origin = {0.0F, 1.0F, 3.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "marker",
+        .origin = {0.0F, 1.0F, 3.0F},
+        .properties =
+            {
                 {"kind", "usable"},
                 {"target", "door_schema"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "marker",
-            .origin = {0.0F, 0.0F, 6.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "marker",
+        .origin = {0.0F, 0.0F, 6.0F},
+        .properties =
+            {
                 {"kind", "trigger"},
                 {"target", "door_schema"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -777,30 +868,26 @@ TEST_CASE("runtime interactions can be defined by kind property without dev clas
 TEST_CASE("entities without kind are ignored by interaction runtime")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "func_door",
-            .origin = {0.0F, 0.0F, 4.0F},
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "dev_use",
-            .origin = {0.0F, 1.0F, 3.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "func_door",
+        .origin = {0.0F, 0.0F, 4.0F},
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "dev_use",
+        .origin = {0.0F, 1.0F, 3.0F},
+        .properties =
+            {
                 {"target", "legacy_door"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "trigger_once",
-            .origin = {0.0F, 0.0F, 6.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "trigger_once",
+        .origin = {0.0F, 0.0F, 6.0F},
+        .properties =
+            {
                 {"target", "legacy_door"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -816,21 +903,20 @@ TEST_CASE("entities without kind are ignored by interaction runtime")
 TEST_CASE("panel entities build visual bounds without adding a second auto-usable")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "airlock_main"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {-2.9F, 1.35F, 3.2F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {-2.9F, 1.35F, 3.2F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"target", "airlock_main"},
                 {"label", "Open airlock"},
@@ -838,8 +924,7 @@ TEST_CASE("panel entities build visual bounds without adding a second auto-usabl
                 {"height", "0.45"},
                 {"depth", "0.28"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -915,18 +1000,17 @@ TEST_CASE("panel focus tolerates slight off-center aim")
 TEST_CASE("pickup entities build collectible visual usables")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {-1.1F, 1.15F, 7.45F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {-1.1F, 1.15F, 7.45F},
+        .properties =
+            {
                 {"kind", "pickup"},
                 {"item_id", "lab_keycard"},
                 {"item_name", "Lab keycard"},
                 {"size", "0.22 0.12 0.02"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -949,21 +1033,20 @@ TEST_CASE("pickup entities build collectible visual usables")
 TEST_CASE("required_item metadata is preserved on panels")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 8.7F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 8.7F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "inner_bulkhead"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {1.6F, 1.35F, 7.4F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {1.6F, 1.35F, 7.4F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"target", "inner_bulkhead"},
                 {"label", "Unlock inner bulkhead"},
@@ -972,8 +1055,7 @@ TEST_CASE("required_item metadata is preserved on panels")
                 {"success_message", "Inner bulkhead command accepted"},
                 {"denied_message", "Lab keycard required"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -992,11 +1074,11 @@ TEST_CASE("required_item metadata is preserved on panels")
 TEST_CASE("signal action metadata is preserved on terminals")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 1.55F, 12.5F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 1.55F, 12.5F},
+        .properties =
+            {
                 {"kind", "terminal"},
                 {"target", "lab_relay_console"},
                 {"label", "Stabilize relay core"},
@@ -1004,8 +1086,7 @@ TEST_CASE("signal action metadata is preserved on terminals")
                 {"mount_axis", "-z"},
                 {"success_message", "Relay core stabilized"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
@@ -1023,34 +1104,32 @@ TEST_CASE("signal action metadata is preserved on terminals")
 TEST_CASE("locked single-use usable metadata and signal response are preserved")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {0.0F, 0.0F, 6.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {0.0F, 0.0F, 6.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "inner_door"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {-1.5F, 1.2F, 5.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {-1.5F, 1.2F, 5.0F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"target", "inner_door"},
                 {"label", "Prime relay"},
                 {"single_use", "true"},
                 {"chain_target", "reader_lock"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "gameplay_entity",
-            .origin = {1.5F, 1.2F, 5.0F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "gameplay_entity",
+        .origin = {1.5F, 1.2F, 5.0F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"targetname", "reader_lock"},
                 {"label", "Unlock reader"},
@@ -1058,8 +1137,7 @@ TEST_CASE("locked single-use usable metadata and signal response are preserved")
                 {"locked_message", "Reader is locked"},
                 {"signal_action", "unlock"},
             },
-        }
-    );
+    });
 
     std::vector<RuntimeDoor> doors;
     std::vector<RuntimeTrigger> triggers;
