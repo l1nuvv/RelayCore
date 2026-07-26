@@ -24,6 +24,7 @@ target_sources(
         render_authoring_config_tests.cpp
         runtime_model_tests.cpp
         combat_runtime_tests.cpp
+        engine_config_tests.cpp
         shader_source_loader_tests.cpp
         player_controller_tests.cpp
         world_audio_zones_tests.cpp
