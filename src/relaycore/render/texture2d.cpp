@@ -30,7 +30,7 @@ namespace RelayCore::render
         {
             throw std::runtime_error("Texture2D requires positive dimensions");
         }
-        if (pixels.size() != static_cast<std::size_t>(width * height * 4))
+        if (pixels.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4)
         {
             throw std::runtime_error("Texture2D RGBA upload size mismatch");
         }

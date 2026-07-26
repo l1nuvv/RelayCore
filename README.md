@@ -110,6 +110,15 @@ cmake --workflow --preset asan-discipline-workflow
 
 CI собирает demo в RelWithDebInfo, но не запускает графическое приложение. ASan проверяет unit-тесты и content validation без сборки или запуска demo.
 
+### clang-tidy
+
+```powershell
+cmake --fresh --preset msvc-debug
+pwsh -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug
+```
+
+Проверяются только production `.cpp` в `src/relaycore` и `src/relaygame`.
+
 Локальные preset'ы в `CMakeUserPresets.json` могут также содержать машинно-специфичные пути к MSVC/Windows SDK. После обновления Visual Studio, Windows SDK или CLion эти пути нужно синхронизировать.
 
 `BUILD_TESTING` обычно приходит из `include(CTest)`, а сам `CTest` рекомендуют подключать именно в верхнем `CMakeLists.txt`.

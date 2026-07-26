@@ -245,7 +245,7 @@ namespace RelayCore::detail
                 BlockoutSolid placed = found->second.solids[source_index];
                 placed.mins += offset;
                 placed.maxs += offset;
-                out_solids.push_back(std::move(placed));
+                out_solids.push_back(placed);
                 out_solid_sources.push_back(make_instanced_authored_source_location(
                     found->second.solid_sources[source_index],
                     *instance,

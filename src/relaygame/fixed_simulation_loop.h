@@ -40,7 +40,7 @@ namespace RelayGame
                     .elapsed_seconds = frame.elapsed_seconds - accumulator_seconds_ + step_seconds_,
                     .frame_index = tick_index_++,
                 };
-                std::forward<Callback>(callback)(sim_frame);
+                callback(sim_frame);
                 accumulator_seconds_ -= step_seconds_;
                 ++steps_executed;
             }

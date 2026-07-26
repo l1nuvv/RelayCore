@@ -418,7 +418,7 @@ namespace RelayCore
         transparent_shader_program_ = std::move(staged_reload.transparent_shader_program);
         shadow_program_ = std::move(staged_reload.shadow_shader_program);
         blockout_atlas_ = std::move(staged_reload.blockout_atlas);
-        config_ = std::move(staged_reload.config);
+        config_ = staged_reload.config;
         authoring_config_ = std::move(staged_reload.authoring_config);
         shadow_resources_ = std::move(staged_shadow_resources);
 

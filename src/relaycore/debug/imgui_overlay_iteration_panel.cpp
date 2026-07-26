@@ -231,7 +231,7 @@ namespace RelayCore::debug
                     value_or_none(entry.target),
                     entry.storage_index
                 );
-                ImGui::TextDisabled("Bucket: %s", bucket.data());
+                ImGui::TextDisabled("Bucket: %.*s", static_cast<int>(bucket.size()), bucket.data());
                 if (!entry.source_reference.empty())
                 {
                     ImGui::TextWrapped("Source: %s", entry.source_reference.c_str());
@@ -314,7 +314,7 @@ namespace RelayCore::debug
                         value_or_none(binding.resolved_targets_summary)
                     );
                 }
-                ImGui::TextDisabled("Bucket: %s", bucket.data());
+                ImGui::TextDisabled("Bucket: %.*s", static_cast<int>(bucket.size()), bucket.data());
                 draw_source_open_button(
                     "Open Source",
                     SourceLocation{

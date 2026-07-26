@@ -63,7 +63,7 @@ namespace RelayCore
             } catch (const std::exception& exception)
             {
                 const std::string_view message{exception.what()};
-                std::fprintf(stderr, "RelayCore exception: %s\n", message.data());
+                std::fprintf(stderr, "RelayCore exception: %s\n", exception.what());
                 std::fflush(stderr);
                 log::critical("Unhandled exception: {}", message);
                 log::flush();
@@ -71,8 +71,7 @@ namespace RelayCore
             }
         } catch (const std::exception& exception)
         {
-            const std::string_view message{exception.what()};
-            std::fprintf(stderr, "RelayCore logger initialization failed: %s\n", message.data());
+            std::fprintf(stderr, "RelayCore logger initialization failed: %s\n", exception.what());
             std::fflush(stderr);
             return 1;
         }
