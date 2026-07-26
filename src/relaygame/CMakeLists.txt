@@ -96,6 +96,8 @@ add_custom_command(
 
 add_custom_target(relaycore_demo_assets ALL DEPENDS "${RELAYCORE_DEMO_ASSET_STAMP}")
 
+add_dependencies(relaycore_demo relaycore_demo_assets)
+
 add_custom_command(
         TARGET relaycore_demo
         POST_BUILD
