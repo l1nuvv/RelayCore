@@ -18,6 +18,106 @@ namespace RelayCore::render
 {
     namespace
     {
+        class UniqueShader {
+        public:
+            UniqueShader() = default;
+
+            explicit UniqueShader(const GLuint shader) noexcept : shader_(shader) {}
+
+            ~UniqueShader() noexcept
+            {
+                reset();
+            }
+
+            UniqueShader(const UniqueShader&) = delete;
+            auto operator=(const UniqueShader&) -> UniqueShader& = delete;
+
+            UniqueShader(UniqueShader&& other) noexcept : shader_(std::exchange(other.shader_, 0)) {}
+
+            auto operator=(UniqueShader&& other) noexcept -> UniqueShader&
+            {
+                if (this != &other)
+                {
+                    reset();
+                    shader_ = std::exchange(other.shader_, 0);
+                }
+
+                return *this;
+            }
+
+            [[nodiscard]] auto get() const noexcept -> GLuint
+            {
+                return shader_;
+            }
+
+            auto release() noexcept -> GLuint
+            {
+                return std::exchange(shader_, 0);
+            }
+
+            void reset() noexcept
+            {
+                if (shader_ != 0)
+                {
+                    glDeleteShader(shader_);
+                    shader_ = 0;
+                }
+            }
+
+        private:
+            GLuint shader_ = 0;
+        };
+
+        class UniqueProgram {
+        public:
+            UniqueProgram() = default;
+
+            explicit UniqueProgram(const GLuint program) noexcept : program_(program) {}
+
+            ~UniqueProgram() noexcept
+            {
+                reset();
+            }
+
+            UniqueProgram(const UniqueProgram&) = delete;
+            auto operator=(const UniqueProgram&) -> UniqueProgram& = delete;
+
+            UniqueProgram(UniqueProgram&& other) noexcept : program_(std::exchange(other.program_, 0)) {}
+
+            auto operator=(UniqueProgram&& other) noexcept -> UniqueProgram&
+            {
+                if (this != &other)
+                {
+                    reset();
+                    program_ = std::exchange(other.program_, 0);
+                }
+
+                return *this;
+            }
+
+            [[nodiscard]] auto get() const noexcept -> GLuint
+            {
+                return program_;
+            }
+
+            auto release() noexcept -> GLuint
+            {
+                return std::exchange(program_, 0);
+            }
+
+            void reset() noexcept
+            {
+                if (program_ != 0)
+                {
+                    glDeleteProgram(program_);
+                    program_ = 0;
+                }
+            }
+
+        private:
+            GLuint program_ = 0;
+        };
+
         /**
          * @brief Builds a shader-compilation error message.
          * @param source_path Path to the shader source file.
@@ -98,44 +198,35 @@ namespace RelayCore::render
         const std::string fragment_source =
             load_shader_source(fragment_shader_path, source_patches.fragment_injected_source);
 
-        const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path);
-        const unsigned int fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path);
+        UniqueShader vertex_shader{compile_shader(GL_VERTEX_SHADER, vertex_source, vertex_shader_path)};
+        UniqueShader fragment_shader{compile_shader(GL_FRAGMENT_SHADER, fragment_source, fragment_shader_path)};
 
-        const unsigned int program = glCreateProgram();
-        if (program == 0)
+        UniqueProgram program{glCreateProgram()};
+        if (program.get() == 0)
         {
-            glDeleteShader(vertex_shader);
-            glDeleteShader(fragment_shader);
             throw std::runtime_error("glCreateProgram returned 0");
         }
 
-        glAttachShader(program, vertex_shader);
-        glAttachShader(program, fragment_shader);
-        glBindAttribLocation(program, 0, "in_position");
-        glBindAttribLocation(program, 1, "in_color");
-        glLinkProgram(program);
+        glAttachShader(program.get(), vertex_shader.get());
+        glAttachShader(program.get(), fragment_shader.get());
+        glBindAttribLocation(program.get(), 0, "in_position");
+        glBindAttribLocation(program.get(), 1, "in_color");
+        glLinkProgram(program.get());
 
         GLint link_status = GL_FALSE;
-        glGetProgramiv(program, GL_LINK_STATUS, &link_status);
+        glGetProgramiv(program.get(), GL_LINK_STATUS, &link_status);
         if (link_status != GL_TRUE)
         {
             GLint log_length = 0;
-            glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
+            glGetProgramiv(program.get(), GL_INFO_LOG_LENGTH, &log_length);
 
             std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
-            glGetProgramInfoLog(program, log_length, nullptr, info_log.data());
-
-            glDeleteShader(vertex_shader);
-            glDeleteShader(fragment_shader);
-            glDeleteProgram(program);
+            glGetProgramInfoLog(program.get(), log_length, nullptr, info_log.data());
 
             throw std::runtime_error(build_program_error_message(vertex_shader_path, fragment_shader_path, info_log));
         }
 
-        glDeleteShader(vertex_shader);
-        glDeleteShader(fragment_shader);
-
-        program_id_ = program;
+        program_id_ = program.release();
         uniform_location_cache_.clear();
     }
 
@@ -220,31 +311,30 @@ namespace RelayCore::render
     ) -> unsigned int
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const unsigned int shader = glCreateShader(shader_type);
-        if (shader == 0)
+        UniqueShader shader{glCreateShader(shader_type)};
+        if (shader.get() == 0)
         {
             throw std::runtime_error("glCreateShader returned 0");
         }
 
         const char* source_ptr = source.c_str();
-        glShaderSource(shader, 1, &source_ptr, nullptr);
-        glCompileShader(shader);
+        glShaderSource(shader.get(), 1, &source_ptr, nullptr);
+        glCompileShader(shader.get());
 
         GLint compile_status = GL_FALSE;
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
+        glGetShaderiv(shader.get(), GL_COMPILE_STATUS, &compile_status);
         if (compile_status != GL_TRUE)
         {
             GLint log_length = 0;
-            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
+            glGetShaderiv(shader.get(), GL_INFO_LOG_LENGTH, &log_length);
 
             std::string info_log(static_cast<std::size_t>(log_length > 1 ? log_length : 1), '\0');
-            glGetShaderInfoLog(shader, log_length, nullptr, info_log.data());
-            glDeleteShader(shader);
+            glGetShaderInfoLog(shader.get(), log_length, nullptr, info_log.data());
 
             const std::string stage = shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment";
             throw std::runtime_error(build_shader_error_message(source_path, stage, info_log));
         }
 
-        return shader;
+        return shader.release();
     }
 } // namespace RelayCore::render
