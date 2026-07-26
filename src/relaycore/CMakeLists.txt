@@ -126,13 +126,6 @@ target_include_directories(
         $<INSTALL_INTERFACE:include>
 )
 
-target_compile_definitions(
-    relaycore_engine
-    PRIVATE
-        RELAYCORE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
-        RELAYCORE_PROJECT_ROOT="${PROJECT_SOURCE_DIR}"
-)
-
 if (NOT RELAYCORE_ENABLE_AUDIO)
     target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_AUDIO_DISABLED)
 endif()

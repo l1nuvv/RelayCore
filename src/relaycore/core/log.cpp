@@ -7,17 +7,17 @@
 
 #include "relaycore/core/profiling.h"
 
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
 #include <algorithm>
 #include <ctime>
 #include <filesystem>
+#include <memory>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <stdexcept>
 #include <vector>
-
-#ifndef RELAYCORE_ASSET_DIR
-#define RELAYCORE_ASSET_DIR ""
-#endif
 
 namespace RelayCore::log
 {
@@ -70,14 +70,18 @@ namespace RelayCore::log
                 return requested_path;
             }
 
-            const std::filesystem::path asset_dir(RELAYCORE_ASSET_DIR);
-            if (!asset_dir.empty())
+            const std::unique_ptr<char, decltype(&SDL_free)> preference_path(
+                SDL_GetPrefPath("l1nuvv", "RelayCore"),
+                &SDL_free
+            );
+            if (preference_path == nullptr)
             {
-                const auto project_root = std::filesystem::weakly_canonical(asset_dir).parent_path();
-                return project_root / requested_path;
+                throw std::runtime_error(
+                    std::string("SDL_GetPrefPath failed while resolving logs directory: ") + SDL_GetError()
+                );
             }
 
-            return std::filesystem::absolute(requested_path);
+            return std::filesystem::path(preference_path.get()) / requested_path;
         }
 
         auto is_timestamped_run_log_filename(const std::string_view filename) -> bool
@@ -206,15 +210,12 @@ namespace RelayCore::log
 
         try
         {
-            const std::filesystem::path logs_dir = resolve_logs_directory(config.logs_directory);
-            std::filesystem::create_directories(logs_dir);
-            const std::filesystem::path resolved_logs_dir = std::filesystem::weakly_canonical(logs_dir);
             const std::string session_id = make_run_stamp();
 
             std::vector<spdlog::sink_ptr> sinks;
             g_run_log_path.clear();
             g_latest_log_path.clear();
-            g_session_id = session_id;
+            g_session_id.clear();
 
             if (config.enable_console_sink)
             {
@@ -225,29 +226,60 @@ namespace RelayCore::log
                 sinks.push_back(console_sink);
             }
 
-            if (config.enable_timestamped_log)
-            {
-                const auto run_path = resolved_logs_dir / make_run_filename(session_id);
-                auto run_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(run_path.string(), false);
-                run_file_sink->set_level(spdlog::level::trace);
-                run_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
-                sinks.push_back(run_file_sink);
+            const bool file_sinks_requested = config.enable_timestamped_log || config.enable_latest_log;
+            std::filesystem::path resolved_logs_dir;
+            std::string run_log_path;
+            std::string latest_log_path;
+            std::string file_sink_error;
 
-                g_run_log_path = run_path.string();
+            if (file_sinks_requested)
+            {
+                try
+                {
+                    const std::filesystem::path logs_dir = resolve_logs_directory(config.logs_directory);
+                    std::filesystem::create_directories(logs_dir);
+                    resolved_logs_dir = logs_dir;
+
+                    std::vector<spdlog::sink_ptr> file_sinks;
+                    if (config.enable_timestamped_log)
+                    {
+                        const auto run_path = resolved_logs_dir / make_run_filename(session_id);
+                        auto run_file_sink =
+                            std::make_shared<spdlog::sinks::basic_file_sink_mt>(run_path.string(), false);
+                        run_file_sink->set_level(spdlog::level::trace);
+                        run_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
+                        file_sinks.push_back(run_file_sink);
+                        run_log_path = run_path.string();
+                    }
+
+                    if (config.enable_latest_log)
+                    {
+                        const auto latest_path = resolved_logs_dir / config.latest_filename;
+                        auto latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                            latest_path.string(),
+                            config.truncate_latest_log
+                        );
+                        latest_file_sink->set_level(spdlog::level::trace);
+                        latest_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
+                        file_sinks.push_back(latest_file_sink);
+                        latest_log_path = latest_path.string();
+                    }
+
+                    sinks.insert(sinks.end(), file_sinks.begin(), file_sinks.end());
+                } catch (const std::exception& ex)
+                {
+                    resolved_logs_dir.clear();
+                    run_log_path.clear();
+                    latest_log_path.clear();
+                    file_sink_error = ex.what();
+                }
             }
 
-            if (config.enable_latest_log)
+            if (!file_sink_error.empty() && !config.enable_console_sink)
             {
-                const auto latest_path = resolved_logs_dir / config.latest_filename;
-                auto latest_file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-                    latest_path.string(),
-                    config.truncate_latest_log
+                throw std::runtime_error(
+                    "Failed to initialize file logging and console sink is disabled: " + file_sink_error
                 );
-                latest_file_sink->set_level(spdlog::level::trace);
-                latest_file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v");
-                sinks.push_back(latest_file_sink);
-
-                g_latest_log_path = latest_path.string();
             }
 
             if (sinks.empty())
@@ -268,20 +300,35 @@ namespace RelayCore::log
             spdlog::flush_every(config.periodic_flush);
 
             g_logger = std::move(created_logger);
+            g_run_log_path = std::move(run_log_path);
+            g_latest_log_path = std::move(latest_log_path);
+            g_session_id = session_id;
 
-            if (config.enable_timestamped_log)
+            if (config.enable_timestamped_log && file_sink_error.empty())
             {
-                const std::size_t removed_logs =
-                    prune_timestamped_logs(resolved_logs_dir, config.latest_filename, config.max_timestamped_logs);
-                if (removed_logs > 0)
+                try
                 {
-                    log::info("Pruned {} old timestamped log file(s)", removed_logs);
+                    const std::size_t removed_logs =
+                        prune_timestamped_logs(resolved_logs_dir, config.latest_filename, config.max_timestamped_logs);
+                    if (removed_logs > 0)
+                    {
+                        log::info("Pruned {} old timestamped log file(s)", removed_logs);
+                    }
+                } catch (const std::filesystem::filesystem_error& ex)
+                {
+                    log::warn("Failed to prune old timestamped logs: {}", ex.what());
                 }
             }
 
             log::info("===== Session {} start =====", g_session_id);
             log::info("Logger initialized");
-            log::info("Resolved logs directory: {}", resolved_logs_dir.string());
+            if (!file_sink_error.empty())
+            {
+                log::warn("File logging disabled; continuing with console sink: {}", file_sink_error);
+            } else if (file_sinks_requested)
+            {
+                log::info("Resolved logs directory: {}", resolved_logs_dir.string());
+            }
             log::info("Logger name: {}", config.logger_name);
             log::info("Log level: {}", spdlog::level::to_string_view(config.level));
             if (!g_run_log_path.empty())

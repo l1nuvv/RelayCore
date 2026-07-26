@@ -52,19 +52,28 @@ namespace RelayCore
         (void) argc;
         (void) argv;
 
-        LogLifetime log_lifetime{};
-
         try
         {
-            Application app{std::move(app_delegate)};
-            return app.run();
+            LogLifetime log_lifetime{};
+
+            try
+            {
+                Application app{std::move(app_delegate)};
+                return app.run();
+            } catch (const std::exception& exception)
+            {
+                const std::string_view message{exception.what()};
+                std::fprintf(stderr, "RelayCore exception: %s\n", message.data());
+                std::fflush(stderr);
+                log::critical("Unhandled exception: {}", message);
+                log::flush();
+                return 1;
+            }
         } catch (const std::exception& exception)
         {
             const std::string_view message{exception.what()};
-            std::fprintf(stderr, "RelayCore exception: %s\n", message.data());
+            std::fprintf(stderr, "RelayCore logger initialization failed: %s\n", message.data());
             std::fflush(stderr);
-            log::critical("Unhandled exception: {}", message);
-            log::flush();
             return 1;
         }
     }

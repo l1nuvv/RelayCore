@@ -87,10 +87,12 @@ doctest_discover_tests(
     relaycore_tests
     TEST_PREFIX "relaycore."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_tests>"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
 
 doctest_discover_tests(
     relaycore_content_validation
     TEST_PREFIX "validation."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
