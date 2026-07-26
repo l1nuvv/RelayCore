@@ -6,8 +6,8 @@
 #include <string>
 
 #if defined(_WIN32)
+#include <Windows.h>
 #include <shellapi.h>
-#include <windows.h>
 #endif
 
 namespace RelayCore::debug
