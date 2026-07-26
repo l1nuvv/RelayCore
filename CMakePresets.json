@@ -1,5 +1,5 @@
 {
-  "$schema": "https://cmake.org/cmake/help/v4.3/manual/cmake-presets.7.json",
+  "$schema": "https://cmake.org/cmake/help/v4.0/manual/cmake-presets.7.json",
   "version": 10,
   "cmakeMinimumRequired": {
     "major": 4,
@@ -255,8 +255,8 @@
       "steps": [
         { "type": "configure", "name": "msvc-debug" },
         { "type": "build", "name": "tests-debug" },
-        { "type": "test", "name": "test-debug" },
         { "type": "build", "name": "validation-debug" },
+        { "type": "test", "name": "test-debug" },
         { "type": "test", "name": "validation-debug" },
         { "type": "build", "name": "demo-debug" }
       ]

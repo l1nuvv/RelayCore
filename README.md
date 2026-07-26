@@ -52,31 +52,56 @@
 
 - Windows 11
 - Visual Studio 2022 / MSVC toolchain
-- CMake 3.28+
+- CMake 4.0.0+
 - Git
 - vcpkg
-- Ninja или другой generator из ваших preset'ов
+- Ninja
 
 ## Сборка
 
 Проект использует `CMakePresets.json`, а зависимости ставятся через `vcpkg.json` в manifest mode. Такой режим vcpkg рекомендует как основной для большинства пользователей; он также нужен для versioning и project-local dependency trees.
 
-Пример типичного запуска:
+Перед первой командой CMake откройте `Developer PowerShell for VS 2022` или `Developer Command Prompt for VS 2022`, чтобы `cl.exe`, `rc.exe` и Windows SDK tools уже были доступны в окружении.
+
+Задайте путь к готовой установке vcpkg и проверьте toolchain file:
+
+```powershell
+$env:VCPKG_ROOT = 'C:\dev\vcpkg'
+Test-Path "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+```
+
+`False` означает неверный путь или неготовую установку vcpkg.
+
+### Demo
 
 ```powershell
 cmake --preset msvc-debug
 cmake --build --preset demo-debug
 ```
 
-Для `msvc-*` preset'ов запуск должен идти из `Developer PowerShell for VS 2022` или `Developer Command Prompt for VS 2022`, чтобы `cl.exe`, `rc.exe` и Windows SDK tools уже были доступны в окружении.
-
-Локальные preset'ы в `CMakeUserPresets.json` могут также содержать машинно-специфичные пути к MSVC/Windows SDK. После обновления Visual Studio, Windows SDK или CLion эти пути нужно синхронизировать.
-
-Если есть тестовый preset:
+### Unit-тесты
 
 ```powershell
-ctest --preset tests-debug --output-on-failure
+cmake --preset msvc-debug
+cmake --build --preset tests-debug
+ctest --preset test-debug --output-on-failure
 ```
+
+### Content validation
+
+```powershell
+cmake --preset msvc-debug
+cmake --build --preset validation-debug
+ctest --preset validation-debug --output-on-failure
+```
+
+### Полная локальная проверка
+
+```powershell
+cmake --workflow --preset debug-discipline-workflow
+```
+
+Локальные preset'ы в `CMakeUserPresets.json` могут также содержать машинно-специфичные пути к MSVC/Windows SDK. После обновления Visual Studio, Windows SDK или CLion эти пути нужно синхронизировать.
 
 `BUILD_TESTING` обычно приходит из `include(CTest)`, а сам `CTest` рекомендуют подключать именно в верхнем `CMakeLists.txt`.
 
