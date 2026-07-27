@@ -39,11 +39,13 @@ RelayCore — приватный учебный проект, проходящи
 
 - RC-022e — закрыт: iteration 3 принята как стабильный deterministic hardware-sRGB reference retuning. Сужены footprints локальных источников, уменьшена доминантность glass probe, сохранены улучшения глобального разделения из iteration 2. Renderer, pipeline math и production default не менялись; legacy_gamma остаётся default, hardware_srgb — explicit opt-in.
 
+- RC-022f — закрыт: аудит production assets подтвердил, что shared retuning небезопасен. Три production-уровня содержат 212 material-использований, 129 tint, 129 brightness и 35 локальных render-light наборов radius/intensity; дополнительно используются общие material base colors и глобальные bounce/fog/shadow параметры. Выбрана стратегия pipeline-specific authoring profiles.
+
 ## Следующая работа
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
-RC-022f — провести аудит production-authored lighting/material values в hardware_srgb и выбрать стратегию миграции: shared retuning либо отдельный pipeline-specific authoring profile; production default не менять до проверки реальных уровней.
+RC-022g — спроектировать и реализовать минимальный pipeline-specific authoring overlay: legacy значения остаются неизменными, hardware_srgb получает явные global/material/level overrides без дублирования gameplay geometry и без silent fallback.
 
 ## Проверки после изменений
 
