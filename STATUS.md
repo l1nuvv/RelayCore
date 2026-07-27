@@ -34,11 +34,14 @@ RelayCore — приватный учебный проект, проходящи
 - RC-022p1 — закрыт: добавлены детерминированные reference level/config и воспроизводимая процедура local visual capture для будущего legacy/sRGB A/B review.
 - RC-022p2 — закрыт: формализованы visual-sRGB base_color и linear tint/brightness multipliers; legacy composition сохранена, а conventional linear composition покрыта unit tests.
 
+- RC-022c — закрыт: добавлен opt-in hardware-sRGB production pipeline с behavioral default-framebuffer verification, полным linear scene RGB handling и явной ImGui state boundary; legacy_gamma сохранён как default.
+- RC-022d — закрыт: local legacy_gamma/hardware_srgb A/B review подтвердил отсутствие очевидного double encoding и сохранность ImGui/HUD boundary, но существующие lighting/material values остаются legacy-tuned; legacy_gamma остаётся production default, hardware_srgb — explicit opt-in.
+
 ## Следующая работа
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
-RC-022c — feature-gated production migration с сохранённым legacy default; default framebuffer подтверждается behavioral draw/readback, требуется fresh-process smoke матрица обоих режимов перед закрытием.
+RC-022e — узкий hardware-sRGB visual retuning authored lighting/material values без изменения pipeline math и production default до повторного deterministic A/B review.
 
 ## Проверки после изменений
 

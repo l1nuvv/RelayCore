@@ -54,3 +54,47 @@ The strips record the existing CPU-side contract `base_color * tint * brightness
 ## Metadata sidecar
 
 Create a local `.txt` or `.md` sidecar next to every capture. Record: commit SHA; executable/config/level revisions; colour-pipeline mode; window and framebuffer extents; GPU; driver; OS; monitor colour and HDR state; camera position; yaw/pitch; HUD and ImGui state; capture tool; and timestamp.
+
+## RC-022d local A/B review
+
+Review date: 2026-07-27.
+
+The review used fresh `legacy_gamma` and `hardware_srgb` processes with the same
+`assets/config/rc022_capture.toml` reference scene, fixed camera, 2560x1440 drawable extent, ImGui diagnostics
+visible, and the HUD in the same inactive state. The captures remain local review artifacts rather than
+cross-GPU golden images.
+
+### Runtime evidence
+
+The hardware run completed startup and shutdown without GL debug errors. The Windows SDL/WGL path reported:
+
+```text
+SDL reported capability=1
+attachment encoding query=GL_LINEAR
+behavioral disabled RGBA=127,127,127,255
+behavioral enabled RGBA=188,188,188,255
+verification=passed
+```
+
+This confirms Outcome B: the attachment encoding query is unreliable on this path, while controlled
+draw/readback proves that `GL_FRAMEBUFFER_SRGB` performs the expected hardware linear-to-sRGB conversion.
+
+### Visual result
+
+- No obvious double encoding was observed.
+- ImGui diagnostics and the HUD retained the expected encoded-space appearance across both modes.
+- Compared with `legacy_gamma`, `hardware_srgb` lifts dark ceiling, floor, and wall values.
+- Blue and orange lighting gradients cover a broader area and appear smoother.
+- Neutral material separation and local shadow contrast are reduced.
+- The bright right-side column and blue transparent surface become more visually dominant.
+- These differences are consistent with existing lighting and material values having been tuned for the
+  legacy gamma-space pipeline; they are not evidence that the hardware-sRGB conversion is malfunctioning.
+
+### Decision
+
+`legacy_gamma` remains the production default. `hardware_srgb` remains an explicit startup opt-in for
+validation and future retuning. The pipeline mathematics, behavioral framebuffer verification, texture
+encoding contract, and ImGui state boundary remain unchanged.
+
+Any visual matching work belongs to RC-022e and must retune authored lighting/material values rather than
+reintroducing gamma-space operations into the hardware path.
