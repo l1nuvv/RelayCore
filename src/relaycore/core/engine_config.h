@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "relaycore/app/fly_camera_controller.h"
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/platform/window.h"
@@ -13,6 +12,19 @@
 
 #include <filesystem>
 #include <string>
+
+namespace RelayCore
+{
+    /**
+     * @brief Input tuning loaded into the engine configuration.
+     */
+    struct FlyCameraControllerConfig {
+        float move_speed = 3.5F;                   ///< Base movement speed in world units per second.
+        float sprint_multiplier = 3.0F;            ///< Multiplier applied while sprint is held.
+        float mouse_sensitivity_radians = 0.0022F; ///< Mouse delta to radians conversion factor.
+        bool capture_mouse_on_start = true;        ///< Enables relative mouse mode during startup.
+    };
+} // namespace RelayCore
 
 namespace RelayCore::render
 {
@@ -120,7 +132,7 @@ namespace RelayCore::core
     struct EngineConfig {
         WindowConfig window{};             ///< Window-system settings.
         render::RendererConfig renderer{}; ///< Renderer settings.
-        FlyCameraControllerConfig input{}; ///< Fly-camera input settings.
+        FlyCameraControllerConfig input{}; ///< Input settings consumed by gameplay startup.
         AudioSystemConfig audio{};         ///< Audio-system settings.
         GameplayConfig gameplay{};         ///< Demo/gameplay bootstrap settings.
     };

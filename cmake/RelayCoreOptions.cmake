@@ -61,7 +61,6 @@ macro(relaycore_initialize_project)
 
     option(RELAYCORE_ENABLE_IPO "Enable IPO/LTO for optimized builds" ON)
     option(RELAYCORE_ENABLE_ASAN "Enable AddressSanitizer flags for Asan builds" ON)
-    option(RELAYCORE_ENABLE_PCH "Enable precompiled headers for RelayCore targets" OFF)
     option(RELAYCORE_ENABLE_TRACY "Enable Tracy instrumentation and linking" OFF)
     option(RELAYCORE_ENABLE_MSVC_ANALYZE "Enable MSVC /analyze static analysis" OFF)
 
@@ -135,7 +134,6 @@ macro(relaycore_initialize_project)
         )
     endif()
 
-    set(RELAYCORE_PCH_HEADERS "" CACHE INTERNAL "RelayCore PCH headers")
 endmacro()
 
 function(relaycore_apply_standard_target_settings target_name)
@@ -185,7 +183,4 @@ function(relaycore_apply_standard_target_settings target_name)
         message(STATUS "IPO/LTO not enabled for ${target_name}: ${RELAYCORE_IPO_OUTPUT}")
     endif()
 
-    if(RELAYCORE_ENABLE_PCH AND RELAYCORE_PCH_HEADERS)
-        target_precompile_headers("${target_name}" PRIVATE ${RELAYCORE_PCH_HEADERS})
-    endif()
 endfunction()

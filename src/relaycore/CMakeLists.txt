@@ -1,7 +1,6 @@
 set(RELAYCORE_ENGINE_SOURCES
     app/application.cpp
     app/engine_services.cpp
-    app/fly_camera_controller.cpp
     app/frame_timer.cpp
     app/run_application.cpp
     audio/audio_system.cpp
@@ -53,7 +52,6 @@ set(RELAYCORE_ENGINE_HEADERS
     app/app_delegate.h
     app/application.h
     app/engine_services.h
-    app/fly_camera_controller.h
     app/frame_timer.h
     app/run_application.h
     audio/audio_system.h

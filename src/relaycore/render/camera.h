@@ -1,6 +1,6 @@
 /**
  * @file src/relaycore/render/camera.h
- * @brief Perspective camera used by the renderer and fly-camera controller.
+ * @brief Perspective camera used by the renderer and gameplay.
  */
 
 #pragma once

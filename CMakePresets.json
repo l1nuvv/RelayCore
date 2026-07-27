@@ -17,7 +17,6 @@
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "RELAYCORE_ENABLE_IPO": "OFF",
         "RELAYCORE_ENABLE_ASAN": "OFF",
-        "RELAYCORE_ENABLE_PCH": "OFF",
         "RELAYCORE_ENABLE_TRACY": "OFF",
         "RELAYCORE_ENABLE_MSVC_ANALYZE": "OFF"
       }
@@ -63,7 +62,6 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_UNITY_BUILD": "ON",
         "RELAYCORE_ENABLE_IPO": "ON",
-        "RELAYCORE_ENABLE_PCH": "ON",
         "RELAYCORE_ENABLE_TRACY": "ON"
       }
     },
@@ -75,8 +73,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_UNITY_BUILD": "ON",
-        "RELAYCORE_ENABLE_IPO": "ON",
-        "RELAYCORE_ENABLE_PCH": "ON"
+        "RELAYCORE_ENABLE_IPO": "ON"
       }
     },
     {
