@@ -98,3 +98,169 @@ encoding contract, and ImGui state boundary remain unchanged.
 
 Any visual matching work belongs to RC-022e and must retune authored lighting/material values rather than
 reintroducing gamma-space operations into the hardware path.
+
+## RC-022e iteration 1: isolated hardware-sRGB retuning preset
+
+This iteration does not change the production default, the legacy reference, renderer mathematics, framebuffer
+contract, or shared `render_authoring.toml` values. It creates a separate config and level so the first retuning
+hypothesis can be reviewed and discarded without affecting the established baseline.
+
+The initial conservative changes are:
+
+| Value | Baseline | Iteration 1 |
+| --- | ---: | ---: |
+| indirect bounce strength | 0.24 | 0.16 |
+| directional light intensity | 1.08 | 0.92 |
+| shadow strength | 0.62 | 0.74 |
+| shadow contact strength | 0.05 | 0.08 |
+| blue local-light intensity | 1.20 | 0.92 |
+| orange local-light intensity | 0.95 | 0.76 |
+
+No post-processing contrast correction is introduced. The existing linear scene math remains authoritative;
+this iteration only reduces legacy-tuned lighting energy and restores some shadow separation.
+
+Build once, then start fresh processes:
+
+```powershell
+cmake --build --preset demo-debug
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets)
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture.toml) `
+  --color-pipeline hardware_srgb
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture_srgb_retuned.toml) `
+  --color-pipeline hardware_srgb
+```
+
+Capture both at the unchanged fixed camera and UI state. Compare the retuned image only against the original
+hardware-sRGB image, not against a differently configured legacy process. Review neutral material separation,
+ceiling/floor shadow depth, blue/orange light footprint, the right-side bright column, glass dominance, and fog.
+RC-022e remains open until the retuned preset is accepted, revised, or rejected.
+
+## RC-022e iteration 2: bounce, fog, and shadow separation
+
+Iteration 1 was not accepted as a final retune. It reduced overall scene brightness and local-light energy, but the
+neutral material range remained flat and the measured scene luminance spread decreased rather than increased.
+
+Iteration 2 keeps the iteration 1 local-light intensities and changes only the global separation controls:
+
+| Value | Iteration 1 | Iteration 2 |
+| --- | ---: | ---: |
+| indirect bounce strength | 0.16 | 0.12 |
+| directional light intensity | 0.92 | 1.00 |
+| shadow strength | 0.74 | 0.80 |
+| shadow contact strength | 0.08 | 0.10 |
+| fog start | 12.0 | 16.0 |
+| fog end | 34.0 | 42.0 |
+
+The hypothesis is narrower than a global post-processing contrast adjustment:
+
+- lower indirect bounce should reduce lifted dark surfaces;
+- restoring some directional energy should preserve lit-face readability;
+- stronger shadow terms should recover local form separation;
+- delaying and extending fog should avoid flattening the reference panels around the near wall.
+
+The renderer, colour conversions, framebuffer verification, UI boundary, material values, and production default
+remain unchanged.
+
+Run fresh processes for iteration 1 and iteration 2:
+
+```powershell
+cmake --build --preset demo-debug
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets)
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture_srgb_retuned.toml) `
+  --color-pipeline hardware_srgb
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture_srgb_retuned_v2.toml) `
+  --color-pipeline hardware_srgb
+```
+
+Review neutral panel separation, ceiling and floor depth, dark backdrop preservation, local-light footprints, fog
+visibility, the bright right-side column, and glass dominance. RC-022e remains open.
+
+## RC-022e iteration 3: local-light footprint and glass dominance
+
+Iteration 2 improves the global scene balance relative to iteration 1: neutral panels separate more clearly,
+the ceiling and floor retain more depth, and the delayed fog no longer dominates the near reference wall.
+The remaining review issue is local rather than global: the coloured light footprints remain broad and the
+glass probe is visually stronger than the neutral material ramp.
+
+Iteration 3 copies the iteration 2 config unchanged except for its level path. Only the reference-level probes
+change:
+
+| Value | Iteration 2 | Iteration 3 |
+| --- | ---: | ---: |
+| blue local-light radius | 6.0 | 5.2 |
+| blue local-light intensity | 0.92 | 0.82 |
+| orange local-light radius | 5.0 | 4.4 |
+| orange local-light intensity | 0.76 | 0.68 |
+| glass solid brightness | 1.0 implicit | 0.82 |
+
+This is an isolated visual hypothesis. It does not alter shared material authoring, renderer mathematics,
+framebuffer verification, colour conversion, the ImGui boundary, or the production default. The glass
+brightness override is deliberately confined to the deterministic probe level; acceptance would still require
+a separate decision about whether the corresponding production material should be retuned globally.
+
+Run fresh iteration 2 and iteration 3 processes:
+
+```powershell
+cmake --build --preset demo-debug
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets)
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture_srgb_retuned_v2.toml) `
+  --color-pipeline hardware_srgb
+
+& .\build\msvc-debug\src\relaygame\RelayCore.exe `
+  --config (Resolve-Path assets\config\rc022_capture_srgb_retuned_v3.toml) `
+  --color-pipeline hardware_srgb
+```
+
+Review the width and falloff of both coloured pools, glass transparency over the split background, neutral ramp
+readability, and whether the right-side probe still overwhelms the center. RC-022e remains open.
+
+## RC-022e acceptance: stable hardware-sRGB reference retuning
+
+Iteration 3 is accepted as the stable deterministic reference retuning.
+
+Compared with iteration 2:
+
+- the blue and orange light footprints are narrower and less dominant;
+- the glass probe no longer overwhelms the neutral material ramp;
+- the improved ceiling, floor, and neutral-panel separation from iteration 2 is preserved;
+- no obvious double encoding, framebuffer regression, or ImGui/HUD state-boundary regression is visible.
+
+The accepted reference values are:
+
+| Value | Accepted |
+| --- | ---: |
+| indirect bounce strength | 0.12 |
+| directional light intensity | 1.00 |
+| shadow strength | 0.80 |
+| shadow contact strength | 0.10 |
+| fog start | 16.0 |
+| fog end | 42.0 |
+| blue local-light radius | 5.2 |
+| blue local-light intensity | 0.82 |
+| orange local-light radius | 4.4 |
+| orange local-light intensity | 0.68 |
+| glass probe brightness | 0.82 |
+
+The stable assets are:
+
+```text
+assets/config/rc022_capture_srgb_retuned.toml
+assets/levels/rc022_reference_srgb_retuned.toml
+```
+
+Intermediate iteration files are removed after consolidation. The accepted values remain confined to the
+deterministic reference scene. They are not evidence that all production levels are tuned for a linear pipeline.
+
+`legacy_gamma` therefore remains the production default and `hardware_srgb` remains an explicit startup opt-in.
+RC-022f must audit real production-authored levels and decide whether shared values can be retuned safely or
+whether pipeline-specific authoring profiles are required.
