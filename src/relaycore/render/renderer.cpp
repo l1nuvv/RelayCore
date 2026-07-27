@@ -404,7 +404,8 @@ namespace RelayCore
             staged_reload.atlas_source_label = "generated fallback";
         }
 
-        staged_reload.blockout_atlas.initialize_rgba(atlas.width, atlas.height, atlas.pixels);
+        staged_reload.blockout_atlas
+            .initialize_rgba(atlas.width, atlas.height, atlas.pixels, render::TextureEncoding::linear);
         return staged_reload;
     }
 

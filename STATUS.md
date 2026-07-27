@@ -30,10 +30,13 @@ RelayCore — приватный учебный проект, проходящи
 - RC-020 — закрыт: удалены неиспользуемые FlyCameraController и basic shaders, а ложная PCH-конфигурация удалена; RELAYCORE_PROJECT_ROOT уже отсутствовал в текущем дереве.
 - RC-021 — закрыт: PerspectiveCamera отвергает non-finite и вырожденные view/projection inputs и сохраняет прежнее valid state при ошибках mutating API.
 - RC-022a — закрыт: добавлен воспроизводимый numeric GL baseline текущего gamma-space pipeline и документирована процедура ручного visual capture; решение о sRGB migration отложено до review измерений. RC-022b открывается только после отдельного решения о migration.
+- RC-022b — закрыт: Texture2D получил явный linear/sRGB encoding contract, а controlled GL baseline проверяет hardware sRGB texture decode и framebuffer encode; production pipeline остаётся legacy gamma-space.
 
 ## Следующая работа
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
+
+Перед RC-022c требуется deterministic visual A/B prerequisite и отдельное решение по semantics vertex tint/brightness.
 
 ## Проверки после изменений
 

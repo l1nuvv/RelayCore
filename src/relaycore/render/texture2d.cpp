@@ -24,7 +24,12 @@ namespace RelayCore::render
         return *this;
     }
 
-    void Texture2D::initialize_rgba(const int width, const int height, const std::span<const std::uint8_t> pixels)
+    void Texture2D::initialize_rgba(
+        const int width,
+        const int height,
+        const std::span<const std::uint8_t> pixels,
+        const TextureEncoding encoding
+    )
     {
         if (width <= 0 || height <= 0)
         {
@@ -49,7 +54,8 @@ namespace RelayCore::render
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        const GLint internal_format = encoding == TextureEncoding::linear ? GL_RGBA8 : GL_SRGB8_ALPHA8;
+        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
         glGenerateMipmap(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, 0);
     }

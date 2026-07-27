@@ -6,6 +6,11 @@
 
 namespace RelayCore::render
 {
+    enum class TextureEncoding {
+        linear,
+        srgb,
+    };
+
     struct CpuRgbaTextureData {
         int width = 0;
         int height = 0;
@@ -26,7 +31,7 @@ namespace RelayCore::render
 
         auto operator=(Texture2D&& other) noexcept -> Texture2D&;
 
-        void initialize_rgba(int width, int height, std::span<const std::uint8_t> pixels);
+        void initialize_rgba(int width, int height, std::span<const std::uint8_t> pixels, TextureEncoding encoding);
 
         void bind(int texture_unit) const;
 

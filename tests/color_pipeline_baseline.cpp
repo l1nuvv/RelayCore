@@ -21,6 +21,8 @@ namespace
     constexpr std::array<std::uint8_t, 3> kBlendDestination{64, 128, 192};
     constexpr std::array<std::uint8_t, 3> kExpectedBlend{134, 90, 147};
     constexpr int kByteTolerance = 1;
+    constexpr int kSrgbByteTolerance = 2;
+    constexpr float kFloatTolerance = 0.002F;
     constexpr int kSkippedExitCode = 77;
 
     class BaselineUnavailable final : public std::runtime_error {
@@ -209,6 +211,71 @@ namespace
         GLuint id_ = 0;
     };
 
+    void require_no_gl_error(std::string_view operation);
+
+    class GlTextureAttachment {
+    public:
+        GlTextureAttachment(const int width, const int height, const GLenum internal_format, const GLenum type)
+        {
+            glGenTextures(1, &id_);
+            glBindTexture(GL_TEXTURE_2D, id_);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, GL_RGBA, type, nullptr);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            require_no_gl_error("controlled FBO texture attachment creation");
+        }
+
+        ~GlTextureAttachment() noexcept
+        {
+            if (id_ != 0)
+            {
+                glDeleteTextures(1, &id_);
+            }
+        }
+
+        [[nodiscard]] auto id() const noexcept -> GLuint
+        {
+            return id_;
+        }
+
+    private:
+        GLuint id_ = 0;
+    };
+
+    class GlFramebuffer {
+    public:
+        explicit GlFramebuffer(const GlTextureAttachment& attachment)
+        {
+            glGenFramebuffers(1, &id_);
+            glBindFramebuffer(GL_FRAMEBUFFER, id_);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, attachment.id(), 0);
+            glDrawBuffer(GL_COLOR_ATTACHMENT0);
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            {
+                throw std::runtime_error("controlled framebuffer is incomplete");
+            }
+            require_no_gl_error("controlled framebuffer setup");
+        }
+
+        ~GlFramebuffer() noexcept
+        {
+            if (id_ != 0)
+            {
+                glDeleteFramebuffers(1, &id_);
+            }
+        }
+
+        void bind() const
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, id_);
+        }
+
+    private:
+        GLuint id_ = 0;
+    };
+
     void require_no_gl_error(const std::string_view operation)
     {
         const GLenum error = glGetError();
@@ -226,6 +293,37 @@ namespace
                 std::string{label} + " expected " + std::to_string(expected) + ", got " + std::to_string(actual)
             );
         }
+    }
+
+    void require_near(const float actual, const float expected, const std::string_view label)
+    {
+        if (std::abs(actual - expected) > kFloatTolerance)
+        {
+            throw std::runtime_error(
+                std::string{label} + " expected " + std::to_string(expected) + ", got " + std::to_string(actual)
+            );
+        }
+    }
+
+    void require_srgb_near(const int actual, const int expected, const std::string_view label)
+    {
+        if (std::abs(actual - expected) > kSrgbByteTolerance)
+        {
+            throw std::runtime_error(
+                std::string{label} + " expected " + std::to_string(expected) + ", got " + std::to_string(actual)
+            );
+        }
+    }
+
+    [[nodiscard]] auto srgb_to_linear(const float encoded) -> float
+    {
+        return encoded <= 0.04045F ? encoded / 12.92F : std::pow((encoded + 0.055F) / 1.055F, 2.4F);
+    }
+
+    [[nodiscard]] auto linear_to_srgb_byte(const float linear) -> int
+    {
+        const float encoded = linear <= 0.0031308F ? linear * 12.92F : 1.055F * std::pow(linear, 1.0F / 2.4F) - 0.055F;
+        return static_cast<int>(std::lround(encoded * 255.0F));
     }
 
     void print_gl_string(const char* label, const GLenum name)
@@ -376,6 +474,134 @@ namespace
                   << static_cast<int>(pixel[2]) << ',' << static_cast<int>(pixel[3]) << '\n';
         glDisable(GL_BLEND);
     }
+
+    void verify_srgb_texture_decode(const GlProgram& program)
+    {
+        constexpr int kWidth = 3;
+        const std::array<std::uint8_t, kWidth * 4> pixels{
+            0,
+            0,
+            0,
+            255,
+            127,
+            127,
+            127,
+            128,
+            255,
+            255,
+            255,
+            255,
+        };
+        RelayCore::render::Texture2D texture{};
+        texture.initialize_rgba(kWidth, 1, pixels, RelayCore::render::TextureEncoding::srgb);
+        texture.bind(0);
+        GLint internal_format = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &internal_format);
+        if (internal_format != GL_SRGB8_ALPHA8)
+        {
+            throw std::runtime_error("Texture2D sRGB upload did not use GL_SRGB8_ALPHA8");
+        }
+        std::cout << "srgb_texture_internal_format=GL_SRGB8_ALPHA8\n";
+
+        GlTextureAttachment attachment{kWidth, 1, GL_RGBA16F, GL_FLOAT};
+        GlFramebuffer framebuffer{attachment};
+        framebuffer.bind();
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        glViewport(0, 0, kWidth, 1);
+        program.use();
+        texture.bind(0);
+        glUniform1i(program.uniform("u_srgb_texture"), 0);
+        draw_fullscreen_triangle();
+        require_no_gl_error("sRGB texture decode draw");
+
+        std::array<std::array<float, 4>, kWidth> decoded{};
+        glReadPixels(0, 0, kWidth, 1, GL_RGBA, GL_FLOAT, decoded.data());
+        require_no_gl_error("sRGB texture decode glReadPixels");
+        const std::array<float, kWidth> expected{0.0F, srgb_to_linear(127.0F / 255.0F), 1.0F};
+        for (int index = 0; index < kWidth; ++index)
+        {
+            require_near(
+                decoded[static_cast<std::size_t>(index)][0],
+                expected[static_cast<std::size_t>(index)],
+                "sRGB texture decode"
+            );
+        }
+        require_near(decoded[1][3], 128.0F / 255.0F, "sRGB texture alpha");
+        std::cout << "srgb_decode_0=" << decoded[0][0] << '\n';
+        std::cout << "srgb_decode_127=" << decoded[1][0] << '\n';
+        std::cout << "srgb_decode_255=" << decoded[2][0] << '\n';
+        std::cout << "srgb_decode_alpha_128=" << decoded[1][3] << '\n';
+        std::cout << "srgb_decode_baseline=passed\n";
+    }
+
+    [[nodiscard]] auto
+    draw_srgb_encode_and_read(const GlFramebuffer& framebuffer, const GlProgram& program, const bool enabled)
+        -> std::array<std::array<std::uint8_t, 4>, 4>
+    {
+        framebuffer.bind();
+        if (enabled)
+        {
+            glEnable(GL_FRAMEBUFFER_SRGB);
+        } else
+        {
+            glDisable(GL_FRAMEBUFFER_SRGB);
+        }
+        glViewport(0, 0, 4, 1);
+        glDisable(GL_BLEND);
+        program.use();
+        draw_fullscreen_triangle();
+        require_no_gl_error("sRGB framebuffer encode draw");
+        std::array<std::array<std::uint8_t, 4>, 4> pixels{};
+        glReadPixels(0, 0, 4, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        require_no_gl_error("sRGB framebuffer encode glReadPixels");
+        return pixels;
+    }
+
+    void verify_srgb_framebuffer_encode(const GlProgram& program)
+    {
+        GlTextureAttachment attachment{4, 1, GL_SRGB8_ALPHA8, GL_UNSIGNED_BYTE};
+        GlFramebuffer framebuffer{attachment};
+        const auto enabled = draw_srgb_encode_and_read(framebuffer, program, true);
+        const auto disabled = draw_srgb_encode_and_read(framebuffer, program, false);
+        constexpr std::array<float, 4> kLinear{0.0F, 0.18F, 0.5F, 1.0F};
+        for (int index = 0; index < 4; ++index)
+        {
+            const int expected_enabled = linear_to_srgb_byte(kLinear[static_cast<std::size_t>(index)]);
+            const int expected_disabled =
+                static_cast<int>(std::lround(kLinear[static_cast<std::size_t>(index)] * 255.0F));
+            require_srgb_near(
+                enabled[static_cast<std::size_t>(index)][0],
+                expected_enabled,
+                "sRGB framebuffer enabled"
+            );
+            require_srgb_near(
+                disabled[static_cast<std::size_t>(index)][0],
+                expected_disabled,
+                "sRGB framebuffer disabled"
+            );
+            require_srgb_near(enabled[static_cast<std::size_t>(index)][3], 128, "sRGB framebuffer alpha");
+            require_srgb_near(disabled[static_cast<std::size_t>(index)][3], 128, "raw framebuffer alpha");
+        }
+        for (const int index : {1, 2})
+        {
+            const int double_encoded = linear_to_srgb_byte(
+                static_cast<float>(linear_to_srgb_byte(kLinear[static_cast<std::size_t>(index)])) / 255.0F
+            );
+            if (std::abs(static_cast<int>(enabled[static_cast<std::size_t>(index)][0]) - double_encoded)
+                    <= kSrgbByteTolerance
+                || enabled[static_cast<std::size_t>(index)][0] == disabled[static_cast<std::size_t>(index)][0])
+            {
+                throw std::runtime_error("sRGB framebuffer double-conversion guard failed");
+            }
+        }
+        std::cout << "srgb_encode_enabled=" << static_cast<int>(enabled[0][0]) << ',' << static_cast<int>(enabled[1][0])
+                  << ',' << static_cast<int>(enabled[2][0]) << ',' << static_cast<int>(enabled[3][0]) << '\n';
+        std::cout << "srgb_encode_disabled=" << static_cast<int>(disabled[0][0]) << ','
+                  << static_cast<int>(disabled[1][0]) << ',' << static_cast<int>(disabled[2][0]) << ','
+                  << static_cast<int>(disabled[3][0]) << '\n';
+        std::cout << "srgb_encode_alpha=" << static_cast<int>(enabled[1][3]) << '\n';
+        std::cout << "srgb_encode_baseline=passed\n";
+    }
 } // namespace
 
 int main()
@@ -402,7 +628,7 @@ int main()
             0, 0, 0, 255, 63, 63, 63, 255, 127, 127, 127, 255, 191, 191, 191, 255, 255, 255, 255, 255,
         };
         RelayCore::render::Texture2D reference_texture{};
-        reference_texture.initialize_rgba(kRampWidth, 1, pixels);
+        reference_texture.initialize_rgba(kRampWidth, 1, pixels, RelayCore::render::TextureEncoding::linear);
         reference_texture.bind(0);
         GLint internal_format = 0;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &internal_format);
@@ -434,13 +660,33 @@ void main()
 {
     out_color = vec4(0.8, 0.2, 0.4, 0.5);
 })";
+        constexpr char kSrgbDecodeFragmentShader[] = R"(#version 460 core
+layout (location = 0) out vec4 out_color;
+uniform sampler2D u_srgb_texture;
+void main()
+{
+    out_color = texelFetch(u_srgb_texture, ivec2(int(gl_FragCoord.x), 0), 0);
+})";
+        constexpr char kSrgbEncodeFragmentShader[] = R"(#version 460 core
+layout (location = 0) out vec4 out_color;
+void main()
+{
+    const float linear_values[4] = float[4](0.0, 0.18, 0.5, 1.0);
+    out_color = vec4(linear_values[int(gl_FragCoord.x)], 0.0, 0.0, 0.5);
+})";
 
         const GlProgram ramp_program{kVertexShader, kRampFragmentShader};
         const GlProgram blend_program{kVertexShader, kBlendFragmentShader};
+        const GlProgram srgb_decode_program{kVertexShader, kSrgbDecodeFragmentShader};
+        const GlProgram srgb_encode_program{kVertexShader, kSrgbEncodeFragmentShader};
         verify_gray_ramp(reference_texture, ramp_program, 1.0F, kExpectedFullLight, "gray_ramp_multiplier_1_0");
         verify_gray_ramp(reference_texture, ramp_program, 0.5F, kExpectedHalfLight, "gray_ramp_multiplier_0_5");
         verify_straight_alpha_blend(blend_program);
+        verify_srgb_texture_decode(srgb_decode_program);
+        verify_srgb_framebuffer_encode(srgb_encode_program);
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_FRAMEBUFFER_SRGB);
         std::cout << "graphics_color_pipeline_baseline=passed\n";
         return 0;
     } catch (const BaselineUnavailable& error)
