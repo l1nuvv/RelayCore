@@ -8,6 +8,24 @@ RC-022a records the current gamma-space behaviour; it does not migrate RelayCore
 
 The current scene shader samples raw normalized atlas bytes and multiplies them by vertex colours and lighting. It writes directly to the SDL/OpenGL default framebuffer. The renderer does not request a known sRGB-capable default framebuffer and does not enable `GL_FRAMEBUFFER_SRGB`. RC-022b is test preparation only, not a production hardware-sRGB migration.
 
+## Authored surface-colour contract
+
+`base_color` is an authored visual sRGB colour and must be finite with each channel in `[0,1]`. `tint` is a linear artistic channel multiplier, and `brightness` is a linear scalar multiplier; neither is an sRGB colour and neither is passed through an sRGB conversion. The existing authoring contract permits finite multiplier values above `1` and does not introduce a new upper bound here.
+
+The active legacy path remains exactly:
+
+```text
+legacy_encoded = clamp(base_color_srgb * tint_multiplier * brightness, 0, 1)
+```
+
+The separately tested, future hardware-sRGB composition is deliberately different:
+
+```text
+hardware_linear = srgb_to_linear(base_color_srgb) * tint_multiplier * brightness
+```
+
+It does not convert a pre-multiplied gamma-space result, does not convert `tint` or `brightness`, and does not clamp its composed linear result before future lighting analysis. RC-022p2 only defines these contracts: production still calls the legacy helper. The current atlas/vertex double-colour stylization and shader mixing remain unchanged, so the linear formula may visibly differ during the RC-022p1 reference-level A/B review.
+
 ## Numeric reference
 
 Build and run the local graphics integration executable from a Visual Studio Developer PowerShell:

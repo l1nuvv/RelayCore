@@ -1,12 +1,12 @@
 #include "relaycore/render/blockout_mesh_builder.h"
 
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/authored_color.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <stdexcept>
 #include <vector>
@@ -47,11 +47,6 @@ namespace RelayCore::render
         [[nodiscard]] auto shade(const glm::vec3& color, const float factor) -> glm::vec3
         {
             return color * factor;
-        }
-
-        [[nodiscard]] auto clamp_color(const glm::vec3& color) -> glm::vec3
-        {
-            return glm::clamp(color, glm::vec3{0.0F}, glm::vec3{1.0F});
         }
 
         [[nodiscard]] auto same_surface_appearance(const BlockoutSolid& a, const BlockoutSolid& b) -> bool
@@ -827,7 +822,7 @@ namespace RelayCore::render
         mesh.indices.reserve(36);
 
         const auto& material = material_authoring(authoring_config, solid.material);
-        const glm::vec3 base_color = clamp_color(material.base_color * solid.tint * solid.brightness);
+        const glm::vec3 base_color = compose_legacy_surface_color(material.base_color, solid.tint, solid.brightness);
 
         if (material.transparent)
         {

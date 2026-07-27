@@ -30,6 +30,7 @@ set(RELAYCORE_ENGINE_SOURCES
     platform/window.cpp
     render/blockout_mesh_builder.cpp
     render/blockout_texture_atlas.cpp
+    render/authored_color.cpp
     render/camera.cpp
     render/game_hud.cpp
     render/gl_debug.cpp
@@ -83,6 +84,7 @@ set(RELAYCORE_ENGINE_HEADERS
     platform/window.h
     render/blockout_mesh_builder.h
     render/blockout_texture_atlas.h
+    render/authored_color.h
     render/camera.h
     render/game_hud.h
     render/gl_debug.h
