@@ -135,3 +135,42 @@ doctest_discover_tests(
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
     PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
+
+# RC-022c default-framebuffer sRGB behavioral probe
+add_executable(relaycore_default_framebuffer_probe)
+set_target_properties(
+    relaycore_default_framebuffer_probe
+    PROPERTIES
+        FOLDER "tests"
+        UNITY_BUILD OFF
+)
+
+target_sources(
+    relaycore_default_framebuffer_probe
+    PRIVATE
+        default_framebuffer_srgb_probe.cpp
+)
+
+target_link_libraries(
+    relaycore_default_framebuffer_probe
+    PRIVATE
+        RelayCore::engine
+        RelayCore::project_options
+        RelayCore::warnings
+)
+
+relaycore_apply_standard_target_settings(relaycore_default_framebuffer_probe)
+
+add_test(
+    NAME graphics.default_framebuffer_srgb_probe
+    COMMAND relaycore_default_framebuffer_probe
+)
+
+set_tests_properties(
+    graphics.default_framebuffer_srgb_probe
+    PROPERTIES
+        LABELS "integration;graphics"
+        RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_default_framebuffer_probe>"
+)

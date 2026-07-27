@@ -5,7 +5,9 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling_opengl.h"
 #include "relaycore/platform/window.h"
+#include "relaycore/render/authored_color.h"
 #include "relaycore/render/blockout_texture_atlas.h"
+#include "relaycore/render/default_framebuffer_srgb_verifier.h"
 #include "relaycore/render/gl_debug.h"
 #include "relaycore/render/gl_loader.h"
 
@@ -169,8 +171,10 @@ namespace RelayCore
             return static_cast<int>(profile);
         }
 
-        [[nodiscard]] auto build_shader_contract_source(const render::RenderAuthoringConfig& authoring_config)
-            -> std::string
+        [[nodiscard]] auto build_shader_contract_source(
+            const render::RenderAuthoringConfig& authoring_config,
+            const render::ColorPipelineMode color_pipeline_mode
+        ) -> std::string
         {
             std::ostringstream stream;
             const std::size_t material_count = RelayCore::surface_material_count();
@@ -262,19 +266,31 @@ namespace RelayCore
                       "rc_material_profile_values[rc_material_index(material_id)]; }\n";
 
             stream << "vec3 rc_cool_ambient_color() { return "
-                   << format_glsl_vec3(authoring_config.lighting.cool_ambient_color) << "; }\n";
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline(
+                          authoring_config.lighting.cool_ambient_color,
+                          color_pipeline_mode
+                      ))
+                   << "; }\n";
             stream << "float rc_cool_ambient_floor() { return "
                    << format_glsl_float(authoring_config.lighting.cool_ambient_floor) << "; }\n";
             stream << "float rc_cool_ambient_zenith() { return "
                    << format_glsl_float(authoring_config.lighting.cool_ambient_zenith) << "; }\n";
             stream << "vec3 rc_warm_bounce_color() { return "
-                   << format_glsl_vec3(authoring_config.lighting.warm_bounce_color) << "; }\n";
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline(
+                          authoring_config.lighting.warm_bounce_color,
+                          color_pipeline_mode
+                      ))
+                   << "; }\n";
             stream << "float rc_warm_bounce_floor() { return "
                    << format_glsl_float(authoring_config.lighting.warm_bounce_floor) << "; }\n";
             stream << "float rc_warm_bounce_underside() { return "
                    << format_glsl_float(authoring_config.lighting.warm_bounce_underside) << "; }\n";
             stream << "vec3 rc_bounce_neutral_color() { return "
-                   << format_glsl_vec3(authoring_config.lighting.bounce_neutral_color) << "; }\n";
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline(
+                          authoring_config.lighting.bounce_neutral_color,
+                          color_pipeline_mode
+                      ))
+                   << "; }\n";
             stream << "float rc_bounce_floor() { return " << format_glsl_float(authoring_config.lighting.bounce_floor)
                    << "; }\n";
             stream << "float rc_bounce_underside() { return "
@@ -303,13 +319,22 @@ namespace RelayCore
                    << format_glsl_float(authoring_config.lighting.local_light_fill) << "; }\n";
             stream << "float rc_local_light_gain() { return "
                    << format_glsl_float(authoring_config.lighting.local_light_gain) << "; }\n";
+            stream << "vec3 rc_cascade_near_tint() { return "
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline({0.18F, 0.42F, 0.95F}, color_pipeline_mode))
+                   << "; }\n";
+            stream << "vec3 rc_cascade_far_tint() { return "
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline({0.95F, 0.56F, 0.14F}, color_pipeline_mode))
+                   << "; }\n";
+            stream << "vec3 rc_glass_visual_tint() { return "
+                   << format_glsl_vec3(render::visual_rgb_for_pipeline({0.12F, 0.18F, 0.22F}, color_pipeline_mode))
+                   << "; }\n";
 
             return stream.str();
         }
     } // namespace
 
-    Renderer::Renderer(const render::RendererConfig& config) :
-        config_(config), camera_(config.camera), imgui_overlay_(config.imgui)
+    Renderer::Renderer(const render::RendererConfig& config, const render::ColorPipelineMode color_pipeline_mode) :
+        config_(config), color_pipeline_mode_(color_pipeline_mode), camera_(config.camera), imgui_overlay_(config.imgui)
     {
         RELAYCORE_PROFILE_FUNCTION();
     }
@@ -329,6 +354,40 @@ namespace RelayCore
 
         render::gl::load();
         render::gl_debug::initialize();
+        if (color_pipeline_mode_ == render::ColorPipelineMode::hardware_srgb)
+        {
+            if (window.framebuffer_srgb_capable() == 0)
+            {
+                throw std::runtime_error(
+                    "hardware_srgb default framebuffer contract failed: requested mode=hardware_srgb, SDL reported "
+                    "capability=0"
+                );
+            }
+
+            const render::DefaultFramebufferSrgbVerification verification =
+                render::verify_default_framebuffer_srgb_behavior();
+            if (!render::default_framebuffer_srgb_behavior_passes(verification))
+            {
+                throw std::runtime_error(
+                    std::string{"hardware_srgb default framebuffer behavioral contract failed: requested "
+                                "mode=hardware_srgb, SDL reported capability="}
+                    + std::to_string(window.framebuffer_srgb_capable()) + ", attachment encoding query="
+                    + render::framebuffer_color_encoding_name(verification.reported_encoding)
+                    + ", disabled RGBA=" + render::format_rgba8(verification.disabled_pixel)
+                    + ", enabled RGBA=" + render::format_rgba8(verification.enabled_pixel)
+                );
+            }
+
+            log::info(
+                "sRGB default framebuffer contract: requested mode=hardware_srgb, SDL reported capability={}, "
+                "attachment encoding query={}, behavioral disabled RGBA={}, behavioral enabled RGBA={}, "
+                "verification=passed",
+                window.framebuffer_srgb_capable(),
+                render::framebuffer_color_encoding_name(verification.reported_encoding),
+                render::format_rgba8(verification.disabled_pixel),
+                render::format_rgba8(verification.enabled_pixel)
+            );
+        }
         RELAYCORE_PROFILE_GPU_CONTEXT();
         RELAYCORE_PROFILE_GPU_CONTEXT_NAME("RelayCore::Renderer");
 
@@ -367,7 +426,7 @@ namespace RelayCore
         staged_reload.config = config;
         staged_reload.authoring_config = authoring_config;
 
-        const std::string fragment_contract = build_shader_contract_source(authoring_config);
+        const std::string fragment_contract = build_shader_contract_source(authoring_config, color_pipeline_mode_);
         const render::ShaderFileSourcePatches scene_source_patches{
             .fragment_injected_source = fragment_contract,
         };
@@ -404,8 +463,13 @@ namespace RelayCore
             staged_reload.atlas_source_label = "generated fallback";
         }
 
-        staged_reload.blockout_atlas
-            .initialize_rgba(atlas.width, atlas.height, atlas.pixels, render::TextureEncoding::linear);
+        staged_reload.blockout_atlas.initialize_rgba(
+            atlas.width,
+            atlas.height,
+            atlas.pixels,
+            color_pipeline_mode_ == render::ColorPipelineMode::hardware_srgb ? render::TextureEncoding::srgb
+                                                                             : render::TextureEncoding::linear
+        );
         return staged_reload;
     }
 
@@ -458,7 +522,12 @@ namespace RelayCore
         {
             RELAYCORE_PROFILE_ZONE_N("Renderer::clear");
             RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::clear");
-            glClearColor(config_.clear_r, config_.clear_g, config_.clear_b, 1.0F);
+            apply_scene_framebuffer_state();
+            const glm::vec3 clear_rgb = render::visual_rgb_for_pipeline(
+                glm::vec3{config_.clear_r, config_.clear_g, config_.clear_b},
+                color_pipeline_mode_
+            );
+            glClearColor(clear_rgb.x, clear_rgb.y, clear_rgb.z, 1.0F);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
     }
@@ -757,6 +826,7 @@ namespace RelayCore
         );
 
         const int shadow_map_resolution = std::max(config_.shadow_map_resolution, 256);
+        glDisable(GL_FRAMEBUFFER_SRGB);
         glCullFace(GL_FRONT);
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         shadow_program_.bind();
@@ -786,6 +856,7 @@ namespace RelayCore
         glCullFace(GL_BACK);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, viewport_width_, viewport_height_);
+        apply_scene_framebuffer_state();
     }
 
     auto Renderer::build_shadow_light_view_projection(const float focus_distance, const float radius, const float depth)
@@ -890,7 +961,7 @@ namespace RelayCore
 
         program.bind();
         program.set_vec3(kCameraPositionLocation, camera_.position());
-        program.set_vec3(kFogColorLocation, config_.fog_color);
+        program.set_vec3(kFogColorLocation, render::visual_rgb_for_pipeline(config_.fog_color, color_pipeline_mode_));
         program.set_float(kFogStartLocation, config_.fog_enabled ? config_.fog_start : config_.camera.far_plane);
         program.set_float(kFogEndLocation, config_.fog_enabled ? config_.fog_end : config_.camera.far_plane);
         program.set_int(
@@ -915,7 +986,10 @@ namespace RelayCore
             shadow_light_view_projections_[kNearShadowCascadeIndex]
         );
         program.set_vec3(kShadowLightDirectionLocation, safe_shadow_direction(config_.shadow_light_direction));
-        program.set_vec3(kShadowLightColorLocation, config_.shadow_light_color);
+        program.set_vec3(
+            kShadowLightColorLocation,
+            render::visual_rgb_for_pipeline(config_.shadow_light_color, color_pipeline_mode_)
+        );
         program.set_float(kShadowLightIntensityLocation, config_.shadow_light_intensity);
         program.set_float(kShadowStrengthLocation, config_.shadow_strength);
         program.set_float(kShadowNearBiasLocation, config_.shadow_bias_near);
@@ -1014,6 +1088,7 @@ namespace RelayCore
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::ui");
+            glDisable(GL_FRAMEBUFFER_SRGB);
             imgui_overlay_.render();
         }
     }
@@ -1091,6 +1166,22 @@ namespace RelayCore
     auto Renderer::authoring_config() const noexcept -> const render::RenderAuthoringConfig&
     {
         return authoring_config_;
+    }
+
+    auto Renderer::color_pipeline_mode() const noexcept -> render::ColorPipelineMode
+    {
+        return color_pipeline_mode_;
+    }
+
+    void Renderer::apply_scene_framebuffer_state() const noexcept
+    {
+        if (color_pipeline_mode_ == render::ColorPipelineMode::hardware_srgb)
+        {
+            glEnable(GL_FRAMEBUFFER_SRGB);
+        } else
+        {
+            glDisable(GL_FRAMEBUFFER_SRGB);
+        }
     }
 
     auto Renderer::camera() noexcept -> render::PerspectiveCamera&

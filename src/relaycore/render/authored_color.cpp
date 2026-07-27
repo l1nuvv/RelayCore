@@ -53,6 +53,11 @@ namespace RelayCore::render
         };
     }
 
+    auto visual_rgb_for_pipeline(const glm::vec3& visual_srgb, const ColorPipelineMode mode) -> glm::vec3
+    {
+        return mode == ColorPipelineMode::hardware_srgb ? srgb_visual_rgb_to_linear(visual_srgb) : visual_srgb;
+    }
+
     auto compose_legacy_surface_color(
         const glm::vec3& base_color_srgb,
         const glm::vec3& tint_multiplier,

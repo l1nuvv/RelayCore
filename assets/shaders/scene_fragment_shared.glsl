@@ -77,7 +77,7 @@ void main()
     if (u_shadow_debug_cascades != 0)
     {
         float cascade_mix = shadow_cascade_mix();
-        vec3 cascade_tint = mix(vec3(0.18, 0.42, 0.95), vec3(0.95, 0.56, 0.14), cascade_mix);
+        vec3 cascade_tint = mix(rc_cascade_near_tint(), rc_cascade_far_tint(), cascade_mix);
         color = mix(color, color * cascade_tint, 0.38);
     }
 

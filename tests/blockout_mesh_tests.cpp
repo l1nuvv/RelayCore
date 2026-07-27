@@ -1,4 +1,5 @@
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/authored_color.h"
 #include "relaycore/render/blockout_mesh_builder.h"
 
 #include <algorithm>
@@ -67,6 +68,36 @@ TEST_CASE("blockout solid tint and brightness affect emitted vertex colors")
     CHECK(mesh.vertices.front().color.x == doctest::Approx(0.301F).epsilon(0.01));
     CHECK(mesh.vertices.front().color.y == doctest::Approx(0.644F).epsilon(0.01));
     CHECK(mesh.vertices.front().color.z == doctest::Approx(0.350F).epsilon(0.01));
+}
+
+TEST_CASE("blockout mesh routes surface colour through the selected pipeline")
+{
+    RelayCore::BlockoutLevel level{};
+    RelayCore::BlockoutSolid solid{};
+    solid.mins = {-1.0F, 0.0F, -1.0F};
+    solid.maxs = {1.0F, 2.0F, 1.0F};
+    solid.material = RelayCore::SurfaceMaterial::Wall;
+    solid.tint = {1.16F, 0.86F, 0.62F};
+    solid.brightness = 1.20F;
+    level.solids.push_back(solid);
+
+    const auto& authoring = RelayCore::render::default_render_authoring_config();
+    const glm::vec3 base = authoring.materials[static_cast<std::size_t>(solid.material)].base_color;
+    const auto legacy =
+        RelayCore::render::build_blockout_mesh(level, authoring, RelayCore::render::ColorPipelineMode::legacy_gamma);
+    const auto hardware =
+        RelayCore::render::build_blockout_mesh(level, authoring, RelayCore::render::ColorPipelineMode::hardware_srgb);
+
+    REQUIRE_FALSE(legacy.vertices.empty());
+    REQUIRE_FALSE(hardware.vertices.empty());
+    CHECK(
+        legacy.vertices.front().color.x
+        == doctest::Approx(RelayCore::render::compose_legacy_surface_color(base, solid.tint, solid.brightness).x)
+    );
+    CHECK(
+        hardware.vertices.front().color.x
+        == doctest::Approx(RelayCore::render::compose_linear_surface_color(base, solid.tint, solid.brightness).x)
+    );
 }
 
 TEST_CASE("blockout mesh emits outward face normals")

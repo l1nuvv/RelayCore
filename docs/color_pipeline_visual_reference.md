@@ -9,7 +9,10 @@ In a Visual Studio Developer PowerShell:
 ```powershell
 cmake --build --preset demo-debug
 $env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets)
-& .\build\msvc-debug\src\relaygame\RelayCore.exe --config (Resolve-Path assets\config\rc022_capture.toml)
+& .\build\msvc-debug\src\relaygame\RelayCore.exe --config (Resolve-Path assets\config\rc022_capture.toml) --color-pipeline legacy_gamma
+& .\build\msvc-debug\src\relaygame\RelayCore.exe --config (Resolve-Path assets\config\rc022_capture.toml) --color-pipeline hardware_srgb
+& .\build\msvc-debug\src\relaygame\RelayCore.exe --config (Resolve-Path assets\config\rc022_capture_debug.toml) --color-pipeline legacy_gamma
+& .\build\msvc-debug\src\relaygame\RelayCore.exe --config (Resolve-Path assets\config\rc022_capture_debug.toml) --color-pipeline hardware_srgb
 ```
 
 Both configs load `levels/rc022_reference.toml` in the current windowed-only window contract at 2560x1440. The fixed `player_spawn` is `[0,0,0]`; authored angles `[0,0,0]` resolve to yaw `+90°` / `1.570796 rad` and pitch `0`, facing `+Z`. Audio and time-varying post effects are disabled. No player input, interaction, noclip, snapshot, or moving gameplay state is required.
@@ -26,7 +29,7 @@ Start a fresh process for every image and press `Escape` after capture.
 | `rc022_reference_scene_legacy_imgui.png` | `rc022_capture.toml` | Leave default diagnostics visible; fresh HUD remains inactive | Same scene with ImGui |
 | `rc022_reference_world_debug_legacy.png` | `rc022_capture_debug.toml` | F2 is optional | World-rendered cascade debug RGB only |
 
-After RC-022c, repeat the same fresh-process procedure as `rc022_reference_scene_srgb.png`, `rc022_reference_scene_srgb_imgui.png`, and `rc022_reference_world_debug_srgb.png`.
+For each launch, use the same `rc022_reference.toml` level and close its own process with `Escape` after capture. The two pipeline modes are the only A/B variable; captures remain local review artifacts, not cross-GPU golden images.
 
 The cascade-debug capture is not a neutral, lighting, glass, or fog calibration frame. It intentionally tints scene rendering and must never be used to compare the primary colour probes.
 

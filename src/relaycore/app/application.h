@@ -34,7 +34,8 @@ namespace RelayCore
          */
         explicit Application(
             std::unique_ptr<AppDelegate> app_delegate = std::make_unique<NullAppDelegate>(),
-            std::filesystem::path config_path = {}
+            std::filesystem::path config_path = {},
+            render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma
         );
 
         /**

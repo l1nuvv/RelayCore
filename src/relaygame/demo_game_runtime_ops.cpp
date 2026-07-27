@@ -77,9 +77,11 @@ namespace RelayGame::detail
                 prepared.runtime.restore_pinned_inspector(*pinned_inspector);
             }
 
-            prepared.world_scene.initialize(
-                build_prepared_world_scene_data(prepared.runtime.level(), prepared.renderer.authoring_config)
-            );
+            prepared.world_scene.initialize(build_prepared_world_scene_data(
+                prepared.runtime.level(),
+                prepared.renderer.authoring_config,
+                services.renderer().color_pipeline_mode()
+            ));
             prepared.atlas_source_label = prepared.renderer.atlas_source_label;
             return prepared;
         }
@@ -102,9 +104,11 @@ namespace RelayGame::detail
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::start_level_session");
         state.runtime.startup(services);
-        state.world_scene.initialize(
-            build_prepared_world_scene_data(state.runtime.level(), services.renderer().authoring_config())
-        );
+        state.world_scene.initialize(build_prepared_world_scene_data(
+            state.runtime.level(),
+            services.renderer().authoring_config(),
+            services.renderer().color_pipeline_mode()
+        ));
         services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
         state.runtime.publish_diagnostics(services.renderer());
         publish_iteration_diagnostics(state, services);

@@ -33,11 +33,13 @@ namespace RelayGame
         std::vector<RelayCore::render::LocalLight> local_lights{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
         std::uint32_t total_solids = 0;
+        RelayCore::render::ColorPipelineMode color_pipeline_mode = RelayCore::render::ColorPipelineMode::legacy_gamma;
     };
 
     [[nodiscard]] auto build_prepared_world_scene_data(
         const RelayCore::BlockoutLevel& level,
-        const RelayCore::render::RenderAuthoringConfig& authoring_config
+        const RelayCore::render::RenderAuthoringConfig& authoring_config,
+        RelayCore::render::ColorPipelineMode color_pipeline_mode
     ) -> PreparedWorldSceneData;
 
     class WorldSceneRenderer {

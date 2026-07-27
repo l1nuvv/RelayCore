@@ -26,6 +26,52 @@ TEST_CASE("startup options retain the default engine config")
 {
     const RelayCore::StartupOptions options = parse({"RelayCore.exe"});
     CHECK(options.config_path == RelayCore::core::asset_path("config/engine.toml"));
+    CHECK(options.color_pipeline_mode == RelayCore::render::ColorPipelineMode::legacy_gamma);
+}
+
+TEST_CASE("startup options accept explicit colour pipeline modes")
+{
+    CHECK(
+        parse({"RelayCore.exe", "--color-pipeline", "legacy_gamma"}).color_pipeline_mode
+        == RelayCore::render::ColorPipelineMode::legacy_gamma
+    );
+    CHECK(
+        parse({"RelayCore.exe", "--color-pipeline", "hardware_srgb"}).color_pipeline_mode
+        == RelayCore::render::ColorPipelineMode::hardware_srgb
+    );
+}
+
+TEST_CASE("startup options reject invalid colour pipeline selections")
+{
+    CHECK_THROWS_WITH_AS(
+        parse({"RelayCore.exe", "--color-pipeline"}),
+        "--color-pipeline requires legacy_gamma or hardware_srgb",
+        std::runtime_error
+    );
+    CHECK_THROWS_WITH_AS(
+        parse({"RelayCore.exe", "--color-pipeline", "unknown"}),
+        "Unknown --color-pipeline value: unknown",
+        std::runtime_error
+    );
+    CHECK_THROWS_WITH_AS(
+        parse({"RelayCore.exe", "--color-pipeline", "legacy_gamma", "--color-pipeline", "hardware_srgb"}),
+        "--color-pipeline may be specified only once",
+        std::runtime_error
+    );
+}
+
+TEST_CASE("startup options accept config and colour pipeline in either order")
+{
+    const std::string config_path = RelayCore::core::asset_path("config/rc022_capture.toml").string();
+    CHECK(
+        parse({"RelayCore.exe", "--config", config_path.c_str(), "--color-pipeline", "hardware_srgb"})
+            .color_pipeline_mode
+        == RelayCore::render::ColorPipelineMode::hardware_srgb
+    );
+    CHECK(
+        parse({"RelayCore.exe", "--color-pipeline", "hardware_srgb", "--config", config_path.c_str()}).config_path
+        == config_path
+    );
 }
 
 TEST_CASE("startup options accept one explicit config path")

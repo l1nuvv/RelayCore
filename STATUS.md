@@ -38,9 +38,7 @@ RelayCore — приватный учебный проект, проходящи
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
-Перед RC-022c требуется deterministic visual A/B prerequisite и отдельное решение по semantics vertex tint/brightness.
-
-RC-022c — атомарная feature-gated production migration с сохранённым legacy default.
+RC-022c — feature-gated production migration с сохранённым legacy default; default framebuffer подтверждается behavioral draw/readback, требуется fresh-process smoke матрица обоих режимов перед закрытием.
 
 ## Проверки после изменений
 
@@ -60,3 +58,4 @@ pwsh -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug
 - Нет deterministic GL/backend failure-injection harness.
 - clang-tidy baseline намеренно ограничен явным набором checks.
 - Полноценный Doxygen reference не входит в обязательный workflow.
+- ImGui остаётся encoded-space UI composition в hardware-sRGB режиме; migration его backend/font/shader намеренно отложена.

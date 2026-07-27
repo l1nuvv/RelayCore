@@ -98,6 +98,15 @@ pwsh -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug
 .\build\msvc-debug\src\relaygame\RelayCore.exe
 ```
 
+Цветовой pipeline выбирается только при startup и по умолчанию остаётся `legacy_gamma`:
+
+```powershell
+.\build\msvc-debug\src\relaygame\RelayCore.exe --config assets\config\rc022_capture.toml --color-pipeline legacy_gamma
+.\build\msvc-debug\src\relaygame\RelayCore.exe --config assets\config\rc022_capture.toml --color-pipeline hardware_srgb
+```
+
+`hardware_srgb` до создания окна запрашивает SDL sRGB-capable default framebuffer, а после загрузки GL проверяет его controlled draw/readback: linear `0.5` должен читаться примерно как `127` при выключенном `GL_FRAMEBUFFER_SRGB` и как `188` при включённом. Attachment encoding query сохраняется только как диагностика, поскольку SDL/WGL/NVIDIA может сообщать `GL_LINEAR` при фактически работающем hardware sRGB encoding. Нарушение behavioral contract завершает startup ошибкой без fallback. В этом режиме scene clear/passes используют линейные данные и включённый `GL_FRAMEBUFFER_SRGB`; depth-only shadow pass и непосредственная граница ImGui его отключают. ImGui намеренно остаётся encoded-space UI composition (известное ограничение). Reference captures — только локальные review artifacts.
+
 CMake копирует каталог `assets` рядом с demo executable. По умолчанию runtime использует `<exe-directory>/assets`; `RELAYCORE_ASSET_ROOT` допускается только как абсолютный override. Основной конфиг — `assets/config/engine.toml`.
 
 ## Управление

@@ -2,6 +2,7 @@
 
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/authored_color.h"
 #include "relaycore/render/blockout_mesh_builder.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/renderer.h"
@@ -83,12 +84,17 @@ namespace RelayGame
             return true;
         }
 
-        void
-        tint_mesh_data(RelayCore::render::CpuColorMeshData& mesh_data, const glm::vec3& tint, const float bias = 0.0F)
+        void tint_mesh_data(
+            RelayCore::render::CpuColorMeshData& mesh_data,
+            const glm::vec3& tint,
+            const float bias,
+            const RelayCore::render::ColorPipelineMode color_pipeline_mode
+        )
         {
             for (auto& vertex : mesh_data.vertices)
             {
-                vertex.color = glm::clamp((vertex.color * tint) + glm::vec3{bias}, 0.0F, 1.0F);
+                const glm::vec3 visual_rgb = glm::clamp((vertex.color * tint) + glm::vec3{bias}, 0.0F, 1.0F);
+                vertex.color = RelayCore::render::visual_rgb_for_pipeline(visual_rgb, color_pipeline_mode);
             }
         }
 
@@ -218,12 +224,15 @@ namespace RelayGame
 
     auto build_prepared_world_scene_data(
         const RelayCore::BlockoutLevel& level,
-        const RelayCore::render::RenderAuthoringConfig& authoring_config
+        const RelayCore::render::RenderAuthoringConfig& authoring_config,
+        const RelayCore::render::ColorPipelineMode color_pipeline_mode
     ) -> PreparedWorldSceneData
     {
         RELAYCORE_PROFILE_FUNCTION();
         PreparedWorldSceneData scene_data{};
-        scene_data.blockout = RelayCore::render::build_blockout_render_data(level, authoring_config);
+        scene_data.color_pipeline_mode = color_pipeline_mode;
+        scene_data.blockout =
+            RelayCore::render::build_blockout_render_data(level, authoring_config, color_pipeline_mode);
         scene_data.total_solids = static_cast<std::uint32_t>(level.solids.size());
 
         for (std::size_t entity_index = 0; entity_index < level.entities.size(); ++entity_index)
@@ -310,7 +319,7 @@ namespace RelayGame
                 );
             }
 
-            light.color = light_color * intensity;
+            light.color = RelayCore::render::visual_rgb_for_pipeline(light_color, color_pipeline_mode) * intensity;
             light.radius = radius;
             scene_data.local_lights.push_back(light);
         }
@@ -354,21 +363,25 @@ namespace RelayGame
         RelayCore::render::CpuColorMeshData inspector_solid_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_hit_mesh_data = RelayCore::render::make_color_box_mesh_data();
 
-        tint_mesh_data(panel_mesh_data, {1.80F, 0.72F, 0.34F}, 0.02F);
-        tint_mesh_data(panel_blocked_mesh_data, {0.62F, 0.44F, 0.34F}, -0.02F);
-        tint_mesh_data(panel_highlight_mesh_data, {2.25F, 1.90F, 0.55F}, 0.10F);
-        tint_mesh_data(panel_success_mesh_data, {0.58F, 1.95F, 1.08F}, 0.06F);
-        tint_mesh_data(panel_warning_mesh_data, {2.18F, 0.78F, 0.48F}, 0.04F);
-        tint_mesh_data(pickup_mesh_data, {0.52F, 1.82F, 1.90F}, 0.06F);
-        tint_mesh_data(pickup_highlight_mesh_data, {0.86F, 2.20F, 2.30F}, 0.14F);
-        tint_mesh_data(turret_mesh_data, {1.84F, 0.52F, 0.42F}, -0.01F);
-        tint_mesh_data(turret_destroyed_mesh_data, {0.48F, 0.42F, 0.40F}, -0.18F);
-        tint_mesh_data(turret_alert_mesh_data, {2.55F, 0.72F, 0.62F}, 0.14F);
-        tint_mesh_data(inspector_usable_mesh_data, {2.25F, 1.82F, 0.62F}, 0.12F);
-        tint_mesh_data(inspector_door_mesh_data, {0.62F, 2.08F, 2.28F}, 0.10F);
-        tint_mesh_data(inspector_trigger_mesh_data, {2.28F, 0.92F, 0.58F}, 0.08F);
-        tint_mesh_data(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
-        tint_mesh_data(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
+        const auto tint = [&scene_data](auto& mesh, const glm::vec3& multiplier, const float bias) {
+            tint_mesh_data(mesh, multiplier, bias, scene_data.color_pipeline_mode);
+        };
+        tint(door_mesh_data, {1.0F, 1.0F, 1.0F}, 0.0F);
+        tint(panel_mesh_data, {1.80F, 0.72F, 0.34F}, 0.02F);
+        tint(panel_blocked_mesh_data, {0.62F, 0.44F, 0.34F}, -0.02F);
+        tint(panel_highlight_mesh_data, {2.25F, 1.90F, 0.55F}, 0.10F);
+        tint(panel_success_mesh_data, {0.58F, 1.95F, 1.08F}, 0.06F);
+        tint(panel_warning_mesh_data, {2.18F, 0.78F, 0.48F}, 0.04F);
+        tint(pickup_mesh_data, {0.52F, 1.82F, 1.90F}, 0.06F);
+        tint(pickup_highlight_mesh_data, {0.86F, 2.20F, 2.30F}, 0.14F);
+        tint(turret_mesh_data, {1.84F, 0.52F, 0.42F}, -0.01F);
+        tint(turret_destroyed_mesh_data, {0.48F, 0.42F, 0.40F}, -0.18F);
+        tint(turret_alert_mesh_data, {2.55F, 0.72F, 0.62F}, 0.14F);
+        tint(inspector_usable_mesh_data, {2.25F, 1.82F, 0.62F}, 0.12F);
+        tint(inspector_door_mesh_data, {0.62F, 2.08F, 2.28F}, 0.10F);
+        tint(inspector_trigger_mesh_data, {2.28F, 0.92F, 0.58F}, 0.08F);
+        tint(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
+        tint(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
 
         door_mesh_.initialize(door_mesh_data);
         panel_mesh_.initialize(panel_mesh_data);

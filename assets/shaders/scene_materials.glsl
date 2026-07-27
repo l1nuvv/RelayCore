@@ -8,7 +8,7 @@ vec3 apply_material_surface(vec3 base_color, vec2 uv, vec3 normal, int material_
         vec3 view_direction = safe_normalize_vec3(u_camera_position - world_position, vec3(0.0, 0.0, 1.0));
         float glass_band = panel_seam_mask(uv + vec2(0.0, 0.1), 0.75, 0.018);
         float fresnel = pow(1.0 - clamp(abs(dot(normal, view_direction)), 0.0, 1.0), 3.0);
-        vec3 glass_tint = mix(vec3(0.12, 0.18, 0.22), base_color, 0.65);
+        vec3 glass_tint = mix(rc_glass_visual_tint(), base_color, 0.65);
         vec3 glass_color = mix(glass_tint, glass_tint * vec3(0.72, 0.88, 1.04), 0.45);
         glass_color *= 0.92 + (glass_band * 0.04);
         glass_color *= 0.96 + (fresnel * 0.08);

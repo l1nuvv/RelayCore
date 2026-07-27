@@ -4,6 +4,7 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/render/camera.h"
+#include "relaycore/render/color_pipeline_mode.h"
 #include "relaycore/render/game_hud.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/render_authoring_config.h"
@@ -53,7 +54,10 @@ namespace RelayCore
             std::string atlas_source_label{};
         };
 
-        explicit Renderer(const render::RendererConfig& config = render::RendererConfig{});
+        explicit Renderer(
+            const render::RendererConfig& config = render::RendererConfig{},
+            render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma
+        );
 
         ~Renderer() noexcept;
 
@@ -109,6 +113,8 @@ namespace RelayCore
         [[nodiscard]] auto iteration_diagnostics() const noexcept -> const render::IterationDiagnostics&;
 
         [[nodiscard]] auto authoring_config() const noexcept -> const render::RenderAuthoringConfig&;
+
+        [[nodiscard]] auto color_pipeline_mode() const noexcept -> render::ColorPipelineMode;
 
         [[nodiscard]] auto camera() noexcept -> render::PerspectiveCamera&;
 
@@ -177,7 +183,10 @@ namespace RelayCore
 
         void bind_scene_program_uniforms(render::ShaderProgram& program) const;
 
+        void apply_scene_framebuffer_state() const noexcept;
+
         render::RendererConfig config_{};
+        render::ColorPipelineMode color_pipeline_mode_ = render::ColorPipelineMode::legacy_gamma;
         render::RenderAuthoringConfig authoring_config_{};
         bool initialized_ = false;
         int viewport_width_ = 1280;

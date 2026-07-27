@@ -602,6 +602,50 @@ namespace
         std::cout << "srgb_encode_alpha=" << static_cast<int>(enabled[1][3]) << '\n';
         std::cout << "srgb_encode_baseline=passed\n";
     }
+
+    void verify_linear_straight_alpha_blend_in_srgb_framebuffer(const GlProgram& program)
+    {
+        GlTextureAttachment attachment{1, 1, GL_SRGB8_ALPHA8, GL_UNSIGNED_BYTE};
+        GlFramebuffer framebuffer{attachment};
+        framebuffer.bind();
+        glViewport(0, 0, 1, 1);
+        glEnable(GL_FRAMEBUFFER_SRGB);
+        if (glIsEnabled(GL_FRAMEBUFFER_SRGB) != GL_TRUE)
+        {
+            throw std::runtime_error("sRGB framebuffer blend requires GL_FRAMEBUFFER_SRGB enabled");
+        }
+
+        constexpr std::array<float, 3> kLinearDestination{0.25F, 0.50F, 0.75F};
+        constexpr std::array<float, 3> kLinearSource{0.80F, 0.20F, 0.40F};
+        constexpr float kSourceAlpha = 0.50F;
+        glClearColor(kLinearDestination[0], kLinearDestination[1], kLinearDestination[2], 1.0F);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        program.use();
+        draw_fullscreen_triangle();
+        require_no_gl_error("linear straight-alpha sRGB blend draw");
+
+        std::array<std::uint8_t, 4> pixel{};
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel.data());
+        require_no_gl_error("linear straight-alpha sRGB blend readback");
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected_linear =
+                kLinearSource[channel] * kSourceAlpha + kLinearDestination[channel] * (1.0F - kSourceAlpha);
+            require_srgb_near(pixel[channel], linear_to_srgb_byte(expected_linear), "linear straight-alpha sRGB blend");
+        }
+        require_srgb_near(pixel[3], 191, "linear straight-alpha alpha remains unencoded");
+        std::cout << "linear_straight_alpha_srgb_blend=" << static_cast<int>(pixel[0]) << ','
+                  << static_cast<int>(pixel[1]) << ',' << static_cast<int>(pixel[2]) << ','
+                  << static_cast<int>(pixel[3]) << '\n';
+        glDisable(GL_BLEND);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        if (glIsEnabled(GL_FRAMEBUFFER_SRGB) == GL_TRUE)
+        {
+            throw std::runtime_error("sRGB framebuffer blend requires GL_FRAMEBUFFER_SRGB disabled on exit");
+        }
+    }
 } // namespace
 
 int main()
@@ -684,6 +728,7 @@ void main()
         verify_straight_alpha_blend(blend_program);
         verify_srgb_texture_decode(srgb_decode_program);
         verify_srgb_framebuffer_encode(srgb_encode_program);
+        verify_linear_straight_alpha_blend_in_srgb_framebuffer(blend_program);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_FRAMEBUFFER_SRGB);

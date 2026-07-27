@@ -18,7 +18,7 @@ namespace RelayCore
         /**
          * @brief Configures the SDL OpenGL attributes required by RelayCore.
          */
-        void set_gl_attributes()
+        void set_gl_attributes(const render::ColorPipelineMode color_pipeline_mode)
         {
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4), "Failed to set GL major version");
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6), "Failed to set GL minor version");
@@ -39,12 +39,19 @@ namespace RelayCore
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1), "Failed to enable GL double buffering");
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24), "Failed to set GL depth buffer size");
             core::require_sdl(SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8), "Failed to set GL stencil buffer size");
+            if (color_pipeline_mode == render::ColorPipelineMode::hardware_srgb)
+            {
+                core::require_sdl(
+                    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1),
+                    "Failed to request an sRGB-capable default framebuffer"
+                );
+            }
         }
     } // namespace
 
-    Window::Window(const WindowConfig& config)
+    Window::Window(const WindowConfig& config, const render::ColorPipelineMode color_pipeline_mode)
     {
-        set_gl_attributes();
+        set_gl_attributes(color_pipeline_mode);
 
         SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
         if (config.high_dpi)
@@ -76,6 +83,12 @@ namespace RelayCore
         window_ = created_window;
         gl_context_ = created_context;
 
+        if (color_pipeline_mode == render::ColorPipelineMode::hardware_srgb
+            && !SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &framebuffer_srgb_capable_))
+        {
+            core::throw_sdl_error("Failed to query sRGB default framebuffer capability");
+        }
+
         log_context_info();
     }
 
@@ -100,6 +113,11 @@ namespace RelayCore
     auto Window::gl_context() const noexcept -> SDL_GLContext
     {
         return gl_context_;
+    }
+
+    auto Window::framebuffer_srgb_capable() const noexcept -> int
+    {
+        return framebuffer_srgb_capable_;
     }
 
     auto Window::pixel_extent() const -> PixelExtent

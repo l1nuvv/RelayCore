@@ -57,7 +57,8 @@ namespace RelayCore
             try
             {
                 const StartupOptions options = parse_startup_options(argc, argv);
-                Application app{std::move(app_delegate), options.config_path};
+                log::info("Color pipeline mode: {}", render::color_pipeline_mode_name(options.color_pipeline_mode));
+                Application app{std::move(app_delegate), options.config_path, options.color_pipeline_mode};
                 return app.run();
             } catch (const std::exception& exception)
             {

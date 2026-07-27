@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "relaycore/render/color_pipeline_mode.h"
+
 #include <SDL3/SDL.h>
 #include <string>
 
@@ -56,7 +58,12 @@ namespace RelayCore
          * @brief Creates the SDL window and its OpenGL context.
          * @param config Window creation parameters.
          */
-        explicit Window(const WindowConfig& config);
+        explicit Window(
+            const WindowConfig& config,
+            render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma
+        );
+
+        [[nodiscard]] auto framebuffer_srgb_capable() const noexcept -> int;
 
         /**
          * @brief Destroys the OpenGL context and window.
@@ -150,5 +157,6 @@ namespace RelayCore
 
         SDL_Window* window_ = nullptr;       ///< Owned SDL window handle.
         SDL_GLContext gl_context_ = nullptr; ///< Owned OpenGL context handle.
+        int framebuffer_srgb_capable_ = 0;
     };
 } // namespace RelayCore

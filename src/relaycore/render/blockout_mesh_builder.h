@@ -1,5 +1,6 @@
 #pragma once
 
+#include "relaycore/render/color_pipeline_mode.h"
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/world/blockout_level.h"
@@ -23,14 +24,19 @@ namespace RelayCore::render
         std::uint32_t total_triangles = 0;
     };
 
-    [[nodiscard]] auto build_blockout_mesh(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
-        -> CpuColorMeshData;
+    [[nodiscard]] auto build_blockout_mesh(
+        const BlockoutLevel& level,
+        const RenderAuthoringConfig& authoring_config,
+        ColorPipelineMode color_pipeline_mode
+    ) -> CpuColorMeshData;
 
     [[nodiscard]] auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData;
 
-    [[nodiscard]] auto
-    build_blockout_render_data(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
-        -> BlockoutRenderData;
+    [[nodiscard]] auto build_blockout_render_data(
+        const BlockoutLevel& level,
+        const RenderAuthoringConfig& authoring_config,
+        ColorPipelineMode color_pipeline_mode
+    ) -> BlockoutRenderData;
 
     [[nodiscard]] auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData;
 } // namespace RelayCore::render
