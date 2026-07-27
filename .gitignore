@@ -2,6 +2,8 @@
 /.git/
 /CMakeUserPresets.json
 
+*.patch
+
 # Build trees and generated buildsystem state
 /build/
 /build-*/
