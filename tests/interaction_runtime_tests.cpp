@@ -10,6 +10,9 @@
 #include <filesystem>
 #include <vector>
 
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
+
 namespace
 {
     using RelayCore::gameplay::DoorActivationPolicy;
@@ -1500,12 +1503,8 @@ TEST_CASE("apply usable interaction records primary and chained signal targets")
 
 TEST_CASE("shipped test_room use flow preserves required item and terminal activation")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =
@@ -1802,12 +1801,8 @@ TEST_CASE("usable spatial index narrows focus candidates")
 
 TEST_CASE("shipped test_room preserves authored interaction metadata")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =
@@ -1889,12 +1884,8 @@ TEST_CASE("shipped test_room preserves authored interaction metadata")
 
 TEST_CASE("shipped test_room reader panel focus works from authored approach")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =
@@ -1922,12 +1913,8 @@ TEST_CASE("shipped test_room reader panel focus works from authored approach")
 
 TEST_CASE("shipped test_room airlock trigger fires once and reseals the bulkhead")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =
@@ -1988,12 +1975,8 @@ TEST_CASE("shipped test_room airlock trigger fires once and reseals the bulkhead
 
 TEST_CASE("shipped test_room fully open bulkheads are excluded from blockers")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =

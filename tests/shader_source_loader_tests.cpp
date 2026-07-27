@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "scoped_temp_directory.h"
+
 namespace
 {
     void write_shader_loader_test_file(const std::filesystem::path& path, const std::string_view contents)
@@ -22,8 +24,8 @@ namespace
 
 TEST_CASE("shader source loader expands nested local includes and rejects cycles")
 {
-    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "relaycore_shader_loader_tests";
-    static_cast<void>(std::filesystem::remove_all(temp_dir));
+    RelayCore::test::ScopedTempDirectory temp;
+    const std::filesystem::path temp_dir = temp.path() / "relaycore_shader_loader_tests";
     std::filesystem::create_directories(temp_dir / "shared");
 
     write_shader_loader_test_file(temp_dir / "shared" / "math.glsl", "float included_noise() { return 1.0; }\n");
@@ -60,6 +62,4 @@ TEST_CASE("shader source loader expands nested local includes and rejects cycles
         return RelayCore::render::load_shader_source(temp_dir / "cycle_a.glsl");
     };
     CHECK_THROWS_WITH_AS(load_cycle(), doctest::Contains("Shader include cycle detected"), std::runtime_error);
-
-    static_cast<void>(std::filesystem::remove_all(temp_dir));
 }

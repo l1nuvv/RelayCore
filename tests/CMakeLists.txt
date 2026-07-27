@@ -26,6 +26,7 @@ target_sources(
         player_motion_tests.cpp
         render_authoring_config_tests.cpp
         renderer_diagnostics_api_tests.cpp
+        scoped_temp_directory_tests.cpp
         runtime_model_tests.cpp
         combat_runtime_tests.cpp
         engine_config_tests.cpp

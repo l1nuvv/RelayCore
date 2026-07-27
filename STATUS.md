@@ -26,10 +26,11 @@ RelayCore — приватный учебный проект, проходящи
 - RC-018a — закрыт: allocating diagnostics setters имеют корректный exception contract, а per-update snapshots передаются в Renderer перемещением.
 - RC-018b — закрыт: runtime/audio/inspector diagnostics строятся только при активных F2/F6/F4 потребителях.
 - RC-018 — закрыт: diagnostics APIs имеют корректный exception contract, snapshots перемещаются в Renderer, а тяжёлые builders учитывают visibility.
+- RC-019 — закрыт: filesystem-writing tests используют уникальные per-case RAII temp directories и проходят параллельный CTest без конфликтов.
 
 ## Следующая работа
 
-Следующий пункт выбирается из готового аудита после закрытия RC-018. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
+Следующий пункт выбирается из готового аудита после закрытия RC-019. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
 ## Проверки после изменений
 

@@ -9,6 +9,9 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
+
 namespace
 {
     using RelayCore::gameplay::DoorState;
@@ -287,12 +290,8 @@ TEST_CASE("mission runtime advances when required target is signaled")
 
 TEST_CASE("shipped test_room preserves the authored bulkhead to terminal mission flow")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =

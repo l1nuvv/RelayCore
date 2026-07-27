@@ -19,6 +19,8 @@
 #include <vector>
 
 #include "acceptance_slice_harness.h"
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 namespace
 {
@@ -172,21 +174,12 @@ namespace
         CHECK(second_shot.killed_turret);
     }
 
-    void init_test_log()
-    {
-        RelayCore::log::shutdown();
-        RelayCore::log::Config log_config{};
-        log_config.enable_console_sink = false;
-        log_config.enable_timestamped_log = false;
-        log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-        RelayCore::log::init(log_config);
-    }
-
 } // namespace
 
 TEST_CASE("all shipped maps build clean runtime content")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path root = repo_root();
     const std::filesystem::path asset_root = root / "assets";
@@ -274,7 +267,8 @@ TEST_CASE("all shipped maps build clean runtime content")
 
 TEST_CASE("stress_room_02 preserves the second acceptance flow")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "stress_room_02.toml";
     const RelayCore::BlockoutLevel level = RelayCore::load_blockout_level(level_path);
@@ -450,7 +444,8 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
 
 TEST_CASE("test_room preserves the combat acceptance slice")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
@@ -520,7 +515,8 @@ TEST_CASE("test_room preserves the combat acceptance slice")
 
 TEST_CASE("test_room level session preserves the typed acceptance contract")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     RelayCore::core::GameplayConfig config{};
@@ -558,7 +554,8 @@ TEST_CASE("test_room level session preserves the typed acceptance contract")
 
 TEST_CASE("test_room snapshot restore preserves mid-slice runtime progress")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
@@ -613,7 +610,8 @@ TEST_CASE("test_room snapshot restore preserves mid-slice runtime progress")
 
 TEST_CASE("test_room snapshot restore preserves the completed acceptance slice")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     auto scenario = AcceptanceHarness::TestRoomScenario::build(level_path);
@@ -648,7 +646,8 @@ TEST_CASE("test_room snapshot restore preserves the completed acceptance slice")
 
 TEST_CASE("test_room game world runtime preserves the golden path progression")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     RelayCore::core::EngineConfig config{};
@@ -714,7 +713,8 @@ TEST_CASE("test_room game world runtime preserves the golden path progression")
 
 TEST_CASE("test_room game world runtime snapshot restore preserves mid-slice progression")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     RelayCore::core::EngineConfig config{};
@@ -784,7 +784,8 @@ TEST_CASE("test_room game world runtime snapshot restore preserves mid-slice pro
 
 TEST_CASE("test_room game world runtime respawn preserves mid-slice progression")
 {
-    init_test_log();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path level_path = repo_root() / "assets" / "levels" / "test_room.toml";
     RelayCore::core::EngineConfig config{};

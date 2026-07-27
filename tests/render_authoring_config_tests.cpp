@@ -6,22 +6,13 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace
-{
-    void init_test_logger()
-    {
-        RelayCore::log::shutdown();
-        RelayCore::log::Config log_config{};
-        log_config.enable_console_sink = false;
-        log_config.enable_timestamped_log = false;
-        log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-        RelayCore::log::init(log_config);
-    }
-} // namespace
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 TEST_CASE("render authoring config loads shipped material and light contract")
 {
-    init_test_logger();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
     const RelayCore::render::RenderAuthoringConfig config = RelayCore::render::load_default_render_authoring_config();
 
     CHECK(config.source_path.filename() == "render_authoring.toml");
@@ -32,14 +23,13 @@ TEST_CASE("render authoring config loads shipped material and light contract")
     );
     CHECK(config.render_light.max_radius == doctest::Approx(48.0F));
     CHECK(config.lighting.local_light_gain == doctest::Approx(1.28F));
-    RelayCore::log::shutdown();
 }
 
 TEST_CASE("render authoring config rejects duplicate material entries")
 {
-    init_test_logger();
-    const std::filesystem::path temp_path =
-        std::filesystem::temp_directory_path() / "relaycore_render_authoring_duplicate.toml";
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const std::filesystem::path temp_path = temp.path() / "relaycore_render_authoring_duplicate.toml";
 
     {
         std::ofstream out{temp_path, std::ios::trunc};
@@ -58,16 +48,13 @@ TEST_CASE("render authoring config rejects duplicate material entries")
         doctest::Contains("Duplicate render authoring material entry"),
         std::runtime_error
     );
-
-    static_cast<void>(std::filesystem::remove(temp_path));
-    RelayCore::log::shutdown();
 }
 
 TEST_CASE("render authoring config rejects transparent non-glass materials")
 {
-    init_test_logger();
-    const std::filesystem::path temp_path =
-        std::filesystem::temp_directory_path() / "relaycore_render_authoring_invalid_transparent.toml";
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const std::filesystem::path temp_path = temp.path() / "relaycore_render_authoring_invalid_transparent.toml";
 
     {
         std::ofstream out{temp_path, std::ios::trunc};
@@ -85,16 +72,13 @@ TEST_CASE("render authoring config rejects transparent non-glass materials")
         doctest::Contains("may only use transparent=true with profile=glass"),
         std::runtime_error
     );
-
-    static_cast<void>(std::filesystem::remove(temp_path));
-    RelayCore::log::shutdown();
 }
 
 TEST_CASE("render authoring config rejects light strip materials without emissive contract")
 {
-    init_test_logger();
-    const std::filesystem::path temp_path =
-        std::filesystem::temp_directory_path() / "relaycore_render_authoring_invalid_light_strip.toml";
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const std::filesystem::path temp_path = temp.path() / "relaycore_render_authoring_invalid_light_strip.toml";
 
     {
         std::ofstream out{temp_path, std::ios::trunc};
@@ -108,16 +92,13 @@ TEST_CASE("render authoring config rejects light strip materials without emissiv
         static_cast<void>(RelayCore::render::load_render_authoring_config(temp_path));
     };
     CHECK_THROWS_WITH_AS(load_config(), doctest::Contains("requires emissive_strength > 0"), std::runtime_error);
-
-    static_cast<void>(std::filesystem::remove(temp_path));
-    RelayCore::log::shutdown();
 }
 
 TEST_CASE("render authoring config rejects render light defaults outside configured bounds")
 {
-    init_test_logger();
-    const std::filesystem::path temp_path =
-        std::filesystem::temp_directory_path() / "relaycore_render_authoring_invalid_render_light.toml";
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const std::filesystem::path temp_path = temp.path() / "relaycore_render_authoring_invalid_render_light.toml";
 
     {
         std::ofstream out{temp_path, std::ios::trunc};
@@ -134,7 +115,4 @@ TEST_CASE("render authoring config rejects render light defaults outside configu
         doctest::Contains("default_radius inside [min_radius, max_radius]"),
         std::runtime_error
     );
-
-    static_cast<void>(std::filesystem::remove(temp_path));
-    RelayCore::log::shutdown();
 }

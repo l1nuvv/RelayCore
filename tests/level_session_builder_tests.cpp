@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <fstream>
 
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
+
 namespace
 {
     [[nodiscard]] auto spawn_angles_nearly_equal(const float lhs, const float rhs) -> bool
@@ -17,15 +20,10 @@ namespace
 
 TEST_CASE("level session builder applies authored spawn view angles")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_spawn_angles.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_spawn_angles.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -59,15 +57,10 @@ TEST_CASE("level session builder applies authored spawn view angles")
 
 TEST_CASE("level session builder collects authoring overlap warnings")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_warnings.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_warnings.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -107,15 +100,10 @@ TEST_CASE("level session builder collects authoring overlap warnings")
 
 TEST_CASE("level session builder collects unresolved authored target warnings")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_unresolved_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_unresolved_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};

@@ -6,22 +6,13 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 
-namespace
-{
-    void init_test_logger()
-    {
-        RelayCore::log::shutdown();
-        RelayCore::log::Config log_config{};
-        log_config.enable_console_sink = false;
-        log_config.enable_timestamped_log = false;
-        log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-        RelayCore::log::init(log_config);
-    }
-} // namespace
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 TEST_CASE("blockout texture atlas loads from external asset")
 {
-    init_test_logger();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const auto atlas =
         RelayCore::render::load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
@@ -36,7 +27,8 @@ TEST_CASE("blockout texture atlas loads from external asset")
 
 TEST_CASE("blockout texture atlas is generated with expected dimensions and alpha")
 {
-    init_test_logger();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const RelayCore::render::CpuRgbaTextureData atlas = RelayCore::render::build_blockout_texture_atlas();
 
