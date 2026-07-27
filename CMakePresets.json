@@ -119,6 +119,12 @@
       "targets": ["relaycore_tests"]
     },
     {
+      "name": "graphics-baseline-debug",
+      "displayName": "Build Graphics Baseline (Debug)",
+      "configurePreset": "msvc-debug",
+      "targets": ["relaycore_graphics_baseline"]
+    },
+    {
       "name": "tests-relwithdebinfo",
       "displayName": "Build Tests (RelWithDebInfo)",
       "configurePreset": "msvc-relwithdebinfo",

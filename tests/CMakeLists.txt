@@ -1,7 +1,9 @@
 add_executable(relaycore_tests)
 add_executable(relaycore_content_validation)
+add_executable(relaycore_graphics_baseline)
 set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_graphics_baseline PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 
 target_sources(
     relaycore_tests
@@ -39,6 +41,12 @@ target_sources(
 )
 
 target_sources(
+    relaycore_graphics_baseline
+    PRIVATE
+        color_pipeline_baseline.cpp
+)
+
+target_sources(
     relaycore_content_validation
     PRIVATE
         ../src/relaygame/game_world_runtime.cpp
@@ -65,6 +73,14 @@ target_link_libraries(
 )
 
 target_link_libraries(
+    relaycore_graphics_baseline
+    PRIVATE
+        RelayCore::engine
+        RelayCore::project_options
+        RelayCore::warnings
+)
+
+target_link_libraries(
     relaycore_content_validation
     PRIVATE
         RelayCore::engine
@@ -76,7 +92,7 @@ target_link_libraries(
 find_package(doctest CONFIG REQUIRED)
 include(doctest)
 
-foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation)
+foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_graphics_baseline)
     relaycore_apply_standard_target_settings(${test_target})
 
     add_custom_command(
@@ -89,6 +105,20 @@ foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation)
         COMMAND_EXPAND_LISTS
     )
 endforeach()
+
+add_test(
+    NAME graphics.color_pipeline_baseline
+    COMMAND relaycore_graphics_baseline
+)
+set_tests_properties(
+    graphics.color_pipeline_baseline
+    PROPERTIES
+        LABELS "integration;graphics"
+        RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_graphics_baseline>"
+        ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+)
 
 doctest_discover_tests(
     relaycore_tests

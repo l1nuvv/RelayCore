@@ -1,0 +1,455 @@
+#include "relaycore/render/texture2d.h"
+
+#include <SDL3/SDL.h>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <glad/gl.h>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace
+{
+    constexpr int kRampWidth = 5;
+    constexpr int kReferenceHeight = 1;
+    constexpr std::array<std::uint8_t, kRampWidth> kExpectedFullLight{0, 63, 127, 191, 255};
+    constexpr std::array<std::uint8_t, kRampWidth> kExpectedHalfLight{0, 31, 63, 95, 127};
+    constexpr std::array<std::uint8_t, 4> kBlendSource{204, 51, 102, 128};
+    constexpr std::array<std::uint8_t, 3> kBlendDestination{64, 128, 192};
+    constexpr std::array<std::uint8_t, 3> kExpectedBlend{134, 90, 147};
+    constexpr int kByteTolerance = 1;
+    constexpr int kSkippedExitCode = 77;
+
+    class BaselineUnavailable final : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+    };
+
+    class SdlVideoLifetime {
+    public:
+        SdlVideoLifetime()
+        {
+            if (!SDL_Init(SDL_INIT_VIDEO))
+            {
+                throw BaselineUnavailable("SDL video initialization failed: " + std::string{SDL_GetError()});
+            }
+        }
+
+        ~SdlVideoLifetime() noexcept
+        {
+            SDL_Quit();
+        }
+
+        SdlVideoLifetime(const SdlVideoLifetime&) = delete;
+        auto operator=(const SdlVideoLifetime&) -> SdlVideoLifetime& = delete;
+    };
+
+    class HiddenGlContext {
+    public:
+        HiddenGlContext()
+        {
+            require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4), "set GL major version");
+            require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6), "set GL minor version");
+            require_sdl(
+                SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE),
+                "set GL core profile"
+            );
+            require_sdl(SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1), "set GL double buffering");
+
+            window_ =
+                SDL_CreateWindow("RelayCore graphics baseline", kRampWidth, 1, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+            if (window_ == nullptr)
+            {
+                throw BaselineUnavailable("hidden SDL OpenGL window creation failed: " + std::string{SDL_GetError()});
+            }
+
+            context_ = SDL_GL_CreateContext(window_);
+            if (context_ == nullptr)
+            {
+                SDL_DestroyWindow(window_);
+                window_ = nullptr;
+                throw BaselineUnavailable("OpenGL context creation failed: " + std::string{SDL_GetError()});
+            }
+
+            if (gladLoadGL(reinterpret_cast<GLADloadfunc>(SDL_GL_GetProcAddress)) == 0)
+            {
+                SDL_GL_DestroyContext(context_);
+                context_ = nullptr;
+                SDL_DestroyWindow(window_);
+                window_ = nullptr;
+                throw BaselineUnavailable("gladLoadGL failed");
+            }
+        }
+
+        ~HiddenGlContext() noexcept
+        {
+            if (context_ != nullptr)
+            {
+                SDL_GL_DestroyContext(context_);
+            }
+            if (window_ != nullptr)
+            {
+                SDL_DestroyWindow(window_);
+            }
+        }
+
+        HiddenGlContext(const HiddenGlContext&) = delete;
+        auto operator=(const HiddenGlContext&) -> HiddenGlContext& = delete;
+
+    private:
+        static void require_sdl(const bool success, const std::string_view operation)
+        {
+            if (!success)
+            {
+                throw BaselineUnavailable(std::string{operation} + " failed: " + SDL_GetError());
+            }
+        }
+
+        SDL_Window* window_ = nullptr;
+        SDL_GLContext context_ = nullptr;
+    };
+
+    class GlProgram {
+    public:
+        GlProgram(const char* vertex_source, const char* fragment_source)
+        {
+            const GLuint vertex_shader = compile(GL_VERTEX_SHADER, vertex_source);
+            GLuint fragment_shader = 0;
+            try
+            {
+                fragment_shader = compile(GL_FRAGMENT_SHADER, fragment_source);
+            } catch (...)
+            {
+                glDeleteShader(vertex_shader);
+                throw;
+            }
+            program_ = glCreateProgram();
+            if (program_ == 0)
+            {
+                glDeleteShader(vertex_shader);
+                glDeleteShader(fragment_shader);
+                throw std::runtime_error("controlled baseline program creation failed");
+            }
+            glAttachShader(program_, vertex_shader);
+            glAttachShader(program_, fragment_shader);
+            glLinkProgram(program_);
+            glDeleteShader(vertex_shader);
+            glDeleteShader(fragment_shader);
+
+            GLint linked = GL_FALSE;
+            glGetProgramiv(program_, GL_LINK_STATUS, &linked);
+            if (linked != GL_TRUE)
+            {
+                glDeleteProgram(program_);
+                program_ = 0;
+                throw std::runtime_error("controlled baseline shader link failed");
+            }
+        }
+
+        ~GlProgram() noexcept
+        {
+            if (program_ != 0)
+            {
+                glDeleteProgram(program_);
+            }
+        }
+
+        void use() const
+        {
+            glUseProgram(program_);
+        }
+
+        [[nodiscard]] auto uniform(const char* name) const -> GLint
+        {
+            return glGetUniformLocation(program_, name);
+        }
+
+    private:
+        [[nodiscard]] static auto compile(const GLenum stage, const char* source) -> GLuint
+        {
+            const GLuint shader = glCreateShader(stage);
+            glShaderSource(shader, 1, &source, nullptr);
+            glCompileShader(shader);
+            GLint compiled = GL_FALSE;
+            glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+            if (compiled != GL_TRUE)
+            {
+                glDeleteShader(shader);
+                throw std::runtime_error("controlled baseline shader compilation failed");
+            }
+            return shader;
+        }
+
+        GLuint program_ = 0;
+    };
+
+    class GlVertexArray {
+    public:
+        GlVertexArray()
+        {
+            glGenVertexArrays(1, &id_);
+            glBindVertexArray(id_);
+        }
+
+        ~GlVertexArray() noexcept
+        {
+            if (id_ != 0)
+            {
+                glDeleteVertexArrays(1, &id_);
+            }
+        }
+
+        GlVertexArray(const GlVertexArray&) = delete;
+        auto operator=(const GlVertexArray&) -> GlVertexArray& = delete;
+
+    private:
+        GLuint id_ = 0;
+    };
+
+    void require_no_gl_error(const std::string_view operation)
+    {
+        const GLenum error = glGetError();
+        if (error != GL_NO_ERROR)
+        {
+            throw std::runtime_error(std::string{operation} + " produced GL error " + std::to_string(error));
+        }
+    }
+
+    void require_near(const int actual, const int expected, const std::string_view label)
+    {
+        if (std::abs(actual - expected) > kByteTolerance)
+        {
+            throw std::runtime_error(
+                std::string{label} + " expected " + std::to_string(expected) + ", got " + std::to_string(actual)
+            );
+        }
+    }
+
+    void print_gl_string(const char* label, const GLenum name)
+    {
+        const auto* value = reinterpret_cast<const char*>(glGetString(name));
+        std::cout << label << '=' << (value != nullptr ? value : "unavailable") << '\n';
+    }
+
+    struct FramebufferBits {
+        int red = 0;
+        int green = 0;
+        int blue = 0;
+        int alpha = 0;
+    };
+
+    void configure_default_framebuffer_path()
+    {
+        glDrawBuffer(GL_BACK);
+        if (const GLenum error = glGetError(); error != GL_NO_ERROR)
+        {
+            throw BaselineUnavailable(
+                "default framebuffer does not support GL_BACK draw buffer (GL error " + std::to_string(error) + ')'
+            );
+        }
+        glReadBuffer(GL_BACK);
+        if (const GLenum error = glGetError(); error != GL_NO_ERROR)
+        {
+            throw BaselineUnavailable(
+                "default framebuffer does not support GL_BACK read buffer (GL error " + std::to_string(error) + ')'
+            );
+        }
+        glDisable(GL_DITHER);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        require_no_gl_error("default framebuffer baseline state setup");
+        if (glIsEnabled(GL_FRAMEBUFFER_SRGB) == GL_TRUE)
+        {
+            throw std::runtime_error("GL_FRAMEBUFFER_SRGB must remain disabled in the RC-022a baseline");
+        }
+    }
+
+    [[nodiscard]] auto print_default_framebuffer_inventory() -> FramebufferBits
+    {
+        print_gl_string("GL_VERSION", GL_VERSION);
+        print_gl_string("GL_VENDOR", GL_VENDOR);
+        print_gl_string("GL_RENDERER", GL_RENDERER);
+
+        FramebufferBits bits{};
+        if (!SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &bits.red) || !SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &bits.green)
+            || !SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &bits.blue)
+            || !SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &bits.alpha))
+        {
+            throw BaselineUnavailable("default framebuffer bit-depth query failed: " + std::string{SDL_GetError()});
+        }
+        std::cout << "default_framebuffer_bits=" << bits.red << ',' << bits.green << ',' << bits.blue << ','
+                  << bits.alpha << '\n';
+        std::cout << "GL_FRAMEBUFFER_SRGB=" << (glIsEnabled(GL_FRAMEBUFFER_SRGB) == GL_TRUE ? "enabled" : "disabled")
+                  << '\n';
+
+        GLint color_encoding = 0;
+        glGetFramebufferAttachmentParameteriv(
+            GL_FRAMEBUFFER,
+            GL_BACK_LEFT,
+            GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING,
+            &color_encoding
+        );
+        const GLenum encoding_error = glGetError();
+        if (encoding_error == GL_NO_ERROR)
+        {
+            std::cout << "default_framebuffer_color_encoding=" << (color_encoding == GL_SRGB ? "GL_SRGB" : "GL_LINEAR")
+                      << '\n';
+        } else
+        {
+            std::cout << "default_framebuffer_color_encoding=unavailable (GL error " << encoding_error << ")\n";
+        }
+        std::cout << "sRGB_capable_default_framebuffer_contract=not_requested_by_RelayCore\n";
+        return bits;
+    }
+
+    void draw_fullscreen_triangle()
+    {
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+
+    [[nodiscard]] auto read_rgb_row() -> std::array<std::array<std::uint8_t, 3>, kRampWidth>
+    {
+        std::array<std::array<std::uint8_t, 3>, kRampWidth> pixels{};
+        glReadPixels(0, 0, kRampWidth, kReferenceHeight, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+        require_no_gl_error("gray ramp glReadPixels");
+        return pixels;
+    }
+
+    void verify_gray_ramp(
+        const RelayCore::render::Texture2D& texture,
+        const GlProgram& program,
+        const float multiplier,
+        const std::array<std::uint8_t, kRampWidth>& expected,
+        const std::string_view label
+    )
+    {
+        glDisable(GL_BLEND);
+        glViewport(0, 0, kRampWidth, kReferenceHeight);
+        glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        program.use();
+        texture.bind(0);
+        glUniform1i(program.uniform("u_reference_texture"), 0);
+        glUniform1f(program.uniform("u_multiplier"), multiplier);
+        draw_fullscreen_triangle();
+        require_no_gl_error("gray ramp draw");
+
+        const auto pixels = read_rgb_row();
+        std::cout << label << '=';
+        for (int index = 0; index < kRampWidth; ++index)
+        {
+            const auto& pixel = pixels[static_cast<std::size_t>(index)];
+            require_near(pixel[0], expected[static_cast<std::size_t>(index)], label);
+            require_near(pixel[1], expected[static_cast<std::size_t>(index)], label);
+            require_near(pixel[2], expected[static_cast<std::size_t>(index)], label);
+            std::cout << static_cast<int>(pixel[0]) << (index + 1 == kRampWidth ? '\n' : ',');
+        }
+    }
+
+    void verify_straight_alpha_blend(const GlProgram& program)
+    {
+        glViewport(0, 0, 1, 1);
+        glClearColor(
+            static_cast<float>(kBlendDestination[0]) / 255.0F,
+            static_cast<float>(kBlendDestination[1]) / 255.0F,
+            static_cast<float>(kBlendDestination[2]) / 255.0F,
+            1.0F
+        );
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        program.use();
+        draw_fullscreen_triangle();
+        require_no_gl_error("straight-alpha blend draw");
+
+        std::array<std::uint8_t, 4> pixel{};
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel.data());
+        require_no_gl_error("straight-alpha glReadPixels");
+        for (std::size_t channel = 0; channel < kExpectedBlend.size(); ++channel)
+        {
+            require_near(pixel[channel], kExpectedBlend[channel], "straight-alpha blend");
+        }
+        std::cout << "straight_alpha_blend=" << static_cast<int>(pixel[0]) << ',' << static_cast<int>(pixel[1]) << ','
+                  << static_cast<int>(pixel[2]) << ',' << static_cast<int>(pixel[3]) << '\n';
+        glDisable(GL_BLEND);
+    }
+} // namespace
+
+int main()
+{
+    try
+    {
+        SdlVideoLifetime sdl{};
+        HiddenGlContext context{};
+        std::cout << "graphics_color_pipeline_baseline=context_ready\n";
+        configure_default_framebuffer_path();
+        const FramebufferBits framebuffer_bits = print_default_framebuffer_inventory();
+        if (framebuffer_bits.red < 8 || framebuffer_bits.green < 8 || framebuffer_bits.blue < 8)
+        {
+            throw BaselineUnavailable(
+                "default framebuffer requires RGB bit depth >= 8, got " + std::to_string(framebuffer_bits.red) + ','
+                + std::to_string(framebuffer_bits.green) + ',' + std::to_string(framebuffer_bits.blue)
+            );
+        }
+        std::cout << "graphics_color_pipeline_baseline=measurement_started\n";
+
+        GlVertexArray vertex_array{};
+
+        const std::array<std::uint8_t, kRampWidth * 4> pixels{
+            0, 0, 0, 255, 63, 63, 63, 255, 127, 127, 127, 255, 191, 191, 191, 255, 255, 255, 255, 255,
+        };
+        RelayCore::render::Texture2D reference_texture{};
+        reference_texture.initialize_rgba(kRampWidth, 1, pixels);
+        reference_texture.bind(0);
+        GLint internal_format = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &internal_format);
+        if (internal_format != GL_RGBA8)
+        {
+            throw std::runtime_error("Texture2D baseline upload did not use GL_RGBA8");
+        }
+        std::cout << "reference_texture_internal_format=GL_RGBA8\n";
+
+        constexpr char kVertexShader[] = R"(#version 460 core
+void main()
+{
+    const vec2 positions[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0);
+})";
+        constexpr char kRampFragmentShader[] = R"(#version 460 core
+layout (location = 0) out vec4 out_color;
+uniform sampler2D u_reference_texture;
+uniform float u_multiplier;
+void main()
+{
+    int sample_index = int(gl_FragCoord.x);
+    vec3 stored_rgb = texelFetch(u_reference_texture, ivec2(sample_index, 0), 0).rgb;
+    out_color = vec4(stored_rgb * u_multiplier, 1.0);
+})";
+        constexpr char kBlendFragmentShader[] = R"(#version 460 core
+layout (location = 0) out vec4 out_color;
+void main()
+{
+    out_color = vec4(0.8, 0.2, 0.4, 0.5);
+})";
+
+        const GlProgram ramp_program{kVertexShader, kRampFragmentShader};
+        const GlProgram blend_program{kVertexShader, kBlendFragmentShader};
+        verify_gray_ramp(reference_texture, ramp_program, 1.0F, kExpectedFullLight, "gray_ramp_multiplier_1_0");
+        verify_gray_ramp(reference_texture, ramp_program, 0.5F, kExpectedHalfLight, "gray_ramp_multiplier_0_5");
+        verify_straight_alpha_blend(blend_program);
+
+        std::cout << "graphics_color_pipeline_baseline=passed\n";
+        return 0;
+    } catch (const BaselineUnavailable& error)
+    {
+        std::cerr << "graphics_color_pipeline_baseline=skipped: " << error.what() << '\n';
+        return kSkippedExitCode;
+    } catch (const std::exception& error)
+    {
+        std::cerr << "graphics_color_pipeline_baseline=failed: " << error.what() << '\n';
+        return 1;
+    }
+}
