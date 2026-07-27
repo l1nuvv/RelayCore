@@ -38,6 +38,9 @@ set(RELAYCORE_ENGINE_SOURCES
     render/gl_loader.cpp
     render/mesh.cpp
     render/render_authoring_config.cpp
+    render/pipeline_authoring_overlay.cpp
+
+
     render/renderer.cpp
     render/shader_program.cpp
     render/shader_source_loader.cpp
@@ -93,6 +96,9 @@ set(RELAYCORE_ENGINE_HEADERS
     render/gl_loader.h
     render/mesh.h
     render/render_authoring_config.h
+    render/pipeline_authoring_overlay.h
+
+
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h

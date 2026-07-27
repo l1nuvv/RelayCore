@@ -45,7 +45,7 @@ RelayCore — приватный учебный проект, проходящи
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
-RC-022g — спроектировать и реализовать минимальный pipeline-specific authoring overlay: legacy значения остаются неизменными, hardware_srgb получает явные global/material/level overrides без дублирования gameplay geometry и без silent fallback.
+RC-022g — iteration 1: добавлены data model, строгий TOML parser, global/material application helpers и stable-ID validation contract для pipeline-specific authoring overlay. Runtime selection, извлечение authoring IDs из уровней и применение level-local overrides остаются следующими шагами.
 
 ## Проверки после изменений
 

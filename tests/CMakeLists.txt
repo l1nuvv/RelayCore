@@ -29,6 +29,9 @@ target_sources(
         mission_runtime_tests.cpp
         player_motion_tests.cpp
         render_authoring_config_tests.cpp
+        pipeline_authoring_overlay_tests.cpp
+
+
         renderer_diagnostics_api_tests.cpp
         scoped_temp_directory_tests.cpp
         runtime_model_tests.cpp
