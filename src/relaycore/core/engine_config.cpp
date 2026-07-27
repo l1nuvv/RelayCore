@@ -195,6 +195,7 @@ namespace RelayCore::core
     {
         RELAYCORE_PROFILE_FUNCTION();
         EngineConfig config{};
+        config.source_path = config_path;
 
         if (!std::filesystem::exists(config_path))
         {

@@ -31,12 +31,15 @@ RelayCore — приватный учебный проект, проходящи
 - RC-021 — закрыт: PerspectiveCamera отвергает non-finite и вырожденные view/projection inputs и сохраняет прежнее valid state при ошибках mutating API.
 - RC-022a — закрыт: добавлен воспроизводимый numeric GL baseline текущего gamma-space pipeline и документирована процедура ручного visual capture; решение о sRGB migration отложено до review измерений. RC-022b открывается только после отдельного решения о migration.
 - RC-022b — закрыт: Texture2D получил явный linear/sRGB encoding contract, а controlled GL baseline проверяет hardware sRGB texture decode и framebuffer encode; production pipeline остаётся legacy gamma-space.
+- RC-022p1 — закрыт: добавлены детерминированные reference level/config и воспроизводимая процедура local visual capture для будущего legacy/sRGB A/B review.
 
 ## Следующая работа
 
 Следующий пункт выбирается из готового аудита после закрытия RC-021. Каждый issue сначала перепроверяется по текущему коду. Broad refactoring без отдельного подтверждённого issue запрещён.
 
 Перед RC-022c требуется deterministic visual A/B prerequisite и отдельное решение по semantics vertex tint/brightness.
+
+RC-022p2 должен определить typed authored-to-linear colour conversion contract и формулу legacy artistic tint до реализации production RC-022c.
 
 ## Проверки после изменений
 

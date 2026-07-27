@@ -50,11 +50,14 @@ namespace RelayCore
         };
     } // namespace
 
-    Application::Application(std::unique_ptr<AppDelegate> app_delegate) :
+    Application::Application(std::unique_ptr<AppDelegate> app_delegate, std::filesystem::path config_path) :
         app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>())
     {
         RELAYCORE_PROFILE_FUNCTION();
-        config_.emplace(core::load_default_engine_config());
+        config_.emplace(
+            config_path.empty() ? core::load_default_engine_config() : core::load_engine_config(config_path)
+        );
+        log::info("Loaded engine config: {}", config_->source_path.string());
         window_.emplace(config_->window);
         renderer_.emplace(config_->renderer);
         audio_system_.emplace(config_->audio);

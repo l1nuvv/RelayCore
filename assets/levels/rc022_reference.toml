@@ -1,0 +1,161 @@
+# Deterministic RC-022 visual A/B reference. The player faces +Z from the fixed spawn.
+
+[[solid]]
+origin = [0.0, -0.12, 17.0]
+size = [18.0, 0.24, 36.0]
+material = "Floor"
+
+[[solid]]
+origin = [0.0, 4.0, 17.0]
+size = [18.0, 0.18, 36.0]
+material = "Ceiling"
+
+[[solid]]
+origin = [-8.9, 2.0, 17.0]
+size = [0.18, 4.0, 36.0]
+material = "Wall"
+
+[[solid]]
+origin = [8.9, 2.0, 17.0]
+size = [0.18, 4.0, 36.0]
+material = "Wall"
+
+# Five neutral patches and two chromatic patches at the near reference wall.
+[[solid]]
+origin = [-7.0, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "Wall"
+tint = [0.15, 0.15, 0.15]
+
+[[solid]]
+origin = [-4.5, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "Wall"
+tint = [0.42, 0.42, 0.42]
+
+[[solid]]
+origin = [-2.0, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "WallPanel"
+tint = [0.72, 0.72, 0.72]
+
+[[solid]]
+origin = [2.0, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "Tile"
+tint = [0.88, 0.88, 0.88]
+
+[[solid]]
+origin = [4.5, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "Post"
+tint = [1.0, 1.0, 1.0]
+
+[[solid]]
+origin = [7.0, 2.0, 16.0]
+size = [2.0, 3.4, 0.18]
+material = "Divider"
+tint = [0.88, 1.0, 1.0]
+
+[[solid]]
+origin = [-7.0, 2.0, 20.0]
+size = [2.4, 3.4, 0.18]
+material = "Hazard"
+tint = [1.0, 0.92, 0.70]
+
+# Controlled rows: WallPanel, orientation, distance and lighting stay fixed within each row.
+# The tint > 1 sample copies test_room.toml's existing [1.16, 0.86, 0.62] artistic tint.
+[[solid]]
+origin = [-4.0, 2.9, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [0.50, 0.50, 0.50]
+brightness = 1.0
+
+[[solid]]
+origin = [-2.0, 2.9, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [1.00, 1.00, 1.00]
+brightness = 1.0
+
+[[solid]]
+origin = [0.0, 2.9, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [1.16, 0.86, 0.62]
+brightness = 1.0
+
+[[solid]]
+origin = [-4.0, 1.0, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [1.0, 1.0, 1.0]
+brightness = 0.50
+
+[[solid]]
+origin = [-2.0, 1.0, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [1.0, 1.0, 1.0]
+brightness = 1.00
+
+[[solid]]
+origin = [0.0, 1.0, 12.0]
+size = [1.4, 1.1, 0.18]
+material = "WallPanel"
+tint = [1.0, 1.0, 1.0]
+brightness = 1.20
+
+# Static emissive glass and a dark/light split background for the glass blend probe.
+[[solid]]
+origin = [-5.7, 2.0, 5.0]
+size = [2.5, 3.2, 0.04]
+material = "Glass"
+
+[[solid]]
+origin = [-6.325, 2.0, 6.4]
+size = [1.25, 3.2, 0.18]
+material = "Wall"
+tint = [0.20, 0.24, 0.30]
+
+[[solid]]
+origin = [-5.075, 2.0, 6.4]
+size = [1.25, 3.2, 0.18]
+material = "Tile"
+tint = [0.95, 0.88, 0.70]
+
+# Distance panels make the configured fog range visible in the first view.
+[[solid]]
+origin = [0.0, 2.0, 20.0]
+size = [6.0, 3.4, 0.18]
+material = "Corridor"
+
+[[solid]]
+origin = [0.0, 2.0, 27.0]
+size = [6.0, 3.4, 0.18]
+material = "WallPanel"
+
+[[solid]]
+origin = [0.0, 2.0, 33.0]
+size = [6.0, 3.4, 0.18]
+material = "Tile"
+
+[[entity]]
+classname = "player_spawn"
+origin = [0.0, 0.0, 0.0]
+angles = [0.0, 0.0, 0.0]
+
+[[entity]]
+classname = "render_light"
+origin = [-3.0, 3.2, 4.0]
+color = [0.20, 0.52, 0.88]
+radius = 6.0
+intensity = 1.20
+
+[[entity]]
+classname = "render_light"
+origin = [4.5, 2.8, 8.0]
+color = [0.92, 0.42, 0.14]
+radius = 5.0
+intensity = 0.95

@@ -14,6 +14,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 
@@ -31,7 +32,10 @@ namespace RelayCore
          * @brief Creates an application instance around a delegate.
          * @param app_delegate Delegate that receives lifecycle callbacks.
          */
-        explicit Application(std::unique_ptr<AppDelegate> app_delegate = std::make_unique<NullAppDelegate>());
+        explicit Application(
+            std::unique_ptr<AppDelegate> app_delegate = std::make_unique<NullAppDelegate>(),
+            std::filesystem::path config_path = {}
+        );
 
         /**
          * @brief Runs the application until shutdown is requested.

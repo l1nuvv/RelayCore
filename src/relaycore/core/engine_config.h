@@ -130,11 +130,12 @@ namespace RelayCore::core
      * @brief Aggregate configuration consumed by the engine runtime.
      */
     struct EngineConfig {
-        WindowConfig window{};             ///< Window-system settings.
-        render::RendererConfig renderer{}; ///< Renderer settings.
-        FlyCameraControllerConfig input{}; ///< Input settings consumed by gameplay startup.
-        AudioSystemConfig audio{};         ///< Audio-system settings.
-        GameplayConfig gameplay{};         ///< Demo/gameplay bootstrap settings.
+        std::filesystem::path source_path{}; ///< Engine config selected during startup.
+        WindowConfig window{};               ///< Window-system settings.
+        render::RendererConfig renderer{};   ///< Renderer settings.
+        FlyCameraControllerConfig input{};   ///< Input settings consumed by gameplay startup.
+        AudioSystemConfig audio{};           ///< Audio-system settings.
+        GameplayConfig gameplay{};           ///< Demo/gameplay bootstrap settings.
     };
 
     /**

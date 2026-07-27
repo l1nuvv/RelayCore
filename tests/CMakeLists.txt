@@ -16,6 +16,7 @@ target_sources(
         camera_tests.cpp
         diagnostics_publication_policy_tests.cpp
         audio_system_tests.cpp
+        startup_options_tests.cpp
         blockout_loader_tests.cpp
         blockout_mesh_tests.cpp
         blockout_texture_atlas_tests.cpp

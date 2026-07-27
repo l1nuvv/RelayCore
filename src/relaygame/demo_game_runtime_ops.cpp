@@ -60,7 +60,8 @@ namespace RelayGame::detail
             const std::optional<RelayGame::GameWorldRuntime::InspectorRestoreState>& pinned_inspector
         ) -> PreparedLevelReload
         {
-            const RelayCore::core::EngineConfig reloaded_config = RelayCore::core::load_default_engine_config();
+            const RelayCore::core::EngineConfig reloaded_config =
+                RelayCore::core::load_engine_config(services.config().source_path);
             const RelayCore::render::RenderAuthoringConfig reloaded_authoring_config =
                 RelayCore::render::load_default_render_authoring_config();
 

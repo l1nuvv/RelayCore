@@ -56,6 +56,7 @@ TEST_CASE("engine config keeps defaults for absent keys")
     const RelayCore::core::EngineConfig config = RelayCore::core::load_engine_config(path);
     CHECK(config.window.title == "Configured");
     CHECK(config.window.width == 1280);
+    CHECK(config.source_path == path);
 }
 
 TEST_CASE("engine config ignores unsupported copy inspector source binding")

@@ -3,6 +3,7 @@ set(RELAYCORE_ENGINE_SOURCES
     app/engine_services.cpp
     app/frame_timer.cpp
     app/run_application.cpp
+    app/startup_options.cpp
     audio/audio_system.cpp
     audio/miniaudio_impl.cpp
     core/engine_config.cpp
@@ -54,6 +55,7 @@ set(RELAYCORE_ENGINE_HEADERS
     app/engine_services.h
     app/frame_timer.h
     app/run_application.h
+    app/startup_options.h
     audio/audio_system.h
     core/engine_config.h
     core/log.h

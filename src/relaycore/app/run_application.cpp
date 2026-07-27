@@ -6,6 +6,7 @@
 #include "relaycore/app/run_application.h"
 
 #include "relaycore/app/application.h"
+#include "relaycore/app/startup_options.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 
@@ -49,16 +50,14 @@ namespace RelayCore
     auto run_application(std::unique_ptr<AppDelegate> app_delegate, int argc, char** argv) -> int
     {
         RELAYCORE_PROFILE_FUNCTION();
-        (void) argc;
-        (void) argv;
-
         try
         {
             LogLifetime log_lifetime{};
 
             try
             {
-                Application app{std::move(app_delegate)};
+                const StartupOptions options = parse_startup_options(argc, argv);
+                Application app{std::move(app_delegate), options.config_path};
                 return app.run();
             } catch (const std::exception& exception)
             {
