@@ -24,6 +24,7 @@ namespace RelayCore::render
 
     /**
      * @brief Lazily-updated perspective camera with FPS-style controls.
+     * @details Mutators throw std::invalid_argument when an input would make the camera state invalid.
      */
     class PerspectiveCamera {
     public:
@@ -44,33 +45,33 @@ namespace RelayCore::render
          * @brief Sets the camera position in world space.
          * @param position New camera position.
          */
-        void set_position(const glm::vec3& position) noexcept;
+        void set_position(const glm::vec3& position);
 
         /**
          * @brief Reorients the camera so it looks at a target point.
          * @param target World-space target point.
          */
-        void set_target(const glm::vec3& target) noexcept;
+        void set_target(const glm::vec3& target);
 
         /**
          * @brief Sets the camera orientation explicitly.
          * @param yaw_radians Yaw angle in radians.
          * @param pitch_radians Pitch angle in radians.
          */
-        void set_orientation(float yaw_radians, float pitch_radians) noexcept;
+        void set_orientation(float yaw_radians, float pitch_radians);
 
         /**
          * @brief Applies projection-related settings without resetting the current transform.
          * @param config Updated camera configuration.
          */
-        void apply_projection_config(const PerspectiveCameraConfig& config) noexcept;
+        void apply_projection_config(const PerspectiveCameraConfig& config);
 
         /**
          * @brief Applies incremental yaw and pitch deltas to the camera.
          * @param yaw_delta_radians Yaw delta in radians.
          * @param pitch_delta_radians Pitch delta in radians.
          */
-        void add_yaw_pitch(float yaw_delta_radians, float pitch_delta_radians) noexcept;
+        void add_yaw_pitch(float yaw_delta_radians, float pitch_delta_radians);
 
         /**
          * @brief Moves the camera in its local basis vectors.
@@ -78,7 +79,7 @@ namespace RelayCore::render
          * @param right_delta Movement along the right axis.
          * @param up_delta Movement along the world-up axis.
          */
-        void translate_local(float forward_delta, float right_delta, float up_delta) noexcept;
+        void translate_local(float forward_delta, float right_delta, float up_delta);
 
         /**
          * @brief Returns the camera position.
@@ -135,12 +136,6 @@ namespace RelayCore::render
         [[nodiscard]] auto view_projection_matrix() const -> const glm::mat4&;
 
     private:
-        /**
-         * @brief Initializes yaw and pitch from a world-space target.
-         * @param target World-space target point.
-         */
-        void initialize_orientation_from_target(const glm::vec3& target) noexcept;
-
         /**
          * @brief Recomputes the camera basis vectors when marked dirty.
          */
