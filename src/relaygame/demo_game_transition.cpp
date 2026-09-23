@@ -14,6 +14,8 @@ namespace RelayGame
         if (screen_ != Screen::Playing || !runtime_.player_combat_state().alive)
             return;
         const std::string source_level_path = runtime_.level_path();
+        std::vector<SavedGame> history;
+        SavedGame arrival;
         try
         {
             auto previous = runtime_.capture_saved_game(played_seconds_, flashlight_on_);
@@ -25,10 +27,10 @@ namespace RelayGame
                 services.renderer().color_pipeline_mode(),
                 services.renderer().static_models()
             );
-            auto arrival = prepared.runtime.capture_saved_game(played_seconds_, flashlight_on_);
+            arrival = prepared.runtime.capture_saved_game(played_seconds_, flashlight_on_);
             const auto destination_path = std::filesystem::path(arrival.world.level_path).lexically_normal();
             const auto source_path = std::filesystem::path(previous.world.level_path).lexically_normal();
-            auto history = visited_levels_;
+            history = visited_levels_;
             const auto stored = std::ranges::find_if(history, [&](const auto& save) {
                 return std::filesystem::path(save.world.level_path).lexically_normal() == destination_path;
             });
@@ -61,25 +63,39 @@ namespace RelayGame
             if (source_path != destination_path)
                 history.push_back(std::move(previous));
             arrival.visited_levels = history;
-            if (progress_enabled_ && !editor_return_)
-                write_saved_game(progress_path_, arrival);
             install_level_session(std::move(prepared), services);
-            visited_levels_ = std::move(history);
-            if (progress_enabled_ && !editor_return_)
-            {
-                disk_save_ = std::move(arrival);
-                save_file_exists_ = true;
-            }
-            saved_step_ = runtime_.mission_status().current_step;
-            autosave_elapsed_ = 0;
-            progress_message_.clear();
-            runtime_.publish_diagnostics(services.renderer());
         } catch (const std::exception& error)
         {
             progress_message_ = "Переход из '" + source_level_path + "' в '" + exit.destination.string() + "', вход '"
                                 + exit.entry + "' не выполнен: " + error.what();
             RelayCore::log::error("{}", progress_message_);
             set_pause(true, services);
+            return;
+        }
+
+        visited_levels_ = std::move(history);
+        saved_step_ = runtime_.mission_status().current_step;
+        autosave_elapsed_ = 0;
+        progress_message_.clear();
+        if (progress_enabled_ && !editor_return_)
+        {
+            try
+            {
+                write_saved_game(progress_path_, arrival);
+                disk_save_ = std::move(arrival);
+                save_file_exists_ = true;
+            } catch (const std::exception& error)
+            {
+                progress_message_ = std::string{"Уровень загружен, но прогресс не сохранён: "} + error.what();
+                RelayCore::log::error("{}", progress_message_);
+            }
+        }
+        try
+        {
+            runtime_.publish_diagnostics(services.renderer());
+        } catch (const std::exception& error)
+        {
+            RelayCore::log::error("Level loaded, but diagnostics publication failed: {}", error.what());
         }
     }
 } // namespace RelayGame

@@ -54,6 +54,11 @@ namespace RelayGame
         void update_ending(float delta_seconds, RelayCore::EngineServices& services);
         void load_level_session(const RelayCore::core::EngineConfig& config, LevelSession session);
 
+        void prepare_level_session_activation(
+            RelayCore::EngineServices& services,
+            bool allow_capture = true,
+            const RelayCore::render::PerspectiveCameraConfig* projection = nullptr
+        );
         void activate_level_session(RelayCore::EngineServices& services);
         void set_paused(bool paused, RelayCore::EngineServices& services);
         [[nodiscard]] auto paused() const noexcept -> bool
@@ -63,6 +68,7 @@ namespace RelayGame
         void apply_player_settings(float sensitivity, float camera_motion) noexcept;
 
         void shutdown(RelayCore::EngineServices& services) noexcept;
+        void retire_level_session(RelayCore::EngineServices& services) noexcept;
 
         void on_event(const SDL_Event& event, RelayCore::EngineServices& services);
 
@@ -379,6 +385,7 @@ namespace RelayGame
         RelayGame::MissionRuntime mission_runtime_{};
         AudioCueSet audio_cues_{};
         AudioState audio_state_{};
+        bool spatial_audio_ready_ = false;
         RuntimeState runtime_state_{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings_{};
         std::vector<RelayGame::RuntimeAudioZone> audio_zones_{};

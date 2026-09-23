@@ -17,6 +17,12 @@ struct ma_sound;
 
 namespace RelayCore
 {
+    struct InitializedSoundDeleter {
+        void operator()(ma_sound* sound) const noexcept;
+    };
+
+    using InitializedSound = std::unique_ptr<ma_sound, InitializedSoundDeleter>;
+
     /**
      * @brief Startup configuration for the audio subsystem.
      */
@@ -129,14 +135,14 @@ namespace RelayCore
     private:
         struct CachedOneShot {
             std::filesystem::path path;
-            std::unique_ptr<ma_sound> sound;
+            InitializedSound sound;
         };
+        AudioSystemConfig config_{};        ///< Stored audio configuration.
+        std::unique_ptr<ma_engine> engine_; ///< Owned miniaudio engine instance.
         std::vector<CachedOneShot> one_shots_;
-        std::vector<std::unique_ptr<ma_sound>> spatial_loops_;
-        AudioSystemConfig config_{};                    ///< Stored audio configuration.
-        std::unique_ptr<ma_engine> engine_;             ///< Owned miniaudio engine instance.
-        std::unique_ptr<ma_sound> loop_sound_{};        ///< Optional looping sound instance.
-        std::unique_ptr<ma_sound> fading_loop_sound_{}; ///< Optional fading-out loop instance.
+        std::vector<InitializedSound> spatial_loops_;
+        InitializedSound loop_sound_{};        ///< Optional looping sound instance.
+        InitializedSound fading_loop_sound_{}; ///< Optional fading-out loop instance.
         std::filesystem::path active_loop_path_{};
         std::filesystem::path fading_loop_path_{};
         float active_loop_volume_ = 0.0F;

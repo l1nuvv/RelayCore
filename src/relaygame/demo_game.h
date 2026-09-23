@@ -52,7 +52,11 @@ namespace RelayGame
             Complete
         };
         void change_screen(Screen screen, RelayCore::EngineServices& services);
-        void install_level_session(detail::PreparedLevelSession prepared, RelayCore::EngineServices& services);
+        void install_level_session(
+            detail::PreparedLevelSession&& prepared,
+            RelayCore::EngineServices& services,
+            bool allow_capture = true
+        );
         struct EditorReturnState {
             detail::PreparedLevelSession session;
             float played_seconds = 0;

@@ -22,7 +22,9 @@
 #include <imgui.h>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "scoped_temp_directory.h"
@@ -139,6 +141,180 @@ int main(int argc, char** argv)
             );
             return capture(std::filesystem::path{"power-captures"} / name);
         };
+        if (config.renderer.shadow_enabled)
+        {
+            RelayGame::PreparedWorldSceneData caster_data{};
+            const auto add_chunk = [&](const glm::vec3 center, const bool transparent) {
+                auto mesh = RelayCore::render::make_color_box_mesh_data();
+                for (auto& vertex : mesh.vertices)
+                    vertex.position += center;
+                caster_data.blockout.chunks.push_back(
+                    {.mesh = std::move(mesh),
+                     .mins = center - glm::vec3{0.5F},
+                     .maxs = center + glm::vec3{0.5F},
+                     .triangle_count = 12,
+                     .transparent = transparent}
+                );
+            };
+            add_chunk({0.0F, 0.0F, 5.0F}, true);
+            add_chunk({8.0F, 0.0F, 5.0F}, false);
+            RelayGame::WorldSceneRenderer caster_scene;
+            caster_scene.initialize(caster_data, renderer.static_models());
+            renderer.camera().set_position({0.0F, 0.0F, 0.0F});
+            renderer.camera().set_target({0.0F, 0.0F, 1.0F});
+            renderer.begin_frame();
+            caster_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false);
+            if (caster_scene.diagnostics().culled_chunks != 1
+                || caster_scene.diagnostics().transparent_visible_chunks != 1)
+                throw std::runtime_error("Off-camera shadow fixture has unexpected camera visibility");
+            const auto shadow_texture = static_cast<GLuint>(renderer.world_diagnostics().shadow_preview_texture_id);
+            const int shadow_size = config.renderer.shadow_map_resolution;
+            std::vector<float> shadow_depth(static_cast<std::size_t>(shadow_size * shadow_size));
+            const auto nearest_shadow_depth = [&] {
+                glBindTexture(GL_TEXTURE_2D, shadow_texture);
+                glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, shadow_depth.data());
+                glBindTexture(GL_TEXTURE_2D, 0);
+                if (glGetError() != GL_NO_ERROR)
+                    throw std::runtime_error("Could not read shadow map");
+                return std::ranges::min(shadow_depth);
+            };
+            if (nearest_shadow_depth() >= 1.0F)
+                throw std::runtime_error("Off-camera opaque chunk did not reach the shadow map");
+            caster_scene.shutdown();
+
+            RelayGame::WorldSceneRenderer dynamic_scene;
+            dynamic_scene.initialize({}, renderer.static_models());
+            const auto render_dynamic = [&](std::span<const RelayCore::gameplay::RuntimeDoor> doors = {},
+                                            std::span<const RelayCore::gameplay::RuntimeTurret> turrets = {},
+                                            std::span<const RelayCore::gameplay::RuntimeUsable> usables = {}) {
+                renderer.begin_frame();
+                dynamic_scene.render(renderer, renderer.camera(), 0.0F, doors, turrets, usables, -1, {}, false);
+                return nearest_shadow_depth();
+            };
+            if (render_dynamic() < 0.999F)
+                throw std::runtime_error("Shadow map retained a caster after an empty frame");
+
+            RelayCore::gameplay::RuntimeDoor door{};
+            door.closed_bounds = {{7.5F, -0.5F, 4.5F}, {8.5F, 0.5F, 5.5F}};
+            const std::array off_camera_doors{door};
+            if (render_dynamic(off_camera_doors) >= 1.0F || dynamic_scene.diagnostics().door_draw_calls != 0)
+                throw std::runtime_error("Off-camera door did not reach the shadow map");
+            const auto closed_door_shadow = shadow_depth;
+            auto open_off_camera_doors = off_camera_doors;
+            open_off_camera_doors[0].open_fraction = 1.0F;
+            if (render_dynamic(open_off_camera_doors) >= 1.0F || shadow_depth == closed_door_shadow)
+                throw std::runtime_error("Off-camera door shadow did not move with the door");
+
+            RelayCore::gameplay::RuntimeTurret turret{};
+            turret.bounds = door.closed_bounds;
+            const std::array turrets{turret};
+            if (render_dynamic({}, turrets) >= 1.0F || dynamic_scene.diagnostics().opaque_draw_calls != 0)
+                throw std::runtime_error("Off-camera turret did not reach the shadow map");
+
+            RelayCore::gameplay::RuntimeUsable pickup{};
+            pickup.visual_bounds = door.closed_bounds;
+            pickup.has_visual_bounds = true;
+            pickup.visual_kind = RelayCore::gameplay::UsableVisualKind::Pickup;
+            const std::array pickups{pickup};
+            if (render_dynamic({}, {}, pickups) >= 1.0F || dynamic_scene.diagnostics().usable_draw_calls != 0)
+                throw std::runtime_error("Off-camera pickup did not reach the shadow map");
+
+            pickup.visual_kind = RelayCore::gameplay::UsableVisualKind::Panel;
+            const std::array panels{pickup};
+            if (render_dynamic({}, {}, panels) >= 1.0F || dynamic_scene.diagnostics().usable_draw_calls != 0)
+                throw std::runtime_error("Off-camera panel did not reach the shadow map");
+            dynamic_scene.shutdown();
+        }
+        {
+            RelayCore::BlockoutLevel glass_level{};
+            RelayCore::BlockoutSolid glass{};
+            glass.mins = {-1.0F, 0.0F, 4.98F};
+            glass.maxs = {1.0F, 3.0F, 5.02F};
+            glass.material = RelayCore::SurfaceMaterial::Glass;
+            glass_level.solids.push_back(glass);
+            RelayGame::WorldSceneRenderer glass_scene;
+            glass_scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    glass_level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            RelayGame::EnvironmentEffect steam{};
+            steam.kind = RelayGame::EnvironmentKind::Steam;
+            steam.origin = {0.0F, 1.0F, 6.0F};
+            steam.scale = 2.0F;
+            steam.strength = 1.0F;
+            steam.age = 0.4F;
+            const std::array effects{steam};
+            const auto render_glass_and_steam = [&](const char* name, const glm::vec3 eye, const glm::vec3 target) {
+                renderer.camera().set_position(eye);
+                renderer.camera().set_target(target);
+                renderer.begin_frame();
+                glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, effects);
+                if (glass_scene.diagnostics().transparent_draw_calls != 13)
+                    throw std::runtime_error("Glass and steam did not enter the transparent pass together");
+                (void) capture(std::filesystem::path{"power-captures"} / name);
+            };
+            render_glass_and_steam("glass-steam-back.bmp", {0.0F, 1.5F, 0.0F}, {0.0F, 1.5F, 7.0F});
+            render_glass_and_steam("glass-steam-front.bmp", {0.0F, 1.5F, 10.0F}, {0.0F, 1.5F, 3.0F});
+            glass_scene.shutdown();
+
+            glass_level.solids[0].mins.x = -5.0F;
+            glass_level.solids[0].maxs.x = 5.0F;
+            RelayGame::WorldSceneRenderer side_glass_scene;
+            side_glass_scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    glass_level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            RelayGame::WorldSceneRenderer side_steam_scene;
+            side_steam_scene.initialize({}, renderer.static_models());
+            steam.origin = {3.5F, 1.0F, 3.5F};
+            const std::array side_effects{steam};
+            renderer.camera().set_position({0.0F, 1.5F, 0.0F});
+            renderer.camera().set_target({0.0F, 1.5F, 7.0F});
+            const auto pixels = [&] {
+                std::vector<unsigned char> result(width * height * 3);
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadBuffer(GL_BACK);
+                glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, result.data());
+                if (glGetError() != GL_NO_ERROR)
+                    throw std::runtime_error("Could not read side-view transparency fixture");
+                return result;
+            };
+            const auto render_side_glass = [&] {
+                side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false);
+            };
+            const auto render_side_steam = [&] {
+                side_steam_scene
+                    .render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
+            };
+            renderer.begin_frame();
+            side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
+            if (side_glass_scene.diagnostics().transparent_draw_calls != 13)
+                throw std::runtime_error("Side-view glass and steam did not enter the transparent pass together");
+            const auto sorted_pixels = pixels();
+            (void) capture("power-captures/glass-steam-side.bmp");
+
+            renderer.begin_frame();
+            render_side_glass();
+            render_side_steam();
+            const auto expected_pixels = pixels();
+
+            renderer.begin_frame();
+            render_side_steam();
+            render_side_glass();
+            const auto wrong_order_pixels = pixels();
+            if (sorted_pixels != expected_pixels || sorted_pixels == wrong_order_pixels)
+                throw std::runtime_error("Side-view glass and steam blend in the wrong order");
+            side_steam_scene.shutdown();
+            side_glass_scene.shutdown();
+        }
         const auto before = render("intake-before.bmp", {0.0F, 1.65F, -3.5F}, {0.0F, 1.65F, 5.0F});
         if (scene.diagnostics().local_light_count != 5)
         {

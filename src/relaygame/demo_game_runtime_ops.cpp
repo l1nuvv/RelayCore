@@ -1,12 +1,16 @@
 #include "relaygame/demo_game_runtime_ops.h"
 
+#include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
+#include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/level_session_builder.h"
 
 #include <exception>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 
 namespace RelayGame::detail
 {
@@ -56,9 +60,12 @@ namespace RelayGame::detail
 
         [[nodiscard]] auto prepare_level_reload(
             RelayCore::EngineServices& services,
+            const std::string& current_level_path,
             const std::optional<RelayGame::GameWorldRuntime::InspectorRestoreState>& pinned_inspector
         ) -> PreparedLevelReload
         {
+            if (current_level_path.empty())
+                throw std::runtime_error("Cannot reload without an active level");
             const RelayCore::core::EngineConfig reloaded_config =
                 RelayCore::core::load_engine_config(services.config().source_path);
             const RelayCore::render::RenderAuthoringConfig reloaded_authoring_config =
@@ -72,7 +79,7 @@ namespace RelayGame::detail
 
             prepared.session = prepare_level_session(
                 prepared.config,
-                LevelSessionBuilder{prepared.config.gameplay}.build(),
+                LevelSessionBuilder{prepared.config.gameplay}.build(std::filesystem::path{current_level_path}),
                 prepared.renderer.authoring_config,
                 services.renderer().color_pipeline_mode(),
                 services.renderer().static_models()
@@ -122,11 +129,14 @@ namespace RelayGame::detail
 
     void replace_level_session(
         DemoGameRuntimeState state,
-        PreparedLevelSession prepared,
+        PreparedLevelSession&& prepared,
         RelayCore::EngineServices& services
     )
     {
-        state.runtime.shutdown(services);
+        static_assert(std::is_nothrow_move_assignable_v<GameWorldRuntime>);
+        static_assert(std::is_nothrow_move_assignable_v<WorldSceneRenderer>);
+        static_assert(std::is_nothrow_move_assignable_v<RelayCore::render::IterationDiagnostics>);
+        state.runtime.retire_level_session(services);
         state.world_scene.shutdown();
         state.runtime = std::move(prepared.runtime);
         state.world_scene = std::move(prepared.world_scene);
@@ -134,24 +144,28 @@ namespace RelayGame::detail
         state.iteration_diagnostics = {};
         state.runtime.activate_level_session(services);
         services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
-        state.runtime.publish_diagnostics(services.renderer());
-        publish_iteration_diagnostics(state, services);
+        try
+        {
+            state.runtime.publish_diagnostics(services.renderer());
+            publish_iteration_diagnostics(state, services);
+        } catch (const std::exception& error)
+        {
+            RelayCore::log::error("Level loaded, but diagnostics publication failed: {}", error.what());
+        }
     }
 
     void start_level_session(DemoGameRuntimeState state, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::start_level_session");
-        replace_level_session(
-            state,
-            prepare_level_session(
-                services.config(),
-                LevelSessionBuilder{services.config().gameplay}.build(),
-                services.renderer().authoring_config(),
-                services.renderer().color_pipeline_mode(),
-                services.renderer().static_models()
-            ),
-            services
+        auto prepared = prepare_level_session(
+            services.config(),
+            LevelSessionBuilder{services.config().gameplay}.build(),
+            services.renderer().authoring_config(),
+            services.renderer().color_pipeline_mode(),
+            services.renderer().static_models()
         );
+        prepared.runtime.prepare_level_session_activation(services, !services.renderer().ui_available());
+        replace_level_session(state, std::move(prepared), services);
         log_level_loaded(services, state.runtime, state.world_scene);
     }
 
@@ -167,32 +181,17 @@ namespace RelayGame::detail
         const std::optional<GameWorldRuntime::InspectorRestoreState> pinned_inspector =
             state.runtime.capture_pinned_inspector_restore_state();
 
+        PreparedLevelReload staged{};
+        const bool previous_capture = services.window().relative_mouse_mode();
         try
         {
-            PreparedLevelReload staged = prepare_level_reload(services, pinned_inspector);
+            staged = prepare_level_reload(services, state.runtime.level_path(), pinned_inspector);
+            staged.session.runtime.prepare_level_session_activation(services, true, &staged.renderer.config.camera);
 
             services.renderer().commit_live_content_reload(std::move(staged.renderer));
-            replace_level_session(state, std::move(staged.session), services);
-
-            services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
-            state.runtime.publish_diagnostics(services.renderer());
-
-            publish_reload_result(
-                state.iteration_diagnostics,
-                true,
-                build_reload_success_summary(
-                    services.renderer().runtime_diagnostics(),
-                    state.world_scene,
-                    staged.atlas_source_label
-                )
-            );
-            publish_iteration_diagnostics(state, services);
-
-            RelayCore::log::info("{}", state.iteration_diagnostics.last_reload_summary);
-            log_level_loaded(services, state.runtime, state.world_scene);
-            return true;
         } catch (const std::exception& error)
         {
+            static_cast<void>(SDL_SetWindowRelativeMouseMode(services.window().handle(), previous_capture));
             publish_reload_result(
                 state.iteration_diagnostics,
                 false,
@@ -205,5 +204,27 @@ namespace RelayGame::detail
             RelayCore::log::error("Live content reload failed: {}", error.what());
             return false;
         }
+
+        replace_level_session(state, std::move(staged.session), services);
+        services.commit_live_reload_config(std::move(staged.config));
+        try
+        {
+            publish_reload_result(
+                state.iteration_diagnostics,
+                true,
+                build_reload_success_summary(
+                    services.renderer().runtime_diagnostics(),
+                    state.world_scene,
+                    staged.atlas_source_label
+                )
+            );
+            publish_iteration_diagnostics(state, services);
+            RelayCore::log::info("{}", state.iteration_diagnostics.last_reload_summary);
+            log_level_loaded(services, state.runtime, state.world_scene);
+        } catch (const std::exception& error)
+        {
+            RelayCore::log::error("Live content reloaded, but diagnostics publication failed: {}", error.what());
+        }
+        return true;
     }
 } // namespace RelayGame::detail

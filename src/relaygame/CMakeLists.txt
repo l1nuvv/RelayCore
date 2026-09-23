@@ -110,31 +110,18 @@ relaycore_apply_standard_target_settings(relaycore_demo)
 relaycore_apply_standard_target_settings(relaygame_runtime)
 set_target_properties(relaygame_runtime PROPERTIES FOLDER "game")
 
-file(
-        GLOB_RECURSE RELAYCORE_DEMO_ASSET_FILES
-        CONFIGURE_DEPENDS
-        "${PROJECT_SOURCE_DIR}/assets/*"
-)
-
-set(RELAYCORE_DEMO_ASSET_STAMP "${CMAKE_CURRENT_BINARY_DIR}/relaycore_demo_assets.stamp")
-
-add_custom_command(
-        OUTPUT "${RELAYCORE_DEMO_ASSET_STAMP}"
+add_custom_target(
+        relaycore_demo_assets ALL
         COMMAND
-        ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:relaycore_demo>/assets"
-        COMMAND
-        ${CMAKE_COMMAND} -E copy_directory_if_different
-        "${PROJECT_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:relaycore_demo>/assets"
-        COMMAND
-        ${CMAKE_COMMAND} -E touch "${RELAYCORE_DEMO_ASSET_STAMP}"
-        DEPENDS
-        ${RELAYCORE_DEMO_ASSET_FILES}
+        ${CMAKE_COMMAND}
+        "-DRELAYCORE_ASSET_SOURCE=${PROJECT_SOURCE_DIR}/assets"
+        "-DRELAYCORE_ASSET_OUTPUT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+        "-DRELAYCORE_ASSET_MANIFEST=${CMAKE_CURRENT_BINARY_DIR}/relaycore_demo_assets.manifest"
+        -P "${PROJECT_SOURCE_DIR}/cmake/sync_runtime_assets.cmake"
         COMMENT
         "Synchronizing runtime assets"
+        VERBATIM
 )
-
-add_custom_target(relaycore_demo_assets ALL DEPENDS "${RELAYCORE_DEMO_ASSET_STAMP}")
 
 add_dependencies(relaycore_demo relaycore_demo_assets)
 

@@ -1,5 +1,10 @@
 add_executable(relaycore_tests)
 add_executable(relaycore_content_validation)
+add_executable(relaycore_audio_lifetime audio_lifetime_tests.cpp)
+target_link_libraries(relaycore_audio_lifetime PRIVATE
+    RelayCore::engine RelayCore::project_options RelayCore::warnings
+)
+set_target_properties(relaycore_audio_lifetime PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_game_lifecycle game_lifecycle_tests.cpp)
 target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
 add_executable(relaycore_graphics_baseline)
@@ -36,6 +41,7 @@ target_sources(
         gameplay_input_ownership_tests.cpp
         inspector_source_reference_tests.cpp
         level_session_builder_tests.cpp
+        local_light_order_tests.cpp
         log_tests.cpp
         mission_runtime_tests.cpp
         player_motion_tests.cpp
@@ -112,6 +118,7 @@ set_target_properties(relaycore_default_framebuffer_probe PROPERTIES FOLDER "tes
 
 foreach(test_target IN ITEMS
     relaycore_tests
+    relaycore_audio_lifetime
     relaycore_content_validation
     relaycore_graphics_baseline
     relaycore_window_lifetime_tests
@@ -131,6 +138,15 @@ foreach(test_target IN ITEMS
         COMMAND_EXPAND_LISTS
     )
 endforeach()
+
+add_test(NAME relaycore.audio_lifetime COMMAND relaycore_audio_lifetime)
+set_tests_properties(relaycore.audio_lifetime PROPERTIES
+    LABELS "integration;audio"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_audio_lifetime>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+)
 
 add_test(NAME graphics.window_lifetime COMMAND relaycore_window_lifetime_tests)
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
@@ -156,6 +172,7 @@ set_tests_properties(
         RUN_SERIAL TRUE
         SKIP_RETURN_CODE 77
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_window_lifetime_tests>"
+        ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
 
 add_test(

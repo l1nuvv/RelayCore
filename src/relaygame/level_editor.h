@@ -20,6 +20,7 @@ namespace RelayGame
     public:
         void enter(const RelayCore::BlockoutLevel& level, RelayCore::EngineServices& services);
         void leave(RelayCore::EngineServices& services);
+        void leave_scene() noexcept;
         void resume(RelayCore::EngineServices& services);
         [[nodiscard]] auto exit_requested() const noexcept -> bool
         {
@@ -54,6 +55,7 @@ namespace RelayGame
         {
             message_ = std::move(message);
             play_requested_ = false;
+            exit_requested_ = false;
         }
         [[nodiscard]] auto document() const -> const LevelEditorDocument&
         {

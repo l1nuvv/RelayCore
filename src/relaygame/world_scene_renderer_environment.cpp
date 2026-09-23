@@ -209,7 +209,7 @@ namespace RelayGame
                             const auto position = glm::vec3{model * glm::vec4{local, 1}};
                             const float size =
                                 (0.10F + t * 0.45F) * std::sin(t * 3.1415927F) * effect.strength * effect.scale;
-                            puffs.push_back({position, size, glm::distance(position, camera.position())});
+                            puffs.push_back({position, size});
                         }
                     break;
                 case EnvironmentKind::Sparks:
@@ -227,9 +227,6 @@ namespace RelayGame
                     break;
             }
         }
-        std::ranges::sort(puffs, [](const EnvironmentPuff& a, const EnvironmentPuff& b) {
-            return a.distance > b.distance;
-        });
         const auto forward = camera.forward();
         const auto right = glm::normalize(glm::cross(forward, glm::vec3{0, 1, 0}));
         const auto up = glm::cross(right, forward);
@@ -242,7 +239,13 @@ namespace RelayGame
             model[1] = glm::vec4{up * puff.size, 0};
             model[2] = glm::vec4{-forward * puff.size, 0};
             model[3] = glm::vec4{puff.position, 1};
-            draw(steam_mesh_, model, RenderPass::Transparent);
+            const glm::vec3 delta = puff.position - camera.position();
+            transparent_submissions_.push_back(
+                {&steam_mesh_,
+                 model,
+                 glm::dot(delta, forward),
+                 static_cast<std::uint32_t>(steam_mesh_.index_count() / 3)}
+            );
         }
     }
 } // namespace RelayGame

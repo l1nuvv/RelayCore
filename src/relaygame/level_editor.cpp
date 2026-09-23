@@ -90,11 +90,16 @@ namespace RelayGame
 
     void LevelEditor::leave(RelayCore::EngineServices& services)
     {
+        services.window().set_relative_mouse_mode(false);
+        leave_scene();
+    }
+
+    void LevelEditor::leave_scene() noexcept
+    {
         active_ = false;
         play_requested_ = false;
         flying_ = false;
         drag_axis_ = -1;
-        services.window().set_relative_mouse_mode(false);
         scene_.shutdown();
     }
 

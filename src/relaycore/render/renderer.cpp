@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace RelayCore
@@ -476,18 +477,20 @@ namespace RelayCore
     void Renderer::commit_live_content_reload(PreparedLiveContentReload staged_reload)
     {
         RELAYCORE_PROFILE_FUNCTION();
+        static_assert(std::is_nothrow_move_assignable_v<render::RendererConfig>);
+        static_assert(std::is_nothrow_move_assignable_v<render::RenderAuthoringConfig>);
         ShadowResources staged_shadow_resources = create_shadow_resources(staged_reload.config);
+        camera_.apply_projection_config(staged_reload.config.camera);
 
         opaque_shader_program_ = std::move(staged_reload.opaque_shader_program);
         overlay_shader_program_ = std::move(staged_reload.overlay_shader_program);
         transparent_shader_program_ = std::move(staged_reload.transparent_shader_program);
         shadow_program_ = std::move(staged_reload.shadow_shader_program);
         blockout_atlas_ = std::move(staged_reload.blockout_atlas);
-        config_ = staged_reload.config;
+        config_ = std::move(staged_reload.config);
         authoring_config_ = std::move(staged_reload.authoring_config);
         shadow_resources_ = std::move(staged_shadow_resources);
 
-        camera_.apply_projection_config(config_.camera);
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.apply_config(config_.imgui);
     }
@@ -532,14 +535,12 @@ namespace RelayCore
         }
     }
 
-    void Renderer::draw_render_queue(const std::span<const render::RenderItem> items)
+    void Renderer::draw_render_queue(
+        const std::span<const render::RenderItem> items,
+        const std::span<const render::RenderItem> shadow_casters
+    )
     {
         RELAYCORE_PROFILE_ZONE_N("Renderer::draw_render_queue");
-        if (items.empty())
-        {
-            return;
-        }
-
         if (!shadow_resources_.complete(config_.shadow_enabled))
         {
             RELAYCORE_PROFILE_FUNCTION();
@@ -593,7 +594,7 @@ namespace RelayCore
                                          / static_cast<float>(std::max(config_.shadow_map_resolution, 256))
                                    : 0.0F;
 
-        render_shadow_map(items);
+        render_shadow_map(shadow_casters);
 
         {
             RELAYCORE_PROFILE_ZONE_N("Renderer::main_scene");
@@ -622,20 +623,6 @@ namespace RelayCore
                 apply_render_pass_state(pass);
                 render::ShaderProgram& program = scene_shader_program(pass);
                 bind_scene_program_uniforms(program);
-                if (pass == render::RenderPass::Opaque)
-                {
-                    RELAYCORE_PROFILE_ZONE_N("Renderer::opaque_pass");
-                    RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::opaque_pass");
-                } else if (pass == render::RenderPass::Overlay)
-                {
-                    RELAYCORE_PROFILE_ZONE_N("Renderer::overlay_pass");
-                    RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::overlay_pass");
-                } else
-                {
-                    RELAYCORE_PROFILE_ZONE_N("Renderer::transparent_pass");
-                    RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::transparent_pass");
-                }
-
                 for (const render::RenderItem& item : items)
                 {
                     if (item.mesh == nullptr || item.pass != pass)
@@ -655,9 +642,18 @@ namespace RelayCore
             };
 
             {
-                RELAYCORE_PROFILE_ZONE_N("Renderer::opaque_passes");
+                RELAYCORE_PROFILE_ZONE_N("Renderer::opaque_pass");
+                RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::opaque_pass");
                 draw_pass_items(render::RenderPass::Opaque);
+            }
+            {
+                RELAYCORE_PROFILE_ZONE_N("Renderer::overlay_pass");
+                RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::overlay_pass");
                 draw_pass_items(render::RenderPass::Overlay);
+            }
+            {
+                RELAYCORE_PROFILE_ZONE_N("Renderer::transparent_pass");
+                RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::transparent_pass");
                 draw_pass_items(render::RenderPass::Transparent);
             }
 
@@ -818,7 +814,7 @@ namespace RelayCore
     void Renderer::render_shadow_map(const std::span<const render::RenderItem> items)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if ((!config_.shadow_enabled && !spot_light_.enabled) || items.empty())
+        if (!config_.shadow_enabled && !spot_light_.enabled)
         {
             return;
         }
@@ -867,7 +863,8 @@ namespace RelayCore
 
             for (const render::RenderItem& item : items)
             {
-                if (item.mesh == nullptr || item.pass != render::RenderPass::Opaque)
+                if (item.mesh == nullptr || item.pass != render::RenderPass::Opaque
+                    || (!spot && !item.casts_directional_shadow))
                 {
                     continue;
                 }

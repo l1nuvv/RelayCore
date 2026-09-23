@@ -127,6 +127,7 @@ namespace RelayGame
             glm::vec3 maxs{};
             std::uint32_t triangle_count = 0;
             bool transparent = false;
+            bool casts_directional_shadow = true;
         };
 
         std::array<glm::vec4, 6> frustum_planes_{};
@@ -161,9 +162,15 @@ namespace RelayGame
         struct EnvironmentPuff {
             glm::vec3 position;
             float size;
-            float distance;
         };
         std::vector<EnvironmentPuff> environment_puffs_;
+        struct TransparentSubmission {
+            const RelayCore::render::StaticColorMesh* mesh = nullptr;
+            glm::mat4 model{1.0F};
+            float depth = 0.0F;
+            std::uint32_t triangles = 0;
+        };
+        std::vector<TransparentSubmission> transparent_submissions_{};
         std::vector<RelayCore::render::LocalLight> active_local_lights_{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings_{};
         struct PropInstance {
@@ -172,6 +179,7 @@ namespace RelayGame
         };
         std::vector<PropInstance> props_;
         RelayCore::render::RenderQueue render_queue_{};
+        RelayCore::render::RenderQueue shadow_casters_{};
         RelayCore::render::WorldDiagnostics diagnostics_{};
     };
 } // namespace RelayGame

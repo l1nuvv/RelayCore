@@ -17,7 +17,7 @@ function Get-StagedFiles
         $args += $Pathspec
     }
 
-    $result = & git @args
+    $result = & git -c core.quotePath=false @args
     if ($LASTEXITCODE -ne 0)
     {
         throw 'git diff --cached failed'
@@ -52,7 +52,7 @@ function Get-ClangFormatPath
     return $null
 }
 
-function Format-StagedCppFiles
+function Assert-StagedCppFormat
 {
     $cppFiles = Get-StagedFiles @('*.c', '*.cpp', '*.h', '*.hpp', ':(exclude)extern/**')
     if ($cppFiles.Count -eq 0)
@@ -66,17 +66,38 @@ function Format-StagedCppFiles
         throw 'clang-format.exe not found'
     }
 
-    Write-Host "Formatting staged C/C++ files with clang-format..."
-    & $clangFormat -i -- $cppFiles
-    if ($LASTEXITCODE -ne 0)
+    $tempDirectory = [System.IO.Path]::GetFullPath(
+        (Join-Path ([System.IO.Path]::GetTempPath()) ("relaycore-staged-format-" + [guid]::NewGuid().ToString('N')))
+    )
+    New-Item -ItemType Directory -Path $tempDirectory | Out-Null
+    try
     {
-        throw 'clang-format failed'
-    }
+        $prefix = $tempDirectory.Replace('\', '/') + '/'
+        & git checkout-index "--prefix=$prefix" -- $cppFiles
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw 'Could not read staged C/C++ files'
+        }
 
-    & git add -- $cppFiles
-    if ($LASTEXITCODE -ne 0)
+        $formatStyle = (Join-Path (Get-Location).Path '.clang-format').Replace('\', '/')
+        foreach ($file in $cppFiles)
+        {
+            $stagedFile = Join-Path $tempDirectory $file
+            & $clangFormat --dry-run --Werror "--style=file:$formatStyle" -- $stagedFile
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw "Staged C/C++ file needs formatting: $file"
+            }
+        }
+    }
+    finally
     {
-        throw 'git add after clang-format failed'
+        $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $tempDirectory.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase))
+        {
+            throw "Refusing to remove unexpected temporary path: $tempDirectory"
+        }
+        Remove-Item -LiteralPath $tempDirectory -Recurse -Force
     }
 }
 
@@ -156,7 +177,7 @@ function Assert-ValidJson
 
 try
 {
-    Format-StagedCppFiles
+    Assert-StagedCppFormat
     Assert-NoConflictMarkers
     Assert-ValidJson
     exit 0

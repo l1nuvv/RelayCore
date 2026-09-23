@@ -953,6 +953,7 @@ namespace RelayCore::render
             chunk.maxs = solid.maxs;
             chunk.triangle_count = static_cast<std::uint32_t>(chunk.mesh.indices.size() / 3);
             chunk.transparent = material.transparent;
+            chunk.casts_directional_shadow = solid.material != SurfaceMaterial::Ceiling;
 
             render_data.total_triangles += chunk.triangle_count;
             render_data.chunks.push_back(std::move(chunk));

@@ -95,15 +95,13 @@ namespace RelayGame
         movement_mode_ = state.grounded ? MovementMode::Grounded : MovementMode::Air;
     }
 
-    void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
+    void GroundedPlayerController::set_session_capture(RelayCore::Window& window, const bool capture) const
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (!config_.capture_mouse_on_start)
-        {
+        window.set_relative_mouse_mode(capture);
+        if (!capture)
             return;
-        }
 
-        window.set_relative_mouse_mode(true);
         RelayCore::log::info("Player capture enabled (movement bindings loaded from config)");
     }
 
@@ -336,7 +334,7 @@ namespace RelayGame
         return input;
     }
 
-    void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
+    void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const
     {
         RELAYCORE_PROFILE_FUNCTION();
         camera.set_position(eye_position_world());

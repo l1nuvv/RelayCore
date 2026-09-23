@@ -17,23 +17,19 @@
 
 namespace RelayCore
 {
+    void InitializedSoundDeleter::operator()(ma_sound* sound) const noexcept
+    {
+        if (sound == nullptr)
+            return;
+        ma_sound_stop(sound);
+        ma_sound_uninit(sound);
+        delete sound;
+    }
+
     namespace
     {
-        void destroy_sound(std::unique_ptr<ma_sound>& sound) noexcept
-        {
-            RELAYCORE_PROFILE_FUNCTION();
-            if (!sound)
-            {
-                return;
-            }
-
-            ma_sound_stop(sound.get());
-            ma_sound_uninit(sound.get());
-            sound.reset();
-        }
-
         [[nodiscard]] auto create_loop_sound(ma_engine& engine, const std::filesystem::path& file_path)
-            -> std::unique_ptr<ma_sound>
+            -> InitializedSound
         {
             RELAYCORE_PROFILE_FUNCTION();
             auto loop_sound = std::make_unique<ma_sound>();
@@ -46,7 +42,7 @@ namespace RelayCore
             }
 
             ma_sound_set_looping(loop_sound.get(), MA_TRUE);
-            return loop_sound;
+            return InitializedSound{loop_sound.release()};
         }
     } // namespace
 
@@ -59,8 +55,8 @@ namespace RelayCore
     }
 
     AudioSystem::AudioSystem(AudioSystem&& other) noexcept :
-        one_shots_(std::move(other.one_shots_)), spatial_loops_(std::move(other.spatial_loops_)),
-        config_(std::move(other.config_)), engine_(std::move(other.engine_)), loop_sound_(std::move(other.loop_sound_)),
+        config_(std::move(other.config_)), engine_(std::move(other.engine_)), one_shots_(std::move(other.one_shots_)),
+        spatial_loops_(std::move(other.spatial_loops_)), loop_sound_(std::move(other.loop_sound_)),
         fading_loop_sound_(std::move(other.fading_loop_sound_)), active_loop_path_(std::move(other.active_loop_path_)),
         fading_loop_path_(std::move(other.fading_loop_path_)), active_loop_volume_(other.active_loop_volume_),
         target_loop_volume_(other.target_loop_volume_), fading_loop_start_volume_(other.fading_loop_start_volume_),
@@ -81,10 +77,10 @@ namespace RelayCore
         }
 
         shutdown();
-        one_shots_ = std::move(other.one_shots_);
-        spatial_loops_ = std::move(other.spatial_loops_);
         config_ = std::move(other.config_);
         engine_ = std::move(other.engine_);
+        one_shots_ = std::move(other.one_shots_);
+        spatial_loops_ = std::move(other.spatial_loops_);
         loop_sound_ = std::move(other.loop_sound_);
         fading_loop_sound_ = std::move(other.fading_loop_sound_);
         active_loop_path_ = std::move(other.active_loop_path_);
@@ -129,8 +125,6 @@ namespace RelayCore
         RELAYCORE_PROFILE_FUNCTION();
         stop_loop();
         clear_spatial_loops();
-        for (auto& cached : one_shots_)
-            destroy_sound(cached.sound);
         one_shots_.clear();
         if (!engine_)
         {
@@ -175,21 +169,22 @@ namespace RelayCore
         {
             if (std::ranges::find(one_shots_, path, &CachedOneShot::path) != one_shots_.end())
                 continue;
-            CachedOneShot cached{path, std::make_unique<ma_sound>()};
+            auto sound = std::make_unique<ma_sound>();
             const auto result = ma_sound_init_from_file(
                 engine_.get(),
                 path.string().c_str(),
                 MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION,
                 nullptr,
                 nullptr,
-                cached.sound.get()
+                sound.get()
             );
             if (result != MA_SUCCESS)
             {
                 log::warn("Could not preload player sound {}: {}", path.string(), ma_result_description(result));
                 continue;
             }
-            one_shots_.push_back(std::move(cached));
+            InitializedSound initialized{sound.release()};
+            one_shots_.push_back(CachedOneShot{path, std::move(initialized)});
         }
     }
 
@@ -219,8 +214,6 @@ namespace RelayCore
 
     void AudioSystem::clear_spatial_loops() noexcept
     {
-        for (auto& sound : spatial_loops_)
-            destroy_sound(sound);
         spatial_loops_.clear();
     }
 
@@ -295,7 +288,7 @@ namespace RelayCore
         }
         ma_sound_set_spatialization_enabled(next_loop_sound.get(), MA_FALSE);
 
-        destroy_sound(fading_loop_sound_);
+        fading_loop_sound_.reset();
 
         if (loop_sound_)
         {
@@ -308,7 +301,7 @@ namespace RelayCore
                 fade_out_remaining_seconds_ = clamped_fade;
             } else
             {
-                destroy_sound(loop_sound_);
+                loop_sound_.reset();
             }
         }
 
@@ -322,7 +315,6 @@ namespace RelayCore
         if (ma_sound_start(next_loop_sound.get()) != MA_SUCCESS)
         {
             log::warn("Failed to start looping sound: {}", file_path.string());
-            ma_sound_uninit(next_loop_sound.get());
             return;
         }
 
@@ -340,8 +332,8 @@ namespace RelayCore
 
         if (clamped_fade <= 0.0001F || !loop_sound_)
         {
-            destroy_sound(loop_sound_);
-            destroy_sound(fading_loop_sound_);
+            loop_sound_.reset();
+            fading_loop_sound_.reset();
             active_loop_path_.clear();
             fading_loop_path_.clear();
             active_loop_volume_ = 0.0F;
@@ -354,9 +346,9 @@ namespace RelayCore
             return;
         }
 
-        destroy_sound(fading_loop_sound_);
+        fading_loop_sound_.reset();
         fading_loop_sound_ = std::move(loop_sound_);
-        fading_loop_path_ = active_loop_path_;
+        fading_loop_path_ = std::move(active_loop_path_);
         fading_loop_start_volume_ = active_loop_volume_;
         fade_out_total_seconds_ = clamped_fade;
         fade_out_remaining_seconds_ = clamped_fade;
@@ -401,7 +393,7 @@ namespace RelayCore
 
             if (fade_out_remaining_seconds_ <= 0.0F)
             {
-                destroy_sound(fading_loop_sound_);
+                fading_loop_sound_.reset();
                 fading_loop_path_.clear();
                 fading_loop_start_volume_ = 0.0F;
                 fade_out_total_seconds_ = 0.0F;

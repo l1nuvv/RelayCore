@@ -27,6 +27,7 @@ namespace RelayCore::render
         glm::mat4 model_matrix{1.0F};
         RenderPass pass = RenderPass::Opaque;
         const Texture2D* diffuse_texture = nullptr;
+        bool casts_directional_shadow = true;
     };
 
     struct SpotLight {
@@ -53,14 +54,16 @@ namespace RelayCore::render
             const StaticColorMesh& mesh,
             const glm::mat4& model_matrix,
             const RenderPass pass = RenderPass::Opaque,
-            const Texture2D* diffuse_texture = nullptr
+            const Texture2D* diffuse_texture = nullptr,
+            const bool casts_directional_shadow = true
         )
         {
             items_.push_back(RenderItem{
                 .mesh = &mesh,
                 .model_matrix = model_matrix,
                 .pass = pass,
-                .diffuse_texture = diffuse_texture
+                .diffuse_texture = diffuse_texture,
+                .casts_directional_shadow = casts_directional_shadow
             });
         }
 

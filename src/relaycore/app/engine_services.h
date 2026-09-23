@@ -38,11 +38,11 @@ namespace RelayCore
          * @param is_running Reference to the application running flag.
          */
         EngineServices(
-            const core::EngineConfig& config,
-            Window&                   window,
-            Renderer&                 renderer,
-            AudioSystem&              audio_system,
-            bool&                     is_running
+            core::EngineConfig& config,
+            Window& window,
+            Renderer& renderer,
+            AudioSystem& audio_system,
+            bool& is_running
         ) noexcept;
 
         /**
@@ -50,6 +50,9 @@ namespace RelayCore
          * @return Immutable engine configuration.
          */
         [[nodiscard]] auto config() const noexcept -> const core::EngineConfig&;
+
+        /** Applies reloadable settings; window, audio device and config path retain their startup values. */
+        void commit_live_reload_config(core::EngineConfig&& config) noexcept;
 
         /**
          * @brief Returns the mutable window wrapper.
@@ -111,10 +114,10 @@ namespace RelayCore
         [[nodiscard]] auto is_running() const noexcept -> bool;
 
     private:
-        const core::EngineConfig* config_       = nullptr; ///< Configuration backing the current runtime.
-        Window*                   window_       = nullptr; ///< Window subsystem view.
-        Renderer*                 renderer_     = nullptr; ///< Renderer subsystem view.
-        AudioSystem*              audio_system_ = nullptr; ///< Audio subsystem view.
-        bool*                     is_running_   = nullptr; ///< Mutable main-loop running flag.
+        core::EngineConfig* config_ = nullptr; ///< Configuration backing the current runtime.
+        Window* window_ = nullptr;             ///< Window subsystem view.
+        Renderer* renderer_ = nullptr;         ///< Renderer subsystem view.
+        AudioSystem* audio_system_ = nullptr;  ///< Audio subsystem view.
+        bool* is_running_ = nullptr;           ///< Mutable main-loop running flag.
     };
 } // namespace RelayCore

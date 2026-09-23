@@ -139,23 +139,46 @@ namespace RelayGame
         simulation_loop_.reset();
     }
 
+    void GameWorldRuntime::prepare_level_session_activation(
+        RelayCore::EngineServices& services,
+        const bool allow_capture,
+        const RelayCore::render::PerspectiveCameraConfig* projection
+    )
+    {
+        auto camera = services.camera();
+        if (projection)
+            camera.apply_projection_config(*projection);
+        player_controller_.apply_camera(camera);
+        services.audio_system().preload_one_shots(player_sounds_);
+        player_controller_.set_session_capture(services.window(), allow_capture);
+    }
+
     void GameWorldRuntime::activate_level_session(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::activate_level_session");
-        services.audio_system().preload_one_shots(player_sounds_);
-        std::vector<RelayCore::AudioSystem::SpatialLoop> loops;
-        for (const auto& effect : environment_)
-        {
-            const std::string path = environment_sound(effect.kind);
-            loops.push_back({path.empty() ? std::filesystem::path{} : RelayCore::core::asset_path(path), effect.origin}
-            );
-        }
-        services.audio_system().configure_spatial_loops(loops);
-        player_controller_.enable_capture(services.window());
         player_controller_.apply_camera(services.camera());
-        update_ambient_audio(services);
-        services.audio_system().update(0.0F);
-        refresh_audio_runtime_state(services);
+        try
+        {
+            std::vector<RelayCore::AudioSystem::SpatialLoop> loops;
+            for (const auto& effect : environment_)
+            {
+                const std::string path = environment_sound(effect.kind);
+                loops.push_back(
+                    {path.empty() ? std::filesystem::path{} : RelayCore::core::asset_path(path), effect.origin}
+                );
+            }
+            services.audio_system().configure_spatial_loops(loops);
+            update_ambient_audio(services);
+            services.audio_system().update(0.0F);
+            refresh_audio_runtime_state(services);
+            spatial_audio_ready_ = true;
+        } catch (const std::exception& error)
+        {
+            services.audio_system().stop_loop();
+            services.audio_system().clear_spatial_loops();
+            spatial_audio_ready_ = false;
+            RelayCore::log::error("Level loaded, but audio activation failed: {}", error.what());
+        }
     }
 
     void GameWorldRuntime::refresh_audio_runtime_state(RelayCore::EngineServices& services)
@@ -177,10 +200,11 @@ namespace RelayGame
 
     void GameWorldRuntime::set_paused(bool paused, RelayCore::EngineServices& services)
     {
+        if (services.window().relative_mouse_mode() == paused)
+            services.window().set_relative_mouse_mode(!paused);
         paused_ = paused;
         clear_pending_gameplay_actions();
         player_controller_.set_input_ownership({true, true});
-        services.window().set_relative_mouse_mode(!paused);
         services.audio_system().set_paused(paused);
         if (!paused)
             player_controller_.apply_camera(services.camera());
@@ -189,10 +213,16 @@ namespace RelayGame
     void GameWorldRuntime::shutdown(RelayCore::EngineServices& services) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
+        retire_level_session(services);
+        static_cast<void>(SDL_SetWindowRelativeMouseMode(services.window().handle(), false));
+    }
+
+    void GameWorldRuntime::retire_level_session(RelayCore::EngineServices& services) noexcept
+    {
+        spatial_audio_ready_ = false;
         services.audio_system().stop_loop();
         services.audio_system().stop_one_shots();
         services.audio_system().clear_spatial_loops();
-        static_cast<void>(SDL_SetWindowRelativeMouseMode(services.window().handle(), false));
         clear_loaded_level_state();
     }
 

@@ -40,13 +40,6 @@ if (MSVC)
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:ProgramDatabase>")
 
     add_compile_options(
-        $<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>
-        $<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>
-        $<$<COMPILE_LANGUAGE:CXX>:/permissive->
-        $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
-    )
-
-    add_compile_options(
         $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/Gy>
         $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/Gw>
         $<$<CONFIG:RelWithDebInfo>:/Zo>

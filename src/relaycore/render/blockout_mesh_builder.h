@@ -17,6 +17,7 @@ namespace RelayCore::render
         glm::vec3 maxs{};
         std::uint32_t triangle_count = 0;
         bool transparent = false;
+        bool casts_directional_shadow = true;
     };
 
     struct BlockoutRenderData {

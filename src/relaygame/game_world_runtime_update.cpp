@@ -151,10 +151,15 @@ namespace RelayGame
     void GameWorldRuntime::update_presentation(RelayCore::EngineServices& services, const float delta_seconds)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        update_ambient_audio(services);
-        services.audio_system().update(delta_seconds);
-        refresh_audio_runtime_state(services);
+        if (spatial_audio_ready_)
+        {
+            update_ambient_audio(services);
+            services.audio_system().update(delta_seconds);
+            refresh_audio_runtime_state(services);
+        }
         update_world_environment(environment_, activated_target_ids_, delta_seconds);
+        if (!spatial_audio_ready_)
+            return;
         services.audio_system().set_listener(services.camera().position(), services.camera().forward());
         for (std::size_t index = 0; index < environment_.size(); ++index)
         {

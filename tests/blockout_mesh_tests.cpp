@@ -26,6 +26,19 @@ TEST_CASE("single blockout solid emits six quads")
     CHECK(mesh.indices.size() == 36);
 }
 
+TEST_CASE("ceiling geometry does not block indoor directional light")
+{
+    RelayCore::BlockoutLevel level{};
+    level.solids.push_back({{-1.0F, 3.0F, -1.0F}, {1.0F, 3.2F, 1.0F}, RelayCore::SurfaceMaterial::Ceiling});
+    level.solids.push_back({{-1.0F, 0.0F, -1.0F}, {1.0F, 1.0F, 1.0F}, RelayCore::SurfaceMaterial::Block});
+
+    const auto data = RelayCore::render::build_blockout_render_data(level);
+
+    REQUIRE(data.chunks.size() == 2);
+    CHECK_FALSE(data.chunks[0].casts_directional_shadow);
+    CHECK(data.chunks[1].casts_directional_shadow);
+}
+
 TEST_CASE("adjacent solids cull their shared face")
 {
     RelayCore::BlockoutLevel level{};

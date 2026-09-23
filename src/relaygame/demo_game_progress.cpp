@@ -59,6 +59,7 @@ namespace RelayGame
     {
         if (screen_ != Screen::MainMenu)
             return;
+        std::vector<SavedGame> initial_history;
         try
         {
             if (settings_dirty_)
@@ -68,6 +69,8 @@ namespace RelayGame
             }
             if (continuing && !disk_save_)
                 return;
+            if (continuing)
+                initial_history = disk_save_->visited_levels;
             const LevelSessionBuilder builder{services.config().gameplay};
             auto prepared = detail::prepare_level_session(
                 services.config(),
@@ -79,19 +82,28 @@ namespace RelayGame
                 services.renderer().static_models(),
                 continuing ? &*disk_save_ : nullptr
             );
-            install_level_session(std::move(prepared), services);
-            visited_levels_ = continuing ? disk_save_->visited_levels : std::vector<SavedGame>{};
-            played_seconds_ = continuing ? disk_save_->played_seconds : 0;
-            flashlight_on_ = continuing && disk_save_->flashlight;
-            scene_time_ = played_seconds_;
-            autosave_elapsed_ = 0;
-            saved_step_ = runtime_.mission_status().current_step;
-            progress_enabled_ = true;
-            progress_message_.clear();
-            show_settings_ = false;
-            confirm_new_game_ = false;
-            saved_runtime_snapshot_.reset();
-            change_screen(Screen::Playing, services);
+            install_level_session(std::move(prepared), services, window_focused_);
+        } catch (const std::exception& error)
+        {
+            progress_message_ = error.what();
+            RelayCore::log::error("Begin episode: {}", error.what());
+            return;
+        }
+
+        visited_levels_ = std::move(initial_history);
+        played_seconds_ = continuing ? disk_save_->played_seconds : 0;
+        flashlight_on_ = continuing && disk_save_->flashlight;
+        scene_time_ = played_seconds_;
+        autosave_elapsed_ = 0;
+        saved_step_ = runtime_.mission_status().current_step;
+        progress_enabled_ = true;
+        progress_message_.clear();
+        show_settings_ = false;
+        confirm_new_game_ = false;
+        saved_runtime_snapshot_.reset();
+        change_screen(Screen::Playing, services);
+        try
+        {
             runtime_.publish_diagnostics(services.renderer());
             if (runtime_.mission_status().completed && !runtime_.has_completion_exit())
                 begin_finale(services);
@@ -99,8 +111,7 @@ namespace RelayGame
                 static_cast<void>(save_progress());
         } catch (const std::exception& error)
         {
-            progress_message_ = error.what();
-            RelayCore::log::error("Begin episode: {}", error.what());
+            RelayCore::log::error("Episode started, but presentation update failed: {}", error.what());
         }
     }
 

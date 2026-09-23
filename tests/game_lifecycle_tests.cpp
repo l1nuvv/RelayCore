@@ -14,6 +14,7 @@
 #include <glad/gl.h>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 #include "scoped_temp_directory.h"
 
@@ -188,9 +189,59 @@ int main()
         for (const auto* map : {"levels/test_room.toml", "levels/rc022_reference.toml"})
         {
             config.gameplay.level_path = map;
+            config.input.capture_mouse_on_start = std::string_view{map} == "levels/test_room.toml";
             game.begin_episode(false, services);
             require(!game.has_custom_ui() && window.relative_mouse_mode(), "New game failed to enter play");
+            if (std::string_view{map} == "levels/test_room.toml")
+            {
+                auto distant_level = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+                distant_level.spawn_position = {1.0e8F, 1.0e8F, 1.0e8F};
+                auto distant_session = RelayGame::detail::prepare_level_session(
+                    config,
+                    std::move(distant_level),
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode(),
+                    renderer.static_models()
+                );
+                const auto camera_before = services.camera().position();
+                bool invalid_camera_rejected = false;
+                try
+                {
+                    distant_session.runtime.prepare_level_session_activation(services);
+                } catch (const std::invalid_argument&)
+                {
+                    invalid_camera_rejected = true;
+                }
+                require(
+                    invalid_camera_rejected && services.camera().position() == camera_before
+                        && window.relative_mouse_mode(),
+                    "Unrepresentable session camera changed the active game"
+                );
+            }
             game.on_update(frame, services);
+            if (std::string_view{map} == "levels/test_room.toml")
+            {
+                const auto camera_before_reload = services.camera().position();
+                const auto config_path = config.source_path;
+                config.source_path = directory.path() / "invalid-engine-config.toml";
+                {
+                    std::ofstream invalid_config{config.source_path};
+                    invalid_config << "broken = [\n";
+                }
+                key(SDL_SCANCODE_F7);
+                game.on_update(frame, services);
+                config.source_path = config_path;
+                require(
+                    !game.has_custom_ui() && window.relative_mouse_mode()
+                        && services.camera().position() == camera_before_reload,
+                    "Failed reload disturbed the active session or input capture"
+                );
+                require(
+                    renderer.iteration_diagnostics().has_last_reload_result
+                        && !renderer.iteration_diagnostics().last_reload_succeeded,
+                    "Failed reload was not reported"
+                );
+            }
             key(SDL_SCANCODE_ESCAPE);
             const auto checkpoint = RelayGame::load_saved_game(progress_path);
             require(
@@ -203,6 +254,8 @@ int main()
             require(renderer.runtime_diagnostics().simulation_tick == paused_tick, "Pause advanced simulation");
             key(SDL_SCANCODE_ESCAPE);
             const auto campaign_camera = services.camera().position();
+            const auto campaign_forward = services.camera().forward();
+            const auto campaign_yaw = services.camera().yaw_radians();
             game.enter_editor(services);
             require(game.has_custom_ui() && !window.relative_mouse_mode(), "Editor retained gameplay input");
             const auto editor_checkpoint = RelayGame::load_saved_game(progress_path);
@@ -221,6 +274,30 @@ int main()
                     && after_preview.played_seconds == editor_checkpoint.played_seconds,
                 "Editor preview overwrote campaign progress"
             );
+            if (std::string_view{map} == "levels/test_room.toml")
+            {
+                services.camera().set_orientation(campaign_yaw + 1.5707963268F, 0.0F);
+                auto incompatible_renderer = config.renderer;
+                incompatible_renderer.camera.world_up = campaign_forward;
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(incompatible_renderer, renderer.authoring_config())
+                );
+                game.return_from_editor(services);
+                require(
+                    game.has_custom_ui() && !window.relative_mouse_mode(),
+                    "Failed editor return lost the editor or captured input"
+                );
+                RelayCore::log::flush();
+                std::ifstream return_log{RelayCore::log::latest_log_path()};
+                bool camera_error_reported = false;
+                for (std::string line; std::getline(return_log, line);)
+                    if (line.find("Return from editor: PerspectiveCamera forward and world_up") != std::string::npos)
+                        camera_error_reported = true;
+                require(camera_error_reported, "Failed editor return did not report the camera error");
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config())
+                );
+            }
             game.return_from_editor(services);
             require(
                 !game.has_custom_ui() && services.camera().position() == campaign_camera,
@@ -234,6 +311,7 @@ int main()
             require(game.has_custom_ui() && !window.relative_mouse_mode(), "Menu retained gameplay input");
             require(renderer.runtime_diagnostics().level_name.empty(), "Menu retained old level diagnostics");
         }
+        config.input.capture_mouse_on_start = true;
 
         const auto saved = RelayGame::load_saved_game(progress_path);
         config.gameplay.level_path = "levels/missing-06-test.toml";
@@ -305,6 +383,7 @@ int main()
             campaign.begin_episode(true, services);
             campaign.on_update(frame, services);
             auto pump = RelayGame::load_saved_game(campaign_path);
+            require(window.relative_mouse_mode(), "Level transition lost mouse capture");
             renderer.begin_frame();
             campaign.on_render(frame, services);
             capture_frame("campaign_pump.bmp");
@@ -366,8 +445,13 @@ int main()
                 returned.player.position.z == 3.5F && returned.world.player_combat.health == 73,
                 "Return entry or health is incorrect"
             );
+            const auto camera_before_failed_transition = services.camera().position();
             campaign.transition_to({{}, directory.path() / "absent-map.toml", "arrival", true}, services);
             require(campaign.has_custom_ui(), "Failed transition must pause with its error");
+            require(
+                services.camera().position() == camera_before_failed_transition,
+                "Failed transition changed the active camera"
+            );
             require(
                 RelayGame::load_saved_game(campaign_path).world.level_path == returned.world.level_path,
                 "Failed transition changed saved map"
@@ -385,6 +469,31 @@ int main()
                 "Failed transition lost its source, destination, or entry"
             );
             campaign.on_shutdown(services);
+
+            const auto save_failure_dir = directory.path() / "save_failure";
+            const auto save_failure_path = save_failure_dir / "progress.toml";
+            RelayGame::write_saved_game(save_failure_path, start);
+            RelayGame::DemoGame save_failure{save_failure_dir};
+            save_failure.on_startup(services);
+            save_failure.begin_episode(true, services);
+            require(!save_failure.has_custom_ui(), "Save-failure scenario did not start the campaign");
+            const auto blocked_temp_path = save_failure_path.string() + ".tmp";
+            std::filesystem::create_directory(blocked_temp_path);
+            save_failure.transition_to({{}, b, "arrival", false}, services);
+            require(!save_failure.has_custom_ui(), "Failed progress write incorrectly cancelled the level transition");
+            require(window.relative_mouse_mode(), "Failed progress write lost input capture on the new level");
+            require(
+                std::filesystem::path(RelayGame::load_saved_game(save_failure_path).world.level_path) == a,
+                "Failed progress write replaced the previous disk save"
+            );
+            std::filesystem::remove(blocked_temp_path);
+            save_failure.return_to_menu(services);
+            require(
+                std::filesystem::path(RelayGame::load_saved_game(save_failure_path).world.level_path) == b,
+                "Failed progress write left the runtime on the previous level"
+            );
+            save_failure.on_shutdown(services);
+
             RelayGame::LevelEditor editor;
             editor.enter(RelayGame::LevelSessionBuilder{config.gameplay}.build(a).level, services);
             editor.new_map(services, true);
@@ -428,6 +537,76 @@ int main()
             capture_frame("editor_workshop.bmp");
             editor.shutdown();
             std::cout << "0.8/0.9: editor map roundtrip and campaign A -> B -> restart -> A passed\n";
+        }
+        {
+            const auto intake = RelayCore::core::asset_path("levels/foundation_intake.toml");
+            const auto pump = RelayCore::core::asset_path("levels/foundation_pump.toml");
+            auto reload_config = config;
+            reload_config.source_path = directory.path() / "live-reload.toml";
+            reload_config.gameplay.level_path = intake.string();
+            RelayCore::EngineServices reload_services{reload_config, window, renderer, audio, running};
+            RelayGame::DemoGame reload_game{directory.path() / "live_reload"};
+            reload_game.on_startup(reload_services);
+            renderer.set_diagnostics_visible(true);
+            reload_game.begin_episode(false, reload_services);
+            require(
+                renderer.runtime_diagnostics().level_path == intake.string(),
+                "Reload scenario did not start on intake"
+            );
+
+            {
+                std::ofstream file{reload_config.source_path};
+                file << "[window]\nwidth = 1920\n[audio]\nenabled = true\n"
+                        "[input]\nmove_speed = 7.25\n[game]\nlevel_path = \"levels/foundation_pump.toml\"\n"
+                        "[game.controls]\nuse = \"Q\"\n";
+            }
+            SDL_Event reload_key{};
+            reload_key.type = SDL_EVENT_KEY_DOWN;
+            reload_key.key.scancode = SDL_SCANCODE_F7;
+            reload_game.on_event(reload_key, reload_services);
+            reload_game.on_update(frame, reload_services);
+            require(
+                renderer.runtime_diagnostics().level_path == intake.string()
+                    && renderer.interaction_diagnostics().use_binding_label == "Q",
+                "Reload changed the active map or ignored the new binding"
+            );
+            require(
+                reload_services.config().input.move_speed == 7.25F
+                    && reload_services.config().gameplay.level_path == "levels/foundation_pump.toml"
+                    && reload_services.config().window.width == 640 && !reload_services.config().audio.enabled,
+                "Reload did not retain effective settings or changed startup-only settings"
+            );
+
+            std::ofstream(reload_config.source_path) << "broken = [\n";
+            reload_game.on_event(reload_key, reload_services);
+            reload_game.on_update(frame, reload_services);
+            require(
+                !renderer.iteration_diagnostics().last_reload_succeeded
+                    && reload_services.config().input.move_speed == 7.25F
+                    && renderer.runtime_diagnostics().level_path == intake.string(),
+                "Failed reload changed effective settings or the active map"
+            );
+
+            reload_game.transition_to({{}, pump, "arrival", false}, reload_services);
+            require(
+                renderer.runtime_diagnostics().level_path == pump.string()
+                    && renderer.interaction_diagnostics().use_binding_label == "Q",
+                "Transition did not use the reloaded gameplay settings"
+            );
+            reload_game.enter_editor(reload_services);
+            reload_game.begin_editor_preview(reload_services);
+            require(
+                renderer.interaction_diagnostics().use_binding_label == "Q",
+                "Editor preview did not use the reloaded gameplay settings"
+            );
+            reload_game.return_to_menu(reload_services);
+            reload_game.begin_episode(false, reload_services);
+            require(
+                renderer.runtime_diagnostics().level_path == pump.string()
+                    && renderer.interaction_diagnostics().use_binding_label == "Q",
+                "New Game did not use the reloaded start map and controls"
+            );
+            reload_game.on_shutdown(reload_services);
         }
     } catch (const std::exception& error)
     {

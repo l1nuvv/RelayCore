@@ -3,6 +3,7 @@
 #include <array>
 #include <doctest/doctest.h>
 #include <filesystem>
+#include <utility>
 
 TEST_CASE("audio system disabled mode is safe and remains uninitialized")
 {

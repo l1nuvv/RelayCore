@@ -8,6 +8,7 @@
 #include "relaycore/render/camera.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/world_scene_light_order.h"
 
 #include <algorithm>
 #include <charconv>
@@ -17,7 +18,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
-#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -432,6 +432,7 @@ namespace RelayGame
             chunk.maxs = chunk_data.maxs;
             chunk.triangle_count = chunk_data.triangle_count;
             chunk.transparent = chunk_data.transparent;
+            chunk.casts_directional_shadow = chunk_data.casts_directional_shadow;
             render_chunks_.push_back(std::move(chunk));
         }
         diagnostics_.total_solids = scene_data.total_solids;
@@ -462,6 +463,8 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         render_queue_.clear();
+        shadow_casters_.clear();
+        transparent_submissions_.clear();
         render_chunks_.clear();
         render_chunks_.shrink_to_fit();
         props_.clear();
@@ -543,9 +546,14 @@ namespace RelayGame
         diagnostics_.transparent_triangles = 0;
         diagnostics_.local_light_count = 0;
         render_queue_.clear();
+        shadow_casters_.clear();
+        transparent_submissions_.clear();
         render_queue_.reserve(
             render_chunks_.size() + props_.size() + doors.size() + turrets.size() + enemies.size()
             + (usables.size() * 3)
+        );
+        shadow_casters_.reserve(
+            render_chunks_.size() + props_.size() + doors.size() + turrets.size() + enemies.size() + usables.size() * 2
         );
         for (const auto& prop : props_)
         {
@@ -556,8 +564,9 @@ namespace RelayGame
                 static_cast<std::uint32_t>(prop.model->mesh.index_count() / 3)
             );
         }
-        std::vector<const RenderChunk*> transparent_chunks{};
-        transparent_chunks.reserve(render_chunks_.size());
+        transparent_submissions_.reserve(
+            render_chunks_.size() + (environment.empty() ? environment_.size() : environment.size()) * 12
+        );
 
         frustum_planes_ = extract_frustum_planes(camera.view_projection_matrix());
         {
@@ -567,30 +576,38 @@ namespace RelayGame
                 if (!aabb_intersects_frustum(frustum_planes_, chunk.mins, chunk.maxs))
                 {
                     ++diagnostics_.culled_chunks;
+                    if (!chunk.transparent)
+                        shadow_casters_.push(
+                            chunk.mesh,
+                            glm::mat4{1.0F},
+                            RelayCore::render::RenderPass::Opaque,
+                            nullptr,
+                            chunk.casts_directional_shadow
+                        );
                     continue;
                 }
 
                 record_visible_chunk(chunk.transparent);
                 if (chunk.transparent)
                 {
-                    transparent_chunks.push_back(&chunk);
+                    const glm::vec3 center = (chunk.mins + chunk.maxs) * 0.5F;
+                    const glm::vec3 delta = center - camera.position();
+                    transparent_submissions_.push_back(
+                        {&chunk.mesh, glm::mat4{1.0F}, glm::dot(delta, camera.forward()), chunk.triangle_count}
+                    );
                     continue;
                 }
 
                 record_render_draw(RelayCore::render::RenderPass::Opaque, chunk.triangle_count);
-                render_queue_.push(chunk.mesh, glm::mat4{1.0F}, RelayCore::render::RenderPass::Opaque);
+                render_queue_.push(
+                    chunk.mesh,
+                    glm::mat4{1.0F},
+                    RelayCore::render::RenderPass::Opaque,
+                    nullptr,
+                    chunk.casts_directional_shadow
+                );
             }
         }
-
-        std::ranges::sort(transparent_chunks, [&camera](const RenderChunk* lhs, const RenderChunk* rhs) {
-            const glm::vec3 lhs_center = (lhs->mins + lhs->maxs) * 0.5F;
-            const glm::vec3 rhs_center = (rhs->mins + rhs->maxs) * 0.5F;
-            const glm::vec3 lhs_delta = lhs_center - camera.position();
-            const glm::vec3 rhs_delta = rhs_center - camera.position();
-            const float lhs_distance2 = glm::dot(lhs_delta, lhs_delta);
-            const float rhs_distance2 = glm::dot(rhs_delta, rhs_delta);
-            return lhs_distance2 > rhs_distance2;
-        });
 
         render_doors(camera, doors);
         render_scientist(scientist);
@@ -626,10 +643,13 @@ namespace RelayGame
             render_inspector_pick(camera, scene_time_seconds, inspector);
         }
 
-        for (const RenderChunk* chunk : transparent_chunks)
+        std::ranges::stable_sort(transparent_submissions_, [](const auto& lhs, const auto& rhs) {
+            return lhs.depth > rhs.depth;
+        });
+        for (const TransparentSubmission& submission : transparent_submissions_)
         {
-            record_render_draw(RelayCore::render::RenderPass::Transparent, chunk->triangle_count);
-            render_queue_.push(chunk->mesh, glm::mat4{1.0F}, RelayCore::render::RenderPass::Transparent);
+            record_render_draw(RelayCore::render::RenderPass::Transparent, submission.triangles);
+            render_queue_.push(*submission.mesh, submission.model, RelayCore::render::RenderPass::Transparent);
         }
 
         active_local_lights_.clear();
@@ -658,11 +678,7 @@ namespace RelayGame
             std::ranges::sort(sorted_lights, [&camera](const auto& lhs, const auto& rhs) {
                 const float lhs_score = local_light_score(lhs, camera);
                 const float rhs_score = local_light_score(rhs, camera);
-                if (std::abs(lhs_score - rhs_score) <= std::numeric_limits<float>::epsilon())
-                {
-                    return lhs.radius > rhs.radius;
-                }
-                return lhs_score < rhs_score;
+                return detail::local_light_precedes(lhs_score, lhs.radius, rhs_score, rhs.radius);
             });
 
             const std::size_t active_count = std::min(sorted_lights.size(), kMaxActiveLocalLights);
@@ -688,7 +704,18 @@ namespace RelayGame
         RELAYCORE_PROFILE_PLOT("Render/OverlayTriangles", diagnostics_.overlay_triangles);
         RELAYCORE_PROFILE_PLOT("Render/TransparentTriangles", diagnostics_.transparent_triangles);
         RELAYCORE_PROFILE_PLOT("Render/LocalLightsActive", diagnostics_.local_light_count);
-        renderer.draw_render_queue(render_queue_.items());
+        for (const RelayCore::render::RenderItem& item : render_queue_.items())
+        {
+            if (item.mesh != nullptr && item.pass == RelayCore::render::RenderPass::Opaque)
+                shadow_casters_.push(
+                    *item.mesh,
+                    item.model_matrix,
+                    item.pass,
+                    item.diffuse_texture,
+                    item.casts_directional_shadow
+                );
+        }
+        renderer.draw_render_queue(render_queue_.items(), shadow_casters_.items());
     }
 
     auto WorldSceneRenderer::diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&

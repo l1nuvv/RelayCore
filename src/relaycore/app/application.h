@@ -58,13 +58,13 @@ namespace RelayCore
          */
         void handle_event(const SDL_Event& event, EngineServices& services);
 
-        std::unique_ptr<AppDelegate> app_delegate_;  ///< Active game delegate.
         FrameTimer frame_timer_{};                   ///< Frame timing helper.
         SdlSystem sdl_system_{};                     ///< SDL lifetime guard.
         std::optional<core::EngineConfig> config_{}; ///< Loaded engine configuration after SDL is ready.
         std::optional<Window> window_{};             ///< Native window and GL context owner.
         std::optional<Renderer> renderer_{};         ///< Rendering subsystem.
         std::optional<AudioSystem> audio_system_{};  ///< Audio subsystem.
+        std::unique_ptr<AppDelegate> app_delegate_;  ///< Active game delegate.
         bool is_running_ = true;                     ///< Main-loop running flag.
     };
 } // namespace RelayCore

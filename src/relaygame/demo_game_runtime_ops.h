@@ -35,7 +35,7 @@ namespace RelayGame::detail
 
     void replace_level_session(
         DemoGameRuntimeState state,
-        PreparedLevelSession prepared,
+        PreparedLevelSession&& prepared,
         RelayCore::EngineServices& services
     );
 

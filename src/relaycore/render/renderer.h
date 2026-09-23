@@ -77,7 +77,10 @@ namespace RelayCore
 
         void begin_frame();
 
-        void draw_render_queue(std::span<const render::RenderItem> items);
+        void draw_render_queue(
+            std::span<const render::RenderItem> items,
+            std::span<const render::RenderItem> shadow_casters
+        );
 
         [[nodiscard]] auto static_models() noexcept -> render::StaticModelCache&
         {

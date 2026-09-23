@@ -13,22 +13,28 @@ namespace RelayGame
             paused_screen_ = Screen::Playing;
             screen = Screen::Paused;
         }
-        screen_ = screen;
         runtime_.set_paused(screen != Screen::Playing || !window_focused_, services);
+        screen_ = screen;
         if (screen != Screen::Editor)
             editor_.suspend_camera();
         if (screen == Screen::Finale && window_focused_)
             services.audio_system().set_paused(false);
     }
 
-    void DemoGame::install_level_session(detail::PreparedLevelSession prepared, RelayCore::EngineServices& services)
+    void DemoGame::install_level_session(
+        detail::PreparedLevelSession&& prepared,
+        RelayCore::EngineServices& services,
+        const bool allow_capture
+    )
     {
+        apply_player_settings(services);
+        prepared.runtime.apply_player_settings(settings_.sensitivity, settings_.camera_motion);
+        prepared.runtime.prepare_level_session_activation(services, allow_capture);
         detail::replace_level_session(
             {runtime_, world_scene_, iteration_diagnostics_, saved_runtime_snapshot_},
             std::move(prepared),
             services
         );
-        apply_player_settings(services);
     }
 
     void DemoGame::enter_editor(RelayCore::EngineServices& services)
@@ -88,9 +94,9 @@ namespace RelayGame
             );
             editor_camera_position_ = services.camera().position();
             editor_camera_angles_ = {services.camera().yaw_radians(), services.camera().pitch_radians()};
-            install_level_session(std::move(prepared), services);
+            install_level_session(std::move(prepared), services, window_focused_);
             visited_levels_.clear();
-            editor_.leave(services);
+            editor_.leave_scene();
             played_seconds_ = 0;
             scene_time_ = 0;
             flashlight_on_ = false;
@@ -111,10 +117,23 @@ namespace RelayGame
         const auto flashlight = editor_return_->flashlight;
         const auto progress = editor_return_->progress_enabled;
         const auto return_screen = editor_return_->return_screen;
-        install_level_session(std::move(editor_return_->session), services);
+        try
+        {
+            install_level_session(
+                std::move(editor_return_->session),
+                services,
+                return_screen == Screen::Playing && window_focused_
+            );
+        } catch (const std::exception& error)
+        {
+            progress_message_ = error.what();
+            editor_.report_error(progress_message_);
+            RelayCore::log::error("Return from editor: {}", error.what());
+            return;
+        }
         visited_levels_ = std::move(editor_return_->visited_levels);
         editor_return_.reset();
-        editor_.leave(services);
+        editor_.leave_scene();
         played_seconds_ = played;
         scene_time_ = scene_time;
         flashlight_on_ = flashlight;

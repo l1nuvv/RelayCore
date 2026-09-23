@@ -122,7 +122,7 @@ namespace RelayGame
 
         void set_static_collision_world(const RelayCore::BlockoutLevel& level);
 
-        void enable_capture(RelayCore::Window& window) const;
+        void set_session_capture(RelayCore::Window& window, bool capture) const;
 
         void set_input_ownership(GameplayInputOwnership ownership) noexcept;
         void set_mouse_sensitivity(float radians) noexcept
@@ -144,7 +144,7 @@ namespace RelayGame
             std::span<const RelayCore::physics::Aabb> dynamic_blockers = {}
         );
 
-        void apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept;
+        void apply_camera(RelayCore::render::PerspectiveCamera& camera) const;
 
         [[nodiscard]] auto position() const noexcept -> const glm::vec3&;
 

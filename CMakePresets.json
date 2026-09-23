@@ -116,7 +116,7 @@
       "name": "tests-debug",
       "displayName": "Build Tests (Debug)",
       "configurePreset": "msvc-debug",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
     },
     {
       "name": "graphics-baseline-debug",
@@ -140,13 +140,13 @@
       "name": "tests-relwithdebinfo",
       "displayName": "Build Tests (RelWithDebInfo)",
       "configurePreset": "msvc-relwithdebinfo",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
     },
     {
       "name": "tests-asan",
       "displayName": "Build Tests (ASan)",
       "configurePreset": "msvc-asan",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
     },
     {
       "name": "validation-debug",

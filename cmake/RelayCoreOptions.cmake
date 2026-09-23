@@ -88,21 +88,15 @@ macro(relaycore_initialize_project)
             relaycore_project_options
             INTERFACE
                 /permissive-
-                /EHsc
                 /Zc:preprocessor
                 /Zc:__cplusplus
                 /utf-8
-                $<$<CONFIG:Release>:/O2>
-                $<$<CONFIG:RelWithDebInfo>:/O2>
-                $<$<CONFIG:MinSizeRel>:/O1>
-                $<$<CONFIG:Debug>:/Od>
-                 $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>,$<CONFIG:Asan>>:/Zi>
+                $<$<CONFIG:Asan>:/Zi>
         )
         target_link_options(
             relaycore_project_options
             INTERFACE
                 $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>,$<CONFIG:Asan>>:/DEBUG>
-                $<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO>
         )
         target_compile_definitions(
             relaycore_project_options

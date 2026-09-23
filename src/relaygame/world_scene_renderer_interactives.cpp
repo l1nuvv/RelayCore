@@ -181,6 +181,7 @@ namespace RelayGame
             const RelayCore::physics::Aabb bounds = RelayCore::gameplay::current_door_bounds(door);
             if (!aabb_intersects_planes(frustum_planes_, bounds.mins, bounds.maxs))
             {
+                shadow_casters_.push(door_mesh_, make_aabb_model_matrix(bounds));
                 continue;
             }
 
@@ -213,14 +214,10 @@ namespace RelayGame
                 continue;
             }
 
-            if (!aabb_intersects_planes(frustum_planes_, usable.visual_bounds.mins, usable.visual_bounds.maxs))
-            {
-                continue;
-            }
-
             using RelayCore::render::RenderPass;
+            const bool camera_visible =
+                aabb_intersects_planes(frustum_planes_, usable.visual_bounds.mins, usable.visual_bounds.maxs);
             const bool focused = static_cast<int>(usable_index) == focused_usable_index;
-            ++diagnostics_.usable_draw_calls;
             if (usable.visual_kind == RelayCore::gameplay::UsableVisualKind::Panel)
             {
                 using RelayCore::gameplay::UsableFeedbackStyle;
@@ -243,6 +240,13 @@ namespace RelayGame
                                        : (usable.locked || !usable.requirement_met) ? panel_blocked_mesh_
                                        : focused                                    ? panel_highlight_mesh_
                                                                                     : panel_mesh_;
+                if (!camera_visible)
+                {
+                    shadow_casters_.push(panel_housing_mesh_, model);
+                    shadow_casters_.push(actuator, model);
+                    continue;
+                }
+                ++diagnostics_.usable_draw_calls;
                 record_render_draw(RenderPass::Opaque, mesh_triangle_count(panel_housing_mesh_));
                 render_queue_.push(panel_housing_mesh_, model, RenderPass::Opaque);
                 record_render_draw(RenderPass::Opaque, mesh_triangle_count(actuator));
@@ -258,6 +262,12 @@ namespace RelayGame
             } else
             {
                 const auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
+                if (!camera_visible)
+                {
+                    shadow_casters_.push(pickup_mesh_, make_aabb_model_matrix(bounds));
+                    continue;
+                }
+                ++diagnostics_.usable_draw_calls;
                 record_render_draw(RenderPass::Opaque, mesh_triangle_count(pickup_mesh_));
                 render_queue_.push(pickup_mesh_, make_aabb_model_matrix(bounds), RenderPass::Opaque);
                 if (focused && highlight_visible)
@@ -281,13 +291,14 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         for (const RelayCore::gameplay::RuntimeTurret& turret : turrets)
         {
+            const RelayCore::render::StaticColorMesh& base_mesh =
+                turret.destroyed ? turret_destroyed_mesh_ : turret_mesh_;
             if (!aabb_intersects_planes(frustum_planes_, turret.bounds.mins, turret.bounds.maxs))
             {
+                shadow_casters_.push(base_mesh, make_aabb_model_matrix(turret.bounds));
                 continue;
             }
 
-            const RelayCore::render::StaticColorMesh& base_mesh =
-                turret.destroyed ? turret_destroyed_mesh_ : turret_mesh_;
             record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(base_mesh));
             render_queue_.push(base_mesh, make_aabb_model_matrix(turret.bounds), RelayCore::render::RenderPass::Opaque);
 

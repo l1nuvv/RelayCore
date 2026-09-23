@@ -104,7 +104,7 @@ namespace RelayCore
 
             const WindowPresentationState presentation_state = window_->presentation_state();
             const FrameInfo frame = frame_timer_.begin_frame();
-            const auto frame_cpu_start = Clock::now();
+            const auto cpu_work_start = Clock::now();
             {
                 RELAYCORE_PROFILE_ZONE_N("app_update");
                 app_delegate_->on_update(frame, services);
@@ -136,17 +136,21 @@ namespace RelayCore
                     renderer_->end_ui();
                 }
             }
+            const auto present_start = Clock::now();
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_->swap_buffers();
             }
 
-            const auto cpu_frame_end = Clock::now();
-            const auto cpu_frame_ms =
-                std::chrono::duration<double, std::milli>(cpu_frame_end - frame_cpu_start).count();
+            const auto present_end = Clock::now();
+            [[maybe_unused]] const auto cpu_work_ms =
+                std::chrono::duration<double, std::milli>(present_start - cpu_work_start).count();
+            [[maybe_unused]] const auto present_ms =
+                std::chrono::duration<double, std::milli>(present_end - present_start).count();
 
             RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.delta_seconds * 1000.0);
-            RELAYCORE_PROFILE_PLOT("cpu_frame_ms", cpu_frame_ms);
+            RELAYCORE_PROFILE_PLOT("cpu_work_ms", cpu_work_ms);
+            RELAYCORE_PROFILE_PLOT("present_ms", present_ms);
 
             RELAYCORE_PROFILE_FRAME();
         }
