@@ -372,6 +372,18 @@ int main()
                 RelayGame::load_saved_game(campaign_path).world.level_path == returned.world.level_path,
                 "Failed transition changed saved map"
             );
+            RelayCore::log::flush();
+            std::ifstream transition_log{RelayCore::log::latest_log_path()};
+            std::string transition_error;
+            for (std::string line; std::getline(transition_log, line);)
+                if (line.find("Переход из '") != std::string::npos)
+                    transition_error = line;
+            require(
+                transition_error.find(returned.world.level_path) != std::string::npos
+                    && transition_error.find((directory.path() / "absent-map.toml").string()) != std::string::npos
+                    && transition_error.find("вход 'arrival'") != std::string::npos,
+                "Failed transition lost its source, destination, or entry"
+            );
             campaign.on_shutdown(services);
             RelayGame::LevelEditor editor;
             editor.enter(RelayGame::LevelSessionBuilder{config.gameplay}.build(a).level, services);

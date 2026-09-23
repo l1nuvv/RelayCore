@@ -184,7 +184,8 @@ namespace RelayCore::detail
 
         std::istringstream stream(normalized);
         glm::vec3 result{};
-        if (!(stream >> result.x >> result.y >> result.z))
+        if (!(stream >> result.x >> result.y >> result.z) || !std::isfinite(result.x) || !std::isfinite(result.y)
+            || !std::isfinite(result.z))
         {
             throw std::runtime_error("Field '" + field_name + "' must be a 3-component vector string");
         }

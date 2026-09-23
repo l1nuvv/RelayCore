@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 namespace RelayGame
@@ -26,9 +28,9 @@ namespace RelayGame
             const std::string& value = found->second;
             float result = 0.0F;
             const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), result);
-            if (ec != std::errc{} || ptr != value.data() + value.size())
+            if (ec != std::errc{} || ptr != value.data() + value.size() || !std::isfinite(result))
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be a finite number");
             }
 
             return result;
@@ -49,7 +51,7 @@ namespace RelayGame
             const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), result);
             if (ec != std::errc{} || ptr != value.data() + value.size())
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be an integer");
             }
 
             return result;
@@ -67,10 +69,15 @@ namespace RelayGame
 
             std::istringstream stream(found->second);
             glm::vec3 value{};
-            if (!(stream >> value.x >> value.y >> value.z))
+            if (!(stream >> value.x >> value.y >> value.z) || !std::isfinite(value.x) || !std::isfinite(value.y)
+                || !std::isfinite(value.z))
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be three finite numbers");
             }
+
+            stream >> std::ws;
+            if (!stream.eof())
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be three finite numbers");
 
             return value;
         }

@@ -4,6 +4,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/entity_spawn_parsing.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaycore/world/blockout_loader_validation.h"
 #include "relaygame/level_session_authoring_warnings.h"
 #include "relaygame/static_props.h"
 #include "relaygame/world_audio_zones.h"
@@ -129,6 +130,7 @@ namespace RelayGame
         for (const auto& prop : build_static_props(session.level))
             if (prop.collider)
                 session.level.prop_colliders.push_back(*prop.collider);
+        RelayCore::detail::validate_loaded_blockout_level(session.level);
 
         const auto spawn_it = std::find_if(
             session.level.entities.begin(),

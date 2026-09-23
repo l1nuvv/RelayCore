@@ -67,6 +67,21 @@ TEST_CASE("blockout loader rejects non-finite and unrepresentable brightness")
     }
 }
 
+TEST_CASE("blockout loader rejects bounds that overflow after module placement")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "overflowed_module.toml";
+    {
+        std::ofstream out{path};
+        REQUIRE(out.is_open());
+        out << "[[module_template]]\nname = \"large\"\n"
+               "solids = [{ origin = [3e38, 0, 0], size = [1, 1, 1], material = \"Wall\" }]\n"
+               "[[module_instance]]\ntemplate = \"large\"\noffset = [3e38, 0, 0]\n";
+    }
+    CHECK_THROWS_WITH(static_cast<void>(RelayCore::load_blockout_level(path)), doctest::Contains("non-finite bounds"));
+}
+
 TEST_CASE("blockout loader parses optional tint and brightness")
 {
     RelayCore::test::ScopedTempDirectory temp;

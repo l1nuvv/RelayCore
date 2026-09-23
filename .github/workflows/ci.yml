@@ -94,6 +94,21 @@ jobs:
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
           cmake --workflow --preset debug-discipline-workflow
 
+      - name: Run graphics lifecycle tests
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --build --preset graphics-debug
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics test build failed' }
+          ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics tests failed' }
+          [xml]$results = Get-Content build/msvc-debug/graphics-results.xml -Raw
+          $cases = @($results.SelectNodes('//testcase'))
+          $skipped = @($results.SelectNodes('//testcase/skipped'))
+          if ($cases.Count -ne 5 -or $skipped.Count -ne 0) {
+            throw "Expected 5 completed graphics tests; found $($cases.Count) tests and $($skipped.Count) skipped"
+          }
+
   msvc-relwithdebinfo:
     runs-on: windows-2022
 

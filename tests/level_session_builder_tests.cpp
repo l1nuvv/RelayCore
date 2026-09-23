@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <glm/trigonometric.hpp>
+#include <limits>
+#include <utility>
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
@@ -39,6 +41,78 @@ TEST_CASE("level session builder rejects an unresolvable presentation activation
             std::runtime_error
         );
     }
+}
+
+TEST_CASE("disk and in-memory sessions reject unsafe solid coordinates before runtime construction")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "unsafe.toml";
+    RelayCore::core::GameplayConfig config{};
+    RelayGame::LevelSessionBuilder builder{config};
+
+    for (const auto [coordinate, diagnostic] : {
+             std::pair{1.0e20F, "signed cell range"},
+             std::pair{1000.0F, "too many cells"},
+         })
+    {
+        RelayCore::BlockoutLevel level;
+        level.solids.push_back({{-coordinate, 0.0F, -coordinate}, {coordinate, 1.0F, coordinate}});
+        CHECK_THROWS_WITH(static_cast<void>(builder.build(level, path)), doctest::Contains(diagnostic));
+
+        std::ofstream out{path};
+        REQUIRE(out.is_open());
+        out << "[[solid]]\nmins = [" << -coordinate << ", 0, " << -coordinate << "]\nmaxs = [" << coordinate << ", 1, "
+            << coordinate << "]\nmaterial = \"Wall\"\n";
+        out.close();
+        CHECK_THROWS_WITH(static_cast<void>(builder.build(path)), doctest::Contains(diagnostic));
+    }
+
+    RelayCore::BlockoutLevel overflow;
+    overflow.solids.push_back({{0.0F, 0.0F, 0.0F}, {std::numeric_limits<float>::infinity(), 1.0F, 1.0F}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(std::move(overflow), path)),
+        doctest::Contains("non-finite bounds")
+    );
+}
+
+TEST_CASE("session validation rejects non-finite entity properties")
+{
+    RelayCore::core::GameplayConfig config{};
+    RelayGame::LevelSessionBuilder builder{config};
+    RelayCore::BlockoutLevel level;
+    level.entities.push_back({.classname = "trigger", .properties = {{"kind", "trigger"}, {"width", "nan"}}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-trigger.toml")),
+        doctest::Contains("property 'width'")
+    );
+
+    level.entities.clear();
+    level.entities.push_back(
+        {.classname = "audio_zone", .properties = {{"size", "2 2 2"}, {"loop", "audio/ambient.wav"}, {"volume", "inf"}}}
+    );
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-audio.toml")),
+        doctest::Contains("audio_zone.volume")
+    );
+
+    level.entities.clear();
+    level.entities.push_back({.classname = "gameplay_entity", .properties = {{"kind", "door"}, {"targetname", "gate"}}}
+    );
+    level.entities.push_back(
+        {.classname = "gameplay_entity", .properties = {{"kind", "panel"}, {"target", "gate"}, {"use_radius", "nan"}}}
+    );
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-radius.toml")),
+        doctest::Contains("property 'use_radius'")
+    );
+
+    level.entities.clear();
+    level.entities.push_back({.classname = "player_spawn", .origin = {std::numeric_limits<float>::infinity(), 0, 0}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-origin.toml")),
+        doctest::Contains("non-finite transform")
+    );
 }
 
 TEST_CASE("level session builder applies authored spawn view angles")

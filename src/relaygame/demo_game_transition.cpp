@@ -4,14 +4,16 @@
 #include "relaygame/demo_game.h"
 
 #include <algorithm>
+#include <string>
 
 namespace RelayGame
 {
-    void DemoGame::transition_to(const LevelExit& exit, RelayCore::EngineServices& services)
+    void DemoGame::transition_to(LevelExit exit, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::transition_to");
         if (screen_ != Screen::Playing || !runtime_.player_combat_state().alive)
             return;
+        const std::string source_level_path = runtime_.level_path();
         try
         {
             auto previous = runtime_.capture_saved_game(played_seconds_, flashlight_on_);
@@ -74,8 +76,8 @@ namespace RelayGame
             runtime_.publish_diagnostics(services.renderer());
         } catch (const std::exception& error)
         {
-            progress_message_ = "Переход из '" + runtime_.level_path() + "' в '" + exit.destination.string()
-                                + "', вход '" + exit.entry + "' не выполнен: " + error.what();
+            progress_message_ = "Переход из '" + source_level_path + "' в '" + exit.destination.string() + "', вход '"
+                                + exit.entry + "' не выполнен: " + error.what();
             RelayCore::log::error("{}", progress_message_);
             set_pause(true, services);
         }

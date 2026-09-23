@@ -46,6 +46,7 @@ target_sources(
 
         renderer_diagnostics_api_tests.cpp
         scoped_temp_directory_tests.cpp
+        spatial_index_2d_tests.cpp
         runtime_model_tests.cpp
         combat_runtime_tests.cpp
         engine_config_tests.cpp
@@ -103,6 +104,12 @@ include(doctest)
 
 target_link_libraries(relaycore_window_lifetime_tests PRIVATE RelayCore::engine)
 
+add_executable(relaycore_default_framebuffer_probe default_framebuffer_srgb_probe.cpp)
+target_link_libraries(relaycore_default_framebuffer_probe PRIVATE
+    RelayCore::engine RelayCore::project_options RelayCore::warnings
+)
+set_target_properties(relaycore_default_framebuffer_probe PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+
 foreach(test_target IN ITEMS
     relaycore_tests
     relaycore_content_validation
@@ -110,6 +117,7 @@ foreach(test_target IN ITEMS
     relaycore_window_lifetime_tests
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
+    relaycore_default_framebuffer_probe
 )
     relaycore_apply_standard_target_settings(${test_target})
 
@@ -177,31 +185,6 @@ doctest_discover_tests(
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
     PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
-
-# RC-022c default-framebuffer sRGB behavioral probe
-add_executable(relaycore_default_framebuffer_probe)
-set_target_properties(
-    relaycore_default_framebuffer_probe
-    PROPERTIES
-        FOLDER "tests"
-        UNITY_BUILD OFF
-)
-
-target_sources(
-    relaycore_default_framebuffer_probe
-    PRIVATE
-        default_framebuffer_srgb_probe.cpp
-)
-
-target_link_libraries(
-    relaycore_default_framebuffer_probe
-    PRIVATE
-        RelayCore::engine
-        RelayCore::project_options
-        RelayCore::warnings
-)
-
-relaycore_apply_standard_target_settings(relaycore_default_framebuffer_probe)
 
 add_test(
     NAME graphics.default_framebuffer_srgb_probe

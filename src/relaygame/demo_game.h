@@ -40,7 +40,7 @@ namespace RelayGame
         void enter_editor(RelayCore::EngineServices& services);
         void begin_editor_preview(RelayCore::EngineServices& services);
         void return_from_editor(RelayCore::EngineServices& services);
-        void transition_to(const LevelExit& exit, RelayCore::EngineServices& services);
+        void transition_to(LevelExit exit, RelayCore::EngineServices& services);
 
     private:
         enum class Screen {

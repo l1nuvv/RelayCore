@@ -52,6 +52,10 @@ namespace RelayGame
             prop.transform = glm::rotate(prop.transform, glm::radians(entity.angles.y), glm::vec3{1, 0, 0});
             prop.transform = glm::rotate(prop.transform, glm::radians(entity.angles.z), glm::vec3{0, 0, 1});
             prop.transform = glm::scale(prop.transform, scale);
+            for (int column = 0; column < 4; ++column)
+                for (int row = 0; row < 4; ++row)
+                    if (!std::isfinite(prop.transform[column][row]))
+                        throw std::runtime_error(label + ": transform exceeds finite float range");
             if (entity.properties.contains("collision_mins") || entity.properties.contains("collision_maxs")
                 || entity.properties.contains("collision_material"))
             {

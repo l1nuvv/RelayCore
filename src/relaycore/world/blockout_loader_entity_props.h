@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <glm/vec3.hpp>
 #include <optional>
 #include <sstream>
@@ -44,17 +45,17 @@ namespace RelayCore::detail
         -> std::optional<float>
     {
         const std::string* value = find_entity_property(entity, key);
-        if (value == nullptr || value->empty())
+        if (value == nullptr)
         {
             return std::nullopt;
         }
 
         float result = 0.0F;
         const auto [ptr, ec] = std::from_chars(value->data(), value->data() + value->size(), result);
-        if (ec != std::errc{} || ptr != value->data() + value->size())
+        if (ec != std::errc{} || ptr != value->data() + value->size() || !std::isfinite(result))
         {
             throw std::runtime_error(
-                "Entity property '" + std::string(key) + "' must be a number, got '" + *value + "'"
+                "Entity property '" + std::string(key) + "' must be a finite number, got '" + *value + "'"
             );
         }
 
@@ -65,7 +66,7 @@ namespace RelayCore::detail
         -> std::optional<glm::vec3>
     {
         const std::string* value = find_entity_property(entity, key);
-        if (value == nullptr || value->empty())
+        if (value == nullptr)
         {
             return std::nullopt;
         }
@@ -75,10 +76,11 @@ namespace RelayCore::detail
 
         std::istringstream stream(normalized);
         glm::vec3 result{};
-        if (!(stream >> result.x >> result.y >> result.z))
+        if (!(stream >> result.x >> result.y >> result.z) || !std::isfinite(result.x) || !std::isfinite(result.y)
+            || !std::isfinite(result.z))
         {
             throw std::runtime_error(
-                "Entity property '" + std::string(key) + "' must be a 3-component vector, got '" + *value + "'"
+                "Entity property '" + std::string(key) + "' must be a finite 3-component vector, got '" + *value + "'"
             );
         }
 
@@ -86,7 +88,7 @@ namespace RelayCore::detail
         if (!stream.eof())
         {
             throw std::runtime_error(
-                "Entity property '" + std::string(key) + "' must be a 3-component vector, got '" + *value + "'"
+                "Entity property '" + std::string(key) + "' must be a finite 3-component vector, got '" + *value + "'"
             );
         }
 
