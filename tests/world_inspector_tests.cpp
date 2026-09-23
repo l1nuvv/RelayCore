@@ -31,31 +31,26 @@ TEST_CASE("ray intersection distance reports hit miss and inside cases")
 TEST_CASE("world inspector prefers usable over solid behind it")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "logic_usable",
-            .origin = {0.0F, 1.2F, 1.1F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "logic_usable",
+        .origin = {0.0F, 1.2F, 1.1F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"targetname", "lab_reader"},
                 {"target", "inner_bulkhead"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_panel.toml",
-            .line = 7,
-            .column = 1,
-        }
-    );
-    level.solids.push_back(
-        RelayCore::BlockoutSolid{
-            .mins = {-1.0F, 0.0F, 2.0F},
-            .maxs = {1.0F, 2.0F, 2.2F},
-            .material = RelayCore::SurfaceMaterial::Wall,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_panel.toml",
+        .line = 7,
+        .column = 1,
+    });
+    level.solids.push_back(RelayCore::BlockoutSolid{
+        .mins = {-1.0F, 0.0F, 2.0F},
+        .maxs = {1.0F, 2.0F, 2.2F},
+        .material = RelayCore::SurfaceMaterial::Wall,
+    });
 
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;
@@ -112,30 +107,27 @@ TEST_CASE("world inspector prefers usable over solid behind it")
 TEST_CASE("world inspector reports instanced authored provenance for runtime picks")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "logic_usable",
-            .origin = {0.0F, 1.2F, 1.1F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "logic_usable",
+        .origin = {0.0F, 1.2F, 1.1F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"targetname", "templated_reader"},
                 {"target", "inner_bulkhead"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_template.toml",
-            .line = 14,
-            .column = 3,
-            .source_kind = "module_instance",
-            .template_name = "bulkhead_reader",
-            .instance_name = "lab_entry",
-            .placement_file_path = "tests/data/world_inspector_level.toml",
-            .placement_line = 42,
-            .placement_column = 1,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_template.toml",
+        .line = 14,
+        .column = 3,
+        .source_kind = "module_instance",
+        .template_name = "bulkhead_reader",
+        .instance_name = "lab_entry",
+        .placement_file_path = "tests/data/world_inspector_level.toml",
+        .placement_line = 42,
+        .placement_column = 1,
+    });
 
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;
@@ -190,24 +182,21 @@ TEST_CASE("world inspector reports instanced authored provenance for runtime pic
 TEST_CASE("world inspector includes runtime handle when registry is available")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "logic_usable",
-            .origin = {0.0F, 1.2F, 1.1F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "logic_usable",
+        .origin = {0.0F, 1.2F, 1.1F},
+        .properties =
+            {
                 {"kind", "panel"},
                 {"targetname", "handle_reader"},
                 {"target", "inner_bulkhead"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_handle.toml",
-            .line = 6,
-            .column = 1,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_handle.toml",
+        .line = 6,
+        .column = 1,
+    });
 
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;
@@ -232,7 +221,7 @@ TEST_CASE("world inspector includes runtime handle when registry is available")
         },
     };
 
-    RelayCore::gameplay::RuntimeObjectRegistry registry{};
+    RelayGame::RuntimeObjectRegistry registry{};
     registry.build(level, doors, triggers, usables);
 
     const RelayCore::render::InspectorDiagnostics diagnostics = RelayGame::build_world_inspector_diagnostics(
@@ -256,23 +245,20 @@ TEST_CASE("world inspector includes runtime handle when registry is available")
 TEST_CASE("world inspector reports door runtime state")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "func_door",
-            .origin = {0.0F, 1.25F, 3.1F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "func_door",
+        .origin = {0.0F, 1.25F, 3.1F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "bulkhead_alpha"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_door.toml",
-            .line = 11,
-            .column = 1,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_door.toml",
+        .line = 11,
+        .column = 1,
+    });
     std::vector<RelayCore::gameplay::RuntimeDoor> doors{
         RelayCore::gameplay::RuntimeDoor{
             .authored_entity_index = 0,
@@ -319,31 +305,26 @@ TEST_CASE("world inspector reports door runtime state")
 TEST_CASE("world inspector reports trigger state before solid fallback")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "trigger_volume",
-            .origin = {4.0F, 0.0F, 4.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "trigger_volume",
+        .origin = {4.0F, 0.0F, 4.0F},
+        .properties =
+            {
                 {"kind", "trigger"},
                 {"targetname", "trigger_authored"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_trigger.toml",
-            .line = 9,
-            .column = 1,
-        }
-    );
-    level.solids.push_back(
-        RelayCore::BlockoutSolid{
-            .mins = {-1.0F, 0.0F, 3.0F},
-            .maxs = {1.0F, 2.0F, 3.2F},
-            .material = RelayCore::SurfaceMaterial::Hazard,
-            .brightness = 1.2F,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_trigger.toml",
+        .line = 9,
+        .column = 1,
+    });
+    level.solids.push_back(RelayCore::BlockoutSolid{
+        .mins = {-1.0F, 0.0F, 3.0F},
+        .maxs = {1.0F, 2.0F, 3.2F},
+        .material = RelayCore::SurfaceMaterial::Hazard,
+        .brightness = 1.2F,
+    });
 
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers{
@@ -390,21 +371,17 @@ TEST_CASE("world inspector reports trigger state before solid fallback")
 TEST_CASE("world inspector falls back to solid material")
 {
     RelayCore::BlockoutLevel level{};
-    level.solids.push_back(
-        RelayCore::BlockoutSolid{
-            .mins = {-1.0F, 0.0F, 2.5F},
-            .maxs = {1.0F, 2.0F, 2.7F},
-            .material = RelayCore::SurfaceMaterial::Divider,
-            .brightness = 1.4F,
-        }
-    );
-    level.solid_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_solid.toml",
-            .line = 4,
-            .column = 1,
-        }
-    );
+    level.solids.push_back(RelayCore::BlockoutSolid{
+        .mins = {-1.0F, 0.0F, 2.5F},
+        .maxs = {1.0F, 2.0F, 2.7F},
+        .material = RelayCore::SurfaceMaterial::Divider,
+        .brightness = 1.4F,
+    });
+    level.solid_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_solid.toml",
+        .line = 4,
+        .column = 1,
+    });
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;
     std::vector<RelayCore::gameplay::RuntimeUsable> usables;
@@ -437,23 +414,20 @@ TEST_CASE("world inspector falls back to solid material")
 TEST_CASE("world inspector marks generated door usables without explicit authored entity")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "func_door",
-            .origin = {0.0F, 1.0F, 3.0F},
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "func_door",
+        .origin = {0.0F, 1.0F, 3.0F},
+        .properties =
+            {
                 {"kind", "door"},
                 {"targetname", "bulkhead_beta"},
             },
-        }
-    );
-    level.entity_sources.push_back(
-        RelayCore::AuthoredSourceLocation{
-            .file_path = "tests/data/world_inspector_generated.toml",
-            .line = 5,
-            .column = 1,
-        }
-    );
+    });
+    level.entity_sources.push_back(RelayCore::AuthoredSourceLocation{
+        .file_path = "tests/data/world_inspector_generated.toml",
+        .line = 5,
+        .column = 1,
+    });
 
     std::vector<RelayCore::gameplay::RuntimeDoor> doors;
     std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;

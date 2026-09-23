@@ -18,8 +18,8 @@ TEST_CASE("blockout texture atlas loads from external asset")
         RelayCore::render::load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
 
     REQUIRE(atlas.has_value());
-    CHECK(atlas->width == 512);
-    CHECK(atlas->height == 256);
+    CHECK(atlas->width == 2048);
+    CHECK(atlas->height == 1024);
     CHECK(atlas->pixels.size() == static_cast<std::size_t>(atlas->width * atlas->height * 4));
 
     RelayCore::log::shutdown();
@@ -39,7 +39,7 @@ TEST_CASE("blockout texture atlas is generated with expected dimensions and alph
     REQUIRE_FALSE(atlas.pixels.empty());
     CHECK(atlas.pixels[3] == 255);
     CHECK(atlas.pixels[(atlas.width * 4) - 1] == 255);
-    CHECK(atlas.pixels[0] != atlas.pixels[64 * 4]);
+    CHECK(atlas.pixels[0] != atlas.pixels[(atlas.width / 8) * 4]);
 
     RelayCore::log::shutdown();
 }

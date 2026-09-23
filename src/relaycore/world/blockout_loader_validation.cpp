@@ -417,6 +417,12 @@ namespace RelayCore::detail
                 }
             }
 
+            if (entity.classname == "inventory_item")
+            {
+                const auto* id = find_entity_property(entity, "item_id");
+                if (id == nullptr || id->empty() || !pickup_item_ids.emplace(*id, entity_index).second)
+                    throw std::runtime_error("inventory_item requires a unique item_id");
+            }
             if (is_pickup_entity_kind(kind))
             {
                 const std::string item_id = resolved_pickup_item_id(entity, pickup_index++);

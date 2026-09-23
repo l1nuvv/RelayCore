@@ -4,6 +4,7 @@
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaygame/usable_interaction.h"
 
 #include <algorithm>
 #include <doctest/doctest.h>
@@ -343,7 +344,7 @@ TEST_CASE("usable interaction returns structured pickup event with chained signa
     std::vector<std::string> activated_target_ids;
     std::vector<std::string> signaled_target_ids;
 
-    const InteractionEvent event = RelayCore::gameplay::apply_usable_interaction(
+    const InteractionEvent event = RelayGame::apply_usable_interaction(
         usables[0],
         doors,
         usables,
@@ -392,7 +393,7 @@ TEST_CASE("usable interaction returns denial events for locked and missing item 
     std::vector<std::string> activated_target_ids;
     std::vector<std::string> signaled_target_ids;
 
-    const InteractionEvent locked_event = RelayCore::gameplay::apply_usable_interaction(
+    const InteractionEvent locked_event = RelayGame::apply_usable_interaction(
         usables[0],
         doors,
         usables,
@@ -400,7 +401,7 @@ TEST_CASE("usable interaction returns denial events for locked and missing item 
         activated_target_ids,
         signaled_target_ids
     );
-    const InteractionEvent missing_item_event = RelayCore::gameplay::apply_usable_interaction(
+    const InteractionEvent missing_item_event = RelayGame::apply_usable_interaction(
         usables[1],
         doors,
         usables,
@@ -445,7 +446,7 @@ TEST_CASE("single-use usable returns activation event and consumes itself")
     std::vector<std::string> activated_target_ids;
     std::vector<std::string> signaled_target_ids;
 
-    const InteractionEvent event = RelayCore::gameplay::apply_usable_interaction(
+    const InteractionEvent event = RelayGame::apply_usable_interaction(
         usables[0],
         doors,
         usables,
@@ -1286,7 +1287,7 @@ TEST_CASE("apply usable interaction rejects locked and missing-item states")
     std::vector<std::string> signaled_target_ids;
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[0],
             doors,
             usables,
@@ -1303,7 +1304,7 @@ TEST_CASE("apply usable interaction rejects locked and missing-item states")
     CHECK(signaled_target_ids.empty());
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[1],
             doors,
             usables,
@@ -1345,7 +1346,7 @@ TEST_CASE("apply usable interaction collects pickups and chains signal targets")
     std::vector<std::string> signaled_target_ids;
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[0],
             doors,
             usables,
@@ -1367,7 +1368,7 @@ TEST_CASE("apply usable interaction collects pickups and chains signal targets")
     CHECK(signaled_target_ids[0] == "reader_lock");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[0],
             doors,
             usables,
@@ -1406,7 +1407,7 @@ TEST_CASE("apply usable interaction records activated targets and respects singl
     std::vector<std::string> signaled_target_ids;
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[0],
             doors,
             usables,
@@ -1426,7 +1427,7 @@ TEST_CASE("apply usable interaction records activated targets and respects singl
     CHECK(signaled_target_ids.empty());
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[1],
             doors,
             usables,
@@ -1443,7 +1444,7 @@ TEST_CASE("apply usable interaction records activated targets and respects singl
     CHECK(activated_target_ids[1] == "lab_relay_console");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[1],
             doors,
             usables,
@@ -1482,7 +1483,7 @@ TEST_CASE("apply usable interaction records primary and chained signal targets")
     std::vector<std::string> signaled_target_ids;
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             usables[0],
             doors,
             usables,
@@ -1540,7 +1541,7 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     std::vector<std::string> signaled_target_ids;
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *reader_panel,
             doors,
             usables,
@@ -1554,7 +1555,7 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     CHECK(inner_door->state == DoorState::Closed);
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *keycard_pickup,
             doors,
             usables,
@@ -1571,7 +1572,7 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     CHECK_FALSE(keycard_pickup->enabled);
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *reader_panel,
             doors,
             usables,
@@ -1587,7 +1588,7 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     CHECK(inner_door->state == DoorState::Opening);
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *terminal,
             doors,
             usables,
@@ -1622,7 +1623,7 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     signaled_target_ids.push_back(second_shot.target_event.target);
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *terminal,
             doors,
             usables,

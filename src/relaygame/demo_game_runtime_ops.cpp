@@ -15,8 +15,7 @@ namespace RelayGame::detail
         struct PreparedLevelReload {
             RelayCore::core::EngineConfig config{};
             RelayCore::Renderer::PreparedLiveContentReload renderer{};
-            RelayGame::GameWorldRuntime runtime{};
-            RelayGame::WorldSceneRenderer world_scene{};
+            PreparedLevelSession session{};
             std::string atlas_source_label{};
         };
 
@@ -71,17 +70,18 @@ namespace RelayGame::detail
                                 .prepare_live_content_reload(reloaded_config.renderer, reloaded_authoring_config),
             };
 
-            prepared.runtime.load_level_session(prepared.config, LevelSessionBuilder{prepared.config.gameplay}.build());
+            prepared.session = prepare_level_session(
+                prepared.config,
+                LevelSessionBuilder{prepared.config.gameplay}.build(),
+                prepared.renderer.authoring_config,
+                services.renderer().color_pipeline_mode(),
+                services.renderer().static_models()
+            );
             if (pinned_inspector.has_value())
             {
-                prepared.runtime.restore_pinned_inspector(*pinned_inspector);
+                prepared.session.runtime.restore_pinned_inspector(*pinned_inspector);
             }
 
-            prepared.world_scene.initialize(build_prepared_world_scene_data(
-                prepared.runtime.level(),
-                prepared.renderer.authoring_config,
-                services.renderer().color_pipeline_mode()
-            ));
             prepared.atlas_source_label = prepared.renderer.atlas_source_label;
             return prepared;
         }
@@ -100,22 +100,62 @@ namespace RelayGame::detail
         }
     } // namespace
 
-    void start_level_session(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+    auto prepare_level_session(
+        const RelayCore::core::EngineConfig& config,
+        LevelSession level,
+        const RelayCore::render::RenderAuthoringConfig& authoring,
+        RelayCore::render::ColorPipelineMode pipeline,
+        RelayCore::render::StaticModelCache& models,
+        const SavedGame* save
+    ) -> PreparedLevelSession
     {
-        RELAYCORE_PROFILE_ZONE_N("DemoGame::start_level_session");
-        state.runtime.startup(services);
-        state.world_scene.initialize(build_prepared_world_scene_data(
-            state.runtime.level(),
-            services.renderer().authoring_config(),
-            services.renderer().color_pipeline_mode()
-        ));
+        PreparedLevelSession prepared;
+        prepared.runtime.load_level_session(config, std::move(level));
+        if (save)
+            prepared.runtime.restore_saved_game(*save);
+        prepared.world_scene.initialize(
+            build_prepared_world_scene_data(prepared.runtime.level(), authoring, pipeline),
+            models
+        );
+        return prepared;
+    }
+
+    void replace_level_session(
+        DemoGameRuntimeState state,
+        PreparedLevelSession prepared,
+        RelayCore::EngineServices& services
+    )
+    {
+        state.runtime.shutdown(services);
+        state.world_scene.shutdown();
+        state.runtime = std::move(prepared.runtime);
+        state.world_scene = std::move(prepared.world_scene);
+        state.saved_runtime_snapshot.reset();
+        state.iteration_diagnostics = {};
+        state.runtime.activate_level_session(services);
         services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
         state.runtime.publish_diagnostics(services.renderer());
         publish_iteration_diagnostics(state, services);
+    }
+
+    void start_level_session(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+    {
+        RELAYCORE_PROFILE_ZONE_N("DemoGame::start_level_session");
+        replace_level_session(
+            state,
+            prepare_level_session(
+                services.config(),
+                LevelSessionBuilder{services.config().gameplay}.build(),
+                services.renderer().authoring_config(),
+                services.renderer().color_pipeline_mode(),
+                services.renderer().static_models()
+            ),
+            services
+        );
         log_level_loaded(services, state.runtime, state.world_scene);
     }
 
-    void reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+    auto reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::reload_live_content");
         const std::string level_name = services.renderer().runtime_diagnostics().level_name;
@@ -132,11 +172,7 @@ namespace RelayGame::detail
             PreparedLevelReload staged = prepare_level_reload(services, pinned_inspector);
 
             services.renderer().commit_live_content_reload(std::move(staged.renderer));
-            state.runtime.shutdown(services);
-            state.world_scene.shutdown();
-            state.runtime = std::move(staged.runtime);
-            state.world_scene = std::move(staged.world_scene);
-            state.runtime.activate_level_session(services);
+            replace_level_session(state, std::move(staged.session), services);
 
             services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
             state.runtime.publish_diagnostics(services.renderer());
@@ -154,6 +190,7 @@ namespace RelayGame::detail
 
             RelayCore::log::info("{}", state.iteration_diagnostics.last_reload_summary);
             log_level_loaded(services, state.runtime, state.world_scene);
+            return true;
         } catch (const std::exception& error)
         {
             publish_reload_result(
@@ -166,6 +203,7 @@ namespace RelayGame::detail
             state.runtime.publish_diagnostics(services.renderer());
             publish_iteration_diagnostics(state, services);
             RelayCore::log::error("Live content reload failed: {}", error.what());
+            return false;
         }
     }
 } // namespace RelayGame::detail

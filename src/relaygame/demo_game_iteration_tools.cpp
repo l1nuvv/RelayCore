@@ -35,7 +35,7 @@ namespace RelayGame::detail
         state.iteration_diagnostics.has_saved_runtime_snapshot = state.saved_runtime_snapshot.has_value();
         state.iteration_diagnostics.saved_snapshot_summary =
             state.saved_runtime_snapshot.has_value()
-                ? RelayCore::gameplay::build_runtime_snapshot_summary(*state.saved_runtime_snapshot)
+                ? RelayGame::build_runtime_snapshot_summary(*state.saved_runtime_snapshot)
                 : std::string{};
     }
 

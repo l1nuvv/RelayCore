@@ -6,8 +6,11 @@
 #pragma once
 
 #include <filesystem>
+#include <glm/vec3.hpp>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 struct ma_engine;
 struct ma_sound;
@@ -74,7 +77,19 @@ namespace RelayCore
          * @brief Plays a sound file once if audio is available.
          * @param file_path Path to the sound file to play.
          */
-        void play_one_shot(const std::filesystem::path& file_path) const;
+        void play_one_shot(const std::filesystem::path& file_path);
+        void stop_one_shots() noexcept;
+        void preload_one_shots(std::span<const std::filesystem::path> paths);
+        void set_master_volume(float volume);
+        void set_paused(bool paused);
+        struct SpatialLoop {
+            std::filesystem::path path;
+            glm::vec3 position{};
+        };
+        void configure_spatial_loops(std::span<const SpatialLoop> loops);
+        void clear_spatial_loops() noexcept;
+        void set_spatial_loop_volume(std::size_t index, float volume);
+        void set_listener(glm::vec3 position, glm::vec3 forward) noexcept;
 
         /**
          * @brief Starts or replaces a single looping sound.
@@ -112,6 +127,12 @@ namespace RelayCore
         [[nodiscard]] auto current_loop_volume() const noexcept -> float;
 
     private:
+        struct CachedOneShot {
+            std::filesystem::path path;
+            std::unique_ptr<ma_sound> sound;
+        };
+        std::vector<CachedOneShot> one_shots_;
+        std::vector<std::unique_ptr<ma_sound>> spatial_loops_;
         AudioSystemConfig config_{};                    ///< Stored audio configuration.
         std::unique_ptr<ma_engine> engine_;             ///< Owned miniaudio engine instance.
         std::unique_ptr<ma_sound> loop_sound_{};        ///< Optional looping sound instance.

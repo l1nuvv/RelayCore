@@ -51,6 +51,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         position_ = spawn_position;
+        eye_offset_ = 0.0F;
         velocity_ = glm::vec3{0.0F};
         motion_state_.position = spawn_position;
         motion_state_.velocity = glm::vec3{0.0F};
@@ -77,6 +78,21 @@ namespace RelayGame
         pending_pitch_delta_ = 0.0F;
         movement_diagnostics_ = {};
         collision_query_diagnostics_ = {};
+    }
+
+    auto GroundedPlayerController::capture_state() const noexcept -> State
+    {
+        return {position_, velocity_, {yaw_radians_, pitch_radians_}, grounded_};
+    }
+
+    void GroundedPlayerController::restore_state(const State& state) noexcept
+    {
+        initialize(state.position, state.view_angles);
+        velocity_ = state.velocity;
+        grounded_ = state.grounded;
+        motion_state_.velocity = state.velocity;
+        motion_state_.grounded = state.grounded;
+        movement_mode_ = state.grounded ? MovementMode::Grounded : MovementMode::Air;
     }
 
     void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
@@ -354,7 +370,7 @@ namespace RelayGame
     auto GroundedPlayerController::eye_position_world() const noexcept -> glm::vec3
     {
         RELAYCORE_PROFILE_FUNCTION();
-        return position_ + glm::vec3{0.0F, config_.eye_height, 0.0F};
+        return position_ + glm::vec3{0.0F, config_.eye_height + eye_offset_, 0.0F};
     }
 
     auto GroundedPlayerController::view_forward() const noexcept -> glm::vec3

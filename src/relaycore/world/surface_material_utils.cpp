@@ -16,7 +16,8 @@ namespace RelayCore
             SurfaceMaterial::PlatformTop2, SurfaceMaterial::Pillar,     SurfaceMaterial::Cover,
             SurfaceMaterial::Block,        SurfaceMaterial::Beam,       SurfaceMaterial::Trim,
             SurfaceMaterial::Divider,      SurfaceMaterial::LightStrip, SurfaceMaterial::Crate,
-            SurfaceMaterial::Post,
+            SurfaceMaterial::Post,         SurfaceMaterial::Matte,      SurfaceMaterial::Cotton,
+            SurfaceMaterial::Twill,        SurfaceMaterial::Leather,    SurfaceMaterial::Rubber,
         }};
 
         [[nodiscard]] auto normalize_material_name(std::string_view value) -> std::string
@@ -47,6 +48,14 @@ namespace RelayCore
     {
         switch (material)
         {
+            case SurfaceMaterial::Cotton:
+                return "cotton";
+            case SurfaceMaterial::Twill:
+                return "twill";
+            case SurfaceMaterial::Leather:
+                return "leather";
+            case SurfaceMaterial::Rubber:
+                return "rubber";
             case SurfaceMaterial::Concrete:
                 return "concrete";
             case SurfaceMaterial::Metal:
@@ -89,6 +98,8 @@ namespace RelayCore
                 return "light_strip";
             case SurfaceMaterial::Crate:
                 return "crate";
+            case SurfaceMaterial::Matte:
+                return "matte";
             case SurfaceMaterial::Post:
                 return "post";
         }
@@ -99,6 +110,14 @@ namespace RelayCore
     auto try_parse_surface_material_name(const std::string_view value) noexcept -> std::optional<SurfaceMaterial>
     {
         const std::string normalized = normalize_material_name(value);
+        if (normalized == "cotton")
+            return SurfaceMaterial::Cotton;
+        if (normalized == "twill")
+            return SurfaceMaterial::Twill;
+        if (normalized == "leather")
+            return SurfaceMaterial::Leather;
+        if (normalized == "rubber")
+            return SurfaceMaterial::Rubber;
 
         if (normalized == "concrete")
             return SurfaceMaterial::Concrete;
@@ -142,6 +161,8 @@ namespace RelayCore
             return SurfaceMaterial::LightStrip;
         if (normalized == "crate" || normalized == "dev/crate")
             return SurfaceMaterial::Crate;
+        if (normalized == "matte")
+            return SurfaceMaterial::Matte;
         if (normalized == "post" || normalized == "dev/post")
             return SurfaceMaterial::Post;
 

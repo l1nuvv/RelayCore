@@ -166,6 +166,7 @@ namespace RelayGame
             zone.loop_path = asset_root / loop;
             zone.gain = std::clamp(parse_float_property(entity, "volume").value_or(1.0F), 0.0F, 1.0F);
             zone.priority = parse_int_property(entity, "priority").value_or(0);
+            zone.required_target = parse_string_property(entity, "required_target");
             zones.push_back(std::move(zone));
         }
 
@@ -175,7 +176,8 @@ namespace RelayGame
     auto find_active_audio_zone(
         const std::span<const RuntimeAudioZone> zones,
         const RelayCore::physics::Aabb& listener_bounds,
-        const int current_zone_index
+        const int current_zone_index,
+        const std::span<const std::string> activated_targets
     ) -> int
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -186,6 +188,11 @@ namespace RelayGame
         for (std::size_t index = 0; index < zones.size(); ++index)
         {
             const RuntimeAudioZone& zone = zones[index];
+            if (!zone.required_target.empty()
+                && std::ranges::find(activated_targets, zone.required_target) == activated_targets.end())
+            {
+                continue;
+            }
             if (!RelayCore::physics::overlaps(zone.bounds, listener_bounds, 0.001F))
             {
                 continue;

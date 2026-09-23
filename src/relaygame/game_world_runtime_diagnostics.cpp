@@ -276,7 +276,7 @@ namespace RelayGame
         diagnostics.last_event_chain_target = interaction_state_.last_event.chain_target;
         diagnostics.last_event_item = interaction_state_.last_event.item_id;
 
-        const RelayCore::gameplay::MissionStatus mission = mission_runtime_.status();
+        const RelayGame::MissionStatus mission = mission_runtime_.status();
         diagnostics.has_objective = mission.active;
         diagnostics.mission_complete = mission.completed;
         diagnostics.objective_current = mission.current_step;
@@ -356,13 +356,13 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         std::vector<RelayCore::render::RuntimeRegistryEntryDiagnostics> diagnostics{};
         diagnostics.reserve(runtime_registry_.objects().size());
-        for (const RelayCore::gameplay::RuntimeObjectHandle& handle : runtime_registry_.objects())
+        for (const RelayGame::RuntimeObjectHandle& handle : runtime_registry_.objects())
         {
             diagnostics.push_back(RelayCore::render::RuntimeRegistryEntryDiagnostics{
                 .runtime_id = handle.id,
                 .storage_index = static_cast<std::uint32_t>(handle.storage_index),
                 .runtime_handle = handle.debug_handle,
-                .object_kind = RelayCore::gameplay::runtime_object_kind_label(handle.kind),
+                .object_kind = RelayGame::runtime_object_kind_label(handle.kind),
                 .source_bucket = handle.source_bucket,
                 .name = handle.name,
                 .label = handle.label,
@@ -382,16 +382,15 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         std::vector<RelayCore::render::RuntimeBindingDiagnostics> diagnostics{};
         diagnostics.reserve(runtime_registry_.bindings().size());
-        for (const RelayCore::gameplay::RuntimeBindingInfo& binding : runtime_registry_.bindings())
+        for (const RelayGame::RuntimeBindingInfo& binding : runtime_registry_.bindings())
         {
-            const bool expects_resolved_target =
-                RelayCore::gameplay::runtime_binding_requires_resolved_target(binding.kind);
+            const bool expects_resolved_target = RelayGame::runtime_binding_requires_resolved_target(binding.kind);
             diagnostics.push_back(RelayCore::render::RuntimeBindingDiagnostics{
                 .source_handle = binding.source_handle,
-                .source_kind = RelayCore::gameplay::runtime_object_kind_label(binding.source_kind),
+                .source_kind = RelayGame::runtime_object_kind_label(binding.source_kind),
                 .source_name = binding.source_name,
                 .source_bucket = binding.source_bucket,
-                .binding_kind = RelayCore::gameplay::runtime_binding_kind_label(binding.kind),
+                .binding_kind = RelayGame::runtime_binding_kind_label(binding.kind),
                 .target = binding.target,
                 .source_reference = binding.source_reference,
                 .source_file_path = binding.source_file_path,

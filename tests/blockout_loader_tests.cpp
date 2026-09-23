@@ -10,6 +10,63 @@
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
 
+TEST_CASE("blockout loader preserves integer properties instead of converting them to booleans")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "integer_properties.toml";
+    {
+        std::ofstream out{path};
+        out << "[[solid]]\norigin = [0, -0.1, 0]\nsize = [4, 0.2, 4]\nmaterial = \"Floor\"\n"
+            << "[[entity]]\nclassname = \"audio_zone\"\norigin = [0, 1, 0]\n"
+            << "size = [2, 3, 4]\npriority = 2\nenabled = false\n";
+    }
+    const auto level = RelayCore::load_blockout_level(path);
+    REQUIRE(level.entities.size() == 1);
+    CHECK(level.entities.front().properties.at("size") == "2 3 4");
+    CHECK(level.entities.front().properties.at("priority") == "2");
+    CHECK(level.entities.front().properties.at("enabled") == "false");
+}
+
+TEST_CASE("blockout loader rejects non-finite and unrepresentable geometry values")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "invalid_geometry.toml";
+
+    for (const char* value : {"nan", "inf", "-inf", "1e100", "-1e100"})
+    {
+        CAPTURE(value);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[solid]]\nmins = [" << value << ", 0, 0]\nmaxs = [1, 2, 3]\nmaterial = \"Wall\"\n";
+        }
+        CHECK_THROWS_WITH(static_cast<void>(RelayCore::load_blockout_level(path)), doctest::Contains("solid.mins"));
+    }
+}
+
+TEST_CASE("blockout loader rejects non-finite and unrepresentable brightness")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "invalid_brightness.toml";
+
+    for (const char* value : {"nan", "inf", "-inf", "1e100", "-1e100"})
+    {
+        CAPTURE(value);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[solid]]\nmins = [0, 0, 0]\nmaxs = [1, 2, 3]\nmaterial = \"Wall\"\nbrightness = " << value << '\n';
+        }
+        CHECK_THROWS_WITH(
+            static_cast<void>(RelayCore::load_blockout_level(path)),
+            doctest::Contains("solid.brightness")
+        );
+    }
+}
+
 TEST_CASE("blockout loader parses optional tint and brightness")
 {
     RelayCore::test::ScopedTempDirectory temp;

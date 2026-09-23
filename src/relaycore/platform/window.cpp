@@ -10,6 +10,7 @@
 #include "relaycore/core/sdl_error.h"
 
 #include <SDL3/SDL.h>
+#include <memory>
 
 namespace RelayCore
 {
@@ -59,29 +60,29 @@ namespace RelayCore
             flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
         }
 
-        SDL_Window* created_window = SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags);
+        std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> created_window{
+            SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags),
+            SDL_DestroyWindow,
+        };
         if (created_window == nullptr)
         {
             core::throw_sdl_error("Failed to create SDL window");
         }
 
-        SDL_GLContext created_context = SDL_GL_CreateContext(created_window);
+        std::unique_ptr<SDL_GLContextState, decltype(&SDL_GL_DestroyContext)> created_context{
+            SDL_GL_CreateContext(created_window.get()),
+            SDL_GL_DestroyContext,
+        };
         if (created_context == nullptr)
         {
-            SDL_DestroyWindow(created_window);
             core::throw_sdl_error("Failed to create OpenGL context");
         }
 
         const int requested_swap_interval = config.vsync ? 1 : 0;
         if (!SDL_GL_SetSwapInterval(requested_swap_interval))
         {
-            SDL_GL_DestroyContext(created_context);
-            SDL_DestroyWindow(created_window);
             core::throw_sdl_error("Failed to set swap interval");
         }
-
-        window_ = created_window;
-        gl_context_ = created_context;
 
         if (color_pipeline_mode == render::ColorPipelineMode::hardware_srgb
             && !SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &framebuffer_srgb_capable_))
@@ -90,6 +91,8 @@ namespace RelayCore
         }
 
         log_context_info();
+        window_ = created_window.release();
+        gl_context_ = created_context.release();
     }
 
     Window::~Window() noexcept

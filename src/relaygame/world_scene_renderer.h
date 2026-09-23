@@ -7,12 +7,18 @@
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
+#include "relaycore/render/static_model.h"
+#include "relaygame/enemy_runtime.h"
+#include "relaygame/scientist_pose.h"
+#include "relaygame/static_props.h"
+#include "relaygame/world_environment.h"
 
 #include <array>
 #include <cstdint>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace RelayCore
@@ -28,9 +34,17 @@ namespace RelayCore::render
 
 namespace RelayGame
 {
+    struct WorldLocalLight {
+        RelayCore::render::LocalLight light{};
+        std::string required_target{};
+    };
+
     struct PreparedWorldSceneData {
+        std::vector<StaticProp> props;
+        bool has_enemies = false;
         RelayCore::render::BlockoutRenderData blockout{};
-        std::vector<RelayCore::render::LocalLight> local_lights{};
+        std::vector<WorldLocalLight> local_lights{};
+        std::vector<EnvironmentEffect> environment{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
         std::uint32_t total_solids = 0;
         RelayCore::render::ColorPipelineMode color_pipeline_mode = RelayCore::render::ColorPipelineMode::legacy_gamma;
@@ -44,7 +58,7 @@ namespace RelayGame
 
     class WorldSceneRenderer {
     public:
-        void initialize(const PreparedWorldSceneData& scene_data);
+        void initialize(const PreparedWorldSceneData& scene_data, RelayCore::render::StaticModelCache& models);
 
         void shutdown() noexcept;
 
@@ -57,7 +71,11 @@ namespace RelayGame
             std::span<const RelayCore::gameplay::RuntimeUsable> usables,
             int focused_usable_index,
             const RelayCore::render::InspectorDiagnostics& inspector,
-            bool inspector_visible
+            bool inspector_visible,
+            std::span<const std::string> activated_targets = {},
+            const ScientistPose& scientist = {},
+            std::span<const EnvironmentEffect> environment = {},
+            std::span<const RuntimeEnemy> enemies = {}
         );
 
         [[nodiscard]] auto diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&;
@@ -66,6 +84,15 @@ namespace RelayGame
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
 
     private:
+        void initialize_prop_meshes(RelayCore::render::ColorPipelineMode pipeline);
+        void initialize_environment_meshes(RelayCore::render::ColorPipelineMode pipeline);
+        void render_environment(
+            const RelayCore::render::PerspectiveCamera& camera,
+            std::span<const EnvironmentEffect> effects
+        );
+
+        void render_scientist(const ScientistPose& pose);
+
         void render_doors(
             const RelayCore::render::PerspectiveCamera& camera,
             std::span<const RelayCore::gameplay::RuntimeDoor> doors
@@ -105,6 +132,11 @@ namespace RelayGame
         std::array<glm::vec4, 6> frustum_planes_{};
         RelayCore::render::StaticColorMesh door_mesh_{};
         RelayCore::render::StaticColorMesh panel_mesh_{};
+        RelayCore::render::StaticColorMesh panel_housing_mesh_{};
+        RelayCore::render::StaticColorMesh scientist_thigh_mesh_{};
+        RelayCore::render::StaticColorMesh scientist_shin_mesh_{};
+        RelayCore::render::StaticColorMesh scientist_shoe_mesh_{};
+        RelayCore::render::StaticColorMesh scientist_coat_mesh_{};
         RelayCore::render::StaticColorMesh panel_blocked_mesh_{};
         RelayCore::render::StaticColorMesh panel_highlight_mesh_{};
         RelayCore::render::StaticColorMesh panel_success_mesh_{};
@@ -120,9 +152,25 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh inspector_solid_mesh_{};
         RelayCore::render::StaticColorMesh inspector_hit_mesh_{};
         std::vector<RenderChunk> render_chunks_{};
-        std::vector<RelayCore::render::LocalLight> local_lights_{};
+        std::shared_ptr<const RelayCore::render::StaticModel> enemy_model_;
+        std::vector<WorldLocalLight> local_lights_{};
+        std::vector<EnvironmentEffect> environment_{};
+        RelayCore::render::StaticColorMesh fan_frame_mesh_, fan_rotor_mesh_, steam_mesh_, spark_mesh_;
+        std::array<RelayCore::render::StaticColorMesh, 5> decal_meshes_;
+        std::array<RelayCore::render::StaticColorMesh, 16> lamp_meshes_;
+        struct EnvironmentPuff {
+            glm::vec3 position;
+            float size;
+            float distance;
+        };
+        std::vector<EnvironmentPuff> environment_puffs_;
         std::vector<RelayCore::render::LocalLight> active_local_lights_{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings_{};
+        struct PropInstance {
+            std::shared_ptr<const RelayCore::render::StaticModel> model;
+            glm::mat4 transform{1};
+        };
+        std::vector<PropInstance> props_;
         RelayCore::render::RenderQueue render_queue_{};
         RelayCore::render::WorldDiagnostics diagnostics_{};
     };

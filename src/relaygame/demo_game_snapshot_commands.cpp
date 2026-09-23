@@ -37,12 +37,12 @@ namespace RelayGame::detail
                 return;
             }
 
-            const RelayCore::gameplay::SnapshotRestoreResult restore_result =
+            const RelayGame::SnapshotRestoreResult restore_result =
                 state.runtime.restore_runtime_snapshot(*state.saved_runtime_snapshot);
             publish_snapshot_result(
                 state.iteration_diagnostics,
                 restore_result.restored,
-                RelayCore::gameplay::build_runtime_restore_summary(restore_result),
+                RelayGame::build_runtime_restore_summary(restore_result),
                 restore_result.error
             );
             state.runtime.publish_diagnostics(services.renderer());

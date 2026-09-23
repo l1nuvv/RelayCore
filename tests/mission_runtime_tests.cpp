@@ -1,9 +1,9 @@
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaygame/mission_runtime.h"
 
 #include <algorithm>
 #include <doctest/doctest.h>
@@ -15,16 +15,16 @@
 namespace
 {
     using RelayCore::gameplay::DoorState;
-    using RelayCore::gameplay::MissionBuilder;
-    using RelayCore::gameplay::MissionDefinition;
-    using RelayCore::gameplay::MissionRuntime;
-    using RelayCore::gameplay::MissionStep;
-    using RelayCore::gameplay::MissionStepKind;
     using RelayCore::gameplay::RuntimeDoor;
     using RelayCore::gameplay::RuntimeTrigger;
     using RelayCore::gameplay::RuntimeUsable;
     using RelayCore::gameplay::UsableActionKind;
     using RelayCore::physics::Aabb;
+    using RelayGame::MissionBuilder;
+    using RelayGame::MissionDefinition;
+    using RelayGame::MissionRuntime;
+    using RelayGame::MissionStep;
+    using RelayGame::MissionStepKind;
 
     [[nodiscard]] auto make_mission_bounds(const glm::vec3& center, const glm::vec3& half_extents) -> Aabb
     {

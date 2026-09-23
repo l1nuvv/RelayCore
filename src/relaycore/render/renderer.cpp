@@ -540,7 +540,7 @@ namespace RelayCore
             return;
         }
 
-        if (config_.shadow_enabled && !shadow_resources_.complete())
+        if (!shadow_resources_.complete(config_.shadow_enabled))
         {
             RELAYCORE_PROFILE_FUNCTION();
             initialize_shadow_resources();
@@ -646,6 +646,10 @@ namespace RelayCore
                     const glm::mat4 mvp = view_projection * item.model_matrix;
                     program.set_mat4(kMvpLocation, mvp);
                     program.set_mat4(kModelLocation, item.model_matrix);
+                    program.set_int(78, item.diffuse_texture != nullptr ? 1 : 0);
+                    program.set_int(79, 4);
+                    if (item.diffuse_texture != nullptr)
+                        item.diffuse_texture->bind(4);
                     item.mesh->draw();
                 }
             };
@@ -673,6 +677,19 @@ namespace RelayCore
         scene_time_seconds_ = seconds;
     }
 
+    void Renderer::set_spot_light(const render::SpotLight& light) noexcept
+    {
+        spot_light_ = light;
+    }
+
+    void Renderer::set_field_of_view(const float degrees)
+    {
+        if (!std::isfinite(degrees) || degrees < 50 || degrees > 100)
+            throw std::invalid_argument("Field of view must be between 50 and 100 degrees");
+        config_.camera.vertical_fov_radians = glm::radians(degrees);
+        camera_.apply_projection_config(config_.camera);
+    }
+
     Renderer::ShadowResources::~ShadowResources() noexcept
     {
         reset();
@@ -697,7 +714,7 @@ namespace RelayCore
 
     void Renderer::ShadowResources::reset() noexcept
     {
-        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
+        for (std::size_t cascade_index = 0; cascade_index < kShadowMapCount; ++cascade_index)
         {
             if (framebuffer_ids[cascade_index] != 0)
             {
@@ -712,10 +729,12 @@ namespace RelayCore
         }
     }
 
-    auto Renderer::ShadowResources::complete() const noexcept -> bool
+    auto Renderer::ShadowResources::complete(bool directional) const noexcept -> bool
     {
-        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
+        for (std::size_t cascade_index = 0; cascade_index < kShadowMapCount; ++cascade_index)
         {
+            if (!directional && cascade_index != kSpotShadowIndex)
+                continue;
             if (framebuffer_ids[cascade_index] == 0 || depth_texture_ids[cascade_index] == 0)
             {
                 return false;
@@ -730,15 +749,12 @@ namespace RelayCore
         RELAYCORE_PROFILE_FUNCTION();
         ShadowResourceBindingGuard binding_guard{};
         ShadowResources resources{};
-        if (!config.shadow_enabled)
+        for (std::size_t cascade_index = 0; cascade_index < kShadowMapCount; ++cascade_index)
         {
-            return resources;
-        }
-
-        const int shadow_map_resolution = std::max(config.shadow_map_resolution, 256);
-
-        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
-        {
+            if (!config.shadow_enabled && cascade_index != kSpotShadowIndex)
+                continue;
+            const int shadow_map_resolution =
+                cascade_index == kSpotShadowIndex ? 1024 : std::max(config.shadow_map_resolution, 256);
             glGenTextures(1, &resources.depth_texture_ids[cascade_index]);
             glBindTexture(GL_TEXTURE_2D, resources.depth_texture_ids[cascade_index]);
             glTexImage2D(
@@ -776,7 +792,7 @@ namespace RelayCore
             glReadBuffer(GL_NONE);
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             {
-                throw std::runtime_error("Directional shadow framebuffer is incomplete");
+                throw std::runtime_error("Shadow framebuffer is incomplete");
             }
         }
         return resources;
@@ -785,7 +801,7 @@ namespace RelayCore
     void Renderer::initialize_shadow_resources()
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (!config_.shadow_enabled || shadow_resources_.complete())
+        if (shadow_resources_.complete(config_.shadow_enabled))
         {
             return;
         }
@@ -802,11 +818,11 @@ namespace RelayCore
     void Renderer::render_shadow_map(const std::span<const render::RenderItem> items)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (!config_.shadow_enabled || items.empty())
+        if ((!config_.shadow_enabled && !spot_light_.enabled) || items.empty())
         {
             return;
         }
-        if (!shadow_resources_.complete())
+        if (!shadow_resources_.complete(config_.shadow_enabled))
         {
             return;
         }
@@ -825,14 +841,26 @@ namespace RelayCore
             config_.shadow_far_projection_depth
         );
 
-        const int shadow_map_resolution = std::max(config_.shadow_map_resolution, 256);
+        if (spot_light_.enabled)
+            spot_view_projection_ = glm::perspective(glm::radians(52.0F), 1.0F, 0.06F, spot_light_.range)
+                                    * glm::lookAt(
+                                        spot_light_.position,
+                                        spot_light_.position + spot_light_.direction,
+                                        choose_shadow_up(spot_light_.direction)
+                                    );
         glDisable(GL_FRAMEBUFFER_SRGB);
         glCullFace(GL_FRONT);
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         shadow_program_.bind();
         constexpr GLint kShadowMvpLocation = 0;
-        for (std::size_t cascade_index = 0; cascade_index < kShadowCascadeCount; ++cascade_index)
+        for (std::size_t cascade_index = 0; cascade_index < kShadowMapCount; ++cascade_index)
         {
+            const bool spot = cascade_index == kSpotShadowIndex;
+            if (spot ? !spot_light_.enabled : !config_.shadow_enabled)
+                continue;
+            const int shadow_map_resolution = spot ? 1024 : std::max(config_.shadow_map_resolution, 256);
+            // The spot light uses front surfaces so thin walls still occlude it.
+            glCullFace(spot ? GL_BACK : GL_FRONT);
             glBindFramebuffer(GL_FRAMEBUFFER, shadow_resources_.framebuffer_ids[cascade_index]);
             glViewport(0, 0, shadow_map_resolution, shadow_map_resolution);
             glClear(GL_DEPTH_BUFFER_BIT);
@@ -846,7 +874,7 @@ namespace RelayCore
 
                 shadow_program_.set_mat4(
                     kShadowMvpLocation,
-                    shadow_light_view_projections_[cascade_index] * item.model_matrix
+                    (spot ? spot_view_projection_ : shadow_light_view_projections_[cascade_index]) * item.model_matrix
                 );
                 item.mesh->draw();
             }
@@ -869,17 +897,18 @@ namespace RelayCore
         const float texel_world_size =
             (cascade_radius * 2.0F) / static_cast<float>(std::max(config_.shadow_map_resolution, 256));
         const glm::vec3 focus_point = camera_.position() + (camera_.forward() * std::max(focus_distance, 0.0F));
-        const glm::vec3 light_position = focus_point - (light_direction * cascade_depth * 0.5F);
-        glm::mat4 light_view = glm::lookAt(light_position, focus_point, choose_shadow_up(light_direction));
-        const glm::vec4 focus_in_light_space = light_view * glm::vec4(focus_point, 1.0F);
+        const glm::mat4 light_rotation =
+            glm::lookAt(glm::vec3{0.0F}, light_direction, choose_shadow_up(light_direction));
+        const glm::vec4 focus_in_light_space = light_rotation * glm::vec4(focus_point, 1.0F);
         const float snapped_x = round_to_shadow_texel(focus_in_light_space.x, texel_world_size);
         const float snapped_y = round_to_shadow_texel(focus_in_light_space.y, texel_world_size);
-        const glm::vec3 snap_delta{
-            snapped_x - focus_in_light_space.x,
-            snapped_y - focus_in_light_space.y,
-            0.0F,
-        };
-        light_view = glm::translate(glm::mat4{1.0F}, snap_delta) * light_view;
+        // Keep the light basis fixed; only the snapped focus may move across shadow texels.
+        const glm::mat4 light_view =
+            glm::translate(
+                glm::mat4{1.0F},
+                glm::vec3{-snapped_x, -snapped_y, -cascade_depth * 0.5F - focus_in_light_space.z}
+            )
+            * light_rotation;
         const glm::mat4 light_projection =
             glm::ortho(-cascade_radius, cascade_radius, -cascade_radius, cascade_radius, 0.5F, cascade_depth);
         return light_projection * light_view;
@@ -1008,6 +1037,15 @@ namespace RelayCore
         program.set_float(kShadowFarBiasLocation, config_.shadow_bias_far);
         program.set_float(kShadowFarNormalOffsetLocation, config_.shadow_normal_offset_far);
         program.set_mat4(kShadowFarLightViewProjectionLocation, shadow_light_view_projections_[kFarShadowCascadeIndex]);
+        program.set_vec3(68, spot_light_.position);
+        program.set_vec3(69, spot_light_.direction);
+        program.set_vec3(70, render::visual_rgb_for_pipeline(spot_light_.color, color_pipeline_mode_));
+        program.set_float(71, spot_light_.range);
+        program.set_int(72, spot_light_.enabled ? 1 : 0);
+        program.set_mat4(73, spot_view_projection_);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, shadow_resources_.depth_texture_ids[kSpotShadowIndex]);
+        program.set_int(77, 3);
 
         if (blockout_atlas_.valid())
         {
@@ -1040,23 +1078,35 @@ namespace RelayCore
 
     void Renderer::draw_ui(const FrameInfo& frame, const AudioSystem& audio_system)
     {
-        RELAYCORE_PROFILE_FUNCTION();
-        if (!imgui_overlay_.enabled())
+        if (begin_ui(frame, audio_system))
         {
-            return;
+            end_ui();
+        }
+    }
+
+    auto Renderer::begin_ui(const FrameInfo& frame, const AudioSystem& audio_system, const bool exclusive) -> bool
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        if (!imgui_overlay_.enabled() || !imgui_overlay_.is_initialized())
+        {
+            return false;
         }
 
         imgui_overlay_.update_diagnostics(frame);
         const bool show_shadow_debug_banner = config_.shadow_debug_cascades;
 
-        if (!imgui_overlay_.should_render() && !game_hud_.should_render(player_diagnostics_, interaction_diagnostics_)
-            && !show_shadow_debug_banner)
+        if (!exclusive && !imgui_overlay_.should_render()
+            && !game_hud_.should_render(player_diagnostics_, interaction_diagnostics_) && !show_shadow_debug_banner)
         {
-            return;
+            return false;
         }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
+        }
+        if (exclusive)
+        {
+            return true;
         }
         if (imgui_overlay_.diagnostics_visible())
         {
@@ -1085,6 +1135,11 @@ namespace RelayCore
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_shadow_debug_banner");
             draw_shadow_debug_banner();
         }
+        return true;
+    }
+
+    void Renderer::end_ui()
+    {
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.render");
             RELAYCORE_PROFILE_GPU_ZONE_N("Renderer::ui");

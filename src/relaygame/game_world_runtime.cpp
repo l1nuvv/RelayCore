@@ -1,19 +1,23 @@
 #include "relaygame/game_world_runtime.h"
 
 #include "relaycore/app/engine_services.h"
+#include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/debug/inspector_source_reference.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/diagnostics_publication_policy.h"
 #include "relaygame/player_controller_config.h"
+#include "relaygame/usable_interaction.h"
 #include "relaygame/world_inspector.h"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <stdexcept>
 #include <utility>
 
 namespace RelayGame
@@ -40,13 +44,6 @@ namespace RelayGame
         }
     } // namespace
 
-    void GameWorldRuntime::startup(RelayCore::EngineServices& services)
-    {
-        RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::startup");
-        load_level_session(services.config(), LevelSessionBuilder{services.config().gameplay}.build());
-        activate_level_session(services);
-    }
-
     void GameWorldRuntime::load_level_session(const RelayCore::core::EngineConfig& config, LevelSession session)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::load_level_session");
@@ -60,6 +57,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::import_level_session");
         level_ = std::move(session.level);
+        exits_ = std::move(session.exits);
         runtime_state_ = {};
         runtime_state_.level_path = session.level_path.string();
         runtime_state_.level_name = level_name_from_path(runtime_state_.level_path);
@@ -71,10 +69,16 @@ namespace RelayGame
         usable_spatial_index_ = std::move(session.usable_spatial_index);
         runtime_registry_ = std::move(session.runtime_registry);
         authoring_warnings_ = std::move(session.authoring_warnings);
+        enemies_ = std::move(session.enemies);
+        enemy_blockers_.reserve(
+            level_.solids.size() + level_.prop_colliders.size() + doors_.size() + enemies_.size() + 1
+        );
         loaded_level_turrets_ = std::move(session.combat.turrets);
         loaded_level_hazards_ = std::move(session.combat.hazards);
         loaded_mission_definition_ = std::move(session.mission_definition);
         audio_zones_ = std::move(session.audio_zones);
+        environment_ = std::move(session.environment);
+        ending_ = session.ending;
     }
 
     void GameWorldRuntime::reset_runtime_for_loaded_level(
@@ -104,21 +108,49 @@ namespace RelayGame
             config.gameplay.controls.use.empty() ? std::string{"E"} : config.gameplay.controls.use;
         configure_audio_cues(config.gameplay.audio);
         audio_state_ = {};
-        if (const RelayCore::gameplay::MissionStatus mission = mission_runtime_.status();
-            mission.active && !mission.completed)
+        if (const RelayGame::MissionStatus mission = mission_runtime_.status(); mission.active && !mission.completed)
         {
             push_mission_status_event(mission, RelayCore::render::HudEventStyle::Neutral, 2.8F);
         }
         sync_door_audio_state();
         player_controller_.set_config(build_player_controller_config(config));
         player_controller_.initialize(spawn_position, spawn_view_angles);
+        player_feedback_.reset();
+        paused_ = false;
+        step_variant_ = 0;
+        const std::array<const char*, 3> surfaces{"concrete", "metal", "tile"};
+        for (std::size_t surface = 0; surface < surfaces.size(); ++surface)
+        {
+            for (std::size_t variant = 0; variant < 4; ++variant)
+                player_sounds_[surface * 4 + variant] = RelayCore::core::asset_path(
+                    "audio/player/step_" + std::string{surfaces[surface]} + '_' + std::to_string(variant + 1) + ".wav"
+                );
+            player_sounds_[12 + surface] =
+                RelayCore::core::asset_path("audio/player/land_" + std::string{surfaces[surface]} + ".wav");
+        }
+        player_sounds_[15] = RelayCore::core::asset_path("audio/player/flashlight_switch.wav");
         player_controller_.set_static_collision_world(level_);
+        interaction_occluders_.clear();
+        interaction_occluders_.reserve(level_.solids.size() + doors_.size());
+        for (const auto& solid : level_.solids)
+            interaction_occluders_.push_back({solid.mins, solid.maxs});
+        for (const auto& solid : level_.prop_colliders)
+            interaction_occluders_.push_back({solid.mins, solid.maxs});
         simulation_loop_.reset();
     }
 
     void GameWorldRuntime::activate_level_session(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::activate_level_session");
+        services.audio_system().preload_one_shots(player_sounds_);
+        std::vector<RelayCore::AudioSystem::SpatialLoop> loops;
+        for (const auto& effect : environment_)
+        {
+            const std::string path = environment_sound(effect.kind);
+            loops.push_back({path.empty() ? std::filesystem::path{} : RelayCore::core::asset_path(path), effect.origin}
+            );
+        }
+        services.audio_system().configure_spatial_loops(loops);
         player_controller_.enable_capture(services.window());
         player_controller_.apply_camera(services.camera());
         update_ambient_audio(services);
@@ -136,25 +168,39 @@ namespace RelayGame
         audio_state_.active_loop_volume = services.audio_system().current_loop_volume();
     }
 
+    void GameWorldRuntime::apply_player_settings(float sensitivity, float camera_motion) noexcept
+    {
+        player_controller_.set_mouse_sensitivity(sensitivity);
+        camera_motion_ = camera_motion;
+        player_controller_.set_eye_offset(player_feedback_.eye_offset(camera_motion_));
+    }
+
+    void GameWorldRuntime::set_paused(bool paused, RelayCore::EngineServices& services)
+    {
+        paused_ = paused;
+        clear_pending_gameplay_actions();
+        player_controller_.set_input_ownership({true, true});
+        services.window().set_relative_mouse_mode(!paused);
+        services.audio_system().set_paused(paused);
+        if (!paused)
+            player_controller_.apply_camera(services.camera());
+    }
+
     void GameWorldRuntime::shutdown(RelayCore::EngineServices& services) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
         services.audio_system().stop_loop();
+        services.audio_system().stop_one_shots();
+        services.audio_system().clear_spatial_loops();
+        static_cast<void>(SDL_SetWindowRelativeMouseMode(services.window().handle(), false));
         clear_loaded_level_state();
     }
 
     void GameWorldRuntime::clear_loaded_level_state() noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        audio_state_ = {};
-        runtime_state_ = {};
-        runtime_registry_.clear();
-        authoring_warnings_.clear();
-        audio_zones_.clear();
-        loaded_mission_definition_ = {};
-        loaded_level_turrets_.clear();
-        loaded_level_hazards_.clear();
-        combat_state_ = {};
+        *this = GameWorldRuntime{};
+        paused_ = true;
     }
 
     void GameWorldRuntime::on_event(const SDL_Event& event, RelayCore::EngineServices& services)
@@ -188,7 +234,7 @@ namespace RelayGame
     void GameWorldRuntime::sync_imgui_capture(RelayCore::EngineServices& services) noexcept
     {
         const GameplayInputOwnership ownership = resolve_gameplay_input_ownership(
-            window_has_focus_,
+            window_has_focus_ && !paused_,
             window_minimized_,
             services.window().relative_mouse_mode(),
             services.renderer().wants_keyboard_capture(),
@@ -381,7 +427,7 @@ namespace RelayGame
         return authoring_warnings_;
     }
 
-    auto GameWorldRuntime::mission_status() const -> RelayCore::gameplay::MissionStatus
+    auto GameWorldRuntime::mission_status() const -> RelayGame::MissionStatus
     {
         RELAYCORE_PROFILE_FUNCTION();
         return mission_runtime_.status();
@@ -421,7 +467,7 @@ namespace RelayGame
         }
 
         RelayCore::gameplay::RuntimeUsable& usable = usables_[usable_index];
-        const RelayCore::gameplay::InteractionEvent event = RelayCore::gameplay::apply_usable_interaction(
+        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
             usable,
             doors_,
             usables_,
@@ -439,14 +485,17 @@ namespace RelayGame
         -> RelayCore::gameplay::CombatFireResult
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const RelayCore::gameplay::CombatFireResult fire_result = RelayCore::gameplay::apply_player_fire(
+        const auto attack = fire_player_weapon(
             level_,
             doors_,
             origin,
             direction,
             combat_state_.player,
-            combat_state_.turrets
+            combat_state_.turrets,
+            enemies_
         );
+
+        const auto& fire_result = attack.combat;
         if (fire_result.killed_turret)
         {
             apply_combat_target_event(fire_result.target_event);
@@ -454,6 +503,18 @@ namespace RelayGame
             refresh_active_door_count();
         }
         return fire_result;
+    }
+
+    auto GameWorldRuntime::scientist_pose() const noexcept -> ScientistPose
+    {
+        return {
+            .position = player_controller_.position(),
+            .forward = player_controller_.view_forward(),
+            .stride_phase = player_feedback_.phase(),
+            .stride_amount = player_feedback_.stride(),
+            .landing = player_feedback_.landing(),
+            .visible = combat_state_.player.alive && player_controller_.movement_mode() != MovementMode::Noclip,
+        };
     }
 
     auto GameWorldRuntime::debug_player_position() const noexcept -> glm::vec3
@@ -472,6 +533,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         player_controller_.initialize(position);
+        player_feedback_.reset();
         refresh_runtime_usables_and_focus();
     }
 
@@ -523,10 +585,10 @@ namespace RelayGame
         refresh_active_door_count();
     }
 
-    auto GameWorldRuntime::capture_runtime_snapshot() const -> RelayCore::gameplay::RuntimeLevelSnapshot
+    auto GameWorldRuntime::capture_runtime_snapshot() const -> RelayGame::RuntimeLevelSnapshot
     {
         RELAYCORE_PROFILE_FUNCTION();
-        return RelayCore::gameplay::capture_runtime_level_snapshot(
+        return RelayGame::capture_runtime_level_snapshot(
             runtime_state_.level_path,
             runtime_registry_,
             doors_,
@@ -542,11 +604,11 @@ namespace RelayGame
         );
     }
 
-    auto GameWorldRuntime::restore_runtime_snapshot(const RelayCore::gameplay::RuntimeLevelSnapshot& snapshot)
-        -> RelayCore::gameplay::SnapshotRestoreResult
+    auto GameWorldRuntime::restore_runtime_snapshot(const RelayGame::RuntimeLevelSnapshot& snapshot)
+        -> RelayGame::SnapshotRestoreResult
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const RelayCore::gameplay::SnapshotRestoreResult result = RelayCore::gameplay::restore_runtime_level_snapshot(
+        const RelayGame::SnapshotRestoreResult result = RelayGame::restore_runtime_level_snapshot(
             snapshot,
             runtime_state_.level_path,
             runtime_registry_,
@@ -582,7 +644,69 @@ namespace RelayGame
         return result;
     }
 
-    auto GameWorldRuntime::runtime_registry() const noexcept -> const RelayCore::gameplay::RuntimeObjectRegistry&
+    auto GameWorldRuntime::capture_saved_game(float played_seconds, bool flashlight) const -> SavedGame
+    {
+        SavedGame save{
+            capture_runtime_snapshot(),
+            player_controller_.capture_state(),
+            fingerprint_level(level_),
+            played_seconds,
+            flashlight
+        };
+        for (const auto& enemy : enemies_)
+            save.enemies.push_back(enemy.state);
+        return save;
+    }
+
+    auto GameWorldRuntime::active_level_exit() const -> const LevelExit*
+    {
+        if (!combat_state_.player.alive)
+            return nullptr;
+        for (const auto& exit : exits_)
+            if (RelayCore::physics::overlaps(player_controller_.player_bounds(), exit.bounds, 0)
+                && (!exit.requires_completion || mission_runtime_.status().completed))
+                return &exit;
+        return nullptr;
+    }
+
+    void GameWorldRuntime::restore_saved_game(const SavedGame& save)
+    {
+        if (save.level_fingerprint != fingerprint_level(level_))
+            throw std::runtime_error("Карта изменилась после сохранения. Начните новый эпизод.");
+        if (save.enemies.size() != enemies_.size())
+            throw std::runtime_error("Сохранение содержит другой состав противников.");
+        for (std::size_t i = 0; i < enemies_.size(); ++i)
+            if (save.enemies[i].entity_index != enemies_[i].state.entity_index
+                || save.enemies[i].health > enemies_[i].max_health)
+                throw std::runtime_error("Сохранение противника несовместимо с картой.");
+        const auto result = restore_runtime_snapshot(save.world);
+        if (!result.restored)
+            throw std::runtime_error("Сохранение несовместимо с текущим уровнем: " + result.error);
+        for (std::size_t i = 0; i < enemies_.size(); ++i)
+            enemies_[i].state = save.enemies[i];
+        player_controller_.restore_state(save.player);
+        player_feedback_.reset();
+        simulation_loop_.reset(save.world.simulation_tick);
+        update_world_environment(environment_, activated_target_ids_, 0);
+        update_world_environment(environment_, activated_target_ids_, 30);
+        refresh_runtime_usables_and_focus();
+    }
+
+    void GameWorldRuntime::begin_ending()
+    {
+        if (ending_)
+            doors_[ending_->closing_door].state = RelayCore::gameplay::DoorState::Closing;
+    }
+
+    void GameWorldRuntime::update_ending(float delta_seconds, RelayCore::EngineServices& services)
+    {
+        update_door_runtime(delta_seconds);
+        play_door_state_change_audio(services);
+        sync_door_audio_state();
+        update_presentation(services, delta_seconds);
+    }
+
+    auto GameWorldRuntime::runtime_registry() const noexcept -> const RelayGame::RuntimeObjectRegistry&
     {
         RELAYCORE_PROFILE_FUNCTION();
         return runtime_registry_;
@@ -634,10 +758,32 @@ namespace RelayGame
             return;
         }
 
-        const RelayCore::gameplay::MissionStatus mission_before = mission_runtime_.status();
+        const RelayGame::MissionStatus mission_before = mission_runtime_.status();
         const bool mission_was_complete = mission_before.completed;
         RelayCore::gameplay::collect_blocking_doors(doors_, player_controller_.player_bounds(), dynamic_blockers_);
+        for (const auto& enemy : enemies_)
+            if (enemy.state.mode != EnemyMode::Dead)
+                dynamic_blockers_.push_back(enemy_bounds(enemy.state));
+        const glm::vec3 previous_position = player_controller_.position();
+        const bool was_grounded = player_controller_.grounded();
+        const float previous_vertical_speed = player_controller_.velocity().y;
         player_controller_.update(sim_frame, level_, dynamic_blockers_);
+        const glm::vec3 displacement = player_controller_.position() - previous_position;
+        const auto feedback = player_feedback_.update(
+            sim_delta_seconds,
+            displacement,
+            previous_vertical_speed,
+            was_grounded,
+            player_controller_.grounded(),
+            player_controller_.movement_mode() == MovementMode::Noclip
+        );
+        player_controller_.set_eye_offset(player_feedback_.eye_offset(camera_motion_));
+        if (feedback.step || feedback.landed > 0)
+        {
+            const auto surface = static_cast<std::size_t>(footstep_surface(level_, player_controller_.position()));
+            const auto sound = feedback.landed > 0 ? 12 + surface : surface * 4 + ((step_variant_++ * 3) % 4);
+            services.audio_system().play_one_shot(player_sounds_[sound]);
+        }
         refresh_runtime_usables_and_focus();
 
         const bool fire_pressed_this_step = actions.fire_pressed;
@@ -667,7 +813,21 @@ namespace RelayGame
         play_door_state_change_audio(services);
         sync_door_audio_state();
 
+        const float health_before_enemies = combat_state_.player.health;
+        update_enemies(
+            level_,
+            doors_,
+            player_controller_.player_bounds(),
+            player_controller_.eye_position_world(),
+            combat_state_.player,
+            enemies_,
+            sim_delta_seconds,
+            enemy_blockers_
+        );
+        if (combat_state_.player.health < health_before_enemies)
+            play_gameplay_audio(services, audio_cues_.player_hurt);
         const float player_health_before_threats = combat_state_.player.health;
+        const bool hazard_contact_before_threats = combat_state_.hazard_contact_last_step;
         const RelayCore::gameplay::CombatThreatResult combat_result = RelayCore::gameplay::update_combat_threats(
             level_,
             doors_,
@@ -679,12 +839,14 @@ namespace RelayGame
             sim_delta_seconds
         );
         combat_state_.active_hazard_contacts = combat_result.hazard_contacts;
+        combat_state_.hazard_contact_last_step = combat_result.hazard_contacts > 0;
         combat_state_.turret_shots_last_frame += combat_result.turret_shots;
         if (combat_result.turret_shots > 0)
         {
             play_gameplay_audio(services, audio_cues_.turret_fire);
         }
-        if ((combat_state_.player.health + 0.001F) < player_health_before_threats)
+        if ((combat_state_.player.health + 0.001F) < player_health_before_threats
+            && (combat_result.turret_shots > 0 || !hazard_contact_before_threats))
         {
             play_gameplay_audio(services, audio_cues_.player_hurt);
         }
@@ -705,7 +867,7 @@ namespace RelayGame
             activated_target_ids_,
             signaled_target_ids_
         );
-        const RelayCore::gameplay::MissionStatus mission_after = mission_runtime_.status();
+        const RelayGame::MissionStatus mission_after = mission_runtime_.status();
         if (!mission_was_complete && mission_after.completed)
         {
             play_gameplay_audio(services, audio_cues_.mission_complete);
@@ -739,6 +901,10 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         const float interaction_distance = interaction_query_distance();
+        interaction_occluders_.resize(level_.solids.size() + level_.prop_colliders.size());
+        for (const auto& door : doors_)
+            if (RelayCore::gameplay::is_door_blocking(door))
+                interaction_occluders_.push_back(RelayCore::gameplay::current_door_bounds(door));
         RelayCore::gameplay::query_usable_candidates(
             usable_spatial_index_,
             player_controller_.eye_position_world(),
@@ -750,7 +916,9 @@ namespace RelayGame
             player_controller_.view_forward(),
             usables_,
             usable_candidates_,
-            interaction_distance
+            interaction_distance,
+            0.75F,
+            interaction_occluders_
         );
         interaction_state_.focused_usable_index = focus.usable_index;
         interaction_state_.focused_distance = focus.distance;

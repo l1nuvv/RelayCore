@@ -6,25 +6,32 @@
 
 ```text
 main
-→ создаёт DemoGame
-→ run_application(DemoGame)
+→ make_demo_game() возвращает unique_ptr<AppDelegate>
+→ run_application передаёт владение в Application
 → Application
 → EngineServices
 → callbacks DemoGame / AppDelegate
 ```
 
-`main` владеет локальным `DemoGame` до завершения `run_application` и передаёт его в engine как реализацию `AppDelegate`. `run_application` создаёт `Application`, а тот создаёт engine subsystems. `EngineServices` — заимствующая facade к живым подсистемам `Application`, а не их владелец; через неё `DemoGame` получает доступ к этим подсистемам.
+`Application` владеет `DemoGame` через `unique_ptr<AppDelegate>` и создаёт engine subsystems. Guard внутри `Application::run` вызывает `on_shutdown` до разрушения подсистем, в том числе при исключении из startup или frame callbacks. `EngineServices` — заимствующая facade к живым подсистемам `Application`, а не их владелец; через неё `DemoGame` получает доступ к этим подсистемам.
 
 ## Ownership
 
 | Владелец | Ресурсы |
 | --- | --- |
-| `Application` | SDL lifetime, config, `Window`, `Renderer`, `AudioSystem` |
+| `Application` | `AppDelegate`, SDL lifetime, config, `Window`, `Renderer`, `AudioSystem` |
 | `Window` | SDL window и OpenGL context |
 | `Renderer` | ImGui overlay, shaders, textures, shadow resources и другие GPU resources |
 | `AudioSystem` | miniaudio backend |
-| `DemoGame` | `GameWorldRuntime`, `WorldSceneRenderer`, сохранённый runtime snapshot |
+| `DemoGame` | экран, текущая игровая сессия и её сцена, сохранение игрока, настройки, `LevelEditor`; на время редактора — приостановленная исходная сессия |
 | `GameWorldRuntime` | gameplay/world runtime state |
+| `LevelEditor` | документ, история правок и подготовленная сцена редактора; документ живёт между пробными запусками |
+
+`RelayGame::runtime` собирает игровой код один раз для приложения и проверок. Движок не включает заголовки игры. Задания (`mission_runtime`), снимки сессии (`runtime_model`) и правила предметов (`usable_interaction`) принадлежат игре; геометрические запросы, ввод и базовые механизмы дверей остаются в `relaycore`.
+
+Экран задаёт режим ввода и паузы через `DemoGame::change_screen`. Обычный путь: меню → игра → пауза → игра/меню. При входе в редактор исходная сессия, сцена, время и фонарик временно сохраняются в `EditorReturnState`. Пробная сессия создаётся отдельно; F11 возвращает к документу, закрытие редактора возвращает к исходному экрану и сессии.
+
+`prepare_level_session` загружает и проверяет уровень, применяет сохранение и готовит сцену до замены живой сессии. `replace_level_session` завершает предыдущую сессию, очищает диагностические снимки и активирует подготовленную. Выход в меню освобождает игровые объекты и останавливает звуки. Сохранение версии 1 содержит путь карты и отпечаток её содержимого; несовместимость обнаруживается до замены сессии.
 
 `Renderer` уничтожается до `Window`, поэтому его OpenGL-ресурсы освобождаются, пока GL context ещё существует. ImGui overlay принадлежит `Renderer`; shadow resources также являются его RAII-ресурсами.
 

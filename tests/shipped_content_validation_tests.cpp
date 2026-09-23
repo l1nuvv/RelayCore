@@ -2,12 +2,13 @@
 #include "relaycore/core/log.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/mission_runtime.h"
+#include "relaygame/runtime_model.h"
+#include "relaygame/usable_interaction.h"
 #include "relaygame/world_audio_zones.h"
 
 #include <algorithm>
@@ -28,9 +29,6 @@ namespace
     using RelayCore::gameplay::CombatTargetEvent;
     using RelayCore::gameplay::DoorState;
     using RelayCore::gameplay::InteractionEvent;
-    using RelayCore::gameplay::MissionBuilder;
-    using RelayCore::gameplay::MissionDefinition;
-    using RelayCore::gameplay::MissionRuntime;
     using RelayCore::gameplay::PlayerCombatState;
     using RelayCore::gameplay::RuntimeDoor;
     using RelayCore::gameplay::RuntimeHazardVolume;
@@ -39,6 +37,9 @@ namespace
     using RelayCore::gameplay::RuntimeUsable;
     using RelayCore::gameplay::UsableActionKind;
     using RelayCore::gameplay::UseInteractionOutcome;
+    using RelayGame::MissionBuilder;
+    using RelayGame::MissionDefinition;
+    using RelayGame::MissionRuntime;
 
     struct ShippedMapExpectation {
         std::string_view file_name{};
@@ -53,6 +54,17 @@ namespace
     };
 
     constexpr std::array kShippedMaps{
+        ShippedMapExpectation{
+            .file_name = "power_restoration.toml",
+            .min_solids = 90,
+            .min_entities = 15,
+            .door_count = 2,
+            .trigger_count = 0,
+            .pickup_count = 1,
+            .turret_count = 0,
+            .audio_zone_count = 1,
+            .mission_step_count = 6,
+        },
         ShippedMapExpectation{
             .file_name = "test_room.toml",
             .min_solids = 24,
@@ -175,6 +187,222 @@ namespace
     }
 
 } // namespace
+
+TEST_CASE("power restoration requires a fuse and preserves powered presentation across snapshots")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::EngineConfig config{};
+    config.gameplay.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    CHECK(session.combat.hazards.empty());
+    RelayGame::GameWorldRuntime runtime{};
+    runtime.load_level_session(config, session);
+    REQUIRE(runtime.usables().size() == 4);
+    CHECK(session.authoring_warnings.empty());
+    const auto reader = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "airlock_reader";
+    });
+    const auto fuse = find_usable_index(runtime, [](const auto& usable) {
+        return usable.item_id == "power_fuse";
+    });
+    const auto breaker = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "power_breaker";
+    });
+    const auto cooling = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "cooling_control";
+    });
+    const auto bounds = RelayCore::physics::make_player_aabb(session.spawn_position, 0.3F, 1.8F);
+    const auto unpowered = runtime.capture_runtime_snapshot();
+    CHECK(runtime.debug_apply_usable_interaction(reader).kind == UseInteractionOutcome::Locked);
+    CHECK(runtime.debug_apply_usable_interaction(cooling).kind == UseInteractionOutcome::Locked);
+    CHECK(runtime.debug_apply_usable_interaction(breaker).kind == UseInteractionOutcome::MissingRequiredItem);
+    CHECK(runtime.activated_target_ids().empty());
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds) == -1);
+    CHECK(runtime.debug_apply_usable_interaction(fuse).kind == UseInteractionOutcome::PickedUpItem);
+    runtime.debug_update_mission(bounds);
+    CHECK(runtime.mission_status().title == "Восстановить питание");
+    const auto power = runtime.debug_apply_usable_interaction(breaker);
+    CHECK(power.kind == UseInteractionOutcome::ActivatedTarget);
+    CHECK(power.chain_applied);
+    runtime.debug_update_mission(bounds);
+    CHECK(runtime.mission_status().title == "Запустить охлаждение");
+    CHECK(runtime.usables()[reader].locked);
+    CHECK_FALSE(runtime.usables()[cooling].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == -1);
+    const auto power_only = runtime.capture_runtime_snapshot();
+    CHECK(runtime.debug_apply_usable_interaction(cooling).chain_applied);
+    runtime.debug_update_mission(bounds);
+    CHECK(runtime.mission_status().title == "Пройти служебным переходом");
+    CHECK(runtime.doors()[1].state == DoorState::Opening);
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({3.5F, 0.1F, 7}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().title == "Вернуться к шлюзу");
+    CHECK_FALSE(runtime.usables()[reader].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == 0);
+    const auto powered = runtime.capture_runtime_snapshot();
+    REQUIRE(runtime.restore_runtime_snapshot(power_only).restored);
+    CHECK(runtime.usables()[reader].locked);
+    CHECK_FALSE(runtime.usables()[cooling].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, 0, runtime.activated_target_ids()) == -1);
+    REQUIRE(runtime.restore_runtime_snapshot(unpowered).restored);
+    CHECK(runtime.usables()[reader].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, 0, runtime.activated_target_ids()) == -1);
+    REQUIRE(runtime.restore_runtime_snapshot(powered).restored);
+    CHECK_FALSE(runtime.usables()[reader].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == 0);
+    CHECK(runtime.debug_apply_usable_interaction(reader).kind == UseInteractionOutcome::ActivatedTarget);
+    runtime.debug_update_mission(bounds);
+    CHECK_FALSE(runtime.mission_status().completed);
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({0.0F, 0.1F, 9.0F}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().completed);
+}
+
+TEST_CASE("power restoration return passage opens with cooling and remains walkable without jumping")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::EngineConfig config;
+    config.gameplay.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    RelayGame::GameWorldRuntime runtime;
+    runtime.load_level_session(config, session);
+    std::vector<RelayCore::physics::Aabb> blockers;
+    for (const auto& solid : session.level.solids)
+        blockers.push_back({solid.mins, solid.maxs});
+    const auto static_count = blockers.size();
+    blockers.push_back(RelayCore::gameplay::current_door_bounds(runtime.doors()[1]));
+    auto position = glm::vec3{7, 0.01F, 8};
+    for (int i = 0; i < 120; ++i)
+        position = RelayCore::physics::move_and_collide(blockers, position, {-2, 0, 0}, 1.0F / 60, {}, true).position;
+    CHECK(position.x > 5.3F);
+    for (const auto name : {"spare_fuse", "power_breaker", "cooling_control"})
+    {
+        const auto index = find_usable_index(runtime, [name](const auto& usable) {
+            return usable.name == name;
+        });
+        static_cast<void>(runtime.debug_apply_usable_interaction(index));
+        runtime.debug_update_mission(RelayCore::physics::make_player_aabb({7, 0.01F, 8}, 0.3F, 1.8F));
+    }
+    auto doors = runtime.doors();
+    CHECK(doors[1].state == DoorState::Opening);
+    static_cast<void>(RelayCore::gameplay::update_doors(5, {}, doors));
+    CHECK(doors[1].state == DoorState::Open);
+    blockers.resize(static_count);
+    for (const auto& door : doors)
+        if (RelayCore::gameplay::is_door_blocking(door))
+            blockers.push_back(RelayCore::gameplay::current_door_bounds(door));
+    const std::array route{glm::vec3{7, 0.01F, 8}, glm::vec3{3.5F, 0.01F, 8}, glm::vec3{3.5F, 0.01F, 3.5F}};
+    for (std::size_t i = 1; i < route.size(); ++i)
+    {
+        position = route[i - 1];
+        const auto velocity = (route[i] - position) * 0.5F;
+        for (int frame = 0; frame < 120; ++frame)
+            position = RelayCore::physics::move_and_collide(blockers, position, velocity, 1.0F / 60, {}, true).position;
+        CHECK(glm::distance(position, route[i]) < 0.03F);
+    }
+    runtime.debug_set_player_position({3.5F, 0.01F, 7});
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb(runtime.debug_player_position(), 0.3F, 1.8F));
+    const auto path = temp.path() / "progress.toml";
+    RelayGame::write_saved_game(path, runtime.capture_saved_game(123, true));
+    RelayGame::GameWorldRuntime resumed;
+    resumed.load_level_session(config, session);
+    const auto save = RelayGame::load_saved_game(path);
+    resumed.restore_saved_game(save);
+    CHECK(resumed.debug_player_position() == runtime.debug_player_position());
+    CHECK(resumed.inventory_item_ids() == runtime.inventory_item_ids());
+    CHECK(resumed.activated_target_ids() == runtime.activated_target_ids());
+    CHECK(resumed.mission_status().title == "Вернуться к шлюзу");
+    REQUIRE(resumed.ending());
+    CHECK(resumed.ending()->closing_door == 0);
+    auto edited = session;
+    edited.level.solids[0].maxs.z += 0.2F;
+    RelayGame::GameWorldRuntime incompatible;
+    incompatible.load_level_session(config, edited);
+    CHECK_THROWS(incompatible.restore_saved_game(save));
+    CHECK(incompatible.inventory_item_ids().empty());
+}
+
+TEST_CASE("power restoration service route is walkable in both directions")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config}.build();
+    std::vector<RelayCore::physics::Aabb> blockers;
+    for (const auto& solid : session.level.solids)
+    {
+        blockers.push_back({solid.mins, solid.maxs});
+    }
+    blockers.push_back(RelayCore::gameplay::current_door_bounds(session.doors.front()));
+    for (const float x : {11.5F, 12.5F, 13.5F})
+    {
+        auto position = glm::vec3{x, 0.01F, 0};
+        for (int frame = 0; frame < 120; ++frame)
+            position = RelayCore::physics::move_and_collide(blockers, position, {0, 0, -3.0F}, 1.0F / 60.0F, {}, true)
+                           .position;
+        CAPTURE(x);
+        CHECK(position.z > -1.1F);
+        CHECK(position.z < -0.9F);
+    }
+    const std::array route{
+        glm::vec3{0.0F, 0.01F, -3.5F},
+        glm::vec3{-2.3F, 0.01F, -0.5F},
+        glm::vec3{0.0F, 0.01F, 0.0F},
+        glm::vec3{12.5F, 0.01F, 0.0F},
+        glm::vec3{12.5F, 0.01F, 20.5F},
+        glm::vec3{14.3F, 0.01F, 20.5F},
+        glm::vec3{12.5F, 0.01F, 20.5F},
+        glm::vec3{12.5F, 0.01F, 8.0F},
+        glm::vec3{7.0F, 0.01F, 8.0F},
+        glm::vec3{7.0F, 0.01F, 6.6F}
+    };
+    for (const bool reverse : {false, true})
+    {
+        for (std::size_t index = 1; index < route.size(); ++index)
+        {
+            const auto start = reverse ? route[route.size() - index] : route[index - 1];
+            const auto finish = reverse ? route[route.size() - index - 1] : route[index];
+            auto position = start;
+            const auto velocity = (finish - start) * 0.5F;
+            for (int frame = 0; frame < 120; ++frame)
+            {
+                position =
+                    RelayCore::physics::move_and_collide(blockers, position, velocity, 1.0F / 60.0F, {}, true).position;
+            }
+            CAPTURE(index);
+            CAPTURE(reverse);
+            CHECK(glm::distance(glm::vec2{position.x, position.z}, glm::vec2{finish.x, finish.z}) < 0.03F);
+        }
+    }
+}
+
+TEST_CASE("power restoration final threshold needs no jump at walking speed")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config;
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    auto session = RelayGame::LevelSessionBuilder{config}.build();
+    auto& door = session.doors.front();
+    door.state = RelayCore::gameplay::DoorState::Open;
+    door.open_fraction = 1;
+    std::vector<RelayCore::physics::Aabb> blockers;
+    for (const auto& solid : session.level.solids)
+        blockers.push_back({solid.mins, solid.maxs});
+    if (RelayCore::gameplay::is_door_blocking(door))
+        blockers.push_back(RelayCore::gameplay::current_door_bounds(door));
+    for (float x : {-0.7F, 0.0F, 0.7F})
+    {
+        glm::vec3 position{x, 0.001F, 3.5F};
+        for (int tick = 0; tick < 180; ++tick)
+            position = RelayCore::physics::move_and_collide(blockers, position, {0, -0.1F, 3.5F}, 1.0F / 120, {}, true)
+                           .position;
+        CAPTURE(x);
+        CHECK(position.z > 8.5F);
+        CHECK(position.y < 0.03F);
+    }
+}
 
 TEST_CASE("all shipped maps build clean runtime content")
 {
@@ -327,7 +555,7 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     CHECK(mission_runtime.status().title == "Open the south bulkhead");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *south_panel,
             doors,
             usables,
@@ -354,7 +582,7 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     CHECK(mission_runtime.status().title == "Pick up the turbine badge");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *pickup,
             doors,
             usables,
@@ -403,7 +631,7 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     CHECK(mission_runtime.status().title == "Authorize turbine hall access");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *reader,
             doors,
             usables,
@@ -421,7 +649,7 @@ TEST_CASE("stress_room_02 preserves the second acceptance flow")
     CHECK(mission_runtime.status().title == "Stabilize the turbine relay");
 
     CHECK(
-        RelayCore::gameplay::apply_usable_interaction(
+        RelayGame::apply_usable_interaction(
             *terminal,
             doors,
             usables,

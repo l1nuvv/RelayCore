@@ -11,6 +11,7 @@
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
 #include "relaycore/render/shader_program.h"
+#include "relaycore/render/static_model.h"
 #include "relaycore/render/texture2d.h"
 
 #include <SDL3/SDL.h>
@@ -78,11 +79,23 @@ namespace RelayCore
 
         void draw_render_queue(std::span<const render::RenderItem> items);
 
+        [[nodiscard]] auto static_models() noexcept -> render::StaticModelCache&
+        {
+            return static_models_;
+        }
+
         void set_local_lights(std::span<const render::LocalLight> lights);
 
         void set_scene_time(float seconds) noexcept;
+        void set_spot_light(const render::SpotLight& light) noexcept;
+        void set_field_of_view(float degrees);
 
         void draw_ui(const FrameInfo& frame, const AudioSystem& audio_system);
+
+        [[nodiscard]] auto begin_ui(const FrameInfo& frame, const AudioSystem& audio_system, bool exclusive = false)
+            -> bool;
+
+        void end_ui();
 
         void set_world_diagnostics(const render::WorldDiagnostics& diagnostics) noexcept;
 
@@ -121,6 +134,10 @@ namespace RelayCore
         [[nodiscard]] auto camera() const noexcept -> const render::PerspectiveCamera&;
 
         [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
+        [[nodiscard]] auto ui_available() const noexcept -> bool
+        {
+            return imgui_overlay_.enabled() && imgui_overlay_.is_initialized();
+        }
 
         [[nodiscard]] auto wants_keyboard_capture() const noexcept -> bool;
 
@@ -148,6 +165,8 @@ namespace RelayCore
 
     private:
         static constexpr std::size_t kShadowCascadeCount = 2;
+        static constexpr std::size_t kShadowMapCount = 3;
+        static constexpr std::size_t kSpotShadowIndex = 2;
 
         struct ShadowResources {
             ~ShadowResources() noexcept;
@@ -160,10 +179,10 @@ namespace RelayCore
 
             void reset() noexcept;
 
-            [[nodiscard]] auto complete() const noexcept -> bool;
+            [[nodiscard]] auto complete(bool directional) const noexcept -> bool;
 
-            std::array<unsigned int, kShadowCascadeCount> framebuffer_ids{};
-            std::array<unsigned int, kShadowCascadeCount> depth_texture_ids{};
+            std::array<unsigned int, kShadowMapCount> framebuffer_ids{};
+            std::array<unsigned int, kShadowMapCount> depth_texture_ids{};
         };
 
         [[nodiscard]] static auto create_shadow_resources(const render::RendererConfig& config) -> ShadowResources;
@@ -207,8 +226,11 @@ namespace RelayCore
         render::IterationDiagnostics iteration_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
         render::Texture2D blockout_atlas_{};
+        render::StaticModelCache static_models_{};
         ShadowResources shadow_resources_{};
         std::array<glm::mat4, kShadowCascadeCount> shadow_light_view_projections_{};
+        render::SpotLight spot_light_{};
+        glm::mat4 spot_view_projection_{1.0F};
         float scene_time_seconds_ = 0.0F;
         bool inspector_visualization_enabled_ = false;
     };

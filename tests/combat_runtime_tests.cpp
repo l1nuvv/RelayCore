@@ -83,6 +83,11 @@ TEST_CASE("combat runtime ignores thin hazard trim strips when building damaging
             .material = SurfaceMaterial::Hazard,
         },
         BlockoutSolid{
+            .mins = {-1.5F, 0.0F, 0.50F},
+            .maxs = {1.5F, 0.08F, 0.88F},
+            .material = SurfaceMaterial::Hazard,
+        },
+        BlockoutSolid{
             .mins = {-1.0F, 0.0F, 2.5F},
             .maxs = {1.0F, 0.2F, 4.0F},
             .material = SurfaceMaterial::Hazard,
@@ -92,7 +97,7 @@ TEST_CASE("combat runtime ignores thin hazard trim strips when building damaging
     const RelayCore::gameplay::CombatBuildResult result = RelayCore::gameplay::build_runtime_combat(level);
 
     REQUIRE(result.hazards.size() == 1);
-    CHECK(result.hazards[0].authored_solid_index == 1);
+    CHECK(result.hazards[0].authored_solid_index == 2);
 }
 
 TEST_CASE("player fire respects blocking doors and emits turret destroy events")

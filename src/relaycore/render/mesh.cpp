@@ -45,6 +45,15 @@ namespace RelayCore::render
             );
 
             glEnableVertexAttribArray(3);
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(
+                4,
+                2,
+                GL_FLOAT,
+                GL_FALSE,
+                static_cast<GLsizei>(sizeof(ColorVertex)),
+                reinterpret_cast<const void*>(offsetof(ColorVertex, uv))
+            );
             glVertexAttribPointer(
                 3,
                 1,

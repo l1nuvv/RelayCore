@@ -64,7 +64,7 @@ master_volume = 1.0
 startup_sound = ""
 
 [game]
-level_path = "levels/test_room.toml"
+level_path = "levels/power_restoration.toml"
 spawn_classname = "player_spawn"
 
 [game.controls]

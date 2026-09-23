@@ -1,11 +1,11 @@
 #pragma once
 
 #include "relaycore/core/profiling.h"
-#include "relaycore/gameplay/mission_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_loader_entity_props.h"
+#include "relaygame/mission_runtime.h"
+#include "relaygame/runtime_model.h"
 
 #include <span>
 #include <string>
@@ -78,10 +78,9 @@ namespace RelayGame::detail
         return (primary_instanced || secondary_instanced) ? std::string{"instanced"} : std::string{"direct"};
     }
 
-    [[nodiscard]] inline auto format_binding_label(const RelayCore::gameplay::RuntimeBindingInfo& binding)
-        -> std::string
+    [[nodiscard]] inline auto format_binding_label(const RelayGame::RuntimeBindingInfo& binding) -> std::string
     {
-        const std::string_view source_kind = RelayCore::gameplay::runtime_object_kind_label(binding.source_kind);
+        const std::string_view source_kind = RelayGame::runtime_object_kind_label(binding.source_kind);
         if (!binding.source_name.empty())
         {
             return std::string{source_kind} + " '" + binding.source_name + "'";
@@ -95,7 +94,7 @@ namespace RelayGame::detail
 
     inline void assign_binding_source(
         RelayCore::render::AuthoringWarningDiagnostics& warning,
-        const RelayCore::gameplay::RuntimeBindingInfo& binding
+        const RelayGame::RuntimeBindingInfo& binding
     )
     {
         warning.primary_label = format_binding_label(binding);
@@ -105,10 +104,9 @@ namespace RelayGame::detail
     }
 
     [[nodiscard]] inline auto
-    mission_declares_target(const RelayCore::gameplay::MissionDefinition& mission_definition, std::string_view target)
-        -> bool
+    mission_declares_target(const RelayGame::MissionDefinition& mission_definition, std::string_view target) -> bool
     {
-        for (const RelayCore::gameplay::MissionStep& step : mission_definition.steps)
+        for (const RelayGame::MissionStep& step : mission_definition.steps)
         {
             if (step.target == target)
             {
@@ -123,8 +121,8 @@ namespace RelayGame::detail
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
-        std::span<const RelayCore::gameplay::RuntimeBindingInfo> bindings,
-        const RelayCore::gameplay::MissionDefinition& mission_definition
+        std::span<const RelayGame::RuntimeBindingInfo> bindings,
+        const RelayGame::MissionDefinition& mission_definition
     ) -> std::vector<RelayCore::render::AuthoringWarningDiagnostics>
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -224,9 +222,9 @@ namespace RelayGame::detail
             }
         }
 
-        for (const RelayCore::gameplay::RuntimeBindingInfo& binding : bindings)
+        for (const RelayGame::RuntimeBindingInfo& binding : bindings)
         {
-            if (!RelayCore::gameplay::runtime_binding_requires_resolved_target(binding.kind) || binding.target.empty())
+            if (!RelayGame::runtime_binding_requires_resolved_target(binding.kind) || binding.target.empty())
             {
                 continue;
             }
@@ -235,7 +233,7 @@ namespace RelayGame::detail
             {
                 RelayCore::render::AuthoringWarningDiagnostics warning{};
                 warning.message =
-                    "Ambiguous authored " + std::string{RelayCore::gameplay::runtime_binding_kind_label(binding.kind)}
+                    "Ambiguous authored " + std::string{RelayGame::runtime_binding_kind_label(binding.kind)}
                     + " link: " + format_binding_label(binding) + " -> '" + binding.target + "' resolved to "
                     + std::to_string(binding.resolved_target_count) + " runtime objects";
                 warning.source_bucket = binding.source_bucket.empty() ? std::string{"direct"} : binding.source_bucket;
@@ -250,8 +248,7 @@ namespace RelayGame::detail
             }
 
             RelayCore::render::AuthoringWarningDiagnostics warning{};
-            warning.message = "Unresolved authored "
-                              + std::string{RelayCore::gameplay::runtime_binding_kind_label(binding.kind)}
+            warning.message = "Unresolved authored " + std::string{RelayGame::runtime_binding_kind_label(binding.kind)}
                               + " link: " + format_binding_label(binding) + " -> '" + binding.target
                               + "' has no runtime object match and no mission-step contract";
             warning.source_bucket = binding.source_bucket.empty() ? std::string{"direct"} : binding.source_bucket;

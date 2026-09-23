@@ -1,0 +1,21 @@
+# Facility textures
+
+`facility_source.png` is original art generated with the built-in ImageGen tool. It contains eight square diffuse textures in a 4 by 2 sheet: concrete, painted steel, mineral floor tiles, diamond tread, ventilation grille, brushed steel, wooden crate and hazard stripes. No Valve assets were used.
+
+`blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically for OpenGL sampling. Unused cells contain neutral steel. No alpha cutouts are required.
+
+Rebuild with `pwsh -File scripts/build-facility-atlas.ps1` from the repository root. The script only resamples, packs and converts the generated raster source. Texture scale in world units is authored in `assets/config/render_authoring.toml`; common repeats cover 1.2–2.8 metres. `atlas_mix = 1` uses the raster albedo multiplied by the authored surface tint. Default material profiles add no procedural grid. Local lights modulate the albedo so dark seams remain visible under illumination.
+
+Validate with the `graphics.power_restoration` test, which renders intake, service corridor, switch room and pump room through the game renderer. Captures are written to `build/msvc-debug/tests/power-captures`.
+
+## Generation prompt
+
+### Scientist materials (0.2)
+
+`scientist_materials.png` is an original ImageGen source, packed into atlas slots 23–26: ivory cotton, charcoal-brown twill, dark brown shoe leather and charcoal rubber. These materials use object-space mapping, so the fabric moves with each body part. Repeat sizes are 0.20, 0.24, 0.16 and 0.12 metres respectively. All four are opaque diffuse textures; no environment materials are reused on the scientist.
+
+Generation specification: exact 2-by-2 sheet of four seamless square diffuse swatches, ordered cotton / twill / leather / rubber. Restrained late-1990s FPS material art, readable fine weave and grain, neutral uniform albedo illumination. No clothing silhouettes, seams, buttons, text, logos, baked highlights, shadows, AO, perspective or background. Original material art, no copied game assets. Validation: `graphics.power_restoration` renders idle, stepping and turned first-person body views through the game renderer.
+
+### Facility source
+
+Use case: stylized-concept. Asset type: a production diffuse texture atlas for an original 1998-style indoor industrial FPS inspired by Half-Life 1 material readability. Generate ONE flat raster sheet, landscape 2:1 aspect ratio, preferably 2048x1024. EXACTLY FOUR EQUAL COLUMNS and TWO EQUAL ROWS, eight square tiles, absolutely NO gutters, NO labels, NO border. Each square is a separate seamless repeating texture viewed perfectly perpendicular, fills its entire square. Top row left to right: (1) light warm-gray poured concrete, subtle pores and restrained mottling, no panel seams; (2) desaturated olive-gray painted steel access panels, simple rectangular inset, thin functional joints, a few screw heads, restrained paint wear; (3) gray industrial floor with four large square mineral tiles and thin straight grout; (4) charcoal steel diamond tread floor, subtle worn tops. Bottom row left to right: (5) dark ventilation grille with broad horizontal slats, understated industrial; (6) medium neutral bare steel with subtle brushing and sparse scratches, NO panel border; (7) worn brown wooden shipping-crate planks with two simple cross braces, flat front texture; (8) faded ochre-yellow and charcoal diagonal hazard stripes of regular medium width. Original authored textures, no copied Valve imagery. Low-resolution late-1990s game diffuse-art aesthetic: readable medium forms, tactile material grain, restrained wear, slightly muted palette, NOT photorealistic cinematic rendering. Neutral uniform albedo illumination. No directional light, cast shadows, ambient occlusion, highlights, perspective, text, logos, symbols, random greebles, neon, vignette, background, or 3D cubes. Opposite edges of each square must match for tiling. The atlas layout must be exact so software can split it into eight equal square textures.

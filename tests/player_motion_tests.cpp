@@ -45,6 +45,28 @@ namespace
     }
 } // namespace
 
+TEST_CASE("small thresholds are walkable at the 120 Hz game simulation rate")
+{
+    auto world = make_floor_world();
+    world.push_back({{-1.5F, 0, 0.5F}, {1.5F, 0.022F, 0.88F}});
+    for (const float speed : {1.0F, 3.5F, 10.5F})
+    {
+        glm::vec3 position{0, 0.001F, 0};
+        for (int tick = 0; tick < 240; ++tick)
+            position = RelayCore::physics::move_and_collide(
+                           world,
+                           position,
+                           {0, -0.1F, speed},
+                           1.0F / 120.0F,
+                           make_config().collision,
+                           true
+            )
+                           .position;
+        CAPTURE(speed);
+        CHECK(position.z > 1.5F);
+    }
+}
+
 TEST_CASE("player falls onto floor and becomes grounded")
 {
     const PlayerMotionConfig config = make_config();

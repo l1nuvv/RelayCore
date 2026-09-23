@@ -15,11 +15,11 @@ namespace RelayGame
             step_seconds_(step_seconds), max_steps_per_frame_(max_steps_per_frame)
         {}
 
-        void reset() noexcept
+        void reset(std::uint64_t tick = 0) noexcept
         {
             RELAYCORE_PROFILE_FUNCTION();
             accumulator_seconds_ = 0.0;
-            tick_index_ = 0;
+            tick_index_ = tick;
             last_steps_executed_ = 0;
         }
 

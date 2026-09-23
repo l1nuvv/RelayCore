@@ -1,4 +1,4 @@
-#include "relaycore/gameplay/mission_runtime.h"
+#include "relaygame/mission_runtime.h"
 
 #include "relaycore/core/profiling.h"
 #include "relaycore/world/blockout_level.h"
@@ -11,8 +11,13 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace RelayCore::gameplay
+namespace RelayGame
 {
+    using namespace RelayCore::gameplay;
+    using RelayCore::BlockoutLevel;
+    using RelayCore::EntitySpawnData;
+    namespace physics = RelayCore::physics;
+
     namespace
     {
         [[nodiscard]] auto find_mission_property(const EntitySpawnData& entity, std::string_view key)
@@ -361,4 +366,4 @@ namespace RelayCore::gameplay
 
         return aabb_overlaps(player_bounds, step.bounds);
     }
-} // namespace RelayCore::gameplay
+} // namespace RelayGame

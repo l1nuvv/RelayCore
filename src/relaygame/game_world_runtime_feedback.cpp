@@ -2,6 +2,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaygame/game_world_runtime.h"
+#include "relaygame/usable_interaction.h"
 
 #include <algorithm>
 
@@ -76,7 +77,7 @@ namespace RelayGame
 
         RelayCore::gameplay::RuntimeUsable& usable =
             usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
-        const RelayCore::gameplay::InteractionEvent event = RelayCore::gameplay::apply_usable_interaction(
+        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
             usable,
             doors_,
             usables_,
@@ -171,20 +172,29 @@ namespace RelayGame
             return;
         }
 
-        const RelayCore::gameplay::CombatFireResult fire_result = RelayCore::gameplay::apply_player_fire(
+        const auto attack = fire_player_weapon(
             level_,
             doors_,
             player_controller_.eye_position_world(),
             player_controller_.view_forward(),
             combat_state_.player,
-            combat_state_.turrets
+            combat_state_.turrets,
+            enemies_
         );
+
+        const auto& fire_result = attack.combat;
         if (!fire_result.fired)
         {
             return;
         }
 
         play_gameplay_audio(services, audio_cues_.weapon_fire);
+        if (attack.killed_enemy)
+            push_transient_hud_event(
+                "Охранный робот выведен из строя",
+                RelayCore::render::HudEventStyle::Success,
+                1.4F
+            );
         if (!fire_result.hit_turret)
         {
             return;
@@ -283,7 +293,8 @@ namespace RelayGame
         const int next_zone_index = RelayGame::find_active_audio_zone(
             audio_zones_,
             player_controller_.player_bounds(),
-            audio_state_.active_zone_index
+            audio_state_.active_zone_index,
+            activated_target_ids_
         );
 
         std::filesystem::path desired_loop_path{};
@@ -398,7 +409,7 @@ namespace RelayGame
     }
 
     void GameWorldRuntime::push_mission_status_event(
-        const RelayCore::gameplay::MissionStatus& mission,
+        const RelayGame::MissionStatus& mission,
         const RelayCore::render::HudEventStyle style,
         const float duration_seconds
     )
@@ -425,6 +436,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         player_controller_.initialize(combat_state_.spawn_position, combat_state_.spawn_view_angles);
+        player_feedback_.reset();
         RelayCore::gameplay::respawn_player_combat_state(combat_state_.player);
         refresh_runtime_usables_and_focus();
     }

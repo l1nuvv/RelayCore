@@ -2,7 +2,7 @@
 
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
+#include "relaygame/mission_runtime.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,7 @@ namespace RelayCore
     struct BlockoutLevel;
 }
 
-namespace RelayCore::gameplay
+namespace RelayGame
 {
     using RuntimeObjectId = std::uint64_t;
 
@@ -73,10 +73,10 @@ namespace RelayCore::gameplay
         void clear() noexcept;
 
         void build(
-            const BlockoutLevel& level,
-            std::span<const RuntimeDoor> doors,
-            std::span<const RuntimeTrigger> triggers,
-            std::span<const RuntimeUsable> usables
+            const RelayCore::BlockoutLevel& level,
+            std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+            std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
+            std::span<const RelayCore::gameplay::RuntimeUsable> usables
         );
 
         [[nodiscard]] auto empty() const noexcept -> bool;
@@ -107,7 +107,7 @@ namespace RelayCore::gameplay
     struct RuntimeDoorSnapshot {
         RuntimeObjectId runtime_id = 0;
         float open_fraction = 0.0F;
-        DoorState state = DoorState::Closed;
+        RelayCore::gameplay::DoorState state = RelayCore::gameplay::DoorState::Closed;
     };
 
     struct RuntimeTriggerSnapshot {
@@ -179,14 +179,14 @@ namespace RelayCore::gameplay
     [[nodiscard]] auto capture_runtime_level_snapshot(
         std::string level_path,
         const RuntimeObjectRegistry& registry,
-        std::span<const RuntimeDoor> doors,
-        std::span<const RuntimeTrigger> triggers,
-        std::span<const RuntimeUsable> usables,
-        std::span<const RuntimeTurret> turrets,
+        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
+        std::span<const RelayCore::gameplay::RuntimeUsable> usables,
+        std::span<const RelayCore::gameplay::RuntimeTurret> turrets,
         std::span<const std::string> inventory_item_ids,
         std::span<const std::string> activated_target_ids,
         std::span<const std::string> signaled_target_ids,
-        const PlayerCombatState& player_combat,
+        const RelayCore::gameplay::PlayerCombatState& player_combat,
         const MissionRuntime& mission_runtime,
         std::uint64_t simulation_tick
     ) -> RuntimeLevelSnapshot;
@@ -195,18 +195,18 @@ namespace RelayCore::gameplay
         const RuntimeLevelSnapshot& snapshot,
         std::string_view level_path,
         const RuntimeObjectRegistry& registry,
-        std::vector<RuntimeDoor>& doors,
-        std::vector<RuntimeTrigger>& triggers,
-        std::vector<RuntimeUsable>& usables,
-        std::vector<RuntimeTurret>& turrets,
+        std::vector<RelayCore::gameplay::RuntimeDoor>& doors,
+        std::vector<RelayCore::gameplay::RuntimeTrigger>& triggers,
+        std::vector<RelayCore::gameplay::RuntimeUsable>& usables,
+        std::vector<RelayCore::gameplay::RuntimeTurret>& turrets,
         std::vector<std::string>& inventory_item_ids,
         std::vector<std::string>& activated_target_ids,
         std::vector<std::string>& signaled_target_ids,
-        PlayerCombatState& player_combat,
+        RelayCore::gameplay::PlayerCombatState& player_combat,
         MissionRuntime& mission_runtime
     ) -> SnapshotRestoreResult;
 
     [[nodiscard]] auto build_runtime_snapshot_summary(const RuntimeLevelSnapshot& snapshot) -> std::string;
 
     [[nodiscard]] auto build_runtime_restore_summary(const SnapshotRestoreResult& result) -> std::string;
-} // namespace RelayCore::gameplay
+} // namespace RelayGame

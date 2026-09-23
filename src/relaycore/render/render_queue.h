@@ -9,6 +9,7 @@
 
 namespace RelayCore::render
 {
+    class Texture2D;
     enum class RenderPass : std::uint8_t {
         Opaque = 0,
         Overlay,
@@ -25,6 +26,15 @@ namespace RelayCore::render
         const StaticColorMesh* mesh = nullptr;
         glm::mat4 model_matrix{1.0F};
         RenderPass pass = RenderPass::Opaque;
+        const Texture2D* diffuse_texture = nullptr;
+    };
+
+    struct SpotLight {
+        glm::vec3 position{};
+        glm::vec3 direction{0, 0, -1};
+        glm::vec3 color{1.0F, 0.94F, 0.84F};
+        float range = 18.0F;
+        bool enabled = false;
     };
 
     class RenderQueue {
@@ -39,10 +49,19 @@ namespace RelayCore::render
             items_.reserve(count);
         }
 
-        void
-        push(const StaticColorMesh& mesh, const glm::mat4& model_matrix, const RenderPass pass = RenderPass::Opaque)
+        void push(
+            const StaticColorMesh& mesh,
+            const glm::mat4& model_matrix,
+            const RenderPass pass = RenderPass::Opaque,
+            const Texture2D* diffuse_texture = nullptr
+        )
         {
-            items_.push_back(RenderItem{.mesh = &mesh, .model_matrix = model_matrix, .pass = pass});
+            items_.push_back(RenderItem{
+                .mesh = &mesh,
+                .model_matrix = model_matrix,
+                .pass = pass,
+                .diffuse_texture = diffuse_texture
+            });
         }
 
         [[nodiscard]] auto items() const noexcept -> std::span<const RenderItem>

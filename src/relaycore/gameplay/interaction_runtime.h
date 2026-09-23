@@ -184,7 +184,8 @@ namespace RelayCore::gameplay
         const std::vector<RuntimeUsable>& usables,
         std::span<const std::uint32_t> candidate_indices,
         float max_distance = 2.25F,
-        float min_facing_dot = 0.75F
+        float min_facing_dot = 0.75F,
+        physics::CollisionWorld blockers = {}
     ) -> InteractionQueryResult;
 
     [[nodiscard]] auto find_focused_usable(
@@ -192,7 +193,8 @@ namespace RelayCore::gameplay
         const glm::vec3& view_forward,
         const std::vector<RuntimeUsable>& usables,
         float max_distance = 2.25F,
-        float min_facing_dot = 0.75F
+        float min_facing_dot = 0.75F,
+        physics::CollisionWorld blockers = {}
     ) -> InteractionQueryResult;
 
     [[nodiscard]] auto activate_target(std::string_view target, std::vector<RuntimeDoor>& doors) -> bool;
@@ -206,15 +208,6 @@ namespace RelayCore::gameplay
         std::vector<RuntimeDoor>& doors,
         std::vector<RuntimeUsable>& usables
     ) -> bool;
-
-    [[nodiscard]] auto apply_usable_interaction(
-        RuntimeUsable& usable,
-        std::vector<RuntimeDoor>& doors,
-        std::vector<RuntimeUsable>& usables,
-        std::vector<std::string>& inventory_item_ids,
-        std::vector<std::string>& activated_target_ids,
-        std::vector<std::string>& signaled_target_ids
-    ) -> InteractionEvent;
 
     [[nodiscard]] auto update_trigger_overlaps(
         const physics::Aabb& player_bounds,

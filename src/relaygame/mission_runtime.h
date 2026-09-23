@@ -14,7 +14,7 @@ namespace RelayCore
     struct BlockoutLevel;
 }
 
-namespace RelayCore::gameplay
+namespace RelayGame
 {
     enum class MissionStepKind : std::uint8_t {
         DoorOpened = 0,
@@ -29,7 +29,7 @@ namespace RelayCore::gameplay
         std::string title{};
         std::string detail{};
         std::string target{};
-        physics::Aabb bounds{};
+        RelayCore::physics::Aabb bounds{};
     };
 
     struct MissionDefinition {
@@ -55,12 +55,12 @@ namespace RelayCore::gameplay
 
     class MissionBuilder {
     public:
-        explicit MissionBuilder(const BlockoutLevel& level) noexcept;
+        explicit MissionBuilder(const RelayCore::BlockoutLevel& level) noexcept;
 
         [[nodiscard]] auto build() const -> MissionDefinition;
 
     private:
-        const BlockoutLevel& level_;
+        const RelayCore::BlockoutLevel& level_;
     };
 
     class MissionRuntime {
@@ -68,8 +68,8 @@ namespace RelayCore::gameplay
         void reset(MissionDefinition definition);
 
         void update(
-            const physics::Aabb& player_bounds,
-            std::span<const RuntimeDoor> doors,
+            const RelayCore::physics::Aabb& player_bounds,
+            std::span<const RelayCore::gameplay::RuntimeDoor> doors,
             std::span<const std::string> inventory_items,
             std::span<const std::string> activated_targets,
             std::span<const std::string> signaled_targets
@@ -85,8 +85,8 @@ namespace RelayCore::gameplay
 
     private:
         [[nodiscard]] auto current_step_complete(
-            const physics::Aabb& player_bounds,
-            std::span<const RuntimeDoor> doors,
+            const RelayCore::physics::Aabb& player_bounds,
+            std::span<const RelayCore::gameplay::RuntimeDoor> doors,
             std::span<const std::string> inventory_items,
             std::span<const std::string> activated_targets,
             std::span<const std::string> signaled_targets
@@ -96,4 +96,4 @@ namespace RelayCore::gameplay
         std::size_t current_step_index_ = 0;
         bool completed_ = false;
     };
-} // namespace RelayCore::gameplay
+} // namespace RelayGame

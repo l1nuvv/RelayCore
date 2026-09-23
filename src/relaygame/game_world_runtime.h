@@ -3,18 +3,22 @@
 #include "relaycore/app/frame_timer.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaygame/fixed_simulation_loop.h"
 #include "relaygame/gameplay_input_ownership.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/mission_runtime.h"
 #include "relaygame/player_controller.h"
+#include "relaygame/player_feedback.h"
+#include "relaygame/runtime_model.h"
+#include "relaygame/save_game.h"
+#include "relaygame/scientist_pose.h"
 #include "relaygame/world_audio_zones.h"
 
 #include <SDL3/SDL.h>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -32,11 +36,31 @@ namespace RelayGame
 {
     class GameWorldRuntime {
     public:
-        void startup(RelayCore::EngineServices& services);
-
+        [[nodiscard]] auto capture_saved_game(float played_seconds, bool flashlight) const -> SavedGame;
+        void restore_saved_game(const SavedGame& save);
+        [[nodiscard]] auto active_level_exit() const -> const LevelExit*;
+        [[nodiscard]] auto has_completion_exit() const noexcept -> bool
+        {
+            for (const auto& exit : exits_)
+                if (exit.requires_completion)
+                    return true;
+            return false;
+        }
+        [[nodiscard]] auto ending() const noexcept -> const std::optional<EpisodeEnding>&
+        {
+            return ending_;
+        }
+        void begin_ending();
+        void update_ending(float delta_seconds, RelayCore::EngineServices& services);
         void load_level_session(const RelayCore::core::EngineConfig& config, LevelSession session);
 
         void activate_level_session(RelayCore::EngineServices& services);
+        void set_paused(bool paused, RelayCore::EngineServices& services);
+        [[nodiscard]] auto paused() const noexcept -> bool
+        {
+            return paused_;
+        }
+        void apply_player_settings(float sensitivity, float camera_motion) noexcept;
 
         void shutdown(RelayCore::EngineServices& services) noexcept;
 
@@ -54,6 +78,10 @@ namespace RelayGame
 
         [[nodiscard]] auto usables() const noexcept -> const std::vector<RelayCore::gameplay::RuntimeUsable>&;
 
+        [[nodiscard]] auto enemies() const noexcept -> const std::vector<RuntimeEnemy>&
+        {
+            return enemies_;
+        }
         [[nodiscard]] auto turrets() const noexcept -> const std::vector<RelayCore::gameplay::RuntimeTurret>&;
 
         [[nodiscard]] auto focused_usable_index() const noexcept -> int;
@@ -68,7 +96,7 @@ namespace RelayGame
         [[nodiscard]] auto consume_iteration_command_requests() noexcept -> IterationCommandRequests;
 
         struct InspectorRestoreState {
-            RelayCore::gameplay::RuntimeObjectId runtime_object_id = 0;
+            RelayGame::RuntimeObjectId runtime_object_id = 0;
             std::string primary_source_reference{};
         };
 
@@ -76,12 +104,12 @@ namespace RelayGame
 
         void restore_pinned_inspector(const InspectorRestoreState& state);
 
-        [[nodiscard]] auto capture_runtime_snapshot() const -> RelayCore::gameplay::RuntimeLevelSnapshot;
+        [[nodiscard]] auto capture_runtime_snapshot() const -> RelayGame::RuntimeLevelSnapshot;
 
-        [[nodiscard]] auto restore_runtime_snapshot(const RelayCore::gameplay::RuntimeLevelSnapshot& snapshot)
-            -> RelayCore::gameplay::SnapshotRestoreResult;
+        [[nodiscard]] auto restore_runtime_snapshot(const RelayGame::RuntimeLevelSnapshot& snapshot)
+            -> RelayGame::SnapshotRestoreResult;
 
-        [[nodiscard]] auto runtime_registry() const noexcept -> const RelayCore::gameplay::RuntimeObjectRegistry&;
+        [[nodiscard]] auto runtime_registry() const noexcept -> const RelayGame::RuntimeObjectRegistry&;
 
         [[nodiscard]] auto runtime_registry_diagnostics() const
             -> std::vector<RelayCore::render::RuntimeRegistryEntryDiagnostics>;
@@ -96,13 +124,19 @@ namespace RelayGame
         [[nodiscard]] auto authoring_warnings() const noexcept
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
 
-        [[nodiscard]] auto mission_status() const -> RelayCore::gameplay::MissionStatus;
+        [[nodiscard]] auto mission_status() const -> RelayGame::MissionStatus;
 
         [[nodiscard]] auto player_combat_state() const noexcept -> const RelayCore::gameplay::PlayerCombatState&;
+
+        [[nodiscard]] auto scientist_pose() const noexcept -> ScientistPose;
 
         [[nodiscard]] auto inventory_item_ids() const noexcept -> const std::vector<std::string>&;
 
         [[nodiscard]] auto activated_target_ids() const noexcept -> const std::vector<std::string>&;
+        [[nodiscard]] auto environment() const noexcept -> std::span<const EnvironmentEffect>
+        {
+            return environment_;
+        }
 
         [[nodiscard]] auto signaled_target_ids() const noexcept -> const std::vector<std::string>&;
 
@@ -186,6 +220,7 @@ namespace RelayGame
             std::vector<RelayCore::gameplay::RuntimeHazardVolume> hazards{};
             std::string fire_binding_label{"Mouse1"};
             bool fire_pressed = false;
+            bool hazard_contact_last_step = false;
             std::uint32_t active_hazard_contacts = 0;
             std::uint32_t turret_shots_last_frame = 0;
         };
@@ -247,7 +282,7 @@ namespace RelayGame
         void push_transient_hud_event(std::string text, RelayCore::render::HudEventStyle style, float duration_seconds);
 
         void push_mission_status_event(
-            const RelayCore::gameplay::MissionStatus& mission,
+            const RelayGame::MissionStatus& mission,
             RelayCore::render::HudEventStyle style,
             float duration_seconds
         );
@@ -313,9 +348,18 @@ namespace RelayGame
         void update_door_runtime(float sim_delta_seconds) noexcept;
 
         void finalize_frame_update(RelayCore::EngineServices& services, float delta_seconds);
+        void update_presentation(RelayCore::EngineServices& services, float delta_seconds);
+        std::optional<EpisodeEnding> ending_;
 
         RelayGame::GroundedPlayerController player_controller_{};
+        PlayerFeedback player_feedback_{};
+        std::vector<RelayCore::physics::Aabb> interaction_occluders_;
+        float camera_motion_ = 0.6F;
+        bool paused_ = false;
+        std::array<std::filesystem::path, 16> player_sounds_{};
+        std::size_t step_variant_ = 0;
         RelayCore::BlockoutLevel level_{};
+        std::vector<LevelExit> exits_;
         std::vector<RelayCore::gameplay::RuntimeDoor> doors_{};
         std::vector<RelayCore::gameplay::RuntimeTrigger> triggers_{};
         std::vector<RelayCore::gameplay::RuntimeUsable> usables_{};
@@ -327,19 +371,22 @@ namespace RelayGame
         std::vector<std::string> inventory_item_ids_{};
         std::vector<std::string> activated_target_ids_{};
         std::vector<std::string> signaled_target_ids_{};
-        RelayCore::gameplay::RuntimeObjectRegistry runtime_registry_{};
+        RelayGame::RuntimeObjectRegistry runtime_registry_{};
         InteractionState interaction_state_{};
         InspectorState inspector_state_{};
         CombatState combat_state_{};
         TransientHudEvent transient_hud_event_{};
-        RelayCore::gameplay::MissionRuntime mission_runtime_{};
+        RelayGame::MissionRuntime mission_runtime_{};
         AudioCueSet audio_cues_{};
         AudioState audio_state_{};
         RuntimeState runtime_state_{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings_{};
         std::vector<RelayGame::RuntimeAudioZone> audio_zones_{};
-        RelayCore::gameplay::MissionDefinition loaded_mission_definition_{};
+        std::vector<EnvironmentEffect> environment_{};
+        RelayGame::MissionDefinition loaded_mission_definition_{};
         std::vector<RelayCore::gameplay::RuntimeTurret> loaded_level_turrets_{};
+        std::vector<RuntimeEnemy> enemies_;
+        std::vector<RelayCore::physics::Aabb> enemy_blockers_;
         std::vector<RelayCore::gameplay::RuntimeHazardVolume> loaded_level_hazards_{};
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FrameGameplayActions frame_actions_{};

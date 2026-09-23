@@ -10,7 +10,7 @@ endif()
 
 project(
     RelayCore
-    VERSION 0.1.0
+    VERSION 1.2.0
     DESCRIPTION "Retro indoor FPS engine prototype"
     LANGUAGES C CXX
 )

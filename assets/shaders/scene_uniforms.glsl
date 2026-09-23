@@ -1,6 +1,11 @@
 in vec3 vertex_color;
+in vec2 model_uv;
+layout (location = 78) uniform int u_model_textured;
+layout (location = 79) uniform sampler2D u_model_texture;
 in vec3 world_position;
 in vec3 world_normal;
+in vec3 object_position;
+in vec3 object_normal;
 flat in float material_kind;
 in float fog_distance;
 
@@ -43,5 +48,12 @@ layout (location = 64) uniform float u_indirect_bounce_strength;
 layout (location = 65) uniform int u_shadow_debug_cascades;
 layout (location = 66) uniform float u_shadow_far_bias;
 layout (location = 67) uniform float u_shadow_far_normal_offset;
+layout (location = 68) uniform vec3 u_spot_position;
+layout (location = 69) uniform vec3 u_spot_direction;
+layout (location = 70) uniform vec3 u_spot_color;
+layout (location = 71) uniform float u_spot_range;
+layout (location = 72) uniform int u_spot_enabled;
+layout (location = 73) uniform mat4 u_spot_view_projection;
+layout (location = 77) uniform sampler2D u_spot_shadow_map;
 
 out vec4 out_color;

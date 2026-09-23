@@ -507,6 +507,51 @@ namespace RelayCore::render
                 false,
                 1.0F
             ),
+            make_material(
+                RelayCore::SurfaceMaterial::Matte,
+                {1.0F, 1.0F, 1.0F},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                1.0F,
+                0.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::Cotton,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                0.20F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::Twill,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                0.24F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::Leather,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                0.16F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::Rubber,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                0.12F,
+                1.0F
+            ),
         }};
         for (const RelayCore::SurfaceMaterial material : RelayCore::all_surface_materials())
         {

@@ -22,8 +22,6 @@ set(RELAYCORE_ENGINE_SOURCES
     gameplay/interaction_runtime_doors.cpp
     gameplay/interaction_runtime_factory.cpp
     gameplay/interaction_runtime_queries.cpp
-    gameplay/mission_runtime.cpp
-    gameplay/runtime_model.cpp
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
@@ -37,6 +35,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/gl_debug.cpp
     render/gl_loader.cpp
     render/mesh.cpp
+    render/static_model.cpp
     render/render_authoring_config.cpp
     render/pipeline_authoring_overlay.cpp
 
@@ -80,8 +79,6 @@ set(RELAYCORE_ENGINE_HEADERS
     gameplay/entity_spawn_parsing.h
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
-    gameplay/mission_runtime.h
-    gameplay/runtime_model.h
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h

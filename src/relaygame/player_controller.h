@@ -101,6 +101,16 @@ namespace RelayGame
 
     class GroundedPlayerController {
     public:
+        struct State {
+            glm::vec3 position{};
+            glm::vec3 velocity{};
+            glm::vec2 view_angles{};
+            bool grounded = false;
+        };
+
+        [[nodiscard]] auto capture_state() const noexcept -> State;
+        void restore_state(const State& state) noexcept;
+
         explicit GroundedPlayerController(
             const GroundedPlayerControllerConfig& config = GroundedPlayerControllerConfig{}
         );
@@ -115,6 +125,14 @@ namespace RelayGame
         void enable_capture(RelayCore::Window& window) const;
 
         void set_input_ownership(GameplayInputOwnership ownership) noexcept;
+        void set_mouse_sensitivity(float radians) noexcept
+        {
+            config_.mouse_sensitivity_radians = radians;
+        }
+        void set_eye_offset(float offset) noexcept
+        {
+            eye_offset_ = offset;
+        }
 
         void on_event(const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services);
 
@@ -199,6 +217,7 @@ namespace RelayGame
         float pitch_radians_ = 0.0F;
         float pending_yaw_delta_ = 0.0F;
         float pending_pitch_delta_ = 0.0F;
+        float eye_offset_ = 0.0F;
         bool grounded_ = false;
         MovementMode movement_mode_ = MovementMode::Air;
         float noclip_speed_ = 8.0F;

@@ -19,7 +19,7 @@ namespace RelayCore::gameplay
         using detail::parse_float_property;
         using detail::property_or;
 
-        constexpr float kMinHazardDamageSpan = 0.25F;
+        constexpr float kMinHazardDamageSpan = 0.50F;
 
         [[nodiscard]] auto is_turret_entity(const EntitySpawnData& entity) -> bool
         {
@@ -87,19 +87,20 @@ namespace RelayCore::gameplay
         {
             float nearest_distance = max_distance;
 
-            for (const BlockoutSolid& solid : level.solids)
-            {
-                const auto hit = physics::ray_intersection_distance(
-                    origin,
-                    direction,
-                    physics::Aabb{.mins = solid.mins, .maxs = solid.maxs},
-                    nearest_distance
-                );
-                if (hit.has_value())
+            for (const auto* solids : {&level.solids, &level.prop_colliders})
+                for (const BlockoutSolid& solid : *solids)
                 {
-                    nearest_distance = *hit;
+                    const auto hit = physics::ray_intersection_distance(
+                        origin,
+                        direction,
+                        physics::Aabb{.mins = solid.mins, .maxs = solid.maxs},
+                        nearest_distance
+                    );
+                    if (hit.has_value())
+                    {
+                        nearest_distance = *hit;
+                    }
                 }
-            }
 
             for (const RuntimeDoor& door : doors)
             {
@@ -119,30 +120,34 @@ namespace RelayCore::gameplay
             return nearest_distance;
         }
 
-        [[nodiscard]] auto
-        apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source) -> float
+    } // namespace
+
+    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source)
+        -> float
+    {
+        if (!player.alive || amount <= 0.0F)
         {
-            if (!player.alive || amount <= 0.0F)
-            {
-                return 0.0F;
-            }
-
-            const float applied_damage = std::min(amount, player.health);
-            player.health = std::max(0.0F, player.health - amount);
-            player.damage_taken += applied_damage;
-            player.hurt_flash_remaining_seconds = std::max(player.hurt_flash_remaining_seconds, 0.30F);
-            player.last_damage_source = std::string{source};
-            if (player.health <= 0.0F)
-            {
-                player.alive = false;
-                player.health = 0.0F;
-                player.respawn_remaining_seconds = player.respawn_delay_seconds;
-                ++player.deaths;
-            }
-
-            return applied_damage;
+            return 0.0F;
         }
 
+        const float applied_damage = std::min(amount, player.health);
+        player.health = std::max(0.0F, player.health - amount);
+        player.damage_taken += applied_damage;
+        player.hurt_flash_remaining_seconds = std::max(player.hurt_flash_remaining_seconds, 0.30F);
+        player.last_damage_source = std::string{source};
+        if (player.health <= 0.0F)
+        {
+            player.alive = false;
+            player.health = 0.0F;
+            player.respawn_remaining_seconds = player.respawn_delay_seconds;
+            ++player.deaths;
+        }
+
+        return applied_damage;
+    }
+
+    namespace
+    {
         [[nodiscard]] auto apply_turret_damage(RuntimeTurret& turret, const float amount, CombatFireResult& result)
             -> float
         {
@@ -287,7 +292,8 @@ namespace RelayCore::gameplay
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
-        const std::span<RuntimeTurret> turrets
+        const std::span<RuntimeTurret> turrets,
+        const float max_hit_distance
     ) -> CombatFireResult
     {
         CombatFireResult result{};
@@ -301,8 +307,13 @@ namespace RelayCore::gameplay
         ++player.shots_fired;
 
         const glm::vec3 shot_direction = glm::normalize(direction);
-        const float blocker_distance =
-            ray_hits_world_before_distance(level, doors, origin, shot_direction, player.weapon_range);
+        const float blocker_distance = ray_hits_world_before_distance(
+            level,
+            doors,
+            origin,
+            shot_direction,
+            std::min(player.weapon_range, max_hit_distance)
+        );
 
         float best_hit_distance = blocker_distance;
         int best_turret_index = -1;

@@ -7,6 +7,7 @@
 #include <glm/vec3.hpp>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace RelayCore
@@ -99,6 +100,7 @@ namespace RelayCore::gameplay
     };
 
     [[nodiscard]] auto build_runtime_combat(const BlockoutLevel& level) -> CombatBuildResult;
+    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, float amount, std::string_view source) -> float;
 
     void reset_player_combat_state(PlayerCombatState& state) noexcept;
 
@@ -112,7 +114,8 @@ namespace RelayCore::gameplay
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
-        std::span<RuntimeTurret> turrets
+        std::span<RuntimeTurret> turrets,
+        float max_hit_distance = 1.0e9F
     ) -> CombatFireResult;
 
     [[nodiscard]] auto update_combat_threats(

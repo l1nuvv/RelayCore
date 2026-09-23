@@ -65,6 +65,11 @@ namespace RelayCore
         LightStrip,
         Crate,
         Post,
+        Matte,
+        Cotton,
+        Twill,
+        Leather,
+        Rubber,
     };
 
     /**
@@ -93,6 +98,8 @@ namespace RelayCore
      * @brief In-memory representation of a blockout level.
      */
     struct BlockoutLevel {
+        // Derived physics-only geometry. It is never rendered or serialized as authored blockout.
+        std::vector<BlockoutSolid> prop_colliders;
         std::vector<BlockoutSolid> solids;                  ///< Loaded blockout solids.
         std::vector<AuthoredSourceLocation> solid_sources;  ///< Source location per solid when available.
         std::vector<EntitySpawnData> entities;              ///< Loaded entity definitions.

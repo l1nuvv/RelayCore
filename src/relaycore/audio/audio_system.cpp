@@ -12,6 +12,7 @@
 #include <cmath>
 #include <memory>
 #include <miniaudio.h>
+#include <stdexcept>
 #include <utility>
 
 namespace RelayCore
@@ -58,6 +59,7 @@ namespace RelayCore
     }
 
     AudioSystem::AudioSystem(AudioSystem&& other) noexcept :
+        one_shots_(std::move(other.one_shots_)), spatial_loops_(std::move(other.spatial_loops_)),
         config_(std::move(other.config_)), engine_(std::move(other.engine_)), loop_sound_(std::move(other.loop_sound_)),
         fading_loop_sound_(std::move(other.fading_loop_sound_)), active_loop_path_(std::move(other.active_loop_path_)),
         fading_loop_path_(std::move(other.fading_loop_path_)), active_loop_volume_(other.active_loop_volume_),
@@ -79,6 +81,8 @@ namespace RelayCore
         }
 
         shutdown();
+        one_shots_ = std::move(other.one_shots_);
+        spatial_loops_ = std::move(other.spatial_loops_);
         config_ = std::move(other.config_);
         engine_ = std::move(other.engine_);
         loop_sound_ = std::move(other.loop_sound_);
@@ -124,6 +128,10 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_FUNCTION();
         stop_loop();
+        clear_spatial_loops();
+        for (auto& cached : one_shots_)
+            destroy_sound(cached.sound);
+        one_shots_.clear();
         if (!engine_)
         {
             return;
@@ -133,7 +141,7 @@ namespace RelayCore
         engine_.reset();
     }
 
-    void AudioSystem::play_one_shot(const std::filesystem::path& file_path) const
+    void AudioSystem::play_one_shot(const std::filesystem::path& file_path)
     {
         RELAYCORE_PROFILE_FUNCTION();
         if (!engine_ || file_path.empty())
@@ -141,11 +149,114 @@ namespace RelayCore
             return;
         }
 
-        const std::string utf8_path = file_path.string();
-        if (ma_engine_play_sound(engine_.get(), utf8_path.c_str(), nullptr) != MA_SUCCESS)
+        if (std::ranges::find(one_shots_, file_path, &CachedOneShot::path) == one_shots_.end())
+            preload_one_shots(std::span{&file_path, 1});
+        if (const auto found = std::ranges::find(one_shots_, file_path, &CachedOneShot::path);
+            found != one_shots_.end())
         {
-            log::warn("Failed to play sound: {}", utf8_path);
+            ma_sound_seek_to_pcm_frame(found->sound.get(), 0);
+            ma_sound_start(found->sound.get());
+            return;
         }
+    }
+
+    void AudioSystem::stop_one_shots() noexcept
+    {
+        for (auto& cached : one_shots_)
+            ma_sound_stop(cached.sound.get());
+    }
+
+    void AudioSystem::preload_one_shots(std::span<const std::filesystem::path> paths)
+    {
+        if (!engine_)
+            return;
+        one_shots_.reserve(one_shots_.size() + paths.size());
+        for (const auto& path : paths)
+        {
+            if (std::ranges::find(one_shots_, path, &CachedOneShot::path) != one_shots_.end())
+                continue;
+            CachedOneShot cached{path, std::make_unique<ma_sound>()};
+            const auto result = ma_sound_init_from_file(
+                engine_.get(),
+                path.string().c_str(),
+                MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION,
+                nullptr,
+                nullptr,
+                cached.sound.get()
+            );
+            if (result != MA_SUCCESS)
+            {
+                log::warn("Could not preload player sound {}: {}", path.string(), ma_result_description(result));
+                continue;
+            }
+            one_shots_.push_back(std::move(cached));
+        }
+    }
+
+    void AudioSystem::configure_spatial_loops(std::span<const SpatialLoop> loops)
+    {
+        clear_spatial_loops();
+        spatial_loops_.resize(loops.size());
+        if (!engine_)
+            return;
+        for (std::size_t index = 0; index < loops.size(); ++index)
+        {
+            const auto& source = loops[index];
+            if (source.path.empty())
+                continue;
+            auto sound = create_loop_sound(*engine_, source.path);
+            if (!sound)
+                continue;
+            ma_sound_set_position(sound.get(), source.position.x, source.position.y, source.position.z);
+            ma_sound_set_attenuation_model(sound.get(), ma_attenuation_model_linear);
+            ma_sound_set_min_distance(sound.get(), 0.8F);
+            ma_sound_set_max_distance(sound.get(), 9.0F);
+            ma_sound_set_volume(sound.get(), 0);
+            ma_sound_start(sound.get());
+            spatial_loops_[index] = std::move(sound);
+        }
+    }
+
+    void AudioSystem::clear_spatial_loops() noexcept
+    {
+        for (auto& sound : spatial_loops_)
+            destroy_sound(sound);
+        spatial_loops_.clear();
+    }
+
+    void AudioSystem::set_spatial_loop_volume(std::size_t index, float volume)
+    {
+        auto& sound = spatial_loops_.at(index);
+        if (sound)
+            ma_sound_set_volume(sound.get(), volume);
+    }
+
+    void AudioSystem::set_listener(glm::vec3 position, glm::vec3 forward) noexcept
+    {
+        if (!engine_)
+            return;
+        ma_engine_listener_set_position(engine_.get(), 0, position.x, position.y, position.z);
+        ma_engine_listener_set_direction(engine_.get(), 0, forward.x, forward.y, forward.z);
+        ma_engine_listener_set_world_up(engine_.get(), 0, 0, 1, 0);
+    }
+
+    void AudioSystem::set_master_volume(float volume)
+    {
+        if (!std::isfinite(volume) || volume < 0 || volume > 1)
+            throw std::invalid_argument("Audio volume must be between 0 and 1");
+        config_.master_volume = volume;
+        if (engine_)
+            ma_engine_set_volume(engine_.get(), volume);
+    }
+
+    void AudioSystem::set_paused(bool paused)
+    {
+        if (!engine_)
+            return;
+        if (paused)
+            ma_engine_stop(engine_.get());
+        else
+            ma_engine_start(engine_.get());
     }
 
     void AudioSystem::play_loop(const std::filesystem::path& file_path, const float volume, const float fade_seconds)
@@ -182,6 +293,7 @@ namespace RelayCore
         {
             return;
         }
+        ma_sound_set_spatialization_enabled(next_loop_sound.get(), MA_FALSE);
 
         destroy_sound(fading_loop_sound_);
 

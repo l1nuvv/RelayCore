@@ -130,7 +130,11 @@ namespace RelayCore
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("render_ui");
-                renderer_->draw_ui(frame, *audio_system_);
+                if (renderer_->begin_ui(frame, *audio_system_, app_delegate_->has_custom_ui()))
+                {
+                    app_delegate_->on_ui(services);
+                    renderer_->end_ui();
+                }
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");

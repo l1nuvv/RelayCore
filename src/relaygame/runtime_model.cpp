@@ -1,4 +1,4 @@
-#include "relaycore/gameplay/runtime_model.h"
+#include "relaygame/runtime_model.h"
 
 #include "relaycore/debug/inspector_source_reference.h"
 #include "relaycore/world/blockout_level.h"
@@ -10,8 +10,15 @@
 #include <string_view>
 #include <unordered_set>
 
-namespace RelayCore::gameplay
+namespace RelayGame
 {
+    using namespace RelayCore::gameplay;
+    using RelayCore::BlockoutLevel;
+    using RelayCore::EntitySpawnData;
+    namespace physics = RelayCore::physics;
+    using RelayCore::AuthoredSourceLocation;
+    namespace debug = RelayCore::debug;
+
     namespace
     {
         struct SourceInfo {
@@ -855,4 +862,4 @@ namespace RelayCore::gameplay
             result.restored_turrets
         );
     }
-} // namespace RelayCore::gameplay
+} // namespace RelayGame

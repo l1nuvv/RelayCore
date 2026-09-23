@@ -1,12 +1,13 @@
+#include "relaygame/usable_interaction.h"
 #pragma once
 
 #include "relaycore/core/engine_config.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/physics/collision.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/mission_runtime.h"
+#include "relaygame/runtime_model.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -74,7 +75,7 @@ namespace AcceptanceHarness
         std::vector<std::string> inventory_items{};
         std::vector<std::string> activated_targets{};
         std::vector<std::string> signaled_targets{};
-        RelayCore::gameplay::MissionRuntime mission_runtime{};
+        RelayGame::MissionRuntime mission_runtime{};
         RelayCore::gameplay::PlayerCombatState player_combat{};
         RelayCore::physics::Aabb spawn_bounds{};
         RelayCore::physics::Aabb airlock_bounds{};
@@ -152,7 +153,7 @@ namespace AcceptanceHarness
 
         [[nodiscard]] auto open_outer_bulkhead() -> RelayCore::gameplay::UseInteractionOutcome
         {
-            return RelayCore::gameplay::apply_usable_interaction(
+            return RelayGame::apply_usable_interaction(
                        *find_outer_panel(),
                        doors,
                        usables,
@@ -186,7 +187,7 @@ namespace AcceptanceHarness
 
         [[nodiscard]] auto pick_up_lab_keycard() -> RelayCore::gameplay::UseInteractionOutcome
         {
-            const auto outcome = RelayCore::gameplay::apply_usable_interaction(
+            const auto outcome = RelayGame::apply_usable_interaction(
                 *find_pickup(),
                 doors,
                 usables,
@@ -200,7 +201,7 @@ namespace AcceptanceHarness
 
         [[nodiscard]] auto authorize_inner_bulkhead() -> RelayCore::gameplay::UseInteractionOutcome
         {
-            const auto outcome = RelayCore::gameplay::apply_usable_interaction(
+            const auto outcome = RelayGame::apply_usable_interaction(
                 *find_reader(),
                 doors,
                 usables,
@@ -258,7 +259,7 @@ namespace AcceptanceHarness
 
         [[nodiscard]] auto activate_terminal() -> RelayCore::gameplay::UseInteractionOutcome
         {
-            return RelayCore::gameplay::apply_usable_interaction(
+            return RelayGame::apply_usable_interaction(
                        *find_terminal(),
                        doors,
                        usables,
@@ -278,9 +279,9 @@ namespace AcceptanceHarness
         }
 
         [[nodiscard]] auto capture_snapshot(const std::uint64_t simulation_tick) const
-            -> RelayCore::gameplay::RuntimeLevelSnapshot
+            -> RelayGame::RuntimeLevelSnapshot
         {
-            return RelayCore::gameplay::capture_runtime_level_snapshot(
+            return RelayGame::capture_runtime_level_snapshot(
                 session.level_path.string(),
                 session.runtime_registry,
                 doors,
@@ -296,10 +297,10 @@ namespace AcceptanceHarness
             );
         }
 
-        [[nodiscard]] auto restore_snapshot(const RelayCore::gameplay::RuntimeLevelSnapshot& snapshot)
-            -> RelayCore::gameplay::SnapshotRestoreResult
+        [[nodiscard]] auto restore_snapshot(const RelayGame::RuntimeLevelSnapshot& snapshot)
+            -> RelayGame::SnapshotRestoreResult
         {
-            return RelayCore::gameplay::restore_runtime_level_snapshot(
+            return RelayGame::restore_runtime_level_snapshot(
                 snapshot,
                 session.level_path.string(),
                 session.runtime_registry,

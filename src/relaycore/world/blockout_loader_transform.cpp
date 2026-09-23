@@ -285,7 +285,8 @@ namespace RelayCore::detail
         EntitySpawnData transformed = entity;
         transformed.origin = rotate_vec3_y(entity.origin, rotation) + offset;
         transformed.angles = entity.angles;
-        transformed.angles.y += quarter_turn_degrees(rotation);
+        // Authored entity angles are [yaw, pitch, roll], with yaw=0 facing +Z.
+        transformed.angles.x += quarter_turn_degrees(rotation);
 
         if (rotation == QuarterTurn::Deg0)
         {

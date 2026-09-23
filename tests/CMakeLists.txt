@@ -1,18 +1,29 @@
 add_executable(relaycore_tests)
 add_executable(relaycore_content_validation)
+add_executable(relaycore_game_lifecycle game_lifecycle_tests.cpp)
+target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
 add_executable(relaycore_graphics_baseline)
+add_executable(relaycore_window_lifetime_tests window_lifetime_tests.cpp)
+add_executable(relaycore_power_restoration_graphics
+    power_restoration_graphics.cpp
+)
+target_link_libraries(relaycore_power_restoration_graphics PRIVATE
+    RelayGame::runtime RelayCore::project_options RelayCore::warnings
+)
+set_target_properties(relaycore_power_restoration_graphics PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_graphics_baseline PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_window_lifetime_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 
 target_sources(
     relaycore_tests
     PRIVATE
-        ../src/relaygame/level_session_builder.cpp
-        ../src/relaygame/player_controller.cpp
-        ../src/relaygame/player_controller_motion.cpp
-        ../src/relaygame/world_audio_zones.cpp
-        ../src/relaygame/world_inspector.cpp
+        world_environment_tests.cpp
+        static_model_tests.cpp
+        enemy_runtime_tests.cpp
+        save_game_tests.cpp
+        level_editor_tests.cpp
         camera_tests.cpp
         diagnostics_publication_policy_tests.cpp
         audio_system_tests.cpp
@@ -28,6 +39,7 @@ target_sources(
         log_tests.cpp
         mission_runtime_tests.cpp
         player_motion_tests.cpp
+        player_experience_tests.cpp
         render_authoring_config_tests.cpp
         pipeline_authoring_overlay_tests.cpp
 
@@ -54,16 +66,6 @@ target_sources(
 target_sources(
     relaycore_content_validation
     PRIVATE
-        ../src/relaygame/game_world_runtime.cpp
-        ../src/relaygame/game_world_runtime_diagnostics.cpp
-        ../src/relaygame/game_world_runtime_feedback.cpp
-        ../src/relaygame/game_world_runtime_update.cpp
-        ../src/relaygame/level_session_builder.cpp
-        ../src/relaygame/player_controller.cpp
-        ../src/relaygame/player_controller_config.cpp
-        ../src/relaygame/player_controller_motion.cpp
-        ../src/relaygame/world_audio_zones.cpp
-        ../src/relaygame/world_inspector.cpp
         content_validation_main.cpp
         shipped_content_validation_tests.cpp
 )
@@ -71,6 +73,7 @@ target_sources(
 target_link_libraries(
     relaycore_tests
     PRIVATE
+        RelayGame::runtime
         RelayCore::engine
         RelayCore::project_options
         RelayCore::warnings
@@ -88,6 +91,7 @@ target_link_libraries(
 target_link_libraries(
     relaycore_content_validation
     PRIVATE
+        RelayGame::runtime
         RelayCore::engine
         RelayCore::project_options
         RelayCore::warnings
@@ -97,7 +101,16 @@ target_link_libraries(
 find_package(doctest CONFIG REQUIRED)
 include(doctest)
 
-foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_graphics_baseline)
+target_link_libraries(relaycore_window_lifetime_tests PRIVATE RelayCore::engine)
+
+foreach(test_target IN ITEMS
+    relaycore_tests
+    relaycore_content_validation
+    relaycore_graphics_baseline
+    relaycore_window_lifetime_tests
+    relaycore_power_restoration_graphics
+    relaycore_game_lifecycle
+)
     relaycore_apply_standard_target_settings(${test_target})
 
     add_custom_command(
@@ -110,6 +123,32 @@ foreach(test_target IN ITEMS relaycore_tests relaycore_content_validation relayc
         COMMAND_EXPAND_LISTS
     )
 endforeach()
+
+add_test(NAME graphics.window_lifetime COMMAND relaycore_window_lifetime_tests)
+add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
+set_tests_properties(graphics.game_lifecycle PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_game_lifecycle>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+)
+add_test(NAME graphics.power_restoration COMMAND relaycore_power_restoration_graphics)
+set_tests_properties(graphics.power_restoration PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+)
+set_tests_properties(
+    graphics.window_lifetime
+    PROPERTIES
+        LABELS "integration;graphics"
+        RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_window_lifetime_tests>"
+)
 
 add_test(
     NAME graphics.color_pipeline_baseline

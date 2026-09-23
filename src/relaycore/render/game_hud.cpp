@@ -91,6 +91,22 @@ namespace RelayCore::render
     void GameHud::draw(const PlayerDiagnostics& player, const InteractionDiagnostics& interaction) const
     {
         RELAYCORE_PROFILE_ZONE_N("GameHud::draw");
+        if (has_player_status(player) && player.health > 0)
+        {
+            const auto* viewport = ImGui::GetMainViewport();
+            const auto center = viewport->GetCenter();
+            auto* draw = ImGui::GetForegroundDrawList();
+            ImU32 color = IM_COL32(210, 213, 196, 190);
+            if (interaction.has_focused_usable)
+            {
+                const bool ready = interaction.focused_enabled && !interaction.focused_locked
+                                   && interaction.focused_requirement_met && !interaction.focused_consumed;
+                color = ready ? IM_COL32(158, 220, 161, 255) : IM_COL32(229, 176, 92, 255);
+                draw->AddCircle(center, 9.0F, color, 24, 1.5F);
+            }
+            draw->AddCircleFilled(center, 2.0F, IM_COL32(15, 20, 18, 210));
+            draw->AddCircleFilled(center, 1.0F, color);
+        }
         if (has_player_status(player))
         {
             draw_player_status_card(player);
@@ -485,8 +501,7 @@ namespace RelayCore::render
             min,
             max,
             ImGui::ColorConvertFloat4ToU32(ImVec4(fill.x, fill.y, fill.z, fill.w * (0.72F + (strength * 0.28F)))),
-            ImGui::ColorConvertFloat4ToU32(
-                ImVec4(border.x, border.y, border.z, border.w * (0.68F + (strength * 0.32F)))
+            ImGui::ColorConvertFloat4ToU32(ImVec4(border.x, border.y, border.z, border.w * (0.68F + (strength * 0.32F)))
             ),
             kEventRounding
         );

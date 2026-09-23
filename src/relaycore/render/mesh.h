@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <glad/gl.h>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <vector>
 
@@ -12,6 +13,7 @@ namespace RelayCore::render
         glm::vec3 color{};
         glm::vec3 normal{};
         float material_kind = 0.0F;
+        glm::vec2 uv{};
     };
 
     struct CpuColorMeshData {

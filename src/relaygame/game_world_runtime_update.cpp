@@ -1,16 +1,21 @@
 #include "relaycore/app/engine_services.h"
+#include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/render/camera.h"
 #include "relaygame/game_world_runtime.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace RelayGame
 {
     void GameWorldRuntime::update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::update");
+        if (paused_)
+            return;
 
         const float delta_seconds = static_cast<float>(frame.delta_seconds);
         sync_imgui_capture(services);
@@ -139,10 +144,59 @@ namespace RelayGame
 
     void GameWorldRuntime::finalize_frame_update(RelayCore::EngineServices& services, const float delta_seconds)
     {
+        player_controller_.apply_camera(services.camera());
+        update_presentation(services, delta_seconds);
+    }
+
+    void GameWorldRuntime::update_presentation(RelayCore::EngineServices& services, const float delta_seconds)
+    {
         RELAYCORE_PROFILE_FUNCTION();
         update_ambient_audio(services);
         services.audio_system().update(delta_seconds);
         refresh_audio_runtime_state(services);
-        player_controller_.apply_camera(services.camera());
+        update_world_environment(environment_, activated_target_ids_, delta_seconds);
+        services.audio_system().set_listener(services.camera().position(), services.camera().forward());
+        for (std::size_t index = 0; index < environment_.size(); ++index)
+        {
+            auto& effect = environment_[index];
+            if (environment_sound(effect.kind)[0] == '\0')
+                continue;
+            const auto delta = effect.origin - services.camera().position();
+            const float distance = glm::length(delta);
+            bool blocked = false;
+            if (distance > 0.1F)
+            {
+                const auto occludes = [&](const RelayCore::physics::Aabb& box) {
+                    return RelayCore::physics::ray_intersection_distance(
+                               services.camera().position(),
+                               delta / distance,
+                               box,
+                               distance - 0.06F
+                    )
+                        .has_value();
+                };
+                blocked = std::ranges::any_of(
+                              level_.solids,
+                              [&](const auto& solid) {
+                                  return solid.material != RelayCore::SurfaceMaterial::Glass
+                                         && occludes({solid.mins, solid.maxs});
+                              }
+                          )
+                          || std::ranges::any_of(
+                              level_.prop_colliders,
+                              [&](const auto& solid) {
+                                  return solid.material != RelayCore::SurfaceMaterial::Glass
+                                         && occludes({solid.mins, solid.maxs});
+                              }
+                          )
+                          || std::ranges::any_of(doors_, [&](const auto& door) {
+                                 return RelayCore::gameplay::is_door_blocking(door)
+                                        && occludes(RelayCore::gameplay::current_door_bounds(door));
+                             });
+            }
+            const float target_gain = effect.strength * (blocked ? 0.08F : 0.32F);
+            effect.audible_gain += (target_gain - effect.audible_gain) * (1.0F - std::exp(-delta_seconds * 8));
+            services.audio_system().set_spatial_loop_volume(index, effect.audible_gain);
+        }
     }
 } // namespace RelayGame

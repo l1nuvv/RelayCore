@@ -11,11 +11,23 @@ void main()
     vec3 normal = normalize(world_normal);
     vec2 uv = surface_uv(world_position, normal);
     int material_id = int(material_kind + 0.5);
+    // Presentation-only materials: soft steam quad and emissive electrical/lamp surfaces.
+    if (material_id == 27 || material_id == 28)
+    {
+        float alpha = material_id == 27 ? (1.0 - smoothstep(0.05, 0.5, length(object_position.xy))) * 0.16 : 1.0;
+        float fog = clamp((fog_distance - u_fog_start) / max(u_fog_end-u_fog_start, 0.001), 0.0, 1.0);
+        out_color = vec4(mix(vertex_color, u_fog_color, scene_fog_factor(fog)), alpha);
+        return;
+    }
+    bool clothing = material_id >= 23 && material_id <= 26;
+    if (clothing) uv = surface_uv(object_position, normalize(object_normal));
     vec3 atlas_sample = sample_blockout_atlas(material_id, uv);
-    vec3 atlas_base = mix(vertex_color, vertex_color * (0.62 + (atlas_sample * 0.92)), rc_material_atlas_mix(material_id));
+    vec3 atlas_base = mix(vertex_color, vertex_color * atlas_sample, rc_material_atlas_mix(material_id));
 
     vec3 emissive;
     vec3 material_color = apply_material_surface(atlas_base, uv, normal, material_id, emissive);
+    if (clothing) { material_color = atlas_base; emissive = vec3(0.0); }
+    if (u_model_textured != 0) { material_color = texture(u_model_texture, model_uv).rgb * vertex_color; emissive = vec3(0.0); }
     emissive *= 1.0 + RELAYCORE_SCENE_EMISSIVE_BOOST;
     float sky_ambient = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
     float broad_shadow = panel_seam_mask(uv + vec2(0.13, 0.09), 1.9, 0.032);
@@ -24,6 +36,8 @@ void main()
     float cavity_shadow = (broad_shadow * rc_cavity_broad_strength())
                           + (micro_shadow * rc_cavity_micro_strength())
                           + (underside_shadow * rc_cavity_underside_strength());
+    if (clothing) cavity_shadow = underside_shadow * 0.12;
+    if (u_model_textured != 0) cavity_shadow = 0.0;
     float ambient_strength = clamp(
         (mix(rc_ambient_floor(), rc_ambient_zenith(), sky_ambient) - (cavity_shadow * rc_cavity_ambient_darken()))
             * rc_material_ambient_bias(material_id),
@@ -66,9 +80,30 @@ void main()
             0.0,
             1.0
         );
-        lit_color += u_local_light_colors[light_index] * attenuation * wrapped_diffuse * rc_local_light_gain();
+        lit_color += material_color * u_local_light_colors[light_index] * attenuation * wrapped_diffuse * rc_local_light_gain();
     }
 
+    if (u_spot_enabled != 0)
+    {
+        vec3 delta = world_position - u_spot_position;
+        float distance_to_spot = length(delta);
+        vec3 ray = delta / max(distance_to_spot, 0.001);
+        float cone = smoothstep(0.899, 0.951, dot(ray, u_spot_direction));
+        float falloff = pow(clamp(1.0 - distance_to_spot / u_spot_range, 0.0, 1.0), 1.5);
+        vec4 clip = u_spot_view_projection * vec4(world_position, 1.0);
+        vec3 shadow_coord = clip.xyz / max(clip.w, 0.001) * 0.5 + 0.5;
+        float visibility = 0.0;
+        if (clip.w > 0.0 && shadow_coord.z >= 0.0 && shadow_coord.z <= 1.0
+            && all(greaterThanEqual(shadow_coord.xy, vec2(0))) && all(lessThanEqual(shadow_coord.xy, vec2(1))))
+        {
+            vec2 texel = 1.0 / vec2(textureSize(u_spot_shadow_map, 0));
+            float bias = max(0.00005, 0.0003 * (1.0 - max(dot(normal, -ray), 0.0)));
+            for (int y = -1; y <= 1; ++y)
+                for (int x = -1; x <= 1; ++x)
+                    visibility += shadow_coord.z - bias <= texture(u_spot_shadow_map, shadow_coord.xy + vec2(x,y) * texel).r ? 1.0 / 9.0 : 0.0;
+        }
+        lit_color += material_color * u_spot_color * cone * falloff * visibility * max(dot(normal, -ray), 0.0) * 2.4;
+    }
     lit_color += emissive;
 
     float fog_range = max(u_fog_end - u_fog_start, 0.001);

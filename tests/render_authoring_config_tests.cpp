@@ -19,8 +19,13 @@ TEST_CASE("render authoring config loads shipped material and light contract")
     CHECK(RelayCore::render::material_authoring(config, RelayCore::SurfaceMaterial::Glass).transparent);
     CHECK(
         RelayCore::render::material_authoring(config, RelayCore::SurfaceMaterial::WallPanel).render_profile
-        == RelayCore::render::MaterialRenderProfile::PanelInset
+        == RelayCore::render::MaterialRenderProfile::Default
     );
+    CHECK(RelayCore::render::material_authoring(config, RelayCore::SurfaceMaterial::WallPanel).atlas_mix == 1.0F);
+    const auto& matte = RelayCore::render::material_authoring(config, RelayCore::SurfaceMaterial::Matte);
+    CHECK(matte.atlas_mix == 0.0F);
+    CHECK(matte.render_profile == RelayCore::render::MaterialRenderProfile::Default);
+    CHECK_FALSE(matte.transparent);
     CHECK(config.render_light.max_radius == doctest::Approx(48.0F));
     CHECK(config.lighting.local_light_gain == doctest::Approx(1.28F));
 }

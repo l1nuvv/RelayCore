@@ -317,7 +317,7 @@ namespace RelayCore::physics
             {
                 const float flat_progress = planar_distance_sq(flat_position, position);
                 const float step_progress = planar_distance_sq(*stepped, position);
-                if (step_progress > flat_progress + config.epsilon)
+                if (step_progress > flat_progress + config.epsilon * config.epsilon)
                 {
                     flat_position = *stepped;
                     hit_x = false;

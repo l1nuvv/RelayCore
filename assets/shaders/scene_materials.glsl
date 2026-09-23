@@ -2,6 +2,10 @@ vec3 apply_material_surface(vec3 base_color, vec2 uv, vec3 normal, int material_
 {
     emissive = vec3(0.0);
     int material_profile = rc_material_profile(material_id);
+    if (material_profile == RC_MATERIAL_PROFILE_DEFAULT)
+    {
+        return base_color;
+    }
 
     if (material_profile == RC_MATERIAL_PROFILE_GLASS)
     {

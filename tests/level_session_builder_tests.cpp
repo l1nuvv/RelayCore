@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 #include <fstream>
+#include <glm/trigonometric.hpp>
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
@@ -17,6 +18,28 @@ namespace
         return std::abs(lhs - rhs) <= 0.0001F;
     }
 } // namespace
+
+TEST_CASE("level session builder rejects an unresolvable presentation activation")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "power.toml";
+    for (const auto* classname : {"render_light", "audio_zone"})
+    {
+        std::ofstream out{path};
+        out << "[[solid]]\norigin = [0, -0.1, 0]\nsize = [4, 0.2, 4]\nmaterial = \"Floor\"\n"
+            << "[[entity]]\nclassname = \"" << classname
+            << "\"\norigin = [0, 1, 0]\nrequired_target = \"missing_power\"\n";
+        out.close();
+        RelayCore::core::GameplayConfig config{};
+        config.level_path = path.string();
+        CHECK_THROWS_WITH_AS(
+            (void) RelayGame::LevelSessionBuilder{config}.build(),
+            doctest::Contains("required_target 'missing_power'"),
+            std::runtime_error
+        );
+    }
+}
 
 TEST_CASE("level session builder applies authored spawn view angles")
 {
@@ -53,6 +76,35 @@ TEST_CASE("level session builder applies authored spawn view angles")
 
     std::filesystem::remove(path);
     RelayCore::log::shutdown();
+}
+
+TEST_CASE("level session builder rotates module spawn yaw while preserving pitch")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "rotated_spawn.toml";
+
+    for (const int rotation : {0, 90, 180, 270, -90, 450})
+    {
+        CAPTURE(rotation);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[module_template]]\nname = \"spawn_room\"\n"
+                   "solids = [{ origin = [0, -0.1, 0], size = [4, 0.2, 4], material = \"Floor\" }]\n"
+                   "entities = [{ classname = \"player_spawn\", origin = [0, 0, 0], angles = [180, 15, 0] }]\n"
+                   "[[module_instance]]\ntemplate = \"spawn_room\"\nrotation_y = "
+                << rotation << '\n';
+        }
+        RelayCore::core::GameplayConfig config{};
+        config.level_path = path.string();
+        const auto session = RelayGame::LevelSessionBuilder{config}.build();
+        REQUIRE(session.spawn_view_angles.has_value());
+        const float normalized_rotation = static_cast<float>((rotation % 360 + 360) % 360);
+        const float expected_yaw = glm::radians(90.0F - (180.0F + normalized_rotation));
+        CHECK(spawn_angles_nearly_equal(session.spawn_view_angles->x, expected_yaw));
+        CHECK(spawn_angles_nearly_equal(session.spawn_view_angles->y, glm::radians(15.0F)));
+    }
 }
 
 TEST_CASE("level session builder collects authoring overlap warnings")
