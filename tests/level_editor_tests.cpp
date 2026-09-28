@@ -131,17 +131,67 @@ TEST_CASE("editor flattened episode preserves the full mission and authored valu
     }
     RelayCore::core::GameplayConfig config;
     auto session = RelayGame::LevelSessionBuilder{config}.build(loaded, path);
-    REQUIRE(session.mission_definition.steps.size() == 6);
+    const auto original_mission = RelayGame::MissionBuilder{original}.build();
+    const auto& loaded_mission = session.mission_definition;
+    REQUIRE_FALSE(original_mission.steps.empty());
+    REQUIRE(loaded_mission.steps.size() == original_mission.steps.size());
+    CHECK(loaded_mission.completion_title == original_mission.completion_title);
+    CHECK(loaded_mission.completion_detail == original_mission.completion_detail);
+    for (std::size_t i = 0; i < original_mission.steps.size(); ++i)
+    {
+        CAPTURE(i);
+        const auto& expected = original_mission.steps[i];
+        const auto& actual = loaded_mission.steps[i];
+        CHECK(actual.kind == expected.kind);
+        CHECK(actual.title == expected.title);
+        CHECK(actual.detail == expected.detail);
+        CHECK(actual.target == expected.target);
+        CHECK(actual.bounds.mins == expected.bounds.mins);
+        CHECK(actual.bounds.maxs == expected.bounds.maxs);
+    }
     REQUIRE(session.ending.has_value());
     std::vector<std::string> inventory, activated, signaled;
-    for (const auto* name : {"spare_fuse", "power_breaker", "cooling_control", "airlock_reader"})
+    for (const auto* name : {"power_breaker", "filter_purge", "cooling_control", "airlock_reader"})
     {
+        CAPTURE(name);
         auto usable = std::ranges::find(session.usables, std::string{name}, &RelayCore::gameplay::RuntimeUsable::name);
         REQUIRE(usable != session.usables.end());
         CHECK(
             RelayGame::apply_usable_interaction(*usable, session.doors, session.usables, inventory, activated, signaled)
-                .primary_applied
+                .kind
+            == RelayCore::gameplay::UseInteractionOutcome::Locked
         );
+    }
+    for (const auto* name :
+         {"spare_fuse",
+          "maintenance_isolator",
+          "bus_relay",
+          "power_breaker",
+          "filter_purge",
+          "cooling_control",
+          "airlock_reader"})
+    {
+        CAPTURE(name);
+        auto usable = std::ranges::find(session.usables, std::string{name}, &RelayCore::gameplay::RuntimeUsable::name);
+        REQUIRE(usable != session.usables.end());
+        const auto event = RelayGame::apply_usable_interaction(
+            *usable,
+            session.doors,
+            session.usables,
+            inventory,
+            activated,
+            signaled
+        );
+        CHECK(event.primary_applied);
+        if (!usable->chain_target.empty())
+            CHECK(event.chain_applied);
+    }
+    for (const auto* name : {"maintenance_shutter", "sector_airlock"})
+    {
+        CAPTURE(name);
+        const auto door = std::ranges::find(session.doors, std::string{name}, &RelayCore::gameplay::RuntimeDoor::name);
+        REQUIRE(door != session.doors.end());
+        CHECK(door->state == RelayCore::gameplay::DoorState::Opening);
     }
 }
 

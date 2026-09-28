@@ -262,14 +262,30 @@ namespace RelayGame
             } else
             {
                 const auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
+                const glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
+                const bool is_power_fuse = usable.item_id == "power_fuse";
                 if (!camera_visible)
                 {
-                    shadow_casters_.push(pickup_mesh_, make_aabb_model_matrix(bounds));
+                    if (is_power_fuse)
+                        shadow_casters_.push(power_fuse_model_->mesh, pickup_model);
+                    else
+                        shadow_casters_.push(pickup_mesh_, pickup_model);
                     continue;
                 }
                 ++diagnostics_.usable_draw_calls;
-                record_render_draw(RenderPass::Opaque, mesh_triangle_count(pickup_mesh_));
-                render_queue_.push(pickup_mesh_, make_aabb_model_matrix(bounds), RenderPass::Opaque);
+                if (is_power_fuse)
+                {
+                    record_render_draw(
+                        RenderPass::Opaque,
+                        static_cast<std::uint32_t>(power_fuse_model_->mesh.index_count() / 3)
+                    );
+                    render_queue_
+                        .push(power_fuse_model_->mesh, pickup_model, RenderPass::Opaque, &power_fuse_model_->texture);
+                } else
+                {
+                    record_render_draw(RenderPass::Opaque, mesh_triangle_count(pickup_mesh_));
+                    render_queue_.push(pickup_mesh_, pickup_model, RenderPass::Opaque);
+                }
                 if (focused && highlight_visible)
                 {
                     ++diagnostics_.highlight_draw_calls;
@@ -284,37 +300,87 @@ namespace RelayGame
         }
     }
     void WorldSceneRenderer::render_turrets(
-        const RelayCore::render::PerspectiveCamera&,
+        const RelayCore::render::PerspectiveCamera& camera,
         const std::span<const RelayCore::gameplay::RuntimeTurret> turrets
     )
     {
         RELAYCORE_PROFILE_FUNCTION();
         for (const RelayCore::gameplay::RuntimeTurret& turret : turrets)
         {
-            const RelayCore::render::StaticColorMesh& base_mesh =
-                turret.destroyed ? turret_destroyed_mesh_ : turret_mesh_;
+            const glm::vec3 size = turret.bounds.maxs - turret.bounds.mins;
+            const auto& turret_model = turret.destroyed ? destroyed_turret_model_ : turret_model_;
+            auto model = glm::translate(glm::mat4{1.0F}, turret.origin);
+            model = glm::rotate(model, glm::radians(turret.yaw), glm::vec3{0, 1, 0});
+            model = glm::scale(model, size);
             if (!aabb_intersects_planes(frustum_planes_, turret.bounds.mins, turret.bounds.maxs))
             {
-                shadow_casters_.push(base_mesh, make_aabb_model_matrix(turret.bounds));
+                shadow_casters_.push(turret_model->mesh, model);
                 continue;
             }
 
-            record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(base_mesh));
-            render_queue_.push(base_mesh, make_aabb_model_matrix(turret.bounds), RelayCore::render::RenderPass::Opaque);
-
-            const float alert_strength =
-                std::max(turret.hit_flash_remaining_seconds * 4.5F, turret.fire_flash_remaining_seconds * 5.5F);
-            if (turret.destroyed || alert_strength <= 0.001F)
-            {
-                continue;
-            }
-
-            const RelayCore::physics::Aabb alert_bounds =
-                expand_aabb(turret.bounds, glm::vec3{0.025F + std::min(alert_strength, 0.06F)});
-            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(turret_alert_mesh_));
+            record_render_draw(
+                RelayCore::render::RenderPass::Opaque,
+                static_cast<std::uint32_t>(turret_model->mesh.index_count() / 3)
+            );
             render_queue_
-                .push(turret_alert_mesh_, make_aabb_model_matrix(alert_bounds), RelayCore::render::RenderPass::Overlay);
+                .push(turret_model->mesh, model, RelayCore::render::RenderPass::Opaque, &turret_model->texture);
+            if (turret.enabled && !turret.destroyed && turret.warming_up
+                && std::sin(turret.warmup_remaining_seconds * 24.0F) >= 0.0F)
+            {
+                record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(turret_warning_mesh_));
+                render_queue_.push(turret_warning_mesh_, model, RelayCore::render::RenderPass::Opaque);
+            }
+            if (turret.destroyed && turret.hit_flash_remaining_seconds > 0.0F)
+            {
+                const float yaw = glm::radians(turret.yaw);
+                const glm::vec3 head =
+                    turret.origin
+                    + glm::vec3{std::sin(yaw) * size.z * 0.42F, -size.y * 0.25F, std::cos(yaw) * size.z * 0.42F};
+                const float remaining = std::min(turret.hit_flash_remaining_seconds, 0.25F);
+                render_shot_trace(camera, {head, head + glm::vec3{-0.35F, 0.30F, 0.10F}, remaining}, true);
+                render_shot_trace(camera, {head, head + glm::vec3{0.30F, 0.15F, 0.30F}, remaining}, true);
+                render_shot_trace(camera, {head, head + glm::vec3{0.12F, -0.28F, -0.25F}, remaining}, true);
+            }
         }
+    }
+
+    void WorldSceneRenderer::render_shot_trace(
+        const RelayCore::render::PerspectiveCamera& camera,
+        const RelayCore::gameplay::CombatShotTrace& trace,
+        const bool hostile
+    )
+    {
+        if (trace.remaining_seconds <= 0.0F)
+            return;
+        const glm::vec3 visual_start =
+            hostile ? trace.start
+                    : trace.start + camera.right() * 0.22F - camera.up() * 0.17F + camera.forward() * 0.32F;
+        const glm::vec3 delta = trace.end - visual_start;
+        const float distance = glm::length(delta);
+        if (distance <= 0.05F)
+            return;
+
+        const glm::vec3 forward = delta / distance;
+        const float progress = glm::clamp(1.0F - trace.remaining_seconds / 0.25F, 0.0F, 1.0F);
+        const float front = std::max(progress, 0.08F);
+        const float back = std::max(0.0F, front - 0.18F);
+        const float start_distance = hostile ? 0.0F : std::max(0.05F, back * distance);
+        const float end_distance = hostile ? distance : front * distance;
+        if (end_distance <= start_distance)
+            return;
+
+        const glm::vec3 up = std::abs(forward.y) > 0.95F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
+        const glm::vec3 right = glm::normalize(glm::cross(up, forward));
+        const glm::vec3 normal = glm::cross(forward, right);
+        glm::mat4 model{1.0F};
+        const float width = hostile ? 0.018F * glm::clamp(trace.remaining_seconds / 0.08F, 0.0F, 1.0F) : 0.045F;
+        model[0] = glm::vec4{right * width, 0.0F};
+        model[1] = glm::vec4{normal * width, 0.0F};
+        model[2] = glm::vec4{forward * (end_distance - start_distance), 0.0F};
+        model[3] = glm::vec4{visual_start + forward * ((start_distance + end_distance) * 0.5F), 1.0F};
+        const auto& mesh = hostile ? turret_shot_mesh_ : player_shot_mesh_;
+        record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(mesh));
+        render_queue_.push(mesh, model, RelayCore::render::RenderPass::Overlay, nullptr, false);
     }
 
     void WorldSceneRenderer::render_inspector_pick(

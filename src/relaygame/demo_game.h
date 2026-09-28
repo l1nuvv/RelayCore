@@ -3,12 +3,14 @@
 #include "relaycore/app/app_delegate.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaygame/demo_game_runtime_ops.h"
+#include "relaygame/game_updates.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor.h"
 #include "relaygame/player_settings.h"
 #include "relaygame/runtime_model.h"
 #include "relaygame/world_scene_renderer.h"
 
+#include <future>
 #include <memory>
 #include <optional>
 
@@ -99,13 +101,17 @@ namespace RelayGame
         std::filesystem::path settings_path_;
         std::string settings_message_;
         bool settings_dirty_ = false;
+        std::future<UpdateRelease> update_check_;
+        std::optional<UpdateRelease> update_release_;
+        std::string update_message_;
+        bool update_notification_ = false;
         bool flashlight_on_ = false;
         float scene_time_ = 0.0F;
         void start_level_session(RelayCore::EngineServices& services);
 
         void reload_live_content(RelayCore::EngineServices& services);
 
-        void handle_debug_iteration_tools(RelayCore::EngineServices& services);
+        auto handle_debug_iteration_tools(RelayCore::EngineServices& services) -> bool;
 
         void publish_iteration_diagnostics(RelayCore::EngineServices& services);
 
@@ -115,7 +121,7 @@ namespace RelayGame
         std::vector<SavedGame> visited_levels_;
         std::string new_game_level_;
         RelayCore::render::IterationDiagnostics iteration_diagnostics_{};
-        std::optional<RelayGame::RuntimeLevelSnapshot> saved_runtime_snapshot_{};
+        std::optional<EncounterSnapshot> saved_runtime_snapshot_{};
     };
 
     [[nodiscard]] auto make_demo_game() -> std::unique_ptr<RelayCore::AppDelegate>;

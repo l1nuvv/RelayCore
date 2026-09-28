@@ -4,11 +4,15 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/core/profiling.h"
+#include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/enemy_runtime.h"
+#include "relaygame/game_version.h"
 #include "relaygame/level_editor.h"
 #include "relaygame/usable_interaction.h"
 #include "relaygame/world_scene_renderer.h"
@@ -16,9 +20,12 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <glad/gl.h>
+#include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
 #include <iostream>
 #include <memory>
@@ -34,12 +41,13 @@ namespace
     constexpr int width = 1280;
     constexpr int height = 720;
 
-    auto capture(const std::filesystem::path& path) -> double
+    auto capture(const std::filesystem::path& path, const int capture_width = width, const int capture_height = height)
+        -> double
     {
-        std::vector<unsigned char> pixels(width * height * 3);
+        std::vector<unsigned char> pixels(capture_width * capture_height * 3);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+        glReadPixels(0, 0, capture_width, capture_height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
         if (glGetError() != GL_NO_ERROR)
         {
             throw std::runtime_error("Power restoration framebuffer read failed");
@@ -49,14 +57,20 @@ namespace
         {
             sum += value;
         }
-        for (int y = 0; y < height / 2; ++y)
+        for (int y = 0; y < capture_height / 2; ++y)
         {
-            const auto top = pixels.begin() + y * width * 3;
-            const auto bottom = pixels.begin() + (height - 1 - y) * width * 3;
-            std::swap_ranges(top, top + width * 3, bottom);
+            const auto top = pixels.begin() + y * capture_width * 3;
+            const auto bottom = pixels.begin() + (capture_height - 1 - y) * capture_width * 3;
+            std::swap_ranges(top, top + capture_width * 3, bottom);
         }
         const std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> surface{
-            SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGB24, pixels.data(), width * 3),
+            SDL_CreateSurfaceFrom(
+                capture_width,
+                capture_height,
+                SDL_PIXELFORMAT_RGB24,
+                pixels.data(),
+                capture_width * 3
+            ),
             SDL_DestroySurface
         };
         if (!surface || !SDL_SaveBMP(surface.get(), path.string().c_str()))
@@ -69,6 +83,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -94,6 +109,49 @@ int main(int argc, char** argv)
         RelayCore::Renderer renderer{config.renderer};
         renderer.initialize(window);
         renderer.on_resize(width, height);
+        if (config.renderer.shadow_enabled)
+        {
+            RelayCore::render::StaticColorMesh box;
+            box.initialize(RelayCore::render::make_color_box_mesh_data());
+            const RelayCore::render::RenderItem floor{
+                .mesh = &box,
+                .model_matrix = glm::translate(glm::mat4{1.0F}, {0.0F, -0.1F, 0.0F})
+                                * glm::scale(glm::mat4{1.0F}, {6.0F, 0.2F, 6.0F})
+            };
+            const RelayCore::render::RenderItem occluder{
+                .mesh = &box,
+                .model_matrix = glm::translate(glm::mat4{1.0F}, {0.0F, 0.5F, 0.0F})
+                                * glm::scale(glm::mat4{1.0F}, {0.5F, 1.0F, 0.5F})
+            };
+            const std::array floor_only{floor};
+            const std::array with_occluder{floor, occluder};
+            const std::array lamp{RelayCore::render::LocalLight{
+                .position = {-1.0F, 2.0F, 0.0F},
+                .color = {2.0F, 2.0F, 2.0F},
+                .radius = 5.0F
+            }};
+            renderer.set_local_lights(lamp);
+            renderer.camera().set_position({2.0F, 4.0F, 5.0F});
+            renderer.camera().set_target({0.8F, 0.0F, 0.0F});
+            const glm::vec4 clip = renderer.camera().view_projection_matrix() * glm::vec4{0.8F, 0.0F, 0.0F, 1.0F};
+            const int pixel_x = static_cast<int>((clip.x / clip.w * 0.5F + 0.5F) * width);
+            const int pixel_y = static_cast<int>((clip.y / clip.w * 0.5F + 0.5F) * height);
+            const auto floor_brightness = [&](const std::span<const RelayCore::render::RenderItem> casters) {
+                renderer.begin_frame();
+                renderer.draw_render_queue(floor_only, casters);
+                std::array<unsigned char, 3> pixel{};
+                glReadBuffer(GL_BACK);
+                glReadPixels(pixel_x, pixel_y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel.data());
+                if (glGetError() != GL_NO_ERROR)
+                    throw std::runtime_error("Local shadow pixel read failed");
+                return static_cast<int>(pixel[0]) + pixel[1] + pixel[2];
+            };
+            const int lit = floor_brightness(floor_only);
+            const int shadowed = floor_brightness(with_occluder);
+            if (shadowed >= lit - 15)
+                throw std::runtime_error("Point light occluder did not darken the floor");
+            renderer.set_local_lights({});
+        }
         const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/power_restoration.toml"));
         RelayGame::WorldSceneRenderer scene;
         scene.initialize(
@@ -108,6 +166,8 @@ int main(int argc, char** argv)
         std::vector<RelayCore::gameplay::RuntimeTrigger> triggers;
         std::vector<RelayCore::gameplay::RuntimeUsable> usables;
         RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
+        const auto combat = RelayCore::gameplay::build_runtime_combat(level);
+        const auto reserve_enemies = RelayGame::build_enemies(level);
         std::vector<std::string> inventory, activated, signaled;
         const auto use = [&](const std::string_view name) {
             const auto found = std::ranges::find(usables, name, &RelayCore::gameplay::RuntimeUsable::name);
@@ -121,7 +181,13 @@ int main(int argc, char** argv)
         RelayGame::ScientistPose scientist;
         auto environment = RelayGame::build_world_environment(level);
         RelayGame::update_world_environment(environment, activated, 2.0F);
-        const auto render = [&](const char* name, const glm::vec3 position, const glm::vec3 target) {
+        int profile_view_index = 0;
+        const auto render = [&](const char* name,
+                                const glm::vec3 position,
+                                const glm::vec3 target,
+                                const std::span<const RelayCore::gameplay::RuntimeTurret> scene_turrets = {},
+                                const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
+                                const std::span<const RelayGame::RuntimeEnemy> scene_enemies = {}) {
             renderer.camera().set_position(position);
             renderer.camera().set_target(target);
             renderer.begin_frame();
@@ -130,18 +196,98 @@ int main(int argc, char** argv)
                 renderer.camera(),
                 0.0F,
                 doors,
-                {},
+                scene_turrets,
                 usables,
                 -1,
                 {},
                 false,
                 activated,
                 scientist,
-                environment
+                environment,
+                scene_enemies,
+                player_combat
             );
+            const std::array<std::string_view, 6> profile_names{
+                "intake-before.bmp",
+                "maintenance-open.bmp",
+                "intake-after.bmp",
+                "filter-turret.bmp",
+                "pump-after.bmp",
+                "return-threat.bmp"
+            };
+            if (profile_views && std::ranges::find(profile_names, name) != profile_names.end())
+            {
+                std::vector<double> submit_ms, completed_ms;
+                glFinish();
+                for (int frame = 0; frame < 200; ++frame)
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Playtest::view_frame");
+                    const auto offset = glm::vec3{0.05F * std::sin(frame * 0.05F), 0, 0};
+                    renderer.camera().set_position(position + offset);
+                    renderer.camera().set_target(target + offset);
+                    const auto start = std::chrono::steady_clock::now();
+                    renderer.begin_frame();
+                    scene.render(
+                        renderer,
+                        renderer.camera(),
+                        frame / 60.0F,
+                        doors,
+                        scene_turrets,
+                        usables,
+                        -1,
+                        {},
+                        false,
+                        activated,
+                        scientist,
+                        environment,
+                        scene_enemies,
+                        player_combat
+                    );
+                    const auto submitted = std::chrono::steady_clock::now();
+                    glFinish();
+                    const auto completed = std::chrono::steady_clock::now();
+                    const double cpu = std::chrono::duration<double, std::milli>(submitted - start).count();
+                    const double full = std::chrono::duration<double, std::milli>(completed - start).count();
+                    if (frame >= 20)
+                    {
+                        submit_ms.push_back(cpu);
+                        completed_ms.push_back(full);
+                        RELAYCORE_PROFILE_PLOT("view_index", profile_view_index);
+                        RELAYCORE_PROFILE_PLOT("view_submit_ms", cpu);
+                        RELAYCORE_PROFILE_PLOT("view_completed_ms", full);
+                    }
+                    RELAYCORE_PROFILE_FRAME();
+                }
+                std::ranges::sort(submit_ms);
+                std::ranges::sort(completed_ms);
+                std::cout << "profile_view=" << profile_view_index++ << "; name=" << name
+                          << "; samples=" << completed_ms.size() << "; submit_p50_ms=" << submit_ms[90]
+                          << "; submit_p95_ms=" << submit_ms[171] << "; completed_p50_ms=" << completed_ms[90]
+                          << "; completed_p95_ms=" << completed_ms[171] << "; completed_max_ms=" << completed_ms.back()
+                          << "; local_lights=" << scene.diagnostics().local_light_count << '\n';
+                renderer.camera().set_position(position);
+                renderer.camera().set_target(target);
+                renderer.begin_frame();
+                scene.render(
+                    renderer,
+                    renderer.camera(),
+                    0,
+                    doors,
+                    scene_turrets,
+                    usables,
+                    -1,
+                    {},
+                    false,
+                    activated,
+                    scientist,
+                    environment,
+                    scene_enemies,
+                    player_combat
+                );
+            }
             return capture(std::filesystem::path{"power-captures"} / name);
         };
-        if (config.renderer.shadow_enabled)
+        if (config.renderer.shadow_enabled && config.renderer.shadow_light_intensity > 0.0F)
         {
             RelayGame::PreparedWorldSceneData caster_data{};
             const auto add_chunk = [&](const glm::vec3 center, const bool transparent) {
@@ -316,7 +462,8 @@ int main(int argc, char** argv)
             side_glass_scene.shutdown();
         }
         const auto before = render("intake-before.bmp", {0.0F, 1.65F, -3.5F}, {0.0F, 1.65F, 5.0F});
-        if (scene.diagnostics().local_light_count != 5)
+        (void) render("spawn-before.bmp", {-2.0F, 1.65F, -3.5F}, {-2.0F, 1.65F, 5.0F});
+        if (scene.diagnostics().local_light_count != 8)
         {
             throw std::runtime_error("Unpowered sector must use emergency lights only");
         }
@@ -348,20 +495,45 @@ int main(int argc, char** argv)
         (void) render("switch-room-close-left.bmp", {12.0F, 1.65F, 19.0F}, {14.3F, 1.5F, 22.0F});
         (void) render("switch-room-close-right.bmp", {15.5F, 1.65F, 19.0F}, {14.3F, 1.5F, 22.0F});
         (void) render("pump-before.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
+        (void) render("pump-fan-mount.bmp", {8.0F, 1.65F, 8.5F}, {10.0F, 2.55F, 10.77F});
         RelayGame::update_world_environment(environment, activated, 1.25F);
         (void) render("sparks.bmp", {13.2F, 1.65F, 20.0F}, {14.05F, 1.68F, 21.60F});
-        if (!use("spare_fuse").primary_applied || !use("power_breaker").chain_applied)
+        (void) render("service-wing-entrance.bmp", {12.5F, 1.65F, 20.0F}, {13.0F, 1.65F, 27.0F});
+        (void) render("service-floor-edge.bmp", {13.0F, 1.65F, 27.0F}, {13.0F, 0.9F, 31.0F});
+        (void) render("intake-corridor-edge.bmp", {9.72F, 1.65F, -0.99F}, {11.5F, 0.9F, 0.0F});
+        (void) render("maintenance-before.bmp", {13.0F, 1.65F, 33.0F}, {15.5F, 1.4F, 38.85F});
+        if (!use("spare_fuse").primary_applied || !use("maintenance_isolator").primary_applied)
+            throw std::runtime_error("Maintenance isolator interaction failed");
+        static_cast<void>(RelayCore::gameplay::update_doors(5, {}, doors));
+        (void
+        ) render("maintenance-open.bmp", {15.5F, 1.65F, 34.0F}, {21.5F, 1.0F, 34.0F}, {}, nullptr, reserve_enemies);
+        auto destroyed_enemies = reserve_enemies;
+        auto winding_enemies = reserve_enemies;
+        winding_enemies.front().state.mode = RelayGame::EnemyMode::Windup;
+        winding_enemies.front().state.timer = .225F;
+        (void) render("maintenance-windup.bmp", {19.5F, 1.65F, 34}, {21.5F, .5F, 34}, {}, nullptr, winding_enemies);
+        destroyed_enemies.front().state.mode = RelayGame::EnemyMode::Dead;
+        (void
+        ) render("maintenance-wreck.bmp", {15.5F, 1.65F, 34.0F}, {21.5F, 0.5F, 34.0F}, {}, nullptr, destroyed_enemies);
+        (void) render("reserve-bus.bmp", {22.0F, 1.65F, 34.0F}, {24.85F, 1.5F, 34.0F});
+        if (!use("bus_relay").chain_applied || !use("power_breaker").chain_applied)
         {
             throw std::runtime_error("Power restoration interaction failed");
         }
         RelayGame::update_world_environment(environment, activated, 0);
         RelayGame::update_world_environment(environment, activated, 2);
         const auto after = render("intake-after.bmp", {0.0F, 1.65F, -3.5F}, {0.0F, 1.65F, 5.0F});
+        (void) render("spawn-after.bmp", {-2.0F, 1.65F, -3.5F}, {-2.0F, 1.65F, 5.0F});
         if (scene.diagnostics().local_light_count != 8 || after < before + 1.0)
         {
             throw std::runtime_error("Restoring power must visibly illuminate the sector");
         }
         (void) render("switch-room-after.bmp", {12.5F, 1.65F, 16.0F}, {14.3F, 1.5F, 22.0F});
+        (void) render("filter-passage.bmp", {7.8F, 1.65F, 13.0F}, {7.8F, 1.65F, 22.0F});
+        (void) render("filter-turret.bmp", {7.5F, 1.65F, 26.0F}, {7.5F, 1.55F, 30.7F}, combat.turrets);
+        (void) render("filter-panel.bmp", {3.4F, 1.65F, 28.3F}, {3.0F, 1.45F, 30.62F}, combat.turrets);
+        if (!use("filter_purge").chain_applied)
+            throw std::runtime_error("Filter purge must release the cooling control");
         if (!use("cooling_control").chain_applied)
         {
             throw std::runtime_error("Cooling must release the airlock interlock");
@@ -382,6 +554,29 @@ int main(int argc, char** argv)
         (void) render("pump-after.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
         static_cast<void>(RelayCore::gameplay::update_doors(5, {}, doors));
         (void) render("return-hatch-open.bmp", {7, 1.65F, 7.8F}, {3.5F, 1.65F, 8});
+        (void) render("cooling-panel-route.bmp", {8.5F, 1.65F, 8}, {6.2F, 1.5F, 6.9F});
+        (void) render("return-threat.bmp", {7, 1.65F, 8.5F}, {2.48F, 1.55F, 8.5F}, combat.turrets);
+        auto winding_turrets = combat.turrets;
+        winding_turrets[0].warming_up = true;
+        winding_turrets[0].warmup_remaining_seconds = 0.3F;
+        (void) render("return-threat-windup.bmp", {7, 1.65F, 8.5F}, {2.48F, 1.55F, 8.5F}, winding_turrets);
+        winding_turrets[0].warmup_remaining_seconds = 0.2F;
+        (void) render("return-threat-windup-off.bmp", {7, 1.65F, 8.5F}, {2.48F, 1.55F, 8.5F}, winding_turrets);
+        (void) render("return-threat-side.bmp", {4.5F, 1.65F, 7.0F}, {2.48F, 1.55F, 8.5F}, combat.turrets);
+        auto destroyed_turrets = combat.turrets;
+        destroyed_turrets[0].destroyed = true;
+        destroyed_turrets[0].hit_flash_remaining_seconds = 0.18F;
+        (void) render("return-threat-destroyed.bmp", {4.5F, 1.65F, 7.0F}, {2.48F, 1.55F, 8.5F}, destroyed_turrets);
+        auto firing_turrets = combat.turrets;
+        firing_turrets[0].shot_trace = {{2.85F, 1.55F, 8.5F}, {4.5F, 1.65F, 7.0F}, 0.08F};
+        (void) render("return-threat-shot.bmp", {4.5F, 1.65F, 7.0F}, {2.48F, 1.55F, 8.5F}, firing_turrets);
+        (void) render("return-threat-shot-side.bmp", {3.0F, 1.65F, 6.2F}, {3.5F, 1.55F, 8.0F}, firing_turrets);
+        firing_turrets[0].shot_trace.remaining_seconds = 0.04F;
+        (void) render("return-threat-shot-fading.bmp", {3.0F, 1.65F, 6.2F}, {3.5F, 1.55F, 8.0F}, firing_turrets);
+        RelayCore::gameplay::PlayerCombatState firing_player{};
+        firing_player.shot_trace = {{4.5F, 1.65F, 7.0F}, {2.85F, 1.55F, 8.5F}, 0.12F};
+        (void
+        ) render("return-player-shot.bmp", {4.5F, 1.65F, 7.0F}, {2.48F, 1.55F, 8.5F}, combat.turrets, &firing_player);
         (void) render("return-passage.bmp", {3.5F, 1.65F, 9.5F}, {3.5F, 1.65F, 3.5F});
         (void) render("button-ready.bmp", {2.35F, 1.65F, 3.9F}, {2.1F, 1.4F, 4.76F});
         const auto button_draws = scene.diagnostics().usable_draw_calls;
@@ -394,6 +589,8 @@ int main(int argc, char** argv)
         {
             throw std::runtime_error("Used button housing must remain visible");
         }
+        static_cast<void>(RelayCore::gameplay::update_doors(5, {}, doors));
+        (void) render("airlock-exit-route.bmp", {2.1F, 1.65F, 3}, {1, 1.5F, 5});
         const glm::vec3 eye{0, 1.62F, -3.5F}, down{0, 0, -3.25F};
         const auto no_body = render("body-hidden.bmp", eye, down);
         const auto world_draws = scene.diagnostics().opaque_draw_calls;
@@ -409,9 +606,113 @@ int main(int argc, char** argv)
         scientist.forward = {1, 0, 0};
         (void) render("scientist-turned.bmp", eye, {0.25F, 0, -3.5F});
         std::cout << "power_restoration=passed; mean brightness " << before << " -> " << after << '\n';
-        RelayCore::AudioSystem audio;
+        config.audio.master_volume = 0;
+        RelayCore::AudioSystem audio{config.audio};
+        audio.initialize();
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
+        if (audio.is_initialized())
+        {
+            for (const auto kind :
+                 {RelayGame::EnvironmentKind::Fan, RelayGame::EnvironmentKind::Steam, RelayGame::EnvironmentKind::Sparks
+                 })
+            {
+                const auto path = RelayCore::core::asset_path(RelayGame::environment_sound(kind));
+                audio.play_loop(path, 0);
+                if (!audio.has_active_loop() || audio.current_loop_path() != path)
+                    throw std::runtime_error("Equipment audio did not decode");
+            }
+            audio.stop_loop();
+            RelayGame::GameWorldRuntime equipment;
+            equipment.load_level_session(config, RelayGame::LevelSessionBuilder{config.gameplay}.build());
+            equipment.prepare_level_session_activation(services, false);
+            equipment.activate_level_session(services);
+            const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            for (int i = 0; i < 180; ++i)
+                equipment.update(frame, services);
+            for (const auto& effect : equipment.environment())
+            {
+                if (effect.kind == RelayGame::EnvironmentKind::Fan && effect.audible_gain != 0)
+                    throw std::runtime_error("Ventilation was audible before cooling started");
+                if (effect.kind == RelayGame::EnvironmentKind::Steam && effect.audible_gain <= 0)
+                    throw std::runtime_error("Active steam did not reach spatial audio");
+            }
+            equipment.set_paused(true, services);
+            const auto paused = equipment.capture_encounter_snapshot(0, 0, false);
+            for (int i = 0; i < 60; ++i)
+                equipment.update(frame, services);
+            for (std::size_t i = 0; i < paused.environment.size(); ++i)
+            {
+                const auto& actual = equipment.environment()[i];
+                if (actual.phase != paused.environment[i].phase
+                    || actual.audible_gain != paused.environment[i].audible_gain)
+                    throw std::runtime_error("Pause advanced equipment presentation");
+            }
+            equipment.set_paused(false, services);
+            for (const auto name :
+                 {"spare_fuse", "maintenance_isolator", "bus_relay", "power_breaker", "filter_purge", "cooling_control"
+                 })
+            {
+                const auto found =
+                    std::ranges::find(equipment.usables(), name, &RelayCore::gameplay::RuntimeUsable::name);
+                if (found == equipment.usables().end())
+                    throw std::runtime_error("Missing equipment interaction");
+                static_cast<void>(equipment.debug_apply_usable_interaction(
+                    static_cast<std::size_t>(found - equipment.usables().begin())
+                ));
+            }
+            for (int i = 0; i < 600; ++i)
+                equipment.update(frame, services);
+            for (const auto& effect : equipment.environment())
+            {
+                if (effect.kind == RelayGame::EnvironmentKind::Fan
+                    && (effect.strength < 0.99F || effect.audible_gain <= 0))
+                    throw std::runtime_error("Running ventilation did not reach spatial audio");
+                if ((effect.kind == RelayGame::EnvironmentKind::Steam
+                     || effect.kind == RelayGame::EnvironmentKind::Sparks)
+                    && effect.audible_gain > 0.001F)
+                    throw std::runtime_error("Stopped equipment retained audible feedback");
+            }
+            equipment.shutdown(services);
+            if (audio.has_active_loop())
+                throw std::runtime_error("Level shutdown retained ambient audio");
+            std::cout << "equipment_audio=passed; decode, power/cooling, pause, spatial gains, shutdown\n";
+        } else
+            std::cout << "equipment_audio=unavailable; backend check not performed\n";
+        renderer.set_diagnostics_visible(false);
+        renderer.camera().set_position({4.5F, 1.65F, 7.0F});
+        renderer.camera().set_target({2.48F, 1.55F, 8.5F});
+        renderer.begin_frame();
+        scene.render(renderer, renderer.camera(), 0.0F, doors, combat.turrets, usables, -1, {}, false);
+        RelayCore::render::PlayerDiagnostics feedback{};
+        feedback.health = 75.0F;
+        feedback.max_health = 100.0F;
+        feedback.hit_confirmation_strength = 1.0F;
+        feedback.hurt_flash_strength = 1.0F;
+        renderer.set_player_diagnostics(feedback);
+        if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
+            throw std::runtime_error("Combat feedback HUD unavailable");
+        renderer.end_ui();
+        (void) capture("power-captures/combat-feedback.bmp");
+        const auto capture_status = [&](const char* name) {
+            renderer.begin_frame();
+            scene.render(renderer, renderer.camera(), 0.0F, doors, combat.turrets, usables, -1, {}, false);
+            renderer.set_player_diagnostics(feedback);
+            if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
+                throw std::runtime_error("Player status HUD unavailable");
+            renderer.end_ui();
+            (void) capture(std::filesystem::path{"power-captures"} / name);
+        };
+        feedback.hit_confirmation_strength = 0;
+        feedback.hurt_flash_strength = 0;
+        feedback.active_hazard_contacts = 1;
+        capture_status("hud-hazard.bmp");
+        feedback.active_hazard_contacts = 0;
+        feedback.health = 0;
+        feedback.alive = false;
+        feedback.respawn_remaining_seconds = 1.25F;
+        capture_status("hud-respawn.bmp");
+        renderer.set_player_diagnostics({});
         RelayGame::LevelEditor editor;
         renderer.camera().set_position({0, 1.65F, -3.5F});
         renderer.camera().set_target({0, 1.65F, 5});
@@ -434,13 +735,18 @@ int main(int argc, char** argv)
         editor_frame();
         if (!editor.document().selection())
             throw std::runtime_error("Editor viewport picking failed");
-        const auto solid_count = editor.document().level().solids.size();
+        const bool selected_entity = editor.document().selection()->entity;
+        const auto object_count = [&] {
+            return selected_entity ? editor.document().level().entities.size()
+                                   : editor.document().level().solids.size();
+        };
+        const auto original_count = object_count();
         ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
         ImGui::GetIO().AddKeyEvent(ImGuiKey_D, true);
         editor_frame();
         ImGui::GetIO().AddKeyEvent(ImGuiKey_D, false);
         editor_frame();
-        if (editor.document().level().solids.size() != solid_count + 1)
+        if (object_count() != original_count + 1)
         {
             (void) capture("power-captures/editor.bmp");
             throw std::runtime_error(
@@ -455,7 +761,7 @@ int main(int argc, char** argv)
         ImGui::GetIO().AddKeyEvent(ImGuiKey_Z, false);
         ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, false);
         editor_frame();
-        if (editor.document().level().solids.size() != solid_count)
+        if (object_count() != original_count)
             throw std::runtime_error("Editor undo shortcut failed");
         const auto selected = *editor.document().selection();
         const auto bounds = editor.document().bounds(selected);
@@ -553,22 +859,47 @@ int main(int argc, char** argv)
             event.key.scancode = code;
             active_game->on_event(event, services);
         };
-        const auto draw_game = [&](const char* name) {
+        const auto draw_game = [&](const char* name, bool log_text = false) {
             renderer.begin_frame();
             active_game->on_render(game_frame, services);
             if (renderer.begin_ui(game_frame, audio, active_game->has_custom_ui()))
             {
+                if (log_text)
+                    ImGui::LogToFile(-1, (std::string{"power-captures/"} + name + ".txt").c_str());
                 active_game->on_ui(services);
+                if (log_text)
+                    ImGui::LogFinish();
                 renderer.end_ui();
             }
-            return capture(std::filesystem::path{"power-captures"} / name);
+            const auto extent = window.pixel_extent();
+            return capture(std::filesystem::path{"power-captures"} / name, extent.width, extent.height);
         };
         (void) draw_game("main-menu.bmp");
         if (!game.has_custom_ui() || window.relative_mouse_mode())
             throw std::runtime_error("Startup must show a menu and release the cursor");
+        const auto resize = [&](const int requested_width, const int requested_height) {
+            if (!SDL_SetWindowSize(window.handle(), requested_width, requested_height)
+                || !SDL_SyncWindow(window.handle()))
+                throw std::runtime_error(SDL_GetError());
+            const auto extent = window.pixel_extent();
+            renderer.on_resize(extent.width, extent.height);
+        };
+        resize(960, 540);
+        (void) draw_game("small-main-menu.bmp", true);
+        if (ImGui::GetIO().DisplaySize.x != 960 || ImGui::GetIO().DisplaySize.y != 540)
+            throw std::runtime_error("UI viewport did not follow the smaller window");
         key(SDL_SCANCODE_RETURN);
         if (game.has_custom_ui())
             throw std::runtime_error("Enter did not start the episode");
+        game.on_update(game_frame, services);
+        (void) draw_game("small-gameplay.bmp");
+        const auto* hud = ImGui::GetForegroundDrawList();
+        if (hud->VtxBuffer.empty())
+            throw std::runtime_error("Small viewport HUD is missing");
+        for (const auto& vertex : hud->VtxBuffer)
+            if (vertex.pos.x < 0 || vertex.pos.y < 0 || vertex.pos.x > 960 || vertex.pos.y > 540)
+                throw std::runtime_error("Small viewport HUD extends beyond the client area");
+        resize(width, height);
         renderer.set_diagnostics_visible(true);
         game.on_update(game_frame, services);
         renderer.set_diagnostics_visible(false);
@@ -631,7 +962,14 @@ int main(int argc, char** argv)
             finished.debug_set_player_position(position);
             finished.debug_update_mission(RelayCore::physics::make_player_aabb(position, 0.3F, 1.8F));
         };
-        for (const auto name : {"spare_fuse", "power_breaker", "cooling_control", "airlock_reader"})
+        for (const auto name :
+             {"spare_fuse",
+              "maintenance_isolator",
+              "bus_relay",
+              "power_breaker",
+              "filter_purge",
+              "cooling_control",
+              "airlock_reader"})
         {
             const auto found = std::ranges::find(finished.usables(), name, &RelayCore::gameplay::RuntimeUsable::name);
             if (found == finished.usables().end())
@@ -669,6 +1007,26 @@ int main(int argc, char** argv)
         finale.on_update(game_frame, services);
         (void) draw_game("episode-skipped.bmp");
         finale.on_shutdown(services);
+        if (!SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "RELAYCORE_UPDATE_READY_EVENT", "test-update", true))
+            throw std::runtime_error(SDL_GetError());
+        RelayGame::DemoGame updated{player_data.path() / "updated-player"};
+        active_game = &updated;
+        updated.on_startup(services);
+        SDL_UnsetEnvironmentVariable(SDL_GetEnvironment(), "RELAYCORE_UPDATE_READY_EVENT");
+        resize(960, 540);
+        (void) draw_game("updated-main-menu.bmp", true);
+        const auto read_ui_log = [](const char* path) {
+            std::ifstream file{path};
+            if (!file)
+                throw std::runtime_error("Missing UI log");
+            return std::string{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
+        };
+        if (read_ui_log("power-captures/small-main-menu.bmp.txt").find("Игра обновлена") != std::string::npos
+            || read_ui_log("power-captures/updated-main-menu.bmp.txt")
+                       .find("Игра обновлена до версии " RELAYCORE_GAME_VERSION)
+                   == std::string::npos)
+            throw std::runtime_error("Update notification must appear only after an updated launch");
+        updated.on_shutdown(services);
         std::cout
             << "episode_flow=passed; startup menu, disk continue, editor isolation, cinematic, completion, skip\n";
         std::cout << "player_experience=passed; pause, frozen simulation, resume, flashlight key, editor round trip\n";

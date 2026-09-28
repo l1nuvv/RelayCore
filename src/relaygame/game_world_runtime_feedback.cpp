@@ -52,6 +52,15 @@ namespace RelayGame
         audio_cues_.weapon_fire = gameplay_audio.weapon_fire.empty()
                                       ? audio_cues_.panel_press
                                       : RelayCore::core::asset_path(gameplay_audio.weapon_fire);
+        audio_cues_.weapon_hit = gameplay_audio.weapon_hit.empty()
+                                     ? std::filesystem::path{}
+                                     : RelayCore::core::asset_path(gameplay_audio.weapon_hit);
+        audio_cues_.threat_windup = gameplay_audio.threat_windup.empty()
+                                        ? std::filesystem::path{}
+                                        : RelayCore::core::asset_path(gameplay_audio.threat_windup);
+        audio_cues_.rover_attack = gameplay_audio.rover_attack.empty()
+                                       ? std::filesystem::path{}
+                                       : RelayCore::core::asset_path(gameplay_audio.rover_attack);
         audio_cues_.turret_fire = gameplay_audio.turret_fire.empty()
                                       ? audio_cues_.access_denied
                                       : RelayCore::core::asset_path(gameplay_audio.turret_fire);
@@ -189,12 +198,17 @@ namespace RelayGame
         }
 
         play_gameplay_audio(services, audio_cues_.weapon_fire);
+        if (attack.enemy_index >= 0 || fire_result.hit_turret)
+            play_gameplay_audio(services, audio_cues_.weapon_hit);
         if (attack.killed_enemy)
+        {
+            play_gameplay_audio(services, audio_cues_.turret_destroyed);
             push_transient_hud_event(
                 "Охранный робот выведен из строя",
                 RelayCore::render::HudEventStyle::Success,
                 1.4F
             );
+        }
         if (!fire_result.hit_turret)
         {
             return;

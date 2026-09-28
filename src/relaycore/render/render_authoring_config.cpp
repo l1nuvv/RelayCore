@@ -552,6 +552,42 @@ namespace RelayCore::render
                 0.12F,
                 1.0F
             ),
+            make_material(
+                RelayCore::SurfaceMaterial::ServiceFloor,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                1.6F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::MaintenanceFloor,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                2.2F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::FiltrationFloor,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                1.6F,
+                1.0F
+            ),
+            make_material(
+                RelayCore::SurfaceMaterial::FiltrationWall,
+                {1, 1, 1},
+                MaterialRenderProfile::Default,
+                false,
+                false,
+                2.0F,
+                1.0F
+            ),
         }};
         for (const RelayCore::SurfaceMaterial material : RelayCore::all_surface_materials())
         {

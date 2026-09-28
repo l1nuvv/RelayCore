@@ -150,12 +150,25 @@ namespace RelayGame
             camera.apply_projection_config(*projection);
         player_controller_.apply_camera(camera);
         services.audio_system().preload_one_shots(player_sounds_);
+        const std::array combat_cues{
+            audio_cues_.weapon_fire,
+            audio_cues_.weapon_hit,
+            audio_cues_.threat_windup,
+            audio_cues_.rover_attack,
+            audio_cues_.turret_fire,
+            audio_cues_.turret_destroyed,
+            audio_cues_.player_hurt
+        };
+        for (const auto& cue : combat_cues)
+            if (!cue.empty())
+                services.audio_system().preload_one_shots(std::span{&cue, 1});
         player_controller_.set_session_capture(services.window(), allow_capture);
     }
 
     void GameWorldRuntime::activate_level_session(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::activate_level_session");
+        services.audio_system().stop_one_shots();
         player_controller_.apply_camera(services.camera());
         try
         {
@@ -722,6 +735,35 @@ namespace RelayGame
         refresh_runtime_usables_and_focus();
     }
 
+    auto GameWorldRuntime::capture_encounter_snapshot(float played_seconds, float scene_time, bool flashlight) const
+        -> EncounterSnapshot
+    {
+        return {capture_saved_game(played_seconds, flashlight), scene_time, environment_};
+    }
+
+    void GameWorldRuntime::restore_encounter_snapshot(const EncounterSnapshot& snapshot)
+    {
+        if (snapshot.environment.size() != environment_.size())
+            throw std::runtime_error("Encounter snapshot contains incompatible environment effects.");
+        restore_saved_game(snapshot.game);
+        environment_ = snapshot.environment;
+        clear_pending_gameplay_actions();
+        combat_state_.player.shot_trace = {};
+        combat_state_.player.hit_confirmation_remaining_seconds = 0;
+        for (auto& turret : combat_state_.turrets)
+        {
+            turret.shot_trace = {};
+            turret.hit_flash_remaining_seconds = 0;
+            turret.fire_flash_remaining_seconds = 0;
+        }
+        for (auto& usable : usables_)
+        {
+            usable.feedback_style = RelayCore::gameplay::UsableFeedbackStyle::None;
+            usable.feedback_remaining_seconds = 0;
+            usable.feedback_total_seconds = 0;
+        }
+    }
+
     void GameWorldRuntime::begin_ending()
     {
         if (ending_)
@@ -783,7 +825,11 @@ namespace RelayGame
             if (advance_dead_player_state(sim_delta_seconds))
             {
                 play_gameplay_audio(services, audio_cues_.player_respawn);
-                push_transient_hud_event("Возврат к точке входа", RelayCore::render::HudEventStyle::Neutral, 1.2F);
+                push_transient_hud_event(
+                    "Вы у входа. Выполненные задачи и состояние врагов сохранены.",
+                    RelayCore::render::HudEventStyle::Neutral,
+                    3.0F
+                );
             }
             return;
         }
@@ -844,7 +890,7 @@ namespace RelayGame
         sync_door_audio_state();
 
         const float health_before_enemies = combat_state_.player.health;
-        update_enemies(
+        const auto enemy_threats = update_enemies(
             level_,
             doors_,
             player_controller_.player_bounds(),
@@ -854,6 +900,8 @@ namespace RelayGame
             sim_delta_seconds,
             enemy_blockers_
         );
+        if (enemy_threats.strikes > 0)
+            play_gameplay_audio(services, audio_cues_.rover_attack);
         if (combat_state_.player.health < health_before_enemies)
             play_gameplay_audio(services, audio_cues_.player_hurt);
         const float player_health_before_threats = combat_state_.player.health;
@@ -871,6 +919,8 @@ namespace RelayGame
         combat_state_.active_hazard_contacts = combat_result.hazard_contacts;
         combat_state_.hazard_contact_last_step = combat_result.hazard_contacts > 0;
         combat_state_.turret_shots_last_frame += combat_result.turret_shots;
+        if (combat_state_.player.alive && (enemy_threats.windups > 0 || combat_result.turret_windups > 0))
+            play_gameplay_audio(services, audio_cues_.threat_windup);
         if (combat_result.turret_shots > 0)
         {
             play_gameplay_audio(services, audio_cues_.turret_fire);
@@ -883,8 +933,10 @@ namespace RelayGame
 
         if (!combat_state_.player.alive)
         {
+            services.audio_system().stop_one_shots();
+            play_gameplay_audio(services, audio_cues_.player_hurt);
             push_transient_hud_event(
-                "Оператор выведен из строя. Возврат к точке входа...",
+                "Вы погибли. Возврат ко входу; выполненные задачи сохраняются.",
                 RelayCore::render::HudEventStyle::Warning,
                 combat_state_.player.respawn_delay_seconds
             );

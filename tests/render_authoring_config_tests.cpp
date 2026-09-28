@@ -27,7 +27,7 @@ TEST_CASE("render authoring config loads shipped material and light contract")
     CHECK(matte.render_profile == RelayCore::render::MaterialRenderProfile::Default);
     CHECK_FALSE(matte.transparent);
     CHECK(config.render_light.max_radius == doctest::Approx(48.0F));
-    CHECK(config.lighting.local_light_gain == doctest::Approx(1.28F));
+    CHECK(config.lighting.local_light_gain == doctest::Approx(2.0F));
 }
 
 TEST_CASE("render authoring config rejects duplicate material entries")

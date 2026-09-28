@@ -31,7 +31,13 @@ namespace RelayGame
         prepared.runtime.apply_player_settings(settings_.sensitivity, settings_.camera_motion);
         prepared.runtime.prepare_level_session_activation(services, allow_capture);
         detail::replace_level_session(
-            {runtime_, world_scene_, iteration_diagnostics_, saved_runtime_snapshot_},
+            {runtime_,
+             world_scene_,
+             iteration_diagnostics_,
+             saved_runtime_snapshot_,
+             played_seconds_,
+             scene_time_,
+             flashlight_on_},
             std::move(prepared),
             services
         );

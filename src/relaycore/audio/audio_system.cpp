@@ -32,6 +32,11 @@ namespace RelayCore
             -> InitializedSound
         {
             RELAYCORE_PROFILE_FUNCTION();
+            if (!std::filesystem::is_regular_file(file_path))
+            {
+                log::warn("Looping sound file does not exist: {}", file_path.string());
+                return {};
+            }
             auto loop_sound = std::make_unique<ma_sound>();
             const std::string utf8_path = file_path.string();
             if (ma_sound_init_from_file(&engine, utf8_path.c_str(), 0, nullptr, nullptr, loop_sound.get())
@@ -169,6 +174,11 @@ namespace RelayCore
         {
             if (std::ranges::find(one_shots_, path, &CachedOneShot::path) != one_shots_.end())
                 continue;
+            if (!std::filesystem::is_regular_file(path))
+            {
+                log::warn("One-shot sound file does not exist: {}", path.string());
+                continue;
+            }
             auto sound = std::make_unique<ma_sound>();
             const auto result = ma_sound_init_from_file(
                 engine_.get(),

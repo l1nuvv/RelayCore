@@ -1,5 +1,6 @@
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
+#include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game_debug_commands_internal.h"
 
@@ -10,7 +11,8 @@ namespace RelayGame::detail
         void save_runtime_snapshot(DemoGameRuntimeState state, RelayCore::EngineServices& services)
         {
             RELAYCORE_PROFILE_ZONE_N("DemoGame::save_runtime_snapshot");
-            state.saved_runtime_snapshot = state.runtime.capture_runtime_snapshot();
+            state.saved_runtime_snapshot =
+                state.runtime.capture_encounter_snapshot(state.played_seconds, state.scene_time, state.flashlight);
             update_saved_snapshot_diagnostics(state);
             publish_snapshot_result(
                 state.iteration_diagnostics,
@@ -29,28 +31,39 @@ namespace RelayGame::detail
                 publish_snapshot_result(
                     state.iteration_diagnostics,
                     false,
-                    "Snapshot restore failed",
-                    "No saved runtime snapshot is available"
+                    "Local encounter restore failed",
+                    "No local encounter snapshot is available (F9)"
                 );
                 publish_iteration_diagnostics(state, services);
                 RelayCore::log::warn("{}", state.iteration_diagnostics.last_snapshot_error);
                 return;
             }
 
-            const RelayGame::SnapshotRestoreResult restore_result =
-                state.runtime.restore_runtime_snapshot(*state.saved_runtime_snapshot);
-            publish_snapshot_result(
-                state.iteration_diagnostics,
-                restore_result.restored,
-                RelayGame::build_runtime_restore_summary(restore_result),
-                restore_result.error
-            );
+            try
+            {
+                auto restored = state.runtime;
+                restored.restore_encounter_snapshot(*state.saved_runtime_snapshot);
+                restored.prepare_level_session_activation(services, services.window().relative_mouse_mode());
+                state.runtime = std::move(restored);
+                state.played_seconds = state.saved_runtime_snapshot->game.played_seconds;
+                state.scene_time = state.saved_runtime_snapshot->scene_time;
+                state.flashlight = state.saved_runtime_snapshot->game.flashlight;
+                state.runtime.activate_level_session(services);
+                publish_snapshot_result(state.iteration_diagnostics, true, "Local encounter restored (memory only)");
+            } catch (const std::exception& error)
+            {
+                publish_snapshot_result(
+                    state.iteration_diagnostics,
+                    false,
+                    "Local encounter restore failed",
+                    error.what()
+                );
+            }
             state.runtime.publish_diagnostics(services.renderer());
             publish_iteration_diagnostics(state, services);
-            if (restore_result.restored)
-            {
+            if (state.iteration_diagnostics.last_snapshot_succeeded)
                 RelayCore::log::info("{}", state.iteration_diagnostics.last_snapshot_summary);
-            } else
+            else
             {
                 RelayCore::log::warn(
                     "{}",

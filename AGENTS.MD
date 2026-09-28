@@ -9,6 +9,8 @@
 
 ## Evidence and scope
 
+- For work on gameplay development, project direction, or the next milestone, read `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical RC/RF/status documents are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
+
 - Start with the files named by the task, their nearest tests, and direct call sites.
 - Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
 - Treat current source, CMake presets, tests, runtime output, and profiler captures as primary evidence. README/comments are secondary and may be stale.

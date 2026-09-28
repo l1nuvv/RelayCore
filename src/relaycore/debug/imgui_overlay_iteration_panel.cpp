@@ -73,13 +73,13 @@ namespace RelayCore::debug
             }
         }
 
-        ImGui::SeparatorText("Snapshot");
-        if (ImGui::Button("Save Snapshot"))
+        ImGui::SeparatorText("Local encounter (memory only)");
+        if (ImGui::Button("Capture encounter (F9)"))
         {
             state.save_runtime_snapshot_requested = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Restore Snapshot"))
+        if (ImGui::Button("Restore encounter (F10)"))
         {
             state.restore_runtime_snapshot_requested = true;
         }

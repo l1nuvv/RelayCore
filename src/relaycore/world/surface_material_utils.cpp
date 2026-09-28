@@ -9,15 +9,37 @@ namespace RelayCore
     namespace
     {
         constexpr std::array<SurfaceMaterial, surface_material_count()> kAllSurfaceMaterials{{
-            SurfaceMaterial::Concrete,     SurfaceMaterial::Metal,      SurfaceMaterial::Tile,
-            SurfaceMaterial::Glass,        SurfaceMaterial::Hazard,     SurfaceMaterial::Floor,
-            SurfaceMaterial::Ceiling,      SurfaceMaterial::Wall,       SurfaceMaterial::WallPanel,
-            SurfaceMaterial::Corridor,     SurfaceMaterial::Platform,   SurfaceMaterial::PlatformTop,
-            SurfaceMaterial::PlatformTop2, SurfaceMaterial::Pillar,     SurfaceMaterial::Cover,
-            SurfaceMaterial::Block,        SurfaceMaterial::Beam,       SurfaceMaterial::Trim,
-            SurfaceMaterial::Divider,      SurfaceMaterial::LightStrip, SurfaceMaterial::Crate,
-            SurfaceMaterial::Post,         SurfaceMaterial::Matte,      SurfaceMaterial::Cotton,
-            SurfaceMaterial::Twill,        SurfaceMaterial::Leather,    SurfaceMaterial::Rubber,
+            SurfaceMaterial::Concrete,
+            SurfaceMaterial::Metal,
+            SurfaceMaterial::Tile,
+            SurfaceMaterial::Glass,
+            SurfaceMaterial::Hazard,
+            SurfaceMaterial::Floor,
+            SurfaceMaterial::Ceiling,
+            SurfaceMaterial::Wall,
+            SurfaceMaterial::WallPanel,
+            SurfaceMaterial::Corridor,
+            SurfaceMaterial::Platform,
+            SurfaceMaterial::PlatformTop,
+            SurfaceMaterial::PlatformTop2,
+            SurfaceMaterial::Pillar,
+            SurfaceMaterial::Cover,
+            SurfaceMaterial::Block,
+            SurfaceMaterial::Beam,
+            SurfaceMaterial::Trim,
+            SurfaceMaterial::Divider,
+            SurfaceMaterial::LightStrip,
+            SurfaceMaterial::Crate,
+            SurfaceMaterial::Post,
+            SurfaceMaterial::Matte,
+            SurfaceMaterial::Cotton,
+            SurfaceMaterial::Twill,
+            SurfaceMaterial::Leather,
+            SurfaceMaterial::Rubber,
+            SurfaceMaterial::ServiceFloor,
+            SurfaceMaterial::MaintenanceFloor,
+            SurfaceMaterial::FiltrationFloor,
+            SurfaceMaterial::FiltrationWall,
         }};
 
         [[nodiscard]] auto normalize_material_name(std::string_view value) -> std::string
@@ -56,6 +78,14 @@ namespace RelayCore
                 return "leather";
             case SurfaceMaterial::Rubber:
                 return "rubber";
+            case SurfaceMaterial::ServiceFloor:
+                return "service_floor";
+            case SurfaceMaterial::MaintenanceFloor:
+                return "maintenance_floor";
+            case SurfaceMaterial::FiltrationFloor:
+                return "filtration_floor";
+            case SurfaceMaterial::FiltrationWall:
+                return "filtration_wall";
             case SurfaceMaterial::Concrete:
                 return "concrete";
             case SurfaceMaterial::Metal:
@@ -118,6 +148,14 @@ namespace RelayCore
             return SurfaceMaterial::Leather;
         if (normalized == "rubber")
             return SurfaceMaterial::Rubber;
+        if (normalized == "service_floor")
+            return SurfaceMaterial::ServiceFloor;
+        if (normalized == "maintenance_floor")
+            return SurfaceMaterial::MaintenanceFloor;
+        if (normalized == "filtration_floor")
+            return SurfaceMaterial::FiltrationFloor;
+        if (normalized == "filtration_wall")
+            return SurfaceMaterial::FiltrationWall;
 
         if (normalized == "concrete")
             return SurfaceMaterial::Concrete;

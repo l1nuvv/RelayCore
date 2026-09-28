@@ -1,4 +1,22 @@
 add_executable(relaycore_tests)
+if(WIN32)
+    file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs" updater_source)
+    file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/updater_tests.cs" updater_test_source)
+    file(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe" updater_test_output)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe
+        COMMAND "${RELAYCORE_CSC}" /nologo /target:exe /main:UpdaterTests /optimize+
+            /reference:System.Net.Http.dll /reference:System.IO.Compression.dll
+            /reference:System.IO.Compression.FileSystem.dll /reference:System.Web.Extensions.dll
+            /reference:System.Windows.Forms.dll /reference:System.Drawing.dll
+            "/out:${updater_test_output}"
+            "${updater_source}"
+            "${updater_test_source}"
+        DEPENDS ${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs ${CMAKE_CURRENT_SOURCE_DIR}/updater_tests.cs
+        VERBATIM)
+    add_custom_target(relaycore_updater_tests DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe)
+    add_dependencies(relaycore_tests relaycore_updater_tests)
+    add_test(NAME relaycore.updater COMMAND ${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe)
+endif()
 add_executable(relaycore_content_validation)
 add_executable(relaycore_audio_lifetime audio_lifetime_tests.cpp)
 target_link_libraries(relaycore_audio_lifetime PRIVATE
@@ -7,6 +25,9 @@ target_link_libraries(relaycore_audio_lifetime PRIVATE
 set_target_properties(relaycore_audio_lifetime PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_game_lifecycle game_lifecycle_tests.cpp)
 target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+add_executable(relaycore_episode_profile EXCLUDE_FROM_ALL episode_profile.cpp)
+target_link_libraries(relaycore_episode_profile PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+set_target_properties(relaycore_episode_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_graphics_baseline)
 add_executable(relaycore_window_lifetime_tests window_lifetime_tests.cpp)
 add_executable(relaycore_power_restoration_graphics
@@ -16,6 +37,7 @@ target_link_libraries(relaycore_power_restoration_graphics PRIVATE
     RelayGame::runtime RelayCore::project_options RelayCore::warnings
 )
 set_target_properties(relaycore_power_restoration_graphics PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+target_include_directories(relaycore_power_restoration_graphics PRIVATE ${PROJECT_BINARY_DIR}/src/relaygame/generated)
 set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_graphics_baseline PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
@@ -124,6 +146,7 @@ foreach(test_target IN ITEMS
     relaycore_window_lifetime_tests
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
+    relaycore_episode_profile
     relaycore_default_framebuffer_probe
 )
     relaycore_apply_standard_target_settings(${test_target})

@@ -6,6 +6,7 @@ set(RELAYCORE_DEMO_SOURCES
         runtime_model.cpp
         usable_interaction.cpp
         demo_game_menu.cpp
+        game_updates.cpp
         demo_game_progress.cpp
         save_game.cpp
         player_feedback.cpp
@@ -42,6 +43,7 @@ set(RELAYCORE_DEMO_SOURCES
 
 set(RELAYCORE_DEMO_HEADERS
         demo_game.h
+        game_updates.h
         mission_runtime.h
         runtime_model.h
         usable_interaction.h
@@ -80,6 +82,8 @@ target_sources(
 )
 
 target_compile_features(relaygame_runtime PUBLIC cxx_std_20)
+configure_file(game_version.h.in generated/relaygame/game_version.h @ONLY)
+target_include_directories(relaygame_runtime PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_include_directories(relaygame_runtime PUBLIC ${PROJECT_SOURCE_DIR}/src)
 
@@ -124,6 +128,27 @@ add_custom_target(
 )
 
 add_dependencies(relaycore_demo relaycore_demo_assets)
+
+if(WIN32)
+    set(RELAYCORE_UPDATE_REPOSITORY "l1nuvv/RelayCore-releases" CACHE STRING "Public GitHub repository for game releases")
+    if(NOT RELAYCORE_UPDATE_REPOSITORY MATCHES "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+        message(FATAL_ERROR "RELAYCORE_UPDATE_REPOSITORY must be owner/repository")
+    endif()
+    configure_file(${PROJECT_SOURCE_DIR}/tools/updater/updates.json.in ${CMAKE_CURRENT_BINARY_DIR}/updates.json @ONLY)
+    find_program(RELAYCORE_CSC NAMES csc.exe HINTS "$ENV{WINDIR}/Microsoft.NET/Framework64/v4.0.30319" REQUIRED)
+    file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs" updater_source)
+    file(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe" updater_output)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe
+        COMMAND "${RELAYCORE_CSC}" /nologo /target:winexe /optimize+
+            /reference:System.Net.Http.dll /reference:System.IO.Compression.dll
+            /reference:System.IO.Compression.FileSystem.dll /reference:System.Web.Extensions.dll
+            /reference:System.Windows.Forms.dll /reference:System.Drawing.dll
+            "/out:${updater_output}"
+            "${updater_source}"
+        DEPENDS ${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs VERBATIM)
+    add_custom_target(relaycore_updater DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe)
+    add_dependencies(relaycore_demo relaycore_updater)
+endif()
 
 add_custom_command(
         TARGET relaycore_demo

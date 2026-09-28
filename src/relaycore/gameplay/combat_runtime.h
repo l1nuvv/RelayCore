@@ -28,6 +28,12 @@ namespace RelayCore::gameplay
         std::string target{};
     };
 
+    struct CombatShotTrace {
+        glm::vec3 start{};
+        glm::vec3 end{};
+        float remaining_seconds = 0.0F;
+    };
+
     struct RuntimeTurret {
         int authored_entity_index = -1;
         std::string name{};
@@ -35,6 +41,7 @@ namespace RelayCore::gameplay
         std::string destroy_target{};
         physics::Aabb bounds{};
         glm::vec3 origin{};
+        float yaw = 0.0F;
         float max_health = 45.0F;
         float health = 45.0F;
         float attack_range = 18.0F;
@@ -44,6 +51,7 @@ namespace RelayCore::gameplay
         float warmup_remaining_seconds = 0.0F;
         float hit_flash_remaining_seconds = 0.0F;
         float fire_flash_remaining_seconds = 0.0F;
+        CombatShotTrace shot_trace{};
         float damage = 16.0F;
         bool enabled = true;
         bool destroyed = false;
@@ -66,6 +74,8 @@ namespace RelayCore::gameplay
         float weapon_range = 24.0F;
         float weapon_damage = 25.0F;
         float hurt_flash_remaining_seconds = 0.0F;
+        float hit_confirmation_remaining_seconds = 0.0F;
+        CombatShotTrace shot_trace{};
         float respawn_delay_seconds = 1.20F;
         float respawn_remaining_seconds = 0.0F;
         bool alive = true;
@@ -96,6 +106,7 @@ namespace RelayCore::gameplay
         float damage_taken = 0.0F;
         std::uint32_t hazard_contacts = 0;
         std::uint32_t turret_shots = 0;
+        std::uint32_t turret_windups = 0;
         bool player_died = false;
     };
 

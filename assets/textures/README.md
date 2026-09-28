@@ -4,6 +4,8 @@
 
 `blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically for OpenGL sampling. Unused cells contain neutral steel. No alpha cutouts are required.
 
+`wing_materials.png` is an original 2-by-2 source sheet for slots 27–30: blue-gray service access floor, warm maintenance concrete, gray-green ribbed filtration floor, and pale washable filtration wall. These opaque diffuse tiles distinguish the power restoration wings at walking distance. They have no baked lighting or text; their edges repeat through the atlas gutter. Generated with the built-in ImageGen tool using a flat orthographic 2-by-2 seamless industrial texture prompt. The `graphics.power_restoration` captures check them in the game renderer.
+
 Rebuild with `pwsh -File scripts/build-facility-atlas.ps1` from the repository root. The script only resamples, packs and converts the generated raster source. Texture scale in world units is authored in `assets/config/render_authoring.toml`; common repeats cover 1.2–2.8 metres. `atlas_mix = 1` uses the raster albedo multiplied by the authored surface tint. Default material profiles add no procedural grid. Local lights modulate the albedo so dark seams remain visible under illumination.
 
 Validate with the `graphics.power_restoration` test, which renders intake, service corridor, switch room and pump room through the game renderer. Captures are written to `build/msvc-debug/tests/power-captures`.

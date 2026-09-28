@@ -3,6 +3,7 @@
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/physics/player_motion.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_session_builder.h"
@@ -58,12 +59,12 @@ namespace
             .file_name = "power_restoration.toml",
             .min_solids = 90,
             .min_entities = 15,
-            .door_count = 2,
+            .door_count = 3,
             .trigger_count = 0,
             .pickup_count = 1,
-            .turret_count = 0,
-            .audio_zone_count = 1,
-            .mission_step_count = 6,
+            .turret_count = 2,
+            .audio_zone_count = 2,
+            .mission_step_count = 9,
         },
         ShippedMapExpectation{
             .file_name = "test_room.toml",
@@ -195,10 +196,10 @@ TEST_CASE("power restoration requires a fuse and preserves powered presentation 
     RelayCore::core::EngineConfig config{};
     config.gameplay.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
     const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
-    CHECK(session.combat.hazards.empty());
+    REQUIRE(session.combat.hazards.size() == 1);
     RelayGame::GameWorldRuntime runtime{};
     runtime.load_level_session(config, session);
-    REQUIRE(runtime.usables().size() == 4);
+    REQUIRE(runtime.usables().size() == 7);
     CHECK(session.authoring_warnings.empty());
     const auto reader = find_usable_index(runtime, [](const auto& usable) {
         return usable.name == "airlock_reader";
@@ -209,52 +210,214 @@ TEST_CASE("power restoration requires a fuse and preserves powered presentation 
     const auto breaker = find_usable_index(runtime, [](const auto& usable) {
         return usable.name == "power_breaker";
     });
+    const auto isolator = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "maintenance_isolator";
+    });
+    const auto bus_relay = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "bus_relay";
+    });
     const auto cooling = find_usable_index(runtime, [](const auto& usable) {
         return usable.name == "cooling_control";
+    });
+    const auto filter = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "filter_purge";
     });
     const auto bounds = RelayCore::physics::make_player_aabb(session.spawn_position, 0.3F, 1.8F);
     const auto unpowered = runtime.capture_runtime_snapshot();
     CHECK(runtime.debug_apply_usable_interaction(reader).kind == UseInteractionOutcome::Locked);
     CHECK(runtime.debug_apply_usable_interaction(cooling).kind == UseInteractionOutcome::Locked);
-    CHECK(runtime.debug_apply_usable_interaction(breaker).kind == UseInteractionOutcome::MissingRequiredItem);
+    CHECK(runtime.debug_apply_usable_interaction(breaker).kind == UseInteractionOutcome::Locked);
     CHECK(runtime.activated_target_ids().empty());
     CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds) == -1);
     CHECK(runtime.debug_apply_usable_interaction(fuse).kind == UseInteractionOutcome::PickedUpItem);
     runtime.debug_update_mission(bounds);
+    CHECK(runtime.mission_status().title == "Открыть дверь к резервному питанию");
+    CHECK(runtime.debug_apply_usable_interaction(isolator).kind == UseInteractionOutcome::ActivatedTarget);
+    runtime.debug_update_mission(bounds);
+    CHECK(runtime.mission_status().title == "Подключить резервное питание");
+    CHECK(runtime.doors()[2].state == DoorState::Opening);
+    const auto isolated_save_path = temp.path() / "isolated-progress.toml";
+    RelayGame::write_saved_game(isolated_save_path, runtime.capture_saved_game(42, false));
+    RelayGame::GameWorldRuntime isolated_runtime{};
+    isolated_runtime.load_level_session(config, session);
+    isolated_runtime.restore_saved_game(RelayGame::load_saved_game(isolated_save_path));
+    CHECK(isolated_runtime.doors()[2].state == DoorState::Opening);
+    CHECK(isolated_runtime.mission_status().title == "Подключить резервное питание");
+    CHECK(isolated_runtime.usables()[breaker].locked);
+    CHECK(runtime.debug_apply_usable_interaction(bus_relay).chain_applied);
+    runtime.debug_update_mission(bounds);
     CHECK(runtime.mission_status().title == "Восстановить питание");
+    CHECK_FALSE(runtime.usables()[breaker].locked);
     const auto power = runtime.debug_apply_usable_interaction(breaker);
     CHECK(power.kind == UseInteractionOutcome::ActivatedTarget);
     CHECK(power.chain_applied);
     runtime.debug_update_mission(bounds);
-    CHECK(runtime.mission_status().title == "Запустить охлаждение");
+    CHECK(runtime.mission_status().title == "Промыть фильтр");
     CHECK(runtime.usables()[reader].locked);
-    CHECK_FALSE(runtime.usables()[cooling].locked);
-    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == -1);
+    CHECK(runtime.usables()[cooling].locked);
+    CHECK_FALSE(runtime.usables()[filter].locked);
+    REQUIRE(session.audio_zones.size() == 2);
+    CHECK(session.audio_zones[0].name == "powered_intake");
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == 0);
     const auto power_only = runtime.capture_runtime_snapshot();
-    CHECK(runtime.debug_apply_usable_interaction(cooling).chain_applied);
+    CHECK(runtime.debug_apply_usable_interaction(filter).chain_applied);
     runtime.debug_update_mission(bounds);
-    CHECK(runtime.mission_status().title == "Пройти служебным переходом");
+    CHECK(runtime.mission_status().title == "Включить охлаждение");
+    CHECK_FALSE(runtime.usables()[cooling].locked);
+    CHECK(runtime.debug_apply_usable_interaction(cooling).chain_applied);
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({7, 0.01F, 8}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().title == "Вернуться к входному залу");
     CHECK(runtime.doors()[1].state == DoorState::Opening);
     runtime.debug_update_mission(RelayCore::physics::make_player_aabb({3.5F, 0.1F, 7}, 0.3F, 1.8F));
-    CHECK(runtime.mission_status().title == "Вернуться к шлюзу");
+    CHECK(runtime.mission_status().title == "Открыть выход");
     CHECK_FALSE(runtime.usables()[reader].locked);
     CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == 0);
     const auto powered = runtime.capture_runtime_snapshot();
     REQUIRE(runtime.restore_runtime_snapshot(power_only).restored);
     CHECK(runtime.usables()[reader].locked);
-    CHECK_FALSE(runtime.usables()[cooling].locked);
-    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, 0, runtime.activated_target_ids()) == -1);
+    CHECK(runtime.usables()[cooling].locked);
+    CHECK_FALSE(runtime.usables()[filter].locked);
+    CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, 0, runtime.activated_target_ids()) == 0);
     REQUIRE(runtime.restore_runtime_snapshot(unpowered).restored);
     CHECK(runtime.usables()[reader].locked);
     CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, 0, runtime.activated_target_ids()) == -1);
     REQUIRE(runtime.restore_runtime_snapshot(powered).restored);
     CHECK_FALSE(runtime.usables()[reader].locked);
     CHECK(RelayGame::find_active_audio_zone(session.audio_zones, bounds, -1, runtime.activated_target_ids()) == 0);
+    const auto corridor_bounds = RelayCore::physics::make_player_aabb({8.0F, 0.05F, 8.0F}, 0.3F, 1.8F);
+    CHECK(
+        RelayGame::find_active_audio_zone(session.audio_zones, corridor_bounds, -1, runtime.activated_target_ids()) == 1
+    );
     CHECK(runtime.debug_apply_usable_interaction(reader).kind == UseInteractionOutcome::ActivatedTarget);
     runtime.debug_update_mission(bounds);
     CHECK_FALSE(runtime.mission_status().completed);
     runtime.debug_update_mission(RelayCore::physics::make_player_aabb({0.0F, 0.1F, 9.0F}, 0.3F, 1.8F));
     CHECK(runtime.mission_status().completed);
+}
+
+TEST_CASE("power restoration can finish after returning through the original corridor")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::EngineConfig config;
+    config.gameplay.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    RelayGame::GameWorldRuntime runtime;
+    runtime.load_level_session(config, session);
+    for (const auto name :
+         {"spare_fuse", "maintenance_isolator", "bus_relay", "power_breaker", "filter_purge", "cooling_control"})
+    {
+        const auto index = find_usable_index(runtime, [name](const auto& usable) {
+            return usable.name == name;
+        });
+        static_cast<void>(runtime.debug_apply_usable_interaction(index));
+        runtime.debug_update_mission(RelayCore::physics::make_player_aabb({7, 0.01F, 8}, 0.3F, 1.8F));
+    }
+    CHECK(runtime.mission_status().current_step == 7);
+    // Return to the intake from the original corridor, without visiting the shortcut zone.
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({4, 0.01F, 0}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().current_step == 8);
+    const auto reader = find_usable_index(runtime, [](const auto& usable) {
+        return usable.name == "airlock_reader";
+    });
+    CHECK(runtime.debug_apply_usable_interaction(reader).kind == UseInteractionOutcome::ActivatedTarget);
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({2.1F, 0.01F, 3.5F}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().current_step == 9);
+    CHECK_FALSE(runtime.mission_status().completed);
+    runtime.debug_update_mission(RelayCore::physics::make_player_aabb({0, 0.01F, 9}, 0.3F, 1.8F));
+    CHECK(runtime.mission_status().completed);
+}
+
+TEST_CASE("power restoration repeated death and disk continue preserve progress at each power phase")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::EngineConfig config;
+    config.gameplay.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build();
+    const std::array
+        actions{"spare_fuse", "maintenance_isolator", "bus_relay", "power_breaker", "filter_purge", "cooling_control"};
+    for (const std::size_t phase : {0U, 4U, 6U})
+    {
+        CAPTURE(phase);
+        RelayGame::GameWorldRuntime runtime;
+        runtime.load_level_session(config, session);
+        for (std::size_t i = 0; i < phase; ++i)
+        {
+            const auto index = find_usable_index(runtime, [&](const auto& usable) {
+                return usable.name == actions[i];
+            });
+            static_cast<void>(runtime.debug_apply_usable_interaction(index));
+            runtime.debug_update_mission(RelayCore::physics::make_player_aabb({7, .01F, 8}, .3F, 1.8F));
+        }
+        if (phase > 0)
+        {
+            const glm::vec3 eye{7.5F, 1.62F, 26};
+            for (int shot = 0; shot < 3; ++shot)
+            {
+                runtime.debug_tick_combat(.3F);
+                REQUIRE(
+                    runtime.debug_apply_player_fire(eye, glm::normalize(runtime.turrets()[1].origin - eye)).hit_turret
+                );
+            }
+            REQUIRE(runtime.turrets()[1].destroyed);
+            runtime.debug_tick_combat(.3F);
+            static_cast<void>(runtime.debug_apply_player_fire({20, .6F, 34}, {1, 0, 0}));
+            REQUIRE(runtime.enemies()[0].state.health < session.enemies[0].max_health);
+        }
+        const auto before = runtime.capture_saved_game(60, true);
+        for (int death = 1; death <= 2; ++death)
+        {
+            runtime.debug_set_player_position({6.8F, .01F, 18});
+            const auto bounds = RelayCore::physics::make_player_aabb(runtime.debug_player_position(), .3F, 1.8F);
+            REQUIRE(runtime.debug_apply_combat_threats(bounds, runtime.debug_player_eye_position(), 100).player_died);
+            CHECK_FALSE(runtime.debug_advance_player_respawn(0));
+            REQUIRE(runtime.debug_advance_player_respawn(2));
+            CHECK(runtime.player_combat_state().alive);
+            CHECK(runtime.player_combat_state().health == runtime.player_combat_state().max_health);
+            CHECK(runtime.player_combat_state().deaths == death);
+            CHECK(runtime.debug_player_position() == session.spawn_position);
+            const auto after = runtime.capture_saved_game(60, true);
+            CHECK(after.world.inventory_item_ids == before.world.inventory_item_ids);
+            CHECK(after.world.activated_target_ids == before.world.activated_target_ids);
+            CHECK(after.world.mission.current_step == before.world.mission.current_step);
+            for (std::size_t i = 0; i < after.world.doors.size(); ++i)
+            {
+                if (before.world.doors[i].state == DoorState::Closed)
+                    CHECK(after.world.doors[i].state == DoorState::Closed);
+                else
+                    CHECK(
+                        (after.world.doors[i].state == DoorState::Opening
+                         || after.world.doors[i].state == DoorState::Open)
+                    );
+                CHECK(after.world.doors[i].open_fraction >= before.world.doors[i].open_fraction);
+            }
+            for (std::size_t i = 0; i < after.world.turrets.size(); ++i)
+            {
+                CHECK(after.world.turrets[i].destroyed == before.world.turrets[i].destroyed);
+                CHECK(after.world.turrets[i].health == before.world.turrets[i].health);
+            }
+            REQUIRE(after.world.usables.size() == before.world.usables.size());
+            for (std::size_t i = 0; i < after.world.usables.size(); ++i)
+            {
+                CHECK(after.world.usables[i].consumed == before.world.usables[i].consumed);
+                CHECK(after.world.usables[i].locked == before.world.usables[i].locked);
+            }
+            REQUIRE(after.enemies.size() == before.enemies.size());
+            for (std::size_t i = 0; i < after.enemies.size(); ++i)
+                CHECK(after.enemies[i].health == before.enemies[i].health);
+            const auto path = temp.path() / "phase.toml";
+            RelayGame::write_saved_game(path, after);
+            RelayGame::GameWorldRuntime resumed;
+            resumed.load_level_session(config, session);
+            resumed.restore_saved_game(RelayGame::load_saved_game(path));
+            CHECK(resumed.player_combat_state().alive);
+            CHECK(resumed.player_combat_state().deaths == death);
+            CHECK(resumed.debug_player_position() == session.spawn_position);
+            CHECK(resumed.mission_status().current_step == runtime.mission_status().current_step);
+            runtime = std::move(resumed);
+        }
+    }
 }
 
 TEST_CASE("power restoration return passage opens with cooling and remains walkable without jumping")
@@ -275,7 +438,8 @@ TEST_CASE("power restoration return passage opens with cooling and remains walka
     for (int i = 0; i < 120; ++i)
         position = RelayCore::physics::move_and_collide(blockers, position, {-2, 0, 0}, 1.0F / 60, {}, true).position;
     CHECK(position.x > 5.3F);
-    for (const auto name : {"spare_fuse", "power_breaker", "cooling_control"})
+    for (const auto name :
+         {"spare_fuse", "maintenance_isolator", "bus_relay", "power_breaker", "filter_purge", "cooling_control"})
     {
         const auto index = find_usable_index(runtime, [name](const auto& usable) {
             return usable.name == name;
@@ -311,7 +475,7 @@ TEST_CASE("power restoration return passage opens with cooling and remains walka
     CHECK(resumed.debug_player_position() == runtime.debug_player_position());
     CHECK(resumed.inventory_item_ids() == runtime.inventory_item_ids());
     CHECK(resumed.activated_target_ids() == runtime.activated_target_ids());
-    CHECK(resumed.mission_status().title == "Вернуться к шлюзу");
+    CHECK(resumed.mission_status().title == "Открыть выход");
     REQUIRE(resumed.ending());
     CHECK(resumed.ending()->closing_door == 0);
     auto edited = session;
@@ -320,6 +484,65 @@ TEST_CASE("power restoration return passage opens with cooling and remains walka
     incompatible.load_level_session(config, edited);
     CHECK_THROWS(incompatible.restore_saved_game(save));
     CHECK(incompatible.inventory_item_ids().empty());
+}
+
+TEST_CASE("power restoration return turret threatens the player only after the cooling door opens")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config}.build();
+    REQUIRE(session.combat.turrets.size() == 2);
+    CHECK(session.combat.turrets[0].yaw == doctest::Approx(90.0F));
+
+    auto doors = session.doors;
+    auto turrets = session.combat.turrets;
+    PlayerCombatState player{};
+    const auto bounds = RelayCore::physics::make_player_aabb({6.4F, 0.01F, 8.5F}, 0.3F, 1.8F);
+    const glm::vec3 eye{6.4F, 1.6F, 8.5F};
+    const auto closed =
+        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    CHECK(closed.turret_shots == 0);
+    CHECK_FALSE(turrets[0].warming_up);
+
+    doors[1].state = DoorState::Open;
+    doors[1].open_fraction = 1.0F;
+    const auto sighted =
+        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    CHECK(sighted.turret_shots == 0);
+    CHECK(turrets[0].warming_up);
+    RelayCore::gameplay::tick_combat_state(0.8F, player, turrets);
+    const auto exposed =
+        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    CHECK(exposed.turret_shots == 1);
+    CHECK(exposed.damage_taken == doctest::Approx(8.0F));
+    const auto shot = RelayCore::gameplay::apply_player_fire(
+        session.level,
+        doors,
+        eye,
+        glm::normalize(turrets[0].origin - eye),
+        player,
+        turrets
+    );
+    CHECK(shot.fired);
+    CHECK(shot.hit_turret);
+    const auto exit_bounds = RelayCore::physics::make_player_aabb({0, .01F, 3.5F}, .3F, 1.8F);
+    RelayCore::gameplay::tick_combat_state(2, player, turrets);
+    const auto escaped = RelayCore::gameplay::update_combat_threats(
+        session.level,
+        doors,
+        exit_bounds,
+        {0, 1.6F, 3.5F},
+        player,
+        turrets,
+        {},
+        .1F
+    );
+    CHECK_FALSE(turrets[0].destroyed);
+    CHECK_FALSE(turrets[0].warming_up);
+    CHECK(escaped.damage_taken == 0);
+    CHECK(escaped.turret_shots == 0);
 }
 
 TEST_CASE("power restoration service route is walkable in both directions")
@@ -346,16 +569,15 @@ TEST_CASE("power restoration service route is walkable in both directions")
         CHECK(position.z < -0.9F);
     }
     const std::array route{
-        glm::vec3{0.0F, 0.01F, -3.5F},
-        glm::vec3{-2.3F, 0.01F, -0.5F},
-        glm::vec3{0.0F, 0.01F, 0.0F},
-        glm::vec3{12.5F, 0.01F, 0.0F},
-        glm::vec3{12.5F, 0.01F, 20.5F},
-        glm::vec3{14.3F, 0.01F, 20.5F},
-        glm::vec3{12.5F, 0.01F, 20.5F},
-        glm::vec3{12.5F, 0.01F, 8.0F},
-        glm::vec3{7.0F, 0.01F, 8.0F},
-        glm::vec3{7.0F, 0.01F, 6.6F}
+        session.spawn_position,         glm::vec3{-2.3F, 0.01F, -0.5F}, glm::vec3{0.0F, 0.01F, 0.0F},
+        glm::vec3{12.5F, 0.01F, 0.0F},  glm::vec3{12.5F, 0.01F, 20.5F}, glm::vec3{13.0F, 0.01F, 27.0F},
+        glm::vec3{13.0F, 0.01F, 35.0F}, glm::vec3{15.5F, 0.01F, 37.0F}, glm::vec3{13.0F, 0.01F, 35.0F},
+        glm::vec3{12.5F, 0.01F, 20.5F}, glm::vec3{14.3F, 0.01F, 20.5F}, glm::vec3{12.5F, 0.01F, 20.5F},
+        glm::vec3{12.5F, 0.01F, 8.0F},  glm::vec3{7.0F, 0.01F, 8.0F},   glm::vec3{8.3F, 0.01F, 8.0F},
+        glm::vec3{8.3F, 0.01F, 12.0F},  glm::vec3{8.2F, 0.01F, 20.0F},  glm::vec3{7.5F, 0.01F, 27.0F},
+        glm::vec3{7.5F, 0.01F, 29.3F},  glm::vec3{3.2F, 0.01F, 29.3F},  glm::vec3{7.5F, 0.01F, 29.3F},
+        glm::vec3{7.5F, 0.01F, 27.0F},  glm::vec3{8.2F, 0.01F, 20.0F},  glm::vec3{8.3F, 0.01F, 12.0F},
+        glm::vec3{8.3F, 0.01F, 8.0F},   glm::vec3{7.0F, 0.01F, 8.0F},   glm::vec3{7.0F, 0.01F, 6.6F}
     };
     for (const bool reverse : {false, true})
     {
@@ -375,6 +597,146 @@ TEST_CASE("power restoration service route is walkable in both directions")
             CHECK(glm::distance(glm::vec2{position.x, position.z}, glm::vec2{finish.x, finish.z}) < 0.03F);
         }
     }
+}
+
+TEST_CASE("power restoration corridor edges keep the player grounded")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config}.build();
+    std::vector<RelayCore::physics::Aabb> blockers;
+    for (const auto& solid : session.level.solids)
+        blockers.push_back({solid.mins, solid.maxs});
+
+    for (const glm::vec2 point : {glm::vec2{13.0F, 27.0F}, glm::vec2{9.72F, -0.99F}})
+    {
+        RelayCore::physics::PlayerMotionState state{};
+        state.position = {point.x, 0.01F, point.y};
+        for (int frame = 0; frame < 120; ++frame)
+            RelayCore::physics::update_grounded(state, {}, 0, 1.0F / 60.0F, blockers, {});
+        CAPTURE(point.x);
+        CAPTURE(point.y);
+        CHECK(state.grounded);
+        CHECK(state.position.y >= -0.001F);
+    }
+}
+
+TEST_CASE("power restoration filtration threatens the player past the spill")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config}.build();
+    REQUIRE(session.combat.hazards.size() == 1);
+    REQUIRE(session.combat.turrets.size() == 2);
+    auto turrets = session.combat.turrets;
+    PlayerCombatState player{};
+    const auto spill = RelayCore::physics::make_player_aabb({6.8F, 0.01F, 18}, 0.3F, 1.8F);
+    const auto hazard = RelayCore::gameplay::update_combat_threats(
+        session.level,
+        session.doors,
+        spill,
+        {6.8F, 1.62F, 18},
+        player,
+        turrets,
+        session.combat.hazards,
+        0.5F
+    );
+    CHECK(hazard.hazard_contacts == 1);
+    CHECK(hazard.damage_taken > 0);
+    CHECK(hazard.turret_shots == 0);
+
+    const auto approach = RelayCore::physics::make_player_aabb({7.5F, 0.01F, 26}, 0.3F, 1.8F);
+    const auto sighted = RelayCore::gameplay::update_combat_threats(
+        session.level,
+        session.doors,
+        approach,
+        {7.5F, 1.62F, 26},
+        player,
+        turrets,
+        {},
+        0.1F
+    );
+    CHECK(sighted.turret_shots == 0);
+    CHECK(turrets[1].warming_up);
+    CHECK(sighted.turret_windups == 1);
+    const auto retreat = RelayCore::physics::make_player_aabb({7.5F, .01F, 22}, .3F, 1.8F);
+    RelayCore::gameplay::tick_combat_state(1, player, turrets);
+    const auto safe = RelayCore::gameplay::update_combat_threats(
+        session.level,
+        session.doors,
+        retreat,
+        {7.5F, 1.62F, 22},
+        player,
+        turrets,
+        {},
+        .1F
+    );
+    CHECK(safe.turret_shots == 0);
+    CHECK_FALSE(turrets[1].warming_up);
+    for (int i = 0; i < 3; ++i)
+    {
+        RelayCore::gameplay::tick_combat_state(.3F, player, turrets);
+        const glm::vec3 eye{7.5F, 1.62F, 26};
+        const auto hit = RelayCore::gameplay::apply_player_fire(
+            session.level,
+            session.doors,
+            eye,
+            glm::normalize(turrets[1].origin - eye),
+            player,
+            turrets
+        );
+        CHECK(hit.hit_turret);
+    }
+    CHECK(turrets[1].destroyed);
+    CHECK(
+        RelayCore::gameplay::
+            update_combat_threats(session.level, session.doors, approach, {7.5F, 1.62F, 26}, player, turrets, {}, 1)
+                .turret_shots
+        == 0
+    );
+}
+
+TEST_CASE("power restoration reserve room stays sealed until the isolator opens it")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = (repo_root() / "assets/levels/power_restoration.toml").string();
+    const auto session = RelayGame::LevelSessionBuilder{config}.build();
+    std::vector<RelayCore::physics::Aabb> blockers;
+    for (const auto& solid : session.level.solids)
+        blockers.push_back({solid.mins, solid.maxs});
+    auto doors = session.doors;
+    const auto walk_to_relay = [&] {
+        auto position = glm::vec3{15.5F, 0.01F, 34.0F};
+        for (int frame = 0; frame < 180; ++frame)
+            position =
+                RelayCore::physics::move_and_collide(blockers, position, {3, 0, 0}, 1.0F / 60, {}, true).position;
+        return position;
+    };
+    for (const auto& door : doors)
+        blockers.push_back(RelayCore::gameplay::current_door_bounds(door));
+    CHECK(walk_to_relay().x < 16.8F);
+
+    std::vector<std::string> inventory, activated, signaled;
+    auto usables = session.usables;
+    const auto use = [&](std::string_view name) {
+        const auto it = std::ranges::find(usables, name, &RuntimeUsable::name);
+        REQUIRE(it != usables.end());
+        return RelayGame::apply_usable_interaction(*it, doors, usables, inventory, activated, signaled);
+    };
+    CHECK(use("spare_fuse").kind == UseInteractionOutcome::PickedUpItem);
+    CHECK(use("maintenance_isolator").kind == UseInteractionOutcome::ActivatedTarget);
+    static_cast<void>(RelayCore::gameplay::update_doors(5, {}, doors));
+    blockers.resize(session.level.solids.size());
+    for (const auto& door : doors)
+        if (RelayCore::gameplay::is_door_blocking(door))
+            blockers.push_back(RelayCore::gameplay::current_door_bounds(door));
+    CHECK(walk_to_relay().x > 23.0F);
 }
 
 TEST_CASE("power restoration final threshold needs no jump at walking speed")

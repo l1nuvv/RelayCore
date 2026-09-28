@@ -32,7 +32,12 @@ namespace RelayGame
 
     [[nodiscard]] auto build_enemies(const RelayCore::BlockoutLevel& level) -> std::vector<RuntimeEnemy>;
     [[nodiscard]] auto enemy_bounds(const EnemyState& state) -> RelayCore::physics::Aabb;
-    void update_enemies(
+    struct EnemyThreatResult {
+        std::uint32_t windups = 0;
+        std::uint32_t strikes = 0;
+    };
+
+    auto update_enemies(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         const RelayCore::physics::Aabb& player_bounds,
@@ -41,7 +46,7 @@ namespace RelayGame
         std::span<RuntimeEnemy> enemies,
         float dt,
         std::vector<RelayCore::physics::Aabb>& blockers
-    );
+    ) -> EnemyThreatResult;
 
     struct PlayerAttackResult {
         RelayCore::gameplay::CombatFireResult combat;

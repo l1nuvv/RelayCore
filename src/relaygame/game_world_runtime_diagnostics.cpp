@@ -165,6 +165,8 @@ namespace RelayGame
             combat_state_.player.hurt_flash_remaining_seconds > 0.0F
                 ? std::clamp(combat_state_.player.hurt_flash_remaining_seconds / 0.30F, 0.0F, 1.0F)
                 : 0.0F;
+        player_diagnostics.hit_confirmation_strength =
+            std::clamp(combat_state_.player.hit_confirmation_remaining_seconds / 0.16F, 0.0F, 1.0F);
         player_diagnostics.respawn_remaining_seconds = combat_state_.player.respawn_remaining_seconds;
         player_diagnostics.damage_dealt = combat_state_.player.damage_dealt;
         player_diagnostics.damage_taken = combat_state_.player.damage_taken;

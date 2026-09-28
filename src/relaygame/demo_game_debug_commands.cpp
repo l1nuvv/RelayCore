@@ -4,7 +4,8 @@
 
 namespace RelayGame::detail
 {
-    auto handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool
+    auto handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+        -> IterationToolResult
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::handle_debug_iteration_tools");
         RelayCore::Renderer& renderer = services.renderer();
@@ -12,35 +13,35 @@ namespace RelayGame::detail
 
         if (requests.runtime.reload_level)
         {
-            return reload_live_content(state, services);
+            return reload_live_content(state, services) ? IterationToolResult::Reloaded : IterationToolResult::None;
         }
 
         if (handle_runtime_snapshot_commands(state, services, requests))
         {
-            return false;
+            return IterationToolResult::Snapshot;
         }
 
         if (handle_authoring_warning_commands(state, services, requests))
         {
-            return false;
+            return IterationToolResult::None;
         }
 
         if (handle_runtime_registry_commands(state, services, requests))
         {
-            return false;
+            return IterationToolResult::None;
         }
 
         if (handle_runtime_binding_commands(state, services, requests))
         {
-            return false;
+            return IterationToolResult::None;
         }
 
         if (handle_render_authoring_commands(state, services, requests))
         {
-            return false;
+            return IterationToolResult::None;
         }
 
         handle_open_inspector_source_command(state, services, requests);
-        return false;
+        return IterationToolResult::None;
     }
 } // namespace RelayGame::detail

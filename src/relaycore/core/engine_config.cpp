@@ -340,6 +340,9 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_GAME_AUDIO("access_denied", access_denied);
             RELAYCORE_ASSIGN_GAME_AUDIO("mission_complete", mission_complete);
             RELAYCORE_ASSIGN_GAME_AUDIO("weapon_fire", weapon_fire);
+            RELAYCORE_ASSIGN_GAME_AUDIO("weapon_hit", weapon_hit);
+            RELAYCORE_ASSIGN_GAME_AUDIO("threat_windup", threat_windup);
+            RELAYCORE_ASSIGN_GAME_AUDIO("rover_attack", rover_attack);
             RELAYCORE_ASSIGN_GAME_AUDIO("turret_fire", turret_fire);
             RELAYCORE_ASSIGN_GAME_AUDIO("turret_destroyed", turret_destroyed);
             RELAYCORE_ASSIGN_GAME_AUDIO("player_hurt", player_hurt);

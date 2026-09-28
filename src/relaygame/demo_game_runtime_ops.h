@@ -24,11 +24,20 @@ namespace RelayGame::detail
         const SavedGame* save = nullptr
     ) -> PreparedLevelSession;
 
+    enum class IterationToolResult {
+        None,
+        Reloaded,
+        Snapshot
+    };
+
     struct DemoGameRuntimeState {
         RelayGame::GameWorldRuntime& runtime;
         RelayGame::WorldSceneRenderer& world_scene;
         RelayCore::render::IterationDiagnostics& iteration_diagnostics;
-        std::optional<RelayGame::RuntimeLevelSnapshot>& saved_runtime_snapshot;
+        std::optional<EncounterSnapshot>& saved_runtime_snapshot;
+        float& played_seconds;
+        float& scene_time;
+        bool& flashlight;
     };
 
     void start_level_session(DemoGameRuntimeState state, RelayCore::EngineServices& services);
@@ -41,7 +50,8 @@ namespace RelayGame::detail
 
     auto reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool;
 
-    auto handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool;
+    auto handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+        -> IterationToolResult;
 
     void publish_iteration_diagnostics(DemoGameRuntimeState state, RelayCore::EngineServices& services);
 } // namespace RelayGame::detail

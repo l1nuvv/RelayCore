@@ -50,12 +50,32 @@ cmake --build --preset demo-relwithdebinfo
 
 Запустите собранный `build/msvc-relwithdebinfo/src/relaygame/RelayCore.exe` и
 подключите [Tracy 0.13.1](https://github.com/wolfpld/tracy/releases/tag/v0.13.1).
-На сценарии «Два сектора» запишите обычный кадр в мастерской, переход в насосную
-и редактирование комнаты через F11. Сравнивайте CPU/GPU зоны на одном разрешении,
-одном маршруте и одинаковых настройках. Выделения памяти сейчас отдельно не
+Для текущего slice запишите маршрут «Восстановление питания»: вход, три встречи,
+включение питания и охлаждения, возврат и финал. Меню/редактор выделяйте отдельно.
+Сравнивайте CPU/GPU зоны на одном разрешении, одном маршруте и одинаковых настройках;
+разделяйте CPU work, GPU и present/VSync wait. Выделения памяти сейчас отдельно не
 размечены; этот профиль не позволяет оценить их количество.
 
-Для 1.0 снят воспроизводимый захват на графическом сценарии
+Для повторяемого локального сравнения шести видов можно собрать
+`cmake --build --preset demo-relwithdebinfo --target relaycore_power_restoration_graphics`
+и запустить этот test executable с `--profile-views`, указав абсолютный `RELAYCORE_ASSET_ROOT`
+на ресурсы кандидата. Это 1280×720, VSync off, 20 кадров прогрева и 180 измеряемых кадров
+на вид. `view_submit_ms` измеряет CPU submission, `view_completed_ms` включает `glFinish`;
+оба показателя исключают swap и gameplay update. Условия, результаты и ограничения —
+в [протоколе G-006/H-002](playtests/G-006-H-002-2026-09-28.md).
+
+Для интегрированного scripted workload используйте отдельный target
+`cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile`.
+Запустите `build/msvc-relwithdebinfo/tests/relaycore_episode_profile.exe` с абсолютным
+`RELAYCORE_ASSET_ROOT` на ресурсы кандидата. Он использует обычные `Application` и
+`DemoGame`, 1280×720, VSync off, и подготавливает в отдельных временных сохранениях
+вход, три встречи, питание, охлаждение, смерть/respawn, паузу, финал и редактор.
+Начальные 0,5 с каждого состояния исключены из сводных значений. Tracy-показатели
+`cpu_work_ms` и `present_ms` разделяют работу приложения и swap; GL timer query в
+выводе измеряет только `DemoGame::on_render`, без UI. Этот сценарий не заменяет
+ручной непрерывный проход; результаты — в [протоколе H-002](playtests/H-002-2026-09-28.md).
+
+Исторически для 1.0 снят воспроизводимый захват на графическом сценарии
 `graphics.game_lifecycle` в RelWithDebInfo, 640×480, Tracy 0.13.1. Он проходит
 переход между двумя картами, возврат после перезапуска и редактор. Файл захвата:
 `build/profiling/relaycore_1_0_editor.tracy` (создаётся локально, не хранится в Git).

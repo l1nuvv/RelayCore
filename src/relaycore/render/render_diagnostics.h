@@ -105,6 +105,7 @@ namespace RelayCore::render
         float max_health = 0.0F;
         float weapon_cooldown_remaining_seconds = 0.0F;
         float hurt_flash_strength = 0.0F;
+        float hit_confirmation_strength = 0.0F;
         float respawn_remaining_seconds = 0.0F;
         float damage_dealt = 0.0F;
         float damage_taken = 0.0F;

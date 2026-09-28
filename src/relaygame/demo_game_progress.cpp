@@ -34,7 +34,7 @@ namespace RelayGame
 
     auto DemoGame::save_progress() noexcept -> bool
     {
-        if (!progress_enabled_ || editor_return_ || !runtime_.player_combat_state().alive)
+        if (!progress_enabled_ || editor_return_)
             return true;
         autosave_elapsed_ = 0;
         saved_step_ = runtime_.mission_status().current_step;

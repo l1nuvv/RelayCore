@@ -4,6 +4,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/game_version.h"
 
 #include <SDL3/SDL_filesystem.h>
 #include <algorithm>
@@ -15,6 +16,7 @@ namespace RelayGame
 {
     void DemoGame::initialize_player_settings(RelayCore::EngineServices& services)
     {
+        update_notification_ = SDL_getenv("RELAYCORE_UPDATE_READY_EVENT") != nullptr;
         settings_.volume = services.config().audio.master_volume;
         settings_.sensitivity = services.config().input.mouse_sensitivity_radians;
         settings_.fov = glm::degrees(services.config().renderer.camera.vertical_fov_radians);
@@ -84,6 +86,7 @@ namespace RelayGame
         const float height = show_settings_                ? 660.0F
                              : confirm_new_game_           ? 550.0F
                              : screen_ == Screen::Complete ? 350.0F
+                             : screen_ == Screen::MainMenu ? 550.0F
                                                            : 470.0F;
         ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, {0.5F, 0.5F});
         ImGui::SetNextWindowSize(
@@ -110,15 +113,22 @@ namespace RelayGame
         ImGui::TextColored({0.9F, 0.7F, 0.36F, 1}, "RELAYCORE");
         ImGui::PopFont();
         ImGui::SameLine();
-        ImGui::TextDisabled("/ 1.2");
+        ImGui::TextDisabled("/ %s", RELAYCORE_GAME_VERSION);
         ImGui::SeparatorText("КОНТУР 03 / ВОССТАНОВЛЕНИЕ");
         if (screen_ == Screen::MainMenu)
         {
-            ImGui::TextWrapped(
-                new_game_level_.empty()
-                    ? "Обесточенный сектор. Запасной предохранитель. Один путь к исследовательскому блоку."
-                    : "Сервисная мастерская и насосная галерея. Найдите ключ и откройте путь через оба сектора."
-            );
+            if (update_notification_)
+            {
+                ImGui::TextColored({0.65F, 0.85F, 0.68F, 1}, "Игра обновлена до версии %s", RELAYCORE_GAME_VERSION);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Понятно##update_notice"))
+                    update_notification_ = false;
+            } else
+                ImGui::TextWrapped(
+                    new_game_level_.empty()
+                        ? "Обесточенный сектор. Запасной предохранитель. Один путь к исследовательскому блоку."
+                        : "Сервисная мастерская и насосная галерея. Найдите ключ и откройте путь через оба сектора."
+                );
             ImGui::Spacing();
             ImGui::BeginDisabled(!disk_save_);
             if (ImGui::Button("Продолжить [Enter]", {-1, 44}))
@@ -243,6 +253,55 @@ namespace RelayGame
             );
         }
         ImGui::Spacing();
+        if (screen_ == Screen::MainMenu)
+        {
+            if (update_check_.valid() && update_check_.wait_for(std::chrono::seconds{0}) == std::future_status::ready)
+            {
+                try
+                {
+                    update_release_ = update_check_.get();
+                    update_message_ = update_release_->available ? "Доступна версия " + update_release_->version
+                                                                 : "Доступных обновлений нет.";
+                } catch (const std::exception& error)
+                {
+                    update_message_ = error.what();
+                }
+            }
+            ImGui::BeginDisabled(update_check_.valid() || !can_update_game());
+            if (ImGui::Button(update_check_.valid() ? "Проверяем обновления…" : "Проверить обновления", {-1, 34}))
+            {
+                update_release_.reset();
+                update_message_.clear();
+                update_check_ = std::async(std::launch::async, check_game_update);
+            }
+            ImGui::EndDisabled();
+            if (!can_update_game())
+                ImGui::TextDisabled("Обновления доступны в упакованной сборке.");
+            if (!update_message_.empty())
+                ImGui::TextWrapped("%s", update_message_.c_str());
+            if (update_release_ && update_release_->available)
+            {
+                ImGui::Text("Загрузка: %.1f МБ", static_cast<double>(update_release_->bytes) / 1048576.0);
+                ImGui::TextWrapped("%s", update_release_->notes.c_str());
+                ImGui::TextWrapped("Игра закроется на время обновления. Сохранения останутся.");
+                if (ImGui::Button("Обновить и перезапустить", {-1, 34}))
+                {
+                    try
+                    {
+                        if (settings_dirty_)
+                        {
+                            save_player_settings(settings_path_, settings_);
+                            settings_dirty_ = false;
+                        }
+                        install_game_update(update_release_->version);
+                        services.request_quit();
+                    } catch (const std::exception& error)
+                    {
+                        update_message_ = error.what();
+                    }
+                }
+            }
+        }
         if (ImGui::Button("Выйти из игры", {-1, 34}))
         {
             if (settings_dirty_)

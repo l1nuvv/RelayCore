@@ -1,4 +1,5 @@
 #include "relaycore/audio/audio_system.h"
+#include "relaycore/core/engine_config.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
 
@@ -41,13 +42,40 @@ int main()
 
                 const auto ambient = RelayCore::core::asset_path("audio/ambient_airlock_hum.wav");
                 const auto effect = RelayCore::core::asset_path("audio/door_open.wav");
+                const auto cues = RelayCore::core::load_default_engine_config().gameplay.audio;
+                audio.set_master_volume(0);
+                for (const auto& cue : std::array{
+                         cues.weapon_fire,
+                         cues.weapon_hit,
+                         cues.threat_windup,
+                         cues.rover_attack,
+                         cues.turret_fire,
+                         cues.turret_destroyed,
+                         cues.player_hurt
+                     })
+                {
+                    require(!cue.empty(), "Shipped combat cue is missing");
+                    const auto path = RelayCore::core::asset_path(cue);
+                    audio.preload_one_shots(std::span{&path, 1});
+                    audio.play_one_shot(path);
+                    audio.play_loop(path, 0);
+                    require(audio.current_loop_path() == path && audio.has_active_loop(), "Combat WAV did not decode");
+                    audio.set_paused(true);
+                    audio.stop_one_shots();
+                    audio.set_paused(false);
+                    audio.stop_loop();
+                }
+                audio.set_master_volume(1);
                 audio.preload_one_shots(std::span{&effect, 1});
                 audio.play_one_shot(effect);
                 const std::array<RelayCore::AudioSystem::SpatialLoop, 1> spatial{{{ambient, {2, 1, 0}}}};
                 audio.configure_spatial_loops(spatial);
                 audio.play_loop(ambient, 0.5F, 0.1F);
                 require(audio.has_active_loop(), "Could not start ambient loop");
-                audio.play_loop(temp.path() / "missing.wav", 0.5F, 0.1F);
+                const auto missing = temp.path() / "missing.wav";
+                audio.preload_one_shots(std::span{&missing, 1});
+                audio.play_one_shot(missing);
+                audio.play_loop(missing, 0.5F, 0.1F);
                 require(audio.current_loop_path() == ambient, "Failed replacement changed active loop");
                 audio.play_loop(effect, 0.4F, 0.1F);
                 require(audio.current_loop_path() == effect, "Successful replacement did not change active loop");

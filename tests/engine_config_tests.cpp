@@ -48,6 +48,23 @@ TEST_CASE("engine config loads the shipped config")
     CHECK(config.renderer.camera.far_plane == doctest::Approx(100.0F));
 }
 
+TEST_CASE("engine config reads optional combat cues and rejects invalid cue types")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = write_engine_config(
+        temp.path(),
+        "[game.audio]\nweapon_hit = 'hit.wav'\nthreat_windup = 'windup.wav'\nrover_attack = 'strike.wav'\n"
+    );
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.gameplay.audio.weapon_hit == "hit.wav");
+    CHECK(config.gameplay.audio.threat_windup == "windup.wav");
+    CHECK(config.gameplay.audio.rover_attack == "strike.wav");
+    check_invalid_config(temp.path(), "[game.audio]\nweapon_hit = 12\n", "game.audio.weapon_hit");
+    check_invalid_config(temp.path(), "[game.audio]\nthreat_windup = false\n", "game.audio.threat_windup");
+    check_invalid_config(temp.path(), "[game.audio]\nrover_attack = []\n", "game.audio.rover_attack");
+}
+
 TEST_CASE("engine config keeps defaults for absent keys")
 {
     RelayCore::test::ScopedTempDirectory temp;

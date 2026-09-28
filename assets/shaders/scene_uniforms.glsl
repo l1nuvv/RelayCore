@@ -55,5 +55,7 @@ layout (location = 71) uniform float u_spot_range;
 layout (location = 72) uniform int u_spot_enabled;
 layout (location = 73) uniform mat4 u_spot_view_projection;
 layout (location = 77) uniform sampler2D u_spot_shadow_map;
+layout (location = 80) uniform samplerCubeArray u_local_shadow_maps;
+layout (location = 81) uniform int u_local_shadow_mask;
 
 out vec4 out_color;

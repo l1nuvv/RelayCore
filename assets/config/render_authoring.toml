@@ -9,9 +9,9 @@ bounce_neutral_color = [0.06, 0.06, 0.07]
 bounce_floor = 0.04
 bounce_underside = 0.18
 bounce_darkness = 0.06
-ambient_floor = 0.54
-ambient_zenith = 0.82
-ambient_min = 0.32
+ambient_floor = 0.38
+ambient_zenith = 0.56
+ambient_min = 0.24
 ambient_max = 1.02
 cavity_broad_strength = 0.0
 cavity_micro_strength = 0.0
@@ -19,7 +19,7 @@ cavity_underside_strength = 0.10
 cavity_ambient_darken = 0.78
 local_light_wrap = 0.55
 local_light_fill = 0.45
-local_light_gain = 1.28
+local_light_gain = 2.0
 
 [render_light]
 default_color = [0.18, 0.22, 0.30]
@@ -83,7 +83,7 @@ name = "floor"
 profile = "default"
 base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
+bevel_enabled = false
 atlas_world_scale = 2
 atlas_mix = 1.0
 
@@ -110,7 +110,7 @@ name = "wall_panel"
 profile = "default"
 base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
+bevel_enabled = false
 atlas_world_scale = 1.8
 atlas_mix = 1.0
 
@@ -119,8 +119,44 @@ name = "corridor"
 profile = "default"
 base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
+bevel_enabled = false
 atlas_world_scale = 1.2
+atlas_mix = 1.0
+
+[[materials]]
+name = "service_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.1
+atlas_mix = 1.0
+
+[[materials]]
+name = "maintenance_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.4
+atlas_mix = 1.0
+
+[[materials]]
+name = "filtration_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.7
+atlas_mix = 1.0
+
+[[materials]]
+name = "filtration_wall"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.2
 atlas_mix = 1.0
 
 [[materials]]

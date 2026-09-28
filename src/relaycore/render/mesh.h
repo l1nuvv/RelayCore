@@ -45,6 +45,15 @@ namespace RelayCore::render
 
         [[nodiscard]] auto index_count() const noexcept -> GLsizei;
 
+        [[nodiscard]] auto bounds_min() const noexcept -> glm::vec3
+        {
+            return bounds_min_;
+        }
+        [[nodiscard]] auto bounds_max() const noexcept -> glm::vec3
+        {
+            return bounds_max_;
+        }
+
     private:
         void reset() noexcept;
 
@@ -52,6 +61,8 @@ namespace RelayCore::render
         unsigned int vertex_buffer_id_ = 0;
         unsigned int index_buffer_id_ = 0;
         GLsizei index_count_ = 0;
+        glm::vec3 bounds_min_{};
+        glm::vec3 bounds_max_{};
     };
 
 } // namespace RelayCore::render

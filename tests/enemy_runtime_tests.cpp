@@ -38,6 +38,55 @@ TEST_CASE("rover detects pursues and attacks at a bounded cadence")
     CHECK(enemies[0].state.position.y >= -.002F);
 }
 
+TEST_CASE("rover signals windup once and a dodged strike does not damage the player")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies[0].state.position = {0, .01F, .9F};
+    RelayCore::gameplay::PlayerCombatState player;
+    std::vector<RelayCore::physics::Aabb> scratch;
+    const auto actor = RelayCore::physics::make_player_aabb({0, .01F, 0}, .3F, 1.8F);
+    const auto start = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .01F, scratch);
+    CHECK(start.windups == 1);
+    CHECK(start.strikes == 0);
+    const auto paused = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, 0, scratch);
+    CHECK(paused.windups == 0);
+    CHECK(paused.strikes == 0);
+    const auto waiting = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .1F, scratch);
+    CHECK(waiting.windups == 0);
+    CHECK(waiting.strikes == 0);
+    const auto escaped = RelayCore::physics::make_player_aabb({0, .01F, -2}, .3F, 1.8F);
+    const auto strike = RelayGame::update_enemies(level, {}, escaped, {0, 1.6F, -2}, player, enemies, .4F, scratch);
+    CHECK(strike.windups == 0);
+    CHECK(strike.strikes == 1);
+    CHECK(player.health == 100);
+    const auto recovery = RelayGame::update_enemies(level, {}, escaped, {0, 1.6F, -2}, player, enemies, .1F, scratch);
+    CHECK(recovery.strikes == 0);
+}
+
+TEST_CASE("nonlethal hits do not restart rover windup or bypass its recovery")
+{
+    const auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies[0].state.position = {0, .01F, .9F};
+    RelayCore::gameplay::PlayerCombatState player;
+    std::vector<RelayCore::physics::Aabb> scratch;
+    const auto actor = RelayCore::physics::make_player_aabb({0, .01F, 0}, .3F, 1.8F);
+    RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .01F, scratch);
+    RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .20F, scratch);
+    const auto hit = RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies);
+    REQUIRE(hit.enemy_index == 0);
+    CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Windup);
+    CHECK(enemies[0].state.timer == doctest::Approx(.25F));
+    const auto strike = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .26F, scratch);
+    CHECK(strike.strikes == 1);
+    CHECK(player.health == 86);
+    player.weapon_cooldown_remaining_seconds = 0;
+    static_cast<void>(RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies));
+    CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Recovery);
+    CHECK(enemies[0].state.timer == doctest::Approx(.95F));
+}
+
 TEST_CASE("rover cannot see shoot or walk through walls")
 {
     auto level = room();
@@ -72,6 +121,7 @@ TEST_CASE("rover dies from player fire and no longer attacks")
     }
     CHECK(player.kills == 1);
     CHECK(player.shots_hit == 3);
+    CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
     CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Dead);
     std::vector<RelayCore::physics::Aabb> scratch;
     RelayGame::update_enemies(
@@ -124,4 +174,7 @@ TEST_CASE("rover authored in two maps preserves position health and attack state
     CHECK(RelayGame::LevelSessionBuilder{config.gameplay}.build(directory.path() / "enemy.toml").enemies.size() == 1);
     const auto model = RelayCore::render::load_obj_mesh(RelayCore::core::asset_path("models/security_rover.obj"));
     CHECK(model.indices.size() > 100);
+    const auto wreck =
+        RelayCore::render::load_obj_mesh(RelayCore::core::asset_path("models/security_rover_destroyed.obj"));
+    CHECK(wreck.indices.size() > 100);
 }

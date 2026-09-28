@@ -5,6 +5,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/demo_game_debug_commands_internal.h"
 #include "relaygame/usable_interaction.h"
 
 #include <SDL3/SDL.h>
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <glad/gl.h>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string_view>
 
@@ -24,6 +26,13 @@ namespace
     {
         if (!condition)
             throw std::runtime_error(message);
+    }
+
+    auto read_file(const std::filesystem::path& path) -> std::string
+    {
+        std::ifstream input{path, std::ios::binary};
+        require(input.is_open(), "Cannot read test evidence");
+        return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     }
 
     void capture_frame(const char* filename)
@@ -74,6 +83,148 @@ int main()
         RelayGame::DemoGame game{directory.path() / "player"};
         const auto progress_path = directory.path() / "player/progress.toml";
         const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+        {
+            RelayGame::GameWorldRuntime encounter;
+            encounter.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                    RelayCore::core::asset_path("levels/power_restoration.toml")
+                )
+            );
+            require(encounter.enemies().size() == 1, "Power restoration needs its reserve-room rover");
+            auto initial = encounter.capture_saved_game(12, true);
+            initial.enemies[0].mode = RelayGame::EnemyMode::Windup;
+            initial.enemies[0].timer = .3F;
+            initial.enemies[0].health = 25;
+            initial.enemies[0].last_seen = initial.enemies[0].position + glm::vec3{0, 0, 1};
+            initial.player.position = initial.enemies[0].last_seen;
+            initial.player.velocity = {.2F, 0, -.1F};
+            initial.player.view_angles = {.5F, -.1F};
+            initial.player.grounded = true;
+            initial.world.simulation_tick = 42;
+            encounter.restore_saved_game(initial);
+            encounter.prepare_level_session_activation(services);
+            encounter.activate_level_session(services);
+            RelayGame::WorldSceneRenderer encounter_scene;
+            RelayCore::render::IterationDiagnostics diagnostics;
+            std::optional<RelayGame::EncounterSnapshot> snapshot;
+            float played = 12, scene_time = 11;
+            bool flashlight = true;
+            RelayGame::detail::DemoGameRuntimeState
+                state{encounter, encounter_scene, diagnostics, snapshot, played, scene_time, flashlight};
+            RelayGame::detail::IterationCommandRequests save_request, restore_request;
+            save_request.runtime.save_runtime_snapshot = true;
+            restore_request.runtime.restore_runtime_snapshot = true;
+            const auto command = [&](const auto& request) {
+                require(
+                    RelayGame::detail::handle_runtime_snapshot_commands(state, services, request),
+                    "Snapshot command was not handled"
+                );
+            };
+            command(restore_request);
+            require(
+                !diagnostics.last_snapshot_succeeded && !diagnostics.last_snapshot_error.empty(),
+                "Missing encounter snapshot was not reported"
+            );
+            command(save_request);
+            require(snapshot.has_value() && diagnostics.last_snapshot_succeeded, "Encounter capture failed");
+            const auto expected_path = directory.path() / "encounter-expected.toml";
+            const auto actual_path = directory.path() / "encounter-actual.toml";
+            RelayGame::write_saved_game(expected_path, snapshot->game);
+            const auto saved_camera = services.camera().position();
+            const auto saved_forward = services.camera().forward();
+
+            auto changed = initial;
+            changed.player.position.x += 2;
+            changed.player.velocity = {};
+            changed.player.view_angles = {-1, .2F};
+            changed.enemies[0].health = 0;
+            changed.enemies[0].mode = RelayGame::EnemyMode::Dead;
+            changed.enemies[0].timer = 0;
+            changed.enemies[0].position.z += 1;
+            changed.world.player_combat.shots_fired = 3;
+            changed.world.player_combat.health = 60;
+            changed.world.doors.front().open_fraction = .5F;
+            changed.world.doors.front().state = RelayCore::gameplay::DoorState::Opening;
+            changed.world.inventory_item_ids = {"power_fuse"};
+            changed.world.mission.current_step = 1;
+            encounter.restore_saved_game(changed);
+            require(
+                encounter.debug_apply_player_fire(initial.player.position + glm::vec3{0, 1.6F, 0}, {0, 0, 1}).fired,
+                "Test shot did not fire"
+            );
+            require(
+                encounter.player_combat_state().shot_trace.remaining_seconds > 0,
+                "Test shot needs a visible trace"
+            );
+            played = scene_time = 25;
+            flashlight = false;
+            command(restore_request);
+            require(diagnostics.last_snapshot_succeeded, "Full encounter restore failed");
+            RelayGame::write_saved_game(actual_path, encounter.capture_saved_game(played, flashlight));
+            require(
+                read_file(actual_path) == read_file(expected_path),
+                "Encounter restore lost player motion, combat, rover, doors, inventory or mission state"
+            );
+            require(
+                scene_time == 11 && services.camera().position() == saved_camera
+                    && services.camera().forward() == saved_forward,
+                "Encounter restore lost presentation time or camera"
+            );
+            require(
+                encounter.player_combat_state().shot_trace.remaining_seconds == 0,
+                "Encounter restore retained a trace from the discarded attempt"
+            );
+            for (std::size_t i = 0; i < snapshot->environment.size(); ++i)
+            {
+                const auto& actual = encounter.environment()[i];
+                const auto& expected = snapshot->environment[i];
+                require(
+                    actual.age == expected.age && actual.elapsed == expected.elapsed && actual.phase == expected.phase
+                        && actual.strength == expected.strength && actual.active == expected.active,
+                    "Encounter restore changed equipment presentation state"
+                );
+            }
+
+            const RelayCore::FrameInfo attack_frame{.delta_seconds = .1};
+            encounter.update(attack_frame, services);
+            const auto attack_timer = encounter.enemies()[0].state.timer;
+            require(attack_timer < initial.enemies[0].timer, "Rover windup did not advance");
+            RelayGame::write_saved_game(expected_path, encounter.capture_saved_game(played, flashlight));
+            command(restore_request);
+            encounter.update(attack_frame, services);
+            RelayGame::write_saved_game(actual_path, encounter.capture_saved_game(played, flashlight));
+            require(read_file(actual_path) == read_file(expected_path), "Repeated windup diverged after restore");
+
+            const auto camera_before_failure = services.camera().position();
+            snapshot->game.level_fingerprint ^= 1;
+            command(restore_request);
+            require(
+                !diagnostics.last_snapshot_succeeded && !diagnostics.last_snapshot_error.empty(),
+                "Incompatible encounter snapshot was not reported"
+            );
+            RelayGame::write_saved_game(actual_path, encounter.capture_saved_game(played, flashlight));
+            require(
+                read_file(actual_path) == read_file(expected_path)
+                    && services.camera().position() == camera_before_failure,
+                "Failed encounter restore changed the active state"
+            );
+            snapshot->game.level_fingerprint ^= 1;
+            snapshot->game.player.position = {1.0e8F, 1.0e8F, 1.0e8F};
+            command(restore_request);
+            require(
+                !diagnostics.last_snapshot_succeeded && !diagnostics.last_snapshot_error.empty(),
+                "Invalid encounter camera was not reported"
+            );
+            RelayGame::write_saved_game(actual_path, encounter.capture_saved_game(played, flashlight));
+            require(
+                read_file(actual_path) == read_file(expected_path)
+                    && services.camera().position() == camera_before_failure,
+                "Camera preparation failure partially restored the encounter"
+            );
+            encounter.shutdown(services);
+            std::cout << "Local encounter: full state, repeated rover windup and incompatible snapshot passed\n";
+        }
         {
             const auto mesh = RelayCore::core::asset_path("models/service_cylinder.obj");
             const auto texture = RelayCore::core::asset_path("models/service_cylinder.bmp");
@@ -242,6 +393,29 @@ int main()
                     "Failed reload was not reported"
                 );
             }
+            const auto disk_before_snapshot = read_file(progress_path);
+            key(SDL_SCANCODE_F9);
+            game.on_update({}, services);
+            require(renderer.iteration_diagnostics().has_saved_runtime_snapshot, "F9 did not capture encounter");
+            const auto snapshot_camera = services.camera().position();
+            const auto snapshot_forward = services.camera().forward();
+            const auto snapshot_tick = renderer.runtime_diagnostics().simulation_tick;
+            SDL_Event look{};
+            look.type = SDL_EVENT_MOUSE_MOTION;
+            look.motion.xrel = 50;
+            game.on_event(look, services);
+            game.on_update(frame, services);
+            key(SDL_SCANCODE_F10);
+            game.on_update({}, services);
+            require(
+                renderer.iteration_diagnostics().last_snapshot_succeeded
+                    && services.camera().position() == snapshot_camera
+                    && services.camera().forward() == snapshot_forward
+                    && renderer.runtime_diagnostics().simulation_tick == snapshot_tick,
+                "F10 did not restore the captured encounter"
+            );
+            game.on_update({}, services);
+            require(read_file(progress_path) == disk_before_snapshot, "F9/F10 overwrote disk progress");
             key(SDL_SCANCODE_ESCAPE);
             const auto checkpoint = RelayGame::load_saved_game(progress_path);
             require(
@@ -264,6 +438,13 @@ int main()
                 game.begin_editor_preview(services);
                 require(!game.has_custom_ui(), "Editor preview did not start");
                 game.on_update(frame, services);
+                key(SDL_SCANCODE_F9);
+                key(SDL_SCANCODE_F10);
+                game.on_update({}, services);
+                require(
+                    !renderer.iteration_diagnostics().has_saved_runtime_snapshot,
+                    "Editor preview leaked a campaign encounter snapshot"
+                );
                 game.enter_editor(services);
                 require(game.has_custom_ui() && !window.relative_mouse_mode(), "Preview failed to return to editor");
             }
@@ -607,6 +788,48 @@ int main()
                 "New Game did not use the reloaded start map and controls"
             );
             reload_game.on_shutdown(reload_services);
+        }
+        {
+            auto death_config = config;
+            death_config.gameplay.level_path = RelayCore::core::asset_path("levels/power_restoration.toml").string();
+            RelayCore::EngineServices death_services{death_config, window, renderer, audio, running};
+            const auto session = RelayGame::LevelSessionBuilder{death_config.gameplay}.build();
+            RelayGame::GameWorldRuntime seed;
+            seed.load_level_session(death_config, session);
+            seed.debug_set_player_position({6.8F, .01F, 18});
+            auto save = seed.capture_saved_game(60, true);
+            save.world.player_combat.health = 1;
+            const auto user_path = directory.path() / "death_continue";
+            std::filesystem::create_directories(user_path);
+            RelayGame::write_saved_game(user_path / "progress.toml", save);
+            RelayGame::DemoGame dying{user_path};
+            dying.on_startup(death_services);
+            dying.begin_episode(true, death_services);
+            for (int i = 0; i < 20 && renderer.player_diagnostics().alive; ++i)
+                dying.on_update(frame, death_services);
+            require(!renderer.player_diagnostics().alive, "Hazard did not cause the test death");
+            dying.return_to_menu(death_services);
+            dying.on_shutdown(death_services);
+            const auto dead = RelayGame::load_saved_game(user_path / "progress.toml");
+            require(dead.world.player_combat.deaths == 1, "Quitting while dead discarded the latest world state");
+            require(!dead.world.player_combat.alive, "Death continuation must retain its pending respawn");
+            RelayGame::DemoGame continued{user_path};
+            continued.on_startup(death_services);
+            continued.begin_episode(true, death_services);
+            for (int i = 0; i < 120; ++i)
+                continued.on_update(frame, death_services);
+            require(renderer.player_diagnostics().alive, "Continue from death did not respawn");
+            continued.return_to_menu(death_services);
+            const auto alive = RelayGame::load_saved_game(user_path / "progress.toml");
+            require(
+                alive.world.player_combat.deaths == 1 && alive.world.player_combat.health == 100,
+                "Continue lost the death count or restored damaged health"
+            );
+            require(
+                glm::distance(alive.player.position, session.spawn_position) < .05F,
+                "Continue from death did not return to the entrance"
+            );
+            continued.on_shutdown(death_services);
         }
     } catch (const std::exception& error)
     {

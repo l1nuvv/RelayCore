@@ -357,7 +357,12 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         props_.clear();
         enemy_model_.reset();
+        destroyed_enemy_model_.reset();
+        power_fuse_model_.reset();
+        turret_model_.reset();
+        destroyed_turret_model_.reset();
         if (scene_data.has_enemies)
+        {
             enemy_model_ = models.load(
                 RelayCore::core::asset_path("models/security_rover.obj"),
                 RelayCore::core::asset_path("models/security_rover.bmp"),
@@ -365,6 +370,35 @@ namespace RelayGame
                     ? RelayCore::render::TextureEncoding::srgb
                     : RelayCore::render::TextureEncoding::linear
             );
+            destroyed_enemy_model_ = models.load(
+                RelayCore::core::asset_path("models/security_rover_destroyed.obj"),
+                RelayCore::core::asset_path("models/security_rover.bmp"),
+                scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                    ? RelayCore::render::TextureEncoding::srgb
+                    : RelayCore::render::TextureEncoding::linear
+            );
+        }
+        turret_model_ = models.load(
+            RelayCore::core::asset_path("models/security_turret.obj"),
+            RelayCore::core::asset_path("models/security_turret.bmp"),
+            scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                ? RelayCore::render::TextureEncoding::srgb
+                : RelayCore::render::TextureEncoding::linear
+        );
+        power_fuse_model_ = models.load(
+            RelayCore::core::asset_path("models/power_fuse.obj"),
+            RelayCore::core::asset_path("models/power_fuse.bmp"),
+            scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                ? RelayCore::render::TextureEncoding::srgb
+                : RelayCore::render::TextureEncoding::linear
+        );
+        destroyed_turret_model_ = models.load(
+            RelayCore::core::asset_path("models/security_turret_destroyed.obj"),
+            RelayCore::core::asset_path("models/security_turret_destroyed.bmp"),
+            scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                ? RelayCore::render::TextureEncoding::srgb
+                : RelayCore::render::TextureEncoding::linear
+        );
         for (const auto& prop : scene_data.props)
             props_.push_back(
                 {models.load(
@@ -379,14 +413,13 @@ namespace RelayGame
         RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData pickup_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData pickup_highlight_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_destroyed_mesh_data = RelayCore::render::make_color_box_mesh_data();
-        RelayCore::render::CpuColorMeshData turret_alert_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_usable_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_door_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_trigger_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_solid_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_hit_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData player_shot_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData turret_shot_mesh_data = RelayCore::render::make_color_box_mesh_data();
 
         const auto tint = [&scene_data](auto& mesh, const glm::vec3& multiplier, const float bias) {
             tint_mesh_data(mesh, multiplier, bias, scene_data.color_pipeline_mode);
@@ -394,26 +427,24 @@ namespace RelayGame
         tint(door_mesh_data, {1.0F, 1.0F, 1.0F}, 0.0F);
         tint(pickup_mesh_data, {0.52F, 1.82F, 1.90F}, 0.06F);
         tint(pickup_highlight_mesh_data, {0.86F, 2.20F, 2.30F}, 0.14F);
-        tint(turret_mesh_data, {1.84F, 0.52F, 0.42F}, -0.01F);
-        tint(turret_destroyed_mesh_data, {0.48F, 0.42F, 0.40F}, -0.18F);
-        tint(turret_alert_mesh_data, {2.55F, 0.72F, 0.62F}, 0.14F);
         tint(inspector_usable_mesh_data, {2.25F, 1.82F, 0.62F}, 0.12F);
         tint(inspector_door_mesh_data, {0.62F, 2.08F, 2.28F}, 0.10F);
         tint(inspector_trigger_mesh_data, {2.28F, 0.92F, 0.58F}, 0.08F);
         tint(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
         tint(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
+        tint(player_shot_mesh_data, {2.4F, 1.9F, 0.85F}, 0.20F);
+        tint(turret_shot_mesh_data, {2.5F, 0.75F, 0.35F}, 0.10F);
 
         door_mesh_.initialize(door_mesh_data);
         pickup_mesh_.initialize(pickup_mesh_data);
         pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data);
-        turret_mesh_.initialize(turret_mesh_data);
-        turret_destroyed_mesh_.initialize(turret_destroyed_mesh_data);
-        turret_alert_mesh_.initialize(turret_alert_mesh_data);
         inspector_usable_mesh_.initialize(inspector_usable_mesh_data);
         inspector_door_mesh_.initialize(inspector_door_mesh_data);
         inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data);
         inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
         inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
+        player_shot_mesh_.initialize(player_shot_mesh_data);
+        turret_shot_mesh_.initialize(turret_shot_mesh_data);
         initialize_prop_meshes(scene_data.color_pipeline_mode);
         initialize_environment_meshes(scene_data.color_pipeline_mode);
         environment_ = scene_data.environment;
@@ -469,6 +500,10 @@ namespace RelayGame
         render_chunks_.shrink_to_fit();
         props_.clear();
         enemy_model_.reset();
+        destroyed_enemy_model_.reset();
+        power_fuse_model_.reset();
+        turret_model_.reset();
+        destroyed_turret_model_.reset();
 
         door_mesh_ = RelayCore::render::StaticColorMesh{};
         panel_mesh_ = RelayCore::render::StaticColorMesh{};
@@ -483,14 +518,14 @@ namespace RelayGame
         panel_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         pickup_mesh_ = RelayCore::render::StaticColorMesh{};
         pickup_highlight_mesh_ = RelayCore::render::StaticColorMesh{};
-        turret_mesh_ = RelayCore::render::StaticColorMesh{};
-        turret_destroyed_mesh_ = RelayCore::render::StaticColorMesh{};
-        turret_alert_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_usable_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_door_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_trigger_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_solid_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_hit_mesh_ = RelayCore::render::StaticColorMesh{};
+        player_shot_mesh_ = RelayCore::render::StaticColorMesh{};
+        turret_shot_mesh_ = RelayCore::render::StaticColorMesh{};
+        turret_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         local_lights_.clear();
         environment_.clear();
         environment_puffs_.clear();
@@ -520,7 +555,8 @@ namespace RelayGame
         const std::span<const std::string> activated_targets,
         const ScientistPose& scientist,
         const std::span<const EnvironmentEffect> environment,
-        const std::span<const RuntimeEnemy> enemies
+        const std::span<const RuntimeEnemy> enemies,
+        const RelayCore::gameplay::PlayerCombatState* player_combat
     )
     {
         RELAYCORE_PROFILE_ZONE_N("WorldSceneRenderer::render");
@@ -612,25 +648,27 @@ namespace RelayGame
         render_doors(camera, doors);
         render_scientist(scientist);
         render_turrets(camera, turrets);
+        if (player_combat != nullptr)
+            render_shot_trace(camera, player_combat->shot_trace, false);
+        for (const auto& turret : turrets)
+            render_shot_trace(camera, turret.shot_trace, true);
         if (enemy_model_)
             for (const auto& enemy : enemies)
             {
                 const auto& state = enemy.state;
                 auto transform = glm::translate(glm::mat4{1}, state.position);
                 transform = glm::rotate(transform, glm::radians(state.yaw), glm::vec3{0, 1, 0});
-                if (state.mode == EnemyMode::Dead)
-                    transform = glm::scale(transform, glm::vec3{1, .35F, 1});
-                else if (state.mode == EnemyMode::Windup)
+                if (state.mode == EnemyMode::Windup)
                     transform = glm::rotate(
                         transform,
                         -.12F * std::sin((.45F - state.timer) / .45F * 3.14159265F),
                         glm::vec3{1, 0, 0}
                     );
-                render_queue_
-                    .push(enemy_model_->mesh, transform, RelayCore::render::RenderPass::Opaque, &enemy_model_->texture);
+                const auto& model = state.mode == EnemyMode::Dead ? destroyed_enemy_model_ : enemy_model_;
+                render_queue_.push(model->mesh, transform, RelayCore::render::RenderPass::Opaque, &model->texture);
                 record_render_draw(
                     RelayCore::render::RenderPass::Opaque,
-                    static_cast<std::uint32_t>(enemy_model_->mesh.index_count() / 3)
+                    static_cast<std::uint32_t>(model->mesh.index_count() / 3)
                 );
             }
         render_interactive_usables(camera, scene_time_seconds, usables, focused_usable_index, true);

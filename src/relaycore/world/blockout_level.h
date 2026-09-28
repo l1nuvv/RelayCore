@@ -70,6 +70,10 @@ namespace RelayCore
         Twill,
         Leather,
         Rubber,
+        ServiceFloor,
+        MaintenanceFloor,
+        FiltrationFloor,
+        FiltrationWall,
     };
 
     /**

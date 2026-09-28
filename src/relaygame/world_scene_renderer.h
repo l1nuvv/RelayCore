@@ -75,7 +75,8 @@ namespace RelayGame
             std::span<const std::string> activated_targets = {},
             const ScientistPose& scientist = {},
             std::span<const EnvironmentEffect> environment = {},
-            std::span<const RuntimeEnemy> enemies = {}
+            std::span<const RuntimeEnemy> enemies = {},
+            const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr
         );
 
         [[nodiscard]] auto diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&;
@@ -109,6 +110,11 @@ namespace RelayGame
         void render_turrets(
             const RelayCore::render::PerspectiveCamera& camera,
             std::span<const RelayCore::gameplay::RuntimeTurret> turrets
+        );
+        void render_shot_trace(
+            const RelayCore::render::PerspectiveCamera& camera,
+            const RelayCore::gameplay::CombatShotTrace& trace,
+            bool hostile
         );
 
         void render_inspector_pick(
@@ -144,16 +150,20 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh panel_warning_mesh_{};
         RelayCore::render::StaticColorMesh pickup_mesh_{};
         RelayCore::render::StaticColorMesh pickup_highlight_mesh_{};
-        RelayCore::render::StaticColorMesh turret_mesh_{};
-        RelayCore::render::StaticColorMesh turret_destroyed_mesh_{};
-        RelayCore::render::StaticColorMesh turret_alert_mesh_{};
         RelayCore::render::StaticColorMesh inspector_usable_mesh_{};
         RelayCore::render::StaticColorMesh inspector_door_mesh_{};
         RelayCore::render::StaticColorMesh inspector_trigger_mesh_{};
         RelayCore::render::StaticColorMesh inspector_solid_mesh_{};
         RelayCore::render::StaticColorMesh inspector_hit_mesh_{};
+        RelayCore::render::StaticColorMesh player_shot_mesh_{};
+        RelayCore::render::StaticColorMesh turret_shot_mesh_{};
+        RelayCore::render::StaticColorMesh turret_warning_mesh_{};
         std::vector<RenderChunk> render_chunks_{};
         std::shared_ptr<const RelayCore::render::StaticModel> enemy_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> destroyed_enemy_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> power_fuse_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> turret_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> destroyed_turret_model_;
         std::vector<WorldLocalLight> local_lights_{};
         std::vector<EnvironmentEffect> environment_{};
         RelayCore::render::StaticColorMesh fan_frame_mesh_, fan_rotor_mesh_, steam_mesh_, spark_mesh_;

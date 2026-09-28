@@ -173,6 +173,12 @@ namespace RelayGame
         actuator(panel_highlight_mesh_, {0.98F, 0.67F, 0.22F});
         actuator(panel_success_mesh_, {0.26F, 0.70F, 0.38F}, true);
         actuator(panel_warning_mesh_, {0.86F, 0.22F, 0.10F});
+        CpuColorMeshData turret_warning;
+        // Cover the existing sensor lens, keeping the warning attached to the housing.
+        disk(turret_warning, {-0.25F, 0.24F, 0.396F}, 0.058F, 0.002F, {1.0F, 0.82F, 0.24F});
+        for (auto& vertex : turret_warning.vertices)
+            vertex.material_kind = static_cast<float>(RelayCore::SurfaceMaterial::LightStrip);
+        upload(turret_warning_mesh_, std::move(turret_warning));
         CpuColorMeshData thigh;
         loft(
             thigh,

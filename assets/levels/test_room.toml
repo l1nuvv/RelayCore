@@ -181,7 +181,7 @@ entities = [
   { classname = "render_light", origin = [0.0, 1.6, 0.0], color = [0.28, 0.18, 0.08], radius = 4.8, intensity = 0.92 },
   { classname = "render_light", origin = [0.0, 2.10, 3.4], color = [0.10, 0.26, 0.30], radius = 4.4, intensity = 0.80 },
   { classname = "gameplay_entity", kind = "terminal", origin = [0.0, 1.32, -0.74], size = [0.42, 0.34, 0.10], use_radius = 2.20, mount_axis = "-z", targetname = "lab_console_lock", target = "lab_relay_console", action = "activate_target", locked = true, signal_action = "unlock", label = "Стабилизировать ядро ретранслятора", denied_message = "Очистите зал от защитной турели", success_message = "Ядро ретранслятора стабилизировано" },
-  { classname = "gameplay_entity", kind = "turret", origin = [3.7, 1.55, 2.05], size = [0.78, 0.92, 0.78], targetname = "lab_defense_turret", label = "Дежурная турель лаборатории", health = 50, damage = 16, attack_range = 14.0, fire_interval = 0.82, warmup = 0.22, destroy_target = "lab_console_lock", destroy_action = "signal_target" },
+  { classname = "gameplay_entity", kind = "turret", origin = [3.7, 1.55, 2.05], angles = [-90, 0, 0], size = [0.78, 0.92, 0.78], targetname = "lab_defense_turret", label = "Дежурная турель лаборатории", health = 50, damage = 16, attack_range = 14.0, fire_interval = 0.82, warmup = 0.22, destroy_target = "lab_console_lock", destroy_action = "signal_target" },
   { classname = "render_light", origin = [0.0, 1.72, -1.55], color = [0.14, 0.38, 0.42], radius = 2.2, intensity = 0.96 },
   { classname = "render_light", origin = [3.7, 1.90, 2.05], color = [0.42, 0.14, 0.10], radius = 2.6, intensity = 0.92 },
 ]

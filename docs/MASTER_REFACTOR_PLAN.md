@@ -1,5 +1,7 @@
 # RelayCore — MASTER REFACTOR PLAN
 
+Исторический аудит и набор предложений RF. С 2026-09-27 действующая очередь — [PLAYABLE_SLICE_ROADMAP](PLAYABLE_SLICE_ROADMAP.md). Сведения о состоянии дерева, проверках и «следующих» шагах ниже относятся к датам аудита/записей. Не запускать RF-очередь автоматически: каждую проблему перепроверять по текущему коду и брать только в согласованный scope.
+
 Audit snapshot: commit 413cbf8c120e05f348b1de24307129c80f8440f3. Statements below about a clean working tree and checks not run describe the audit date. RF-001 through RF-003 were subsequently implemented in the working tree on 2026-09-23; they remain uncommitted.
 
 **RelayCore не нуждается в переписывании архитектуры.** Основной выигрыш дадут исправления конкретных нарушений инвариантов: обработка ошибок при замене сессии, числовая валидация, корректность render queues и надёжность проверок.
@@ -294,7 +296,7 @@ Source asset glob сам по себе здесь не проблема.
 
 Подтверждённый кандидат:
 
-- [apply_rc022f_authored_values_audit.ps1](../apply_rc022f_authored_values_audit.ps1) — одноразовый документальный migration script. Он записывает уже существующий audit document и меняет историческую запись `STATUS.md`; повторный запуск намеренно отклоняет текущее состояние. Ссылок из проверенных project scripts/build/docs на его использование не найдено.
+- `apply_rc022f_authored_values_audit.ps1` — одноразовый документальный migration script из исходного аудита. На 2026-09-27 файл в текущем дереве отсутствует. По исходному аудиту он записывал уже существующий audit document и менял историческую запись `STATUS.md`; повторный запуск отклонял состояние того дерева. Ссылок из проверенных тогда project scripts/build/docs на его использование не было найдено.
 
 Не удалять автоматически:
 

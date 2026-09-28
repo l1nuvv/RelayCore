@@ -34,10 +34,19 @@ namespace RelayCore
 
 namespace RelayGame
 {
+    struct EncounterSnapshot {
+        SavedGame game;
+        float scene_time = 0;
+        std::vector<EnvironmentEffect> environment;
+    };
+
     class GameWorldRuntime {
     public:
         [[nodiscard]] auto capture_saved_game(float played_seconds, bool flashlight) const -> SavedGame;
         void restore_saved_game(const SavedGame& save);
+        [[nodiscard]] auto capture_encounter_snapshot(float played_seconds, float scene_time, bool flashlight) const
+            -> EncounterSnapshot;
+        void restore_encounter_snapshot(const EncounterSnapshot& snapshot);
         [[nodiscard]] auto active_level_exit() const -> const LevelExit*;
         [[nodiscard]] auto has_completion_exit() const noexcept -> bool
         {
@@ -180,6 +189,9 @@ namespace RelayGame
             std::filesystem::path access_denied{};
             std::filesystem::path mission_complete{};
             std::filesystem::path weapon_fire{};
+            std::filesystem::path weapon_hit{};
+            std::filesystem::path threat_windup{};
+            std::filesystem::path rover_attack{};
             std::filesystem::path turret_fire{};
             std::filesystem::path turret_destroyed{};
             std::filesystem::path player_hurt{};

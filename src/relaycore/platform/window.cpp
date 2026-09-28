@@ -69,6 +69,20 @@ namespace RelayCore
             core::throw_sdl_error("Failed to create SDL window");
         }
 
+        SDL_Rect usable_bounds{};
+        core::require_sdl(
+            SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(created_window.get()), &usable_bounds),
+            "Failed to query window display usable bounds"
+        );
+        int top = 0, left = 0, bottom = 0, right = 0;
+        // Border sizes may be unavailable until the window system has decorated the window.
+        static_cast<void>(SDL_GetWindowBordersSize(created_window.get(), &top, &left, &bottom, &right));
+        if (config.width + left + right > usable_bounds.w || config.height + top + bottom > usable_bounds.h)
+        {
+            core::require_sdl(SDL_MaximizeWindow(created_window.get()), "Failed to fit window to display");
+            core::require_sdl(SDL_SyncWindow(created_window.get()), "Failed to synchronize fitted window");
+        }
+
         std::unique_ptr<SDL_GLContextState, decltype(&SDL_GL_DestroyContext)> created_context{
             SDL_GL_CreateContext(created_window.get()),
             SDL_GL_DestroyContext,

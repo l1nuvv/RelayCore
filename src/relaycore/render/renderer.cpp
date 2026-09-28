@@ -31,6 +31,36 @@ namespace RelayCore
     {
         constexpr std::size_t kNearShadowCascadeIndex = 0;
         constexpr std::size_t kFarShadowCascadeIndex = 1;
+        constexpr std::size_t kMaxLocalShadowLights = 8;
+        constexpr int kPointShadowResolution = 256;
+
+        [[nodiscard]] auto shadow_frustum_planes(const glm::mat4& view_projection) -> std::array<glm::vec4, 6>
+        {
+            const glm::vec4
+                row0{view_projection[0][0], view_projection[1][0], view_projection[2][0], view_projection[3][0]};
+            const glm::vec4
+                row1{view_projection[0][1], view_projection[1][1], view_projection[2][1], view_projection[3][1]};
+            const glm::vec4
+                row2{view_projection[0][2], view_projection[1][2], view_projection[2][2], view_projection[3][2]};
+            const glm::vec4
+                row3{view_projection[0][3], view_projection[1][3], view_projection[2][3], view_projection[3][3]};
+            return {row3 + row0, row3 - row0, row3 + row1, row3 - row1, row3 + row2, row3 - row2};
+        }
+
+        [[nodiscard]] auto sphere_intersects_shadow_frustum(
+            const std::array<glm::vec4, 6>& planes,
+            const glm::vec3& center,
+            const float radius
+        ) -> bool
+        {
+            for (const glm::vec4& plane : planes)
+            {
+                const glm::vec3 normal{plane};
+                if (glm::dot(normal, center) + plane.w < -radius * glm::length(normal))
+                    return false;
+            }
+            return true;
+        }
 
         class ShadowResourceBindingGuard {
         public:
@@ -40,6 +70,7 @@ namespace RelayCore
                 glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_framebuffer_);
                 glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_framebuffer_);
                 glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture_2d_);
+                glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP_ARRAY, &texture_cube_array_);
             }
 
             ~ShadowResourceBindingGuard() noexcept
@@ -48,6 +79,7 @@ namespace RelayCore
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<unsigned int>(read_framebuffer_));
                 glActiveTexture(static_cast<unsigned int>(active_texture_));
                 glBindTexture(GL_TEXTURE_2D, static_cast<unsigned int>(texture_2d_));
+                glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, static_cast<unsigned int>(texture_cube_array_));
             }
 
             ShadowResourceBindingGuard(const ShadowResourceBindingGuard&) = delete;
@@ -59,6 +91,7 @@ namespace RelayCore
             GLint draw_framebuffer_ = 0;
             GLint read_framebuffer_ = 0;
             GLint texture_2d_ = 0;
+            GLint texture_cube_array_ = 0;
         };
 
         void apply_render_pass_state(const render::RenderPass pass)
@@ -451,6 +484,10 @@ namespace RelayCore
             core::asset_path("shaders/shadow_depth.vert"),
             core::asset_path("shaders/shadow_depth.frag")
         );
+        staged_reload.point_shadow_shader_program.load_from_files(
+            core::asset_path("shaders/point_shadow_depth.vert"),
+            core::asset_path("shaders/point_shadow_depth.frag")
+        );
 
         const std::filesystem::path atlas_path = core::asset_path("textures/blockout_atlas.bmp");
         render::CpuRgbaTextureData atlas{};
@@ -486,6 +523,7 @@ namespace RelayCore
         overlay_shader_program_ = std::move(staged_reload.overlay_shader_program);
         transparent_shader_program_ = std::move(staged_reload.transparent_shader_program);
         shadow_program_ = std::move(staged_reload.shadow_shader_program);
+        point_shadow_program_ = std::move(staged_reload.point_shadow_shader_program);
         blockout_atlas_ = std::move(staged_reload.blockout_atlas);
         config_ = std::move(staged_reload.config);
         authoring_config_ = std::move(staged_reload.authoring_config);
@@ -693,7 +731,9 @@ namespace RelayCore
 
     Renderer::ShadowResources::ShadowResources(ShadowResources&& other) noexcept :
         framebuffer_ids(std::exchange(other.framebuffer_ids, {})),
-        depth_texture_ids(std::exchange(other.depth_texture_ids, {}))
+        depth_texture_ids(std::exchange(other.depth_texture_ids, {})),
+        point_framebuffer_id(std::exchange(other.point_framebuffer_id, 0)),
+        point_depth_texture_id(std::exchange(other.point_depth_texture_id, 0))
     {}
 
     auto Renderer::ShadowResources::operator=(ShadowResources&& other) noexcept -> ShadowResources&
@@ -703,6 +743,8 @@ namespace RelayCore
             reset();
             framebuffer_ids = std::exchange(other.framebuffer_ids, {});
             depth_texture_ids = std::exchange(other.depth_texture_ids, {});
+            point_framebuffer_id = std::exchange(other.point_framebuffer_id, 0);
+            point_depth_texture_id = std::exchange(other.point_depth_texture_id, 0);
         }
 
         return *this;
@@ -723,6 +765,12 @@ namespace RelayCore
                 depth_texture_ids[cascade_index] = 0;
             }
         }
+        if (point_framebuffer_id != 0)
+            glDeleteFramebuffers(1, &point_framebuffer_id);
+        if (point_depth_texture_id != 0)
+            glDeleteTextures(1, &point_depth_texture_id);
+        point_framebuffer_id = 0;
+        point_depth_texture_id = 0;
     }
 
     auto Renderer::ShadowResources::complete(bool directional) const noexcept -> bool
@@ -737,7 +785,7 @@ namespace RelayCore
             }
         }
 
-        return true;
+        return !directional || (point_framebuffer_id != 0 && point_depth_texture_id != 0);
     }
 
     auto Renderer::create_shadow_resources(const render::RendererConfig& config) -> ShadowResources
@@ -791,6 +839,35 @@ namespace RelayCore
                 throw std::runtime_error("Shadow framebuffer is incomplete");
             }
         }
+        if (config.shadow_enabled)
+        {
+            glGenTextures(1, &resources.point_depth_texture_id);
+            glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, resources.point_depth_texture_id);
+            glTexImage3D(
+                GL_TEXTURE_CUBE_MAP_ARRAY,
+                0,
+                GL_DEPTH_COMPONENT24,
+                kPointShadowResolution,
+                kPointShadowResolution,
+                static_cast<GLsizei>(kMaxLocalShadowLights * 6),
+                0,
+                GL_DEPTH_COMPONENT,
+                GL_FLOAT,
+                nullptr
+            );
+            glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+            glGenFramebuffers(1, &resources.point_framebuffer_id);
+            glBindFramebuffer(GL_FRAMEBUFFER, resources.point_framebuffer_id);
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, resources.point_depth_texture_id, 0, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                throw std::runtime_error("Point shadow framebuffer is incomplete");
+        }
         return resources;
     }
 
@@ -814,6 +891,7 @@ namespace RelayCore
     void Renderer::render_shadow_map(const std::span<const render::RenderItem> items)
     {
         RELAYCORE_PROFILE_FUNCTION();
+        local_shadow_mask_ = 0;
         if (!config_.shadow_enabled && !spot_light_.enabled)
         {
             return;
@@ -852,7 +930,7 @@ namespace RelayCore
         for (std::size_t cascade_index = 0; cascade_index < kShadowMapCount; ++cascade_index)
         {
             const bool spot = cascade_index == kSpotShadowIndex;
-            if (spot ? !spot_light_.enabled : !config_.shadow_enabled)
+            if (spot ? !spot_light_.enabled : !config_.shadow_enabled || config_.shadow_light_intensity <= 0.0F)
                 continue;
             const int shadow_map_resolution = spot ? 1024 : std::max(config_.shadow_map_resolution, 256);
             // The spot light uses front surfaces so thin walls still occlude it.
@@ -874,6 +952,75 @@ namespace RelayCore
                     (spot ? spot_view_projection_ : shadow_light_view_projections_[cascade_index]) * item.model_matrix
                 );
                 item.mesh->draw();
+            }
+        }
+
+        if (config_.shadow_enabled && shadow_resources_.point_depth_texture_id != 0)
+        {
+            shadow_caster_spheres_.resize(items.size());
+            for (std::size_t item_index = 0; item_index < items.size(); ++item_index)
+            {
+                const render::RenderItem& item = items[item_index];
+                if (item.mesh == nullptr || item.pass != render::RenderPass::Opaque)
+                    continue;
+                const glm::vec3 center = (item.mesh->bounds_min() + item.mesh->bounds_max()) * 0.5F;
+                const glm::vec3 extent = (item.mesh->bounds_max() - item.mesh->bounds_min()) * 0.5F;
+                const glm::vec3 world_center = glm::vec3(item.model_matrix * glm::vec4(center, 1.0F));
+                const float world_radius = glm::length(glm::vec3(item.model_matrix[0])) * extent.x
+                                           + glm::length(glm::vec3(item.model_matrix[1])) * extent.y
+                                           + glm::length(glm::vec3(item.model_matrix[2])) * extent.z;
+                shadow_caster_spheres_[item_index] = glm::vec4(world_center, world_radius);
+            }
+            constexpr glm::vec3 face_directions[6] =
+                {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+            constexpr glm::vec3 face_ups[6] = {{0, -1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}, {0, -1, 0}, {0, -1, 0}};
+            glCullFace(GL_BACK);
+            point_shadow_program_.bind();
+            glBindFramebuffer(GL_FRAMEBUFFER, shadow_resources_.point_framebuffer_id);
+            glViewport(0, 0, kPointShadowResolution, kPointShadowResolution);
+            const std::size_t light_count = std::min(local_lights_.size(), kMaxLocalShadowLights);
+            const auto camera_planes = shadow_frustum_planes(camera_.view_projection_matrix());
+            for (std::size_t light_index = 0; light_index < light_count; ++light_index)
+            {
+                const render::LocalLight& light = local_lights_[light_index];
+                if (light.radius <= 0.06F || glm::length(light.color) <= 0.01F
+                    || !sphere_intersects_shadow_frustum(camera_planes, light.position, light.radius))
+                    continue;
+                local_shadow_mask_ |= 1 << light_index;
+                const glm::mat4 projection = glm::perspective(glm::radians(90.0F), 1.0F, 0.05F, light.radius);
+                point_shadow_program_.set_vec3(2, light.position);
+                point_shadow_program_.set_float(3, light.radius);
+                for (int face = 0; face < 6; ++face)
+                {
+                    glFramebufferTextureLayer(
+                        GL_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        shadow_resources_.point_depth_texture_id,
+                        0,
+                        static_cast<GLint>(light_index * 6 + face)
+                    );
+                    glClear(GL_DEPTH_BUFFER_BIT);
+                    const glm::mat4 view_projection =
+                        projection
+                        * glm::lookAt(light.position, light.position + face_directions[face], face_ups[face]);
+                    const auto planes = shadow_frustum_planes(view_projection);
+                    for (std::size_t item_index = 0; item_index < items.size(); ++item_index)
+                    {
+                        const render::RenderItem& item = items[item_index];
+                        if (item.mesh == nullptr || item.pass != render::RenderPass::Opaque)
+                            continue;
+                        const glm::vec4 sphere = shadow_caster_spheres_[item_index];
+                        const glm::vec3 offset = glm::vec3(sphere) - light.position;
+                        const float range = light.radius + sphere.w;
+                        if (glm::dot(offset, offset) > range * range)
+                            continue;
+                        if (!sphere_intersects_shadow_frustum(planes, glm::vec3(sphere), sphere.w))
+                            continue;
+                        point_shadow_program_.set_mat4(0, view_projection * item.model_matrix);
+                        point_shadow_program_.set_mat4(1, item.model_matrix);
+                        item.mesh->draw();
+                    }
+                }
             }
         }
 
@@ -1005,7 +1152,10 @@ namespace RelayCore
         program.set_float(kPostfxSaturationLocation, config_.postfx_saturation);
         program.set_int(
             kShadowEnabledLocation,
-            config_.shadow_enabled && shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex] != 0 ? 1 : 0
+            config_.shadow_enabled && config_.shadow_light_intensity > 0.0F
+                    && shadow_resources_.depth_texture_ids[kNearShadowCascadeIndex] != 0
+                ? 1
+                : 0
         );
         program.set_mat4(
             kShadowNearLightViewProjectionLocation,
@@ -1061,6 +1211,12 @@ namespace RelayCore
             glBindTexture(GL_TEXTURE_2D, shadow_resources_.depth_texture_ids[kFarShadowCascadeIndex]);
             program.set_int(kShadowFarMapLocation, 2);
         }
+        glActiveTexture(GL_TEXTURE0);
+
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, shadow_resources_.point_depth_texture_id);
+        program.set_int(80, 5);
+        program.set_int(81, local_shadow_mask_);
         glActiveTexture(GL_TEXTURE0);
 
         for (std::size_t light_index = 0; light_index < std::min<std::size_t>(local_lights_.size(), kMaxLocalLights);

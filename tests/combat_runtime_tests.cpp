@@ -132,6 +132,8 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
         RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
     CHECK(blocked_shot.fired);
     CHECK_FALSE(blocked_shot.hit_turret);
+    CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
+    CHECK(player.shot_trace.end.z == doctest::Approx(2.85F));
     CHECK(turrets[0].health == doctest::Approx(50.0F));
 
     doors[0].open_fraction = 1.0F;
@@ -142,6 +144,8 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
         RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
     CHECK(first_hit.fired);
     CHECK(first_hit.hit_turret);
+    CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
+    CHECK(player.shot_trace.end.z == doctest::Approx(first_hit.hit_distance));
     CHECK_FALSE(first_hit.killed_turret);
     CHECK(turrets[0].health == doctest::Approx(25.0F));
 
@@ -154,9 +158,12 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     CHECK(second_hit.target_event.action == CombatTargetActionKind::SignalTarget);
     CHECK(second_hit.target_event.target == "console_lock");
     CHECK(turrets[0].destroyed);
+    CHECK(player.shot_trace.remaining_seconds > 0.0F);
     CHECK(player.kills == 1);
     CHECK(player.shots_fired == 3);
     CHECK(player.shots_hit == 2);
+    RelayCore::gameplay::tick_combat_state(0.17F, player, turrets);
+    CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
 }
 
 TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn state")
@@ -204,6 +211,20 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     );
     CHECK(first_tick.hazard_contacts == 1);
     CHECK(first_tick.turret_shots == 0);
+    CHECK(first_tick.turret_windups == 1);
+    CHECK(turrets[0].shot_trace.remaining_seconds == 0);
+    const auto waiting = RelayCore::gameplay::update_combat_threats(
+        level,
+        {},
+        player_bounds,
+        player_eye_position,
+        player,
+        turrets,
+        {},
+        0.01F
+    );
+    CHECK(waiting.turret_windups == 0);
+    CHECK(waiting.turret_shots == 0);
     CHECK_FALSE(first_tick.player_died);
     CHECK(turrets[0].warming_up);
     CHECK(player.health == doctest::Approx(20.0F));
@@ -222,10 +243,16 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
         0.10F
     );
     CHECK(second_tick.turret_shots == 1);
+    CHECK(second_tick.turret_windups == 0);
+    CHECK(turrets[0].shot_trace.remaining_seconds > 0);
+    CHECK(turrets[0].shot_trace.remaining_seconds <= 0.08F);
+    CHECK(turrets[0].shot_trace.start.z > 0.0F);
+    CHECK(turrets[0].shot_trace.end.z == doctest::Approx(player_eye_position.z));
     CHECK(second_tick.player_died);
     CHECK_FALSE(player.alive);
     CHECK(player.health == doctest::Approx(0.0F));
 
     RelayCore::gameplay::tick_combat_state(0.60F, player, turrets);
+    CHECK(turrets[0].shot_trace.remaining_seconds == 0.0F);
     CHECK(player.respawn_remaining_seconds == doctest::Approx(0.90F));
 }

@@ -20,6 +20,9 @@ namespace RelayGame
                 .world_scene = world_scene_,
                 .iteration_diagnostics = iteration_diagnostics_,
                 .saved_runtime_snapshot = saved_runtime_snapshot_,
+                .played_seconds = played_seconds_,
+                .scene_time = scene_time_,
+                .flashlight = flashlight_on_,
             },
             services
         );
@@ -33,23 +36,29 @@ namespace RelayGame
                 .world_scene = world_scene_,
                 .iteration_diagnostics = iteration_diagnostics_,
                 .saved_runtime_snapshot = saved_runtime_snapshot_,
+                .played_seconds = played_seconds_,
+                .scene_time = scene_time_,
+                .flashlight = flashlight_on_,
             },
             services
         );
     }
 
-    void DemoGame::handle_debug_iteration_tools(RelayCore::EngineServices& services)
+    auto DemoGame::handle_debug_iteration_tools(RelayCore::EngineServices& services) -> bool
     {
-        const bool reloaded = detail::handle_debug_iteration_tools(
+        const auto result = detail::handle_debug_iteration_tools(
             detail::DemoGameRuntimeState{
                 .runtime = runtime_,
                 .world_scene = world_scene_,
                 .iteration_diagnostics = iteration_diagnostics_,
                 .saved_runtime_snapshot = saved_runtime_snapshot_,
+                .played_seconds = played_seconds_,
+                .scene_time = scene_time_,
+                .flashlight = flashlight_on_,
             },
             services
         );
-        if (reloaded)
+        if (result == detail::IterationToolResult::Reloaded)
         {
             played_seconds_ = 0;
             scene_time_ = 0;
@@ -58,6 +67,12 @@ namespace RelayGame
             saved_step_ = runtime_.mission_status().current_step;
             change_screen(Screen::Playing, services);
         }
+        if (result == detail::IterationToolResult::Snapshot && iteration_diagnostics_.last_snapshot_succeeded)
+        {
+            autosave_elapsed_ = 0;
+            saved_step_ = runtime_.mission_status().current_step;
+        }
+        return result != detail::IterationToolResult::None;
     }
 
     void DemoGame::publish_iteration_diagnostics(RelayCore::EngineServices& services)
@@ -68,6 +83,9 @@ namespace RelayGame
                 .world_scene = world_scene_,
                 .iteration_diagnostics = iteration_diagnostics_,
                 .saved_runtime_snapshot = saved_runtime_snapshot_,
+                .played_seconds = played_seconds_,
+                .scene_time = scene_time_,
+                .flashlight = flashlight_on_,
             },
             services
         );
@@ -195,6 +213,11 @@ namespace RelayGame
         scene_time_ += static_cast<float>(frame.delta_seconds);
         played_seconds_ += static_cast<float>(frame.delta_seconds);
         autosave_elapsed_ += static_cast<float>(frame.delta_seconds);
+        if (!editor_return_ && handle_debug_iteration_tools(services))
+        {
+            runtime_.publish_diagnostics(services.renderer());
+            return;
+        }
         if (const auto* exit = runtime_.active_level_exit())
         {
             transition_to(*exit, services);
@@ -208,8 +231,6 @@ namespace RelayGame
                    && (autosave_elapsed_ >= 25 || saved_step_ != runtime_.mission_status().current_step))
             static_cast<void>(save_progress());
         runtime_.publish_diagnostics(services.renderer());
-        if (!editor_return_ && screen_ == Screen::Playing)
-            handle_debug_iteration_tools(services);
         runtime_.apply_player_settings(settings_.sensitivity, settings_.camera_motion);
         services.renderer().set_field_of_view(settings_.fov);
     }
@@ -244,7 +265,8 @@ namespace RelayGame
             runtime_.activated_target_ids(),
             screen_ == Screen::Playing || screen_ == Screen::Paused ? runtime_.scientist_pose() : ScientistPose{},
             runtime_.environment(),
-            runtime_.enemies()
+            runtime_.enemies(),
+            &runtime_.player_combat_state()
         );
         services.renderer().set_world_diagnostics(world_scene_.diagnostics());
     }
@@ -257,6 +279,7 @@ namespace RelayGame
             editor_.draw_ui(services);
         else if (screen_ != Screen::Playing)
             draw_pause_menu(services);
+        signal_update_ready();
     }
 
     void DemoGame::on_shutdown(RelayCore::EngineServices& services) noexcept

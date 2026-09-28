@@ -12,9 +12,9 @@ void main()
     vec2 uv = surface_uv(world_position, normal);
     int material_id = int(material_kind + 0.5);
     // Presentation-only materials: soft steam quad and emissive electrical/lamp surfaces.
-    if (material_id == 27 || material_id == 28)
+    if (material_id == RC_SURFACE_MATERIAL_COUNT + 1 || material_id == RC_SURFACE_MATERIAL_COUNT + 2)
     {
-        float alpha = material_id == 27 ? (1.0 - smoothstep(0.05, 0.5, length(object_position.xy))) * 0.16 : 1.0;
+        float alpha = material_id == RC_SURFACE_MATERIAL_COUNT + 1 ? (1.0 - smoothstep(0.05, 0.5, length(object_position.xy))) * 0.16 : 1.0;
         float fog = clamp((fog_distance - u_fog_start) / max(u_fog_end-u_fog_start, 0.001), 0.0, 1.0);
         out_color = vec4(mix(vertex_color, u_fog_color, scene_fog_factor(fog)), alpha);
         return;
@@ -57,7 +57,7 @@ void main()
     lit_color += material_bounce;
     vec3 directional_light = normalize(-u_shadow_light_direction);
     float directional_diffuse = clamp(dot(normal, directional_light), 0.0, 1.0);
-    float directional_shadow = sample_shadow_visibility(normal);
+    float directional_shadow = u_shadow_enabled != 0 ? sample_shadow_visibility(normal) : 1.0;
     float upward_receiver = clamp(normal.y, 0.0, 1.0);
     float contact_shadow = (1.0 - directional_shadow) * directional_diffuse * upward_receiver;
     lit_color *= 1.0 - (contact_shadow * u_shadow_contact_strength);
@@ -80,7 +80,26 @@ void main()
             0.0,
             1.0
         );
-        lit_color += material_color * u_local_light_colors[light_index] * attenuation * wrapped_diffuse * rc_local_light_gain();
+        float local_visibility = 1.0;
+        if ((u_local_shadow_mask & (1 << light_index)) != 0 && attenuation > 0.0 && distance_to_light > 0.05)
+        {
+            vec3 shadow_ray = -light_vector / distance_to_light;
+            float bias = 0.025 + 0.045 * (1.0 - max(dot(normal, light_direction), 0.0));
+            float receiver_depth = (distance_to_light - bias) / radius;
+            float penumbra = 2.0 / 256.0;
+            vec3 tangent = normalize(cross(shadow_ray, abs(shadow_ray.y) > 0.9 ? vec3(1, 0, 0) : vec3(0, 1, 0)));
+            vec3 bitangent = cross(shadow_ray, tangent);
+            local_visibility = 0.0;
+            for (int tap = 0; tap < 4; ++tap)
+            {
+                vec2 offset = vec2(tap == 0 || tap == 2 ? -1.0 : 1.0, tap < 2 ? -1.0 : 1.0);
+                vec3 sample_ray = normalize(shadow_ray + (tangent * offset.x + bitangent * offset.y) * penumbra);
+                float occluder_depth = texture(u_local_shadow_maps, vec4(sample_ray, float(light_index))).r;
+                local_visibility += receiver_depth <= occluder_depth ? 0.25 : 0.0;
+            }
+        }
+        lit_color += material_color * u_local_light_colors[light_index] * attenuation * wrapped_diffuse
+                     * rc_local_light_gain() * local_visibility;
     }
 
     if (u_spot_enabled != 0)

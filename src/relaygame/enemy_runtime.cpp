@@ -79,7 +79,7 @@ namespace RelayGame
         return result;
     }
 
-    void update_enemies(
+    auto update_enemies(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         const RelayCore::physics::Aabb& player_bounds,
@@ -88,10 +88,11 @@ namespace RelayGame
         std::span<RuntimeEnemy> enemies,
         float dt,
         std::vector<RelayCore::physics::Aabb>& blockers
-    )
+    ) -> EnemyThreatResult
     {
+        EnemyThreatResult result{};
         if (!player.alive || dt <= 0 || enemies.empty())
-            return;
+            return result;
         blockers.clear();
         for (const auto* solids : {&level.solids, &level.prop_colliders})
             for (const auto& solid : *solids)
@@ -122,6 +123,7 @@ namespace RelayGame
             glm::vec3 velocity{};
             if (state.mode == EnemyMode::Windup && state.timer == 0)
             {
+                ++result.strikes;
                 if (sees && in_range)
                     static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
                 state.mode = EnemyMode::Recovery;
@@ -134,6 +136,7 @@ namespace RelayGame
                 {
                     state.mode = EnemyMode::Windup;
                     state.timer = .45F;
+                    ++result.windups;
                 } else if (state.mode == EnemyMode::Chasing)
                 {
                     auto delta = state.last_seen - state.position;
@@ -157,6 +160,7 @@ namespace RelayGame
             if (moved.grounded || moved.hit_y)
                 state.vertical_speed = 0;
         }
+        return result;
     }
 
     auto fire_player_weapon(
@@ -196,12 +200,19 @@ namespace RelayGame
             player.damage_dealt += std::min(state.health, player.weapon_damage);
             state.health = std::max(0.0F, state.health - player.weapon_damage);
             ++player.shots_hit;
-            state.mode = state.health == 0 ? EnemyMode::Dead : EnemyMode::Chasing;
+            player.hit_confirmation_remaining_seconds = 0.16F;
             state.last_seen = origin;
-            state.timer = 0;
             result.killed_enemy = state.health == 0;
             if (result.killed_enemy)
+            {
+                state.mode = EnemyMode::Dead;
+                state.timer = 0;
                 ++player.kills;
+            } else if (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Recovery)
+            {
+                state.mode = EnemyMode::Chasing;
+                state.timer = 0;
+            }
         }
         return result;
     }

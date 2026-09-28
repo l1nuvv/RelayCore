@@ -17,6 +17,7 @@
 #include <SDL3/SDL.h>
 #include <array>
 #include <glm/mat4x4.hpp>
+#include <glm/vec4.hpp>
 #include <vector>
 
 namespace RelayCore
@@ -51,6 +52,7 @@ namespace RelayCore
             render::ShaderProgram overlay_shader_program{};
             render::ShaderProgram transparent_shader_program{};
             render::ShaderProgram shadow_shader_program{};
+            render::ShaderProgram point_shadow_shader_program{};
             render::Texture2D blockout_atlas{};
             std::string atlas_source_label{};
         };
@@ -186,6 +188,8 @@ namespace RelayCore
 
             std::array<unsigned int, kShadowMapCount> framebuffer_ids{};
             std::array<unsigned int, kShadowMapCount> depth_texture_ids{};
+            unsigned int point_framebuffer_id = 0;
+            unsigned int point_depth_texture_id = 0;
         };
 
         [[nodiscard]] static auto create_shadow_resources(const render::RendererConfig& config) -> ShadowResources;
@@ -218,6 +222,7 @@ namespace RelayCore
         render::ShaderProgram overlay_shader_program_{};
         render::ShaderProgram transparent_shader_program_{};
         render::ShaderProgram shadow_program_{};
+        render::ShaderProgram point_shadow_program_{};
         debug::ImGuiOverlay imgui_overlay_{};
         render::GameHud game_hud_{};
         render::WorldDiagnostics world_diagnostics_{};
@@ -228,6 +233,8 @@ namespace RelayCore
         render::AudioDiagnostics audio_diagnostics_{};
         render::IterationDiagnostics iteration_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
+        std::vector<glm::vec4> shadow_caster_spheres_{};
+        int local_shadow_mask_ = 0;
         render::Texture2D blockout_atlas_{};
         render::StaticModelCache static_models_{};
         ShadowResources shadow_resources_{};

@@ -91,6 +91,19 @@ namespace RelayCore::render
     void GameHud::draw(const PlayerDiagnostics& player, const InteractionDiagnostics& interaction) const
     {
         RELAYCORE_PROFILE_ZONE_N("GameHud::draw");
+        if (player.hurt_flash_strength > 0.0F)
+        {
+            const auto* viewport = ImGui::GetMainViewport();
+            const float strength = std::clamp(player.hurt_flash_strength, 0.0F, 1.0F);
+            ImGui::GetForegroundDrawList()->AddRect(
+                viewport->WorkPos,
+                {viewport->WorkPos.x + viewport->WorkSize.x, viewport->WorkPos.y + viewport->WorkSize.y},
+                IM_COL32(198, 55, 45, static_cast<int>(strength * 180.0F)),
+                0.0F,
+                0,
+                4.0F + strength * 10.0F
+            );
+        }
         if (has_player_status(player) && player.health > 0)
         {
             const auto* viewport = ImGui::GetMainViewport();
@@ -106,6 +119,19 @@ namespace RelayCore::render
             }
             draw->AddCircleFilled(center, 2.0F, IM_COL32(15, 20, 18, 210));
             draw->AddCircleFilled(center, 1.0F, color);
+            if (player.hit_confirmation_strength > 0.0F)
+            {
+                const ImU32 hit_color =
+                    IM_COL32(222, 234, 200, static_cast<int>(player.hit_confirmation_strength * 255.0F));
+                for (const float x : {-1.0F, 1.0F})
+                    for (const float y : {-1.0F, 1.0F})
+                        draw->AddLine(
+                            {center.x + x * 6.0F, center.y + y * 6.0F},
+                            {center.x + x * 12.0F, center.y + y * 12.0F},
+                            hit_color,
+                            2.0F
+                        );
+            }
         }
         if (has_player_status(player))
         {
@@ -143,35 +169,26 @@ namespace RelayCore::render
         const float health_ratio =
             player.max_health > 0.001F ? std::clamp(player.health / player.max_health, 0.0F, 1.0F) : 0.0F;
 
-        const std::string header = player.alive ? "БОЕВОЙ СТАТУС" : "КРИТИЧЕСКОЕ СОСТОЯНИЕ";
+        const std::string header = player.alive ? "ЗДОРОВЬЕ" : "ВОЗВРАЩЕНИЕ";
         const std::string health_text = "Здоровье: " + std::to_string(static_cast<int>(std::lround(player.health)))
                                         + "/" + std::to_string(static_cast<int>(std::lround(player.max_health)));
         const std::string attack_label = player.primary_attack_label.empty() ? "Mouse1" : player.primary_attack_label;
         const std::string weapon_text =
-            player.alive ? (player.weapon_cooldown_remaining_seconds <= 0.001F
-                                ? "[" + attack_label + "] Сайдарм готов"
-                                : "[" + attack_label + "] Перезарядка "
-                                      + std::to_string(player.weapon_cooldown_remaining_seconds) + "с")
-                         : "Возврат через " + std::to_string(player.respawn_remaining_seconds) + "с";
-        const std::string threat_text =
-            player.total_turrets > 0
-                ? ("Турели: " + std::to_string(player.destroyed_turrets) + "/" + std::to_string(player.total_turrets))
-                : ("Выстрелы: " + std::to_string(player.shots_hit) + "/" + std::to_string(player.shots_fired));
+            player.alive ? "[" + attack_label + "] Стрелять"
+                         : "Ко входу через "
+                               + std::to_string(static_cast<int>(std::ceil(player.respawn_remaining_seconds))) + " с";
         const std::string damage_text =
-            player.active_hazard_contacts > 0
-                ? std::string{"Опасная поверхность под ногами"}
-                : (player.last_damage_source.empty() ? std::string{"Контакт с угрозой отсутствует"}
-                                                     : "Последний урон: " + player.last_damage_source);
+            !player.alive ? "Выполненные задачи и изменения мира сохранятся."
+                          : (player.active_hazard_contacts > 0 ? "Отойдите с опасной поверхности" : std::string{});
 
         const ImVec2 header_size = ImGui::CalcTextSize(header.c_str());
         const ImVec2 health_size = calc_wrapped_text_size(font, font_size, 320.0F, health_text);
         const ImVec2 weapon_size = calc_wrapped_text_size(font, font_size, 320.0F, weapon_text);
-        const ImVec2 threat_size = calc_wrapped_text_size(font, font_size, 320.0F, threat_text);
         const ImVec2 damage_size = calc_wrapped_text_size(font, font_size, 320.0F, damage_text);
         const float card_width =
-            std::max({header_size.x, health_size.x, weapon_size.x, threat_size.x, damage_size.x}) + (padding.x * 2.0F);
+            std::max({header_size.x, health_size.x, weapon_size.x, damage_size.x}) + (padding.x * 2.0F);
         const float card_height = padding.y + header_size.y + 10.0F + health_size.y + 8.0F + 10.0F + weapon_size.y
-                                  + 4.0F + threat_size.y + 4.0F + damage_size.y + padding.y;
+                                  + (damage_text.empty() ? 0.0F : 4.0F + damage_size.y) + padding.y;
         const ImVec2 min{
             viewport->WorkPos.x + kStatusMargin,
             viewport->WorkPos.y + viewport->WorkSize.y - kStatusBottomMargin - card_height,
@@ -246,16 +263,6 @@ namespace RelayCore::render
             320.0F
         );
         cursor.y += weapon_size.y + 4.0F;
-        draw_list->AddText(
-            font,
-            font_size,
-            cursor,
-            ImGui::ColorConvertFloat4ToU32(ImVec4(0.74F, 0.84F, 0.92F, 0.96F)),
-            threat_text.c_str(),
-            nullptr,
-            320.0F
-        );
-        cursor.y += threat_size.y + 4.0F;
         draw_list->AddText(
             font,
             font_size,
@@ -469,7 +476,6 @@ namespace RelayCore::render
         ImVec4 fill = ImVec4(0.10F, 0.12F, 0.15F, 0.86F);
         ImVec4 border = ImVec4(0.72F, 0.78F, 0.86F, 0.55F);
         ImVec4 text = ImVec4(0.92F, 0.96F, 1.0F, 1.0F);
-        ImVec4 flash = ImVec4(0.22F, 0.28F, 0.38F, 0.12F);
 
         switch (interaction.transient_event_style)
         {
@@ -477,25 +483,17 @@ namespace RelayCore::render
                 fill = ImVec4(0.08F, 0.14F, 0.10F, 0.88F);
                 border = ImVec4(0.42F, 0.86F, 0.66F, 0.60F);
                 text = ImVec4(0.90F, 1.0F, 0.94F, 1.0F);
-                flash = ImVec4(0.18F, 0.40F, 0.28F, 0.16F);
                 break;
             case HudEventStyle::Warning:
                 fill = ImVec4(0.16F, 0.08F, 0.08F, 0.90F);
                 border = ImVec4(0.96F, 0.42F, 0.36F, 0.62F);
                 text = ImVec4(1.0F, 0.90F, 0.88F, 1.0F);
-                flash = ImVec4(0.46F, 0.10F, 0.08F, 0.18F);
                 break;
             case HudEventStyle::Neutral:
             default:
                 break;
         }
 
-        const ImU32 flash_color = ImGui::ColorConvertFloat4ToU32(ImVec4(flash.x, flash.y, flash.z, flash.w * strength));
-        draw_list->AddRectFilled(
-            viewport->WorkPos,
-            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x, viewport->WorkPos.y + viewport->WorkSize.y),
-            flash_color
-        );
         draw_card_background(
             draw_list,
             min,

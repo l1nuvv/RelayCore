@@ -120,6 +120,43 @@ int main()
     {
         const RelayCore::test::ScopedTempDirectory temp;
         RelayCore::log::init({.logs_directory = temp.path().string(), .enable_timestamped_log = false});
+        try
+        {
+            if (!SDL_Init(SDL_INIT_VIDEO))
+                throw std::runtime_error(SDL_GetError());
+            SDL_Rect usable{};
+            if (!SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable))
+                throw std::runtime_error(SDL_GetError());
+            for (const bool high_dpi : {false, true})
+            {
+                RelayCore::Window window{RelayCore::WindowConfig{
+                    .width = usable.w * 2,
+                    .height = usable.h * 2,
+                    .high_dpi = high_dpi,
+                    .vsync = false,
+                }};
+                int x = 0, y = 0, width = 0, height = 0;
+                if (!SDL_GetWindowPosition(window.handle(), &x, &y)
+                    || !SDL_GetWindowSize(window.handle(), &width, &height)
+                    || !SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window.handle()), &usable))
+                    throw std::runtime_error(SDL_GetError());
+                if (!(SDL_GetWindowFlags(window.handle()) & SDL_WINDOW_MAXIMIZED) || x < usable.x || y < usable.y
+                    || x + width > usable.x + usable.w || y + height > usable.y + usable.h)
+                    throw std::runtime_error("Oversized window client area extends beyond the usable desktop");
+                std::cout << "window_fit=" << width << 'x' << height << ", high_dpi=" << high_dpi
+                          << ", desktop=" << usable.w << 'x' << usable.h << '\n';
+            }
+            RelayCore::Window small{RelayCore::WindowConfig{.width = 320, .height = 240, .vsync = false}};
+            int width = 0, height = 0;
+            if (!SDL_GetWindowSize(small.handle(), &width, &height) || width != 320 || height != 240
+                || (SDL_GetWindowFlags(small.handle()) & SDL_WINDOW_MAXIMIZED))
+                throw std::runtime_error("Window that fits the display did not retain its requested size");
+        } catch (const std::exception& error)
+        {
+            std::cerr << "Window display fit failed: " << error.what() << '\n';
+            result = 1;
+        }
+        SDL_Quit();
         for (const auto [throw_on_startup, throw_on_update] :
              {std::pair{false, false}, std::pair{true, false}, std::pair{false, true}})
         {
