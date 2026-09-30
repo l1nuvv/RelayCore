@@ -14,6 +14,23 @@ namespace RelayGame
 {
     void DemoGame::start_level_session(RelayCore::EngineServices& services)
     {
+        if (development_sandbox_)
+        {
+            install_level_session(
+                detail::prepare_level_session(
+                    services.config(),
+                    LevelSessionBuilder{services.config().gameplay}.build(
+                        RelayCore::core::asset_path("levels/development_sandbox.toml")
+                    ),
+                    services.renderer().authoring_config(),
+                    services.renderer().color_pipeline_mode(),
+                    services.renderer().static_models()
+                ),
+                services,
+                window_focused_
+            );
+            return;
+        }
         detail::start_level_session(
             detail::DemoGameRuntimeState{
                 .runtime = runtime_,
@@ -266,8 +283,16 @@ namespace RelayGame
             screen_ == Screen::Playing || screen_ == Screen::Paused ? runtime_.scientist_pose() : ScientistPose{},
             runtime_.environment(),
             runtime_.enemies(),
-            &runtime_.player_combat_state()
+            &runtime_.player_combat_state(),
+            runtime_.player_pellet_traces()
         );
+        if ((screen_ == Screen::Playing || screen_ == Screen::Paused) && runtime_.player_combat_state().alive
+            && runtime_.selected_weapon() == PlayerWeapon::Shotgun)
+            world_scene_.render_shotgun_viewmodel(
+                services.renderer(),
+                services.camera(),
+                runtime_.shotgun_cycle_remaining_seconds()
+            );
         services.renderer().set_world_diagnostics(world_scene_.diagnostics());
     }
 

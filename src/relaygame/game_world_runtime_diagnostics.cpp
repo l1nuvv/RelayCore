@@ -171,6 +171,10 @@ namespace RelayGame
         player_diagnostics.damage_dealt = combat_state_.player.damage_dealt;
         player_diagnostics.damage_taken = combat_state_.player.damage_taken;
         player_diagnostics.primary_attack_label = combat_state_.fire_binding_label;
+        player_diagnostics.weapon_label = selected_weapon_ == PlayerWeapon::Shotgun ? "Дробовик" : "Точное оружие";
+        player_diagnostics.weapon_reticle_radius = selected_weapon_ == PlayerWeapon::Shotgun ? 12.0F : 0.0F;
+        if (std::ranges::find(inventory_item_ids_, shotgun_item_id) != inventory_item_ids_.end())
+            player_diagnostics.weapon_selection_hint = "[1] Точное  [2] Дробовик";
         player_diagnostics.last_damage_source = combat_state_.player.last_damage_source;
         const auto& collision_diagnostics = player_controller_.collision_query_diagnostics();
         player_diagnostics.static_collision_solids = collision_diagnostics.static_world_solids;

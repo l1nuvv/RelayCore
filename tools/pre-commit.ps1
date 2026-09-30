@@ -52,6 +52,16 @@ function Get-ClangFormatPath
     return $null
 }
 
+function Get-StagedContent([string]$File)
+{
+    $content = & git --no-pager show ":$File"
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Could not read staged file: $File"
+    }
+    return ($content -join "`n").TrimStart([char]0xFEFF)
+}
+
 function Assert-StagedCppFormat
 {
     $cppFiles = Get-StagedFiles @('*.c', '*.cpp', '*.h', '*.hpp', ':(exclude)extern/**')
@@ -80,14 +90,20 @@ function Assert-StagedCppFormat
         }
 
         $formatStyle = (Join-Path (Get-Location).Path '.clang-format').Replace('\', '/')
+        $badFiles = New-Object System.Collections.Generic.List[string]
         foreach ($file in $cppFiles)
         {
             $stagedFile = Join-Path $tempDirectory $file
             & $clangFormat --dry-run --Werror "--style=file:$formatStyle" -- $stagedFile
             if ($LASTEXITCODE -ne 0)
             {
-                throw "Staged C/C++ file needs formatting: $file"
+                $badFiles.Add($file)
             }
+        }
+        if ($badFiles.Count -gt 0)
+        {
+            throw ("Staged C/C++ files need formatting:`n - " + ($badFiles -join "`n - ") +
+                "`nFormat these files and include the corrections in the commit.")
         }
     }
     finally
@@ -110,23 +126,11 @@ function Assert-NoConflictMarkers
     }
 
     $badFiles = New-Object System.Collections.Generic.List[string]
-    $pattern = '^(<<<<<<<|=======|>>>>>>>)'
+    $pattern = '(?m)^(<<<<<<<|=======|>>>>>>>)'
 
     foreach ($file in $textFiles)
     {
-        if (-not (Test-Path -LiteralPath $file))
-        {
-            continue
-        }
-
-        try
-        {
-            $content = Get-Content -LiteralPath $file -Raw -ErrorAction Stop
-        }
-        catch
-        {
-            continue
-        }
+        $content = Get-StagedContent $file
 
         if ($content -match $pattern)
         {
@@ -153,14 +157,14 @@ function Assert-ValidJson
 
     foreach ($file in $jsonFiles)
     {
-        if (-not (Test-Path -LiteralPath $file))
-        {
-            continue
-        }
-
+        $content = Get-StagedContent $file
         try
         {
-            Get-Content -LiteralPath $file -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop | Out-Null
+            if ([string]::IsNullOrWhiteSpace($content))
+            {
+                throw 'JSON document is empty'
+            }
+            $content | ConvertFrom-Json -ErrorAction Stop | Out-Null
         }
         catch
         {

@@ -17,6 +17,8 @@ namespace RelayGame
     void DemoGame::initialize_player_settings(RelayCore::EngineServices& services)
     {
         update_notification_ = SDL_getenv("RELAYCORE_UPDATE_READY_EVENT") != nullptr;
+        if (development_sandbox_)
+            new_game_level_ = "levels/development_sandbox.toml";
         settings_.volume = services.config().audio.master_volume;
         settings_.sensitivity = services.config().input.mouse_sensitivity_radians;
         settings_.fov = glm::degrees(services.config().renderer.camera.vertical_fov_radians);
@@ -24,7 +26,7 @@ namespace RelayGame
         if (user_data_directory_.empty())
         {
             const std::unique_ptr<char, decltype(&SDL_free)> directory{
-                SDL_GetPrefPath("RelayCore", "RelayCore"),
+                SDL_GetPrefPath("RelayCore", development_sandbox_ ? "Sandbox" : "RelayCore"),
                 SDL_free
             };
             if (!directory)
@@ -114,7 +116,14 @@ namespace RelayGame
         ImGui::PopFont();
         ImGui::SameLine();
         ImGui::TextDisabled("/ %s", RELAYCORE_GAME_VERSION);
-        ImGui::SeparatorText("КОНТУР 03 / ВОССТАНОВЛЕНИЕ");
+        const bool pressure_transfer = screen_ == Screen::MainMenu
+                                           ? new_game_level_ == "levels/pressure_transfer.toml"
+                                           : runtime_.level_path().ends_with("pressure_transfer.toml");
+        ImGui::SeparatorText(
+            development_sandbox_ ? "ИСПЫТАТЕЛЬНЫЙ ПОЛИГОН"
+            : pressure_transfer  ? "ПЕРЕПУСК ДАВЛЕНИЯ"
+                                 : "КОНТУР 03 / ВОССТАНОВЛЕНИЕ"
+        );
         if (screen_ == Screen::MainMenu)
         {
             if (update_notification_)
@@ -125,8 +134,13 @@ namespace RelayGame
                     update_notification_ = false;
             } else
                 ImGui::TextWrapped(
-                    new_game_level_.empty()
+                    development_sandbox_
+                        ? "Движение, устройства, стрельбище и арена. F7 — сброс карты; F9/F10 — повтор встречи."
+                    : new_game_level_.empty()
                         ? "Обесточенный сектор. Запасной предохранитель. Один путь к исследовательскому блоку."
+                    : new_game_level_ == "levels/pressure_transfer.toml"
+                        ? "Перепускной сектор. Два оружия, служебный зал и длинная галерея. Запустите перепуск и "
+                          "откройте выход."
                         : "Сервисная мастерская и насосная галерея. Найдите ключ и откройте путь через оба сектора."
                 );
             ImGui::Spacing();
@@ -134,25 +148,36 @@ namespace RelayGame
             if (ImGui::Button("Продолжить [Enter]", {-1, 44}))
                 begin_episode(true, services);
             ImGui::EndDisabled();
-            if (disk_save_ && !disk_save_->world.mission.completed)
+            if (development_sandbox_ && disk_save_)
+                ImGui::Text(
+                    "Сохранено: полигон · %02d:%02d",
+                    static_cast<int>(disk_save_->played_seconds) / 60,
+                    static_cast<int>(disk_save_->played_seconds) % 60
+                );
+            else if (disk_save_ && !disk_save_->world.mission.completed)
                 ImGui::Text(
                     "Сохранено: этап %u · %02d:%02d",
                     disk_save_->world.mission.current_step + 1,
                     static_cast<int>(disk_save_->played_seconds) / 60,
                     static_cast<int>(disk_save_->played_seconds) % 60
                 );
-            if (ImGui::BeginCombo(
+            if (!development_sandbox_
+                && ImGui::BeginCombo(
                     "Сценарий новой игры",
-                    new_game_level_.empty() ? "Восстановление питания" : "Два сектора"
+                    new_game_level_.empty()                              ? "Восстановление питания"
+                    : new_game_level_ == "levels/pressure_transfer.toml" ? "Перепуск давления"
+                                                                         : "Два сектора"
                 ))
             {
                 if (ImGui::Selectable("Восстановление питания", new_game_level_.empty()))
                     new_game_level_.clear();
-                if (ImGui::Selectable("Два сектора", !new_game_level_.empty()))
+                if (ImGui::Selectable("Два сектора", new_game_level_ == "levels/foundation_intake.toml"))
                     new_game_level_ = "levels/foundation_intake.toml";
+                if (ImGui::Selectable("Перепуск давления", new_game_level_ == "levels/pressure_transfer.toml"))
+                    new_game_level_ = "levels/pressure_transfer.toml";
                 ImGui::EndCombo();
             }
-            if (ImGui::Button("Новый эпизод", {-1, 40}))
+            if (ImGui::Button(development_sandbox_ ? "Начать испытания" : "Новый эпизод", {-1, 40}))
             {
                 if (save_file_exists_)
                     confirm_new_game_ = true;
@@ -161,7 +186,10 @@ namespace RelayGame
             }
             if (confirm_new_game_)
             {
-                ImGui::TextWrapped("Начать заново? Предыдущее сохранение будет заменено.");
+                ImGui::TextWrapped(
+                    development_sandbox_ ? "Сбросить полигон? Предыдущее состояние испытаний будет заменено."
+                                         : "Начать заново? Предыдущее сохранение будет заменено."
+                );
                 if (ImGui::Button("Начать заново", {230, 34}))
                     begin_episode(false, services);
                 ImGui::SameLine();
@@ -253,7 +281,7 @@ namespace RelayGame
             );
         }
         ImGui::Spacing();
-        if (screen_ == Screen::MainMenu)
+        if (screen_ == Screen::MainMenu && !development_sandbox_)
         {
             if (update_check_.valid() && update_check_.wait_for(std::chrono::seconds{0}) == std::future_status::ready)
             {

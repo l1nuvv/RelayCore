@@ -3,6 +3,7 @@
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaygame/mission_runtime.h"
+#include "relaygame/player_weapon.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -159,6 +160,7 @@ namespace RelayGame
         std::vector<std::string> signaled_target_ids{};
         PlayerCombatSnapshot player_combat{};
         MissionRuntimeSnapshot mission{};
+        PlayerWeapon selected_weapon = PlayerWeapon::Precise;
     };
 
     struct SnapshotRestoreResult {

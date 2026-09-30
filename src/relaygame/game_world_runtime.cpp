@@ -93,6 +93,7 @@ namespace RelayGame
         signaled_target_ids_.clear();
         interaction_state_ = {};
         combat_state_ = {};
+        selected_weapon_ = PlayerWeapon::Precise;
         combat_state_.spawn_position = spawn_position;
         combat_state_.spawn_view_angles = spawn_view_angles;
         combat_state_.fire_binding_label = config.gameplay.controls.primary_attack.empty()
@@ -152,6 +153,7 @@ namespace RelayGame
         services.audio_system().preload_one_shots(player_sounds_);
         const std::array combat_cues{
             audio_cues_.weapon_fire,
+            audio_cues_.shotgun_fire,
             audio_cues_.weapon_hit,
             audio_cues_.threat_windup,
             audio_cues_.rover_attack,
@@ -288,6 +290,7 @@ namespace RelayGame
         if (!input_ownership_.keyboard_blocked && ownership.keyboard_blocked)
         {
             frame_actions_.use_pressed = false;
+            frame_actions_.weapon_selection.reset();
             interaction_state_.use_pressed = false;
         }
         if (!input_ownership_.mouse_blocked && ownership.mouse_blocked)
@@ -305,6 +308,7 @@ namespace RelayGame
         frame_actions_.use_pressed = false;
         frame_actions_.fire_pressed = false;
         frame_actions_.inspector_pin_pressed = false;
+        frame_actions_.weapon_selection.reset();
         frame_iteration_commands_ = {};
         interaction_state_.use_pressed = false;
         combat_state_.fire_pressed = false;
@@ -535,13 +539,22 @@ namespace RelayGame
             direction,
             combat_state_.player,
             combat_state_.turrets,
-            enemies_
+            enemies_,
+            selected_weapon_
         );
 
         const auto& fire_result = attack.combat;
+        if (fire_result.fired)
+        {
+            combat_state_.pellet_traces = attack.pellet_traces;
+            if (selected_weapon_ == PlayerWeapon::Shotgun)
+                combat_state_.shotgun_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
+        }
+        for (std::size_t i = 0; i < attack.ray_count; ++i)
+            if (attack.rays[i].killed_turret)
+                apply_combat_target_event(attack.rays[i].target_event);
         if (fire_result.killed_turret)
         {
-            apply_combat_target_event(fire_result.target_event);
             refresh_runtime_usables_and_focus();
             refresh_active_door_count();
         }
@@ -605,7 +618,7 @@ namespace RelayGame
     auto GameWorldRuntime::debug_advance_player_respawn(const float dt) noexcept -> bool
     {
         RELAYCORE_PROFILE_FUNCTION();
-        RelayCore::gameplay::tick_combat_state(dt, combat_state_.player, combat_state_.turrets);
+        tick_combat_state(dt);
         if (combat_state_.player.alive)
         {
             return false;
@@ -617,7 +630,7 @@ namespace RelayGame
     void GameWorldRuntime::debug_tick_combat(const float dt) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        RelayCore::gameplay::tick_combat_state(dt, combat_state_.player, combat_state_.turrets);
+        tick_combat_state(dt);
     }
 
     void GameWorldRuntime::debug_update_mission(const RelayCore::physics::Aabb& actor_bounds)
@@ -628,10 +641,21 @@ namespace RelayGame
         refresh_active_door_count();
     }
 
+    auto GameWorldRuntime::select_weapon(PlayerWeapon weapon) noexcept -> bool
+    {
+        if (!combat_state_.player.alive || paused_
+            || (weapon != PlayerWeapon::Precise && weapon != PlayerWeapon::Shotgun)
+            || (weapon == PlayerWeapon::Shotgun
+                && std::ranges::find(inventory_item_ids_, shotgun_item_id) == inventory_item_ids_.end()))
+            return false;
+        selected_weapon_ = weapon;
+        return true;
+    }
+
     auto GameWorldRuntime::capture_runtime_snapshot() const -> RelayGame::RuntimeLevelSnapshot
     {
         RELAYCORE_PROFILE_FUNCTION();
-        return RelayGame::capture_runtime_level_snapshot(
+        auto snapshot = RelayGame::capture_runtime_level_snapshot(
             runtime_state_.level_path,
             runtime_registry_,
             doors_,
@@ -645,12 +669,19 @@ namespace RelayGame
             mission_runtime_,
             simulation_loop_.tick_index()
         );
+        snapshot.selected_weapon = selected_weapon_;
+        return snapshot;
     }
 
     auto GameWorldRuntime::restore_runtime_snapshot(const RelayGame::RuntimeLevelSnapshot& snapshot)
         -> RelayGame::SnapshotRestoreResult
     {
         RELAYCORE_PROFILE_FUNCTION();
+        if ((snapshot.selected_weapon != PlayerWeapon::Precise && snapshot.selected_weapon != PlayerWeapon::Shotgun)
+            || (snapshot.selected_weapon == PlayerWeapon::Shotgun
+                && std::ranges::find(snapshot.inventory_item_ids, shotgun_item_id) == snapshot.inventory_item_ids.end()
+            ))
+            return {.error = "Snapshot contains an unavailable player weapon."};
         const RelayGame::SnapshotRestoreResult result = RelayGame::restore_runtime_level_snapshot(
             snapshot,
             runtime_state_.level_path,
@@ -667,6 +698,11 @@ namespace RelayGame
         );
         if (result.restored)
         {
+            selected_weapon_ = snapshot.selected_weapon;
+            combat_state_.pellet_traces = {};
+            combat_state_.shotgun_cycle_remaining_seconds = 0;
+            frame_actions_.weapon_selection.reset();
+            (void) player_controller_.consume_weapon_selection();
             transient_hud_event_ = {};
             interaction_state_.last_event = {};
             interaction_state_.fired_triggers = 0;
@@ -818,10 +854,11 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         const float sim_delta_seconds = static_cast<float>(sim_frame.delta_seconds);
-        RelayCore::gameplay::tick_combat_state(sim_delta_seconds, combat_state_.player, combat_state_.turrets);
+        tick_combat_state(sim_delta_seconds);
 
         if (!combat_state_.player.alive)
         {
+            actions.weapon_selection.reset();
             if (advance_dead_player_state(sim_delta_seconds))
             {
                 play_gameplay_audio(services, audio_cues_.player_respawn);
@@ -866,6 +903,13 @@ namespace RelayGame
         const bool use_pressed_this_step = actions.use_pressed;
         actions.fire_pressed = false;
         actions.use_pressed = false;
+
+        if (actions.weapon_selection)
+        {
+            if (!select_weapon(*actions.weapon_selection))
+                push_transient_hud_event("Сначала возьмите дробовик", RelayCore::render::HudEventStyle::Neutral, 1.4F);
+            actions.weapon_selection.reset();
+        }
 
         process_fire_input(fire_pressed_this_step, services);
         process_use_input(use_pressed_this_step, services);

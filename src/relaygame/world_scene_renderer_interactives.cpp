@@ -1,5 +1,6 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/camera.h"
+#include "relaycore/render/renderer.h"
 #include "relaygame/world_scene_renderer.h"
 
 #include <cmath>
@@ -170,6 +171,47 @@ namespace RelayGame
 
     } // namespace
 
+    void WorldSceneRenderer::render_shotgun_viewmodel(
+        RelayCore::Renderer& renderer,
+        const RelayCore::render::PerspectiveCamera& camera,
+        float cycle_remaining_seconds
+    )
+    {
+        const float elapsed = .85F - cycle_remaining_seconds;
+        const float recoil =
+            cycle_remaining_seconds > 0 ? std::sin(glm::pi<float>() * glm::clamp(elapsed / .14F, 0.0F, 1.0F)) : 0;
+        const float pump = cycle_remaining_seconds > 0
+                               ? .07F * std::sin(glm::pi<float>() * glm::clamp((elapsed - .18F) / .54F, 0.0F, 1.0F))
+                               : 0;
+        glm::mat4 basis{1};
+        basis[0] = glm::vec4{camera.right(), 0};
+        basis[1] = glm::vec4{camera.up(), 0};
+        basis[2] = glm::vec4{-camera.forward(), 0};
+        basis[3] = glm::vec4{camera.position(), 1};
+        auto model = glm::translate(basis, {.28F, -.22F + recoil * .018F, -.65F + recoil * .025F});
+        model = glm::rotate(model, .15F, glm::vec3{0, 1, 0});
+        model = glm::rotate(model, recoil * .04F, glm::vec3{1, 0, 0});
+        const std::array items{
+            RelayCore::render::RenderItem{
+                &shotgun_body_model_->mesh,
+                model,
+                RelayCore::render::RenderPass::Opaque,
+                &shotgun_body_model_->texture,
+                false
+            },
+            RelayCore::render::RenderItem{
+                &shotgun_pump_model_->mesh,
+                glm::translate(model, {0, 0, pump}),
+                RelayCore::render::RenderPass::Opaque,
+                &shotgun_pump_model_->texture,
+                false
+            }
+        };
+        for (const auto& item : items)
+            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(*item.mesh));
+        renderer.draw_viewmodel(items);
+    }
+
     void WorldSceneRenderer::render_doors(
         const RelayCore::render::PerspectiveCamera&,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors
@@ -262,18 +304,39 @@ namespace RelayGame
             } else
             {
                 const auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
-                const glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
+                glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
                 const bool is_power_fuse = usable.item_id == "power_fuse";
+                const bool is_shotgun = usable.item_id == shotgun_item_id;
+                if (is_shotgun)
+                {
+                    const auto center = (glm::min(shotgun_body_model_->mins, shotgun_pump_model_->mins)
+                                         + glm::max(shotgun_body_model_->maxs, shotgun_pump_model_->maxs))
+                                        * .5F;
+                    pickup_model = glm::translate(glm::mat4{1}, (bounds.mins + bounds.maxs) * .5F);
+                    pickup_model = glm::rotate(pickup_model, glm::half_pi<float>(), glm::vec3{0, 1, 0});
+                    pickup_model = glm::translate(pickup_model, -center);
+                }
                 if (!camera_visible)
                 {
-                    if (is_power_fuse)
+                    if (is_shotgun)
+                    {
+                        shadow_casters_.push(shotgun_body_model_->mesh, pickup_model);
+                        shadow_casters_.push(shotgun_pump_model_->mesh, pickup_model);
+                    } else if (is_power_fuse)
                         shadow_casters_.push(power_fuse_model_->mesh, pickup_model);
                     else
                         shadow_casters_.push(pickup_mesh_, pickup_model);
                     continue;
                 }
                 ++diagnostics_.usable_draw_calls;
-                if (is_power_fuse)
+                if (is_shotgun)
+                {
+                    for (const auto& part : {shotgun_body_model_, shotgun_pump_model_})
+                    {
+                        record_render_draw(RenderPass::Opaque, mesh_triangle_count(part->mesh));
+                        render_queue_.push(part->mesh, pickup_model, RenderPass::Opaque, &part->texture);
+                    }
+                } else if (is_power_fuse)
                 {
                     record_render_draw(
                         RenderPass::Opaque,
@@ -347,7 +410,8 @@ namespace RelayGame
     void WorldSceneRenderer::render_shot_trace(
         const RelayCore::render::PerspectiveCamera& camera,
         const RelayCore::gameplay::CombatShotTrace& trace,
-        const bool hostile
+        const bool hostile,
+        const bool pellet
     )
     {
         if (trace.remaining_seconds <= 0.0F)
@@ -361,11 +425,12 @@ namespace RelayGame
             return;
 
         const glm::vec3 forward = delta / distance;
-        const float progress = glm::clamp(1.0F - trace.remaining_seconds / 0.25F, 0.0F, 1.0F);
-        const float front = std::max(progress, 0.08F);
+        const float progress = glm::clamp(1.0F - trace.remaining_seconds / (pellet ? .06F : .25F), 0.0F, 1.0F);
+        const float front = std::max(progress, pellet ? .18F : .08F);
         const float back = std::max(0.0F, front - 0.18F);
-        const float start_distance = hostile ? 0.0F : std::max(0.05F, back * distance);
         const float end_distance = hostile ? distance : front * distance;
+        const float start_distance =
+            hostile ? 0.0F : (pellet ? std::max(.05F, end_distance - .08F) : std::max(0.05F, back * distance));
         if (end_distance <= start_distance)
             return;
 
@@ -373,12 +438,13 @@ namespace RelayGame
         const glm::vec3 right = glm::normalize(glm::cross(up, forward));
         const glm::vec3 normal = glm::cross(forward, right);
         glm::mat4 model{1.0F};
-        const float width = hostile ? 0.018F * glm::clamp(trace.remaining_seconds / 0.08F, 0.0F, 1.0F) : 0.045F;
+        const float width =
+            hostile ? 0.018F * glm::clamp(trace.remaining_seconds / 0.08F, 0.0F, 1.0F) : (pellet ? 0.008F : 0.045F);
         model[0] = glm::vec4{right * width, 0.0F};
         model[1] = glm::vec4{normal * width, 0.0F};
         model[2] = glm::vec4{forward * (end_distance - start_distance), 0.0F};
         model[3] = glm::vec4{visual_start + forward * ((start_distance + end_distance) * 0.5F), 1.0F};
-        const auto& mesh = hostile ? turret_shot_mesh_ : player_shot_mesh_;
+        const auto& mesh = hostile ? turret_shot_mesh_ : (pellet ? pellet_mesh_ : player_shot_mesh_);
         record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(mesh));
         render_queue_.push(mesh, model, RelayCore::render::RenderPass::Overlay, nullptr, false);
     }

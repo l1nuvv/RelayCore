@@ -1027,6 +1027,321 @@ int main(int argc, char** argv)
                    == std::string::npos)
             throw std::runtime_error("Update notification must appear only after an updated launch");
         updated.on_shutdown(services);
+        {
+            RelayGame::DemoGame sandbox_game{player_data.path() / "sandbox-player", true};
+            active_game = &sandbox_game;
+            sandbox_game.on_startup(services);
+            (void) draw_game("sandbox-menu.bmp", true);
+            if (read_ui_log("power-captures/sandbox-menu.bmp.txt").find("ИСПЫТАТЕЛЬНЫЙ ПОЛИГОН") == std::string::npos)
+                throw std::runtime_error("Sandbox launcher did not select its own menu");
+            sandbox_game.begin_episode(false, services);
+            sandbox_game.on_update(game_frame, services);
+            sandbox_game.return_to_menu(services);
+            const auto sandbox_save = RelayGame::load_saved_game(player_data.path() / "sandbox-player/progress.toml");
+            if (std::filesystem::path{sandbox_save.world.level_path}.filename() != "development_sandbox.toml"
+                || sandbox_save.world.mission.active)
+                throw std::runtime_error("Sandbox launch selected an episode or forced a mission");
+            sandbox_game.enter_editor(services);
+            sandbox_game.begin_editor_preview(services);
+            sandbox_game.return_from_editor(services);
+            sandbox_game.on_shutdown(services);
+
+            RelayGame::GameWorldRuntime weapon_fixture;
+            weapon_fixture.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                    RelayCore::core::asset_path("levels/development_sandbox.toml")
+                )
+            );
+            const auto shotgun = std::ranges::find(
+                weapon_fixture.usables(),
+                RelayGame::shotgun_item_id,
+                &RelayCore::gameplay::RuntimeUsable::item_id
+            );
+            if (shotgun == weapon_fixture.usables().end())
+                throw std::runtime_error("Sandbox has no shotgun pickup");
+            static_cast<void>(weapon_fixture.debug_apply_usable_interaction(
+                static_cast<std::size_t>(shotgun - weapon_fixture.usables().begin())
+            ));
+            weapon_fixture.prepare_level_session_activation(services, false);
+            weapon_fixture.activate_level_session(services);
+            const glm::vec3 hazard_position{-25, .02F, 0};
+            static_cast<void>(weapon_fixture.debug_apply_combat_threats(
+                RelayCore::physics::make_player_aabb(hazard_position, .3F, 1.8F),
+                hazard_position + glm::vec3{0, 1.65F, 0},
+                10
+            ));
+            if (weapon_fixture.player_combat_state().alive)
+                throw std::runtime_error("Weapon input death fixture did not kill the player");
+            SDL_Event dead_selection{};
+            dead_selection.type = SDL_EVENT_KEY_DOWN;
+            dead_selection.key.scancode = SDL_SCANCODE_2;
+            weapon_fixture.on_event(dead_selection, services);
+            weapon_fixture.update(game_frame, services);
+            if (!weapon_fixture.debug_advance_player_respawn(2))
+                throw std::runtime_error("Weapon input fixture did not respawn");
+            weapon_fixture.update(game_frame, services);
+            if (weapon_fixture.selected_weapon() != RelayGame::PlayerWeapon::Precise)
+                throw std::runtime_error("Dead weapon input leaked into respawn");
+            const auto weapon_data = player_data.path() / "weapon-player";
+            RelayGame::write_saved_game(weapon_data / "progress.toml", weapon_fixture.capture_saved_game(0, false));
+            weapon_fixture.shutdown(services);
+            RelayGame::DemoGame weapon_game{weapon_data, true};
+            active_game = &weapon_game;
+            weapon_game.on_startup(services);
+            key(SDL_SCANCODE_2);
+            weapon_game.begin_episode(true, services);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Точное оружие")
+                throw std::runtime_error("Menu weapon input leaked into gameplay");
+            renderer.set_diagnostics_visible(true);
+            ImGui::GetIO().WantTextInput = true;
+            key(SDL_SCANCODE_2);
+            weapon_game.on_update(game_frame, services);
+            ImGui::GetIO().WantTextInput = false;
+            renderer.set_diagnostics_visible(false);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Точное оружие")
+                throw std::runtime_error("Text input weapon key leaked into gameplay");
+            key(SDL_SCANCODE_2);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Дробовик")
+                throw std::runtime_error("Weapon selection did not reach fixed simulation");
+            (void) draw_game("shotgun-ready.bmp");
+            const auto ready_draws = renderer.world_diagnostics().overlay_draw_calls;
+            if (ready_draws != 2)
+                throw std::runtime_error("Shotgun viewmodel did not submit its body and pump");
+            const auto fire = [&]() {
+                SDL_Event event{};
+                event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+                event.button.button = SDL_BUTTON_LEFT;
+                weapon_game.on_event(event, services);
+            };
+            fire();
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().shots_fired != 1
+                || renderer.player_diagnostics().weapon_cooldown_remaining_seconds < .8F)
+                throw std::runtime_error("Shotgun did not count one attack and start its cooldown");
+            (void) draw_game("shotgun-fired.bmp");
+            if (renderer.world_diagnostics().overlay_draw_calls != ready_draws + 7)
+                throw std::runtime_error("Shotgun did not render seven separate pellet traces");
+            for (int frame_index = 0; frame_index < 5; ++frame_index)
+                weapon_game.on_update(game_frame, services);
+            (void) draw_game("shotgun-recoil.bmp");
+            for (int frame_index = 0; frame_index < 18; ++frame_index)
+                weapon_game.on_update(game_frame, services);
+            (void) draw_game("shotgun-pump.bmp");
+            key(SDL_SCANCODE_1);
+            fire();
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Точное оружие"
+                || renderer.player_diagnostics().shots_fired != 1)
+                throw std::runtime_error("Switching weapon bypassed cooldown");
+            (void) draw_game("shotgun-hidden.bmp");
+            if (renderer.world_diagnostics().overlay_draw_calls != 0)
+                throw std::runtime_error("Shotgun viewmodel remained visible with the precise weapon");
+            key(SDL_SCANCODE_ESCAPE);
+            key(SDL_SCANCODE_2);
+            weapon_game.on_update(game_frame, services);
+            key(SDL_SCANCODE_ESCAPE);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Точное оружие")
+                throw std::runtime_error("Pause weapon input leaked into resumed gameplay");
+            weapon_game.enter_editor(services);
+            key(SDL_SCANCODE_2);
+            weapon_game.return_from_editor(services);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Точное оружие")
+                throw std::runtime_error("Editor weapon input leaked into gameplay");
+            key(SDL_SCANCODE_2);
+            weapon_game.on_update(game_frame, services);
+            key(SDL_SCANCODE_F9);
+            weapon_game.on_update(game_frame, services);
+            key(SDL_SCANCODE_1);
+            weapon_game.on_update(game_frame, services);
+            key(SDL_SCANCODE_F10);
+            weapon_game.on_update(game_frame, services);
+            if (renderer.player_diagnostics().weapon_label != "Дробовик")
+                throw std::runtime_error("F10 did not restore the selected weapon");
+            weapon_game.return_to_menu(services);
+            if (RelayGame::load_saved_game(weapon_data / "progress.toml").world.selected_weapon
+                != RelayGame::PlayerWeapon::Shotgun)
+                throw std::runtime_error("Menu save lost the selected weapon");
+            weapon_game.on_shutdown(services);
+            active_game = &game;
+            std::cout << "weapons=passed; selection, menu/text/pause/editor/death ownership, cooldown, F9/F10 and disk "
+                         "save\n";
+            resize(width, height);
+            const auto sandbox_session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                RelayCore::core::asset_path("levels/development_sandbox.toml")
+            );
+            RelayGame::WorldSceneRenderer sandbox_scene;
+            sandbox_scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    sandbox_session.level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            const auto view = [&](const char* name, glm::vec3 eye, glm::vec3 target) {
+                renderer.camera().set_position(eye);
+                renderer.camera().set_target(target);
+                renderer.begin_frame();
+                sandbox_scene.render(
+                    renderer,
+                    renderer.camera(),
+                    0,
+                    sandbox_session.doors,
+                    sandbox_session.combat.turrets,
+                    sandbox_session.usables,
+                    -1,
+                    {},
+                    false,
+                    {},
+                    {},
+                    sandbox_session.environment,
+                    sandbox_session.enemies
+                );
+                (void) capture(std::filesystem::path{"power-captures"} / name);
+                if (glGetError() != GL_NO_ERROR)
+                    throw std::runtime_error("Sandbox rendering produced a GL error");
+            };
+            view("sandbox-hub.bmp", {0, 1.65F, -1}, {0, 1.65F, 6});
+            view("sandbox-shotgun-pickup.bmp", {.4F, 1.65F, -2.5F}, {.7F, 1.105F, -4});
+            view("sandbox-movement.bmp", {-10, 1.65F, 0}, {-25, 1, -2});
+            view("sandbox-devices.bmp", {10, 1.65F, 0}, {23, 1.4F, -2});
+            view("sandbox-range.bmp", {-20, 1.65F, 10}, {-20, 1.25F, 23});
+            view("sandbox-arena.bmp", {5, 1.65F, 10}, {17, 1, 19});
+            view("sandbox-rover.bmp", {11, 1.7F, 18}, {11, .75F, 20});
+            view("sandbox-mixed.bmp", {28, 1.7F, 19}, {28, 1.5F, 25});
+            view("sandbox-mixed-cover.bmp", {22, 1.65F, 20}, {28, 1.5F, 25});
+            sandbox_scene.shutdown();
+            std::cout << "sandbox_flow=passed; own map, separate progress, editor preview, nine views\n";
+        }
+        {
+            const auto transfer_path = RelayCore::core::asset_path("levels/pressure_transfer.toml");
+            const auto transfer_session = RelayGame::LevelSessionBuilder{config.gameplay}.build(transfer_path);
+            RelayGame::WorldSceneRenderer transfer_scene;
+            transfer_scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    transfer_session.level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            const auto transfer_view = [&](const char* name, glm::vec3 eye, glm::vec3 target) {
+                renderer.camera().set_position(eye);
+                renderer.camera().set_target(target);
+                renderer.begin_frame();
+                transfer_scene.render(
+                    renderer,
+                    renderer.camera(),
+                    0,
+                    transfer_session.doors,
+                    transfer_session.combat.turrets,
+                    transfer_session.usables,
+                    -1,
+                    {},
+                    false,
+                    {},
+                    {},
+                    transfer_session.environment,
+                    transfer_session.enemies
+                );
+                (void) capture(std::filesystem::path{"power-captures"} / name);
+                if (glGetError() != GL_NO_ERROR)
+                    throw std::runtime_error("Pressure transfer rendering produced a GL error");
+            };
+            transfer_view("transfer-equipment.bmp", {4, 1.65F, 2}, {2, 1.1F, 4});
+            transfer_view("transfer-rover.bmp", {4, 1.65F, 13}, {4, .45F, 19});
+            transfer_view("transfer-gallery.bmp", {10, 1.65F, 25}, {30, 1.55F, 22});
+            transfer_view("transfer-mixed.bmp", {28, 1.65F, 29}, {32, 1.1F, 38});
+            transfer_scene.shutdown();
+
+            RelayGame::GameWorldRuntime fixture;
+            fixture.load_level_session(config, transfer_session);
+            const auto use_transfer = [&](std::string_view name) {
+                const auto found =
+                    std::ranges::find(fixture.usables(), name, &RelayCore::gameplay::RuntimeUsable::name);
+                if (found == fixture.usables().end())
+                    throw std::runtime_error("Missing pressure transfer interaction");
+                return fixture.debug_apply_usable_interaction(
+                    static_cast<std::size_t>(found - fixture.usables().begin())
+                );
+            };
+            static_cast<void>(use_transfer("transfer_shotgun"));
+            static_cast<void>(use_transfer("service_reader"));
+            fixture.prepare_level_session_activation(services, false);
+            fixture.activate_level_session(services);
+            fixture.debug_set_player_position({4, .01F, 8});
+            for (int i = 0; i < 150; ++i)
+                fixture.update(game_frame, services);
+            fixture.debug_update_mission(RelayCore::physics::make_player_aabb({11, .01F, 22}, .3F, 1.8F));
+            fixture.debug_update_mission(RelayCore::physics::make_player_aabb({30, .01F, 28}, .3F, 1.8F));
+            if (!fixture.select_weapon(RelayGame::PlayerWeapon::Shotgun))
+                throw std::runtime_error("Pressure transfer lost its weapon pickup");
+            auto transfer_save = fixture.capture_saved_game(30, false);
+            fixture.shutdown(services);
+            transfer_save.player.position = {38, .01F, 40};
+            transfer_save.player.view_angles = {0, 0};
+            const auto transfer_data = player_data.path() / "transfer-player";
+            RelayGame::write_saved_game(transfer_data / "progress.toml", transfer_save);
+            RelayGame::DemoGame transfer_game{transfer_data};
+            active_game = &transfer_game;
+            transfer_game.on_startup(services);
+            transfer_game.begin_episode(true, services);
+            transfer_game.on_update(game_frame, services);
+            (void) draw_game("transfer-control-before.bmp");
+            ImGui::GetIO().WantCaptureKeyboard = false;
+            key(SDL_SCANCODE_E);
+            transfer_game.on_update(game_frame, services);
+            (void) draw_game("transfer-control-after.bmp");
+            transfer_game.return_to_menu(services);
+            const auto activated_save = RelayGame::load_saved_game(transfer_data / "progress.toml");
+            if (std::ranges::find(activated_save.world.activated_target_ids, "transfer_running")
+                    == activated_save.world.activated_target_ids.end()
+                || activated_save.world.selected_weapon != RelayGame::PlayerWeapon::Shotgun
+                || std::filesystem::path(activated_save.world.level_path) != transfer_path)
+                throw std::runtime_error("Pressure transfer continue/use/menu save did not preserve device and weapon");
+            transfer_game.on_shutdown(services);
+
+            fixture.load_level_session(config, transfer_session);
+            fixture.restore_saved_game(activated_save);
+            fixture.prepare_level_session_activation(services, false);
+            fixture.activate_level_session(services);
+            fixture.debug_set_player_position({28, .01F, 42});
+            static_cast<void>(use_transfer("exit_reader"));
+            for (int i = 0; i < 150; ++i)
+                fixture.update(game_frame, services);
+            fixture.debug_set_player_position({28, .01F, 49});
+            fixture.update(game_frame, services);
+            if (!fixture.mission_status().completed)
+                throw std::runtime_error("Pressure transfer exit did not complete the mission");
+            RelayGame::write_saved_game(transfer_data / "progress.toml", fixture.capture_saved_game(40, false));
+            fixture.shutdown(services);
+            RelayGame::DemoGame transfer_finale{transfer_data};
+            active_game = &transfer_finale;
+            transfer_finale.on_startup(services);
+            transfer_finale.begin_episode(true, services);
+            transfer_finale.on_update(game_frame, services);
+            for (int i = 0; i < 150; ++i)
+                transfer_finale.on_update(game_frame, services);
+            (void) draw_game("transfer-finale.bmp", true);
+            for (int i = 0; i < 220; ++i)
+                transfer_finale.on_update(game_frame, services);
+            (void) draw_game("transfer-complete.bmp", true);
+            const auto completed_text = read_ui_log("power-captures/transfer-complete.bmp.txt");
+            if (completed_text.find("ПЕРЕПУСК ДАВЛЕНИЯ") == std::string::npos
+                || completed_text.find("Давление выровнено") == std::string::npos)
+                throw std::runtime_error("Pressure transfer completion UI showed the wrong episode");
+            if (!transfer_finale.has_custom_ui()
+                || glm::distance(renderer.camera().position(), transfer_session.ending->camera_position) > .01F)
+                throw std::runtime_error("Pressure transfer did not reach its authored finale");
+            transfer_finale.on_shutdown(services);
+            std::cout << "pressure_transfer=passed; authored views, disk continue, SDL use, menu save and finale\n";
+        }
         std::cout
             << "episode_flow=passed; startup menu, disk continue, editor isolation, cinematic, completion, skip\n";
         std::cout << "player_experience=passed; pause, frozen simulation, resume, flashlight key, editor round trip\n";

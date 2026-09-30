@@ -97,6 +97,8 @@ target_sources(
     PRIVATE
         content_validation_main.cpp
         shipped_content_validation_tests.cpp
+        development_sandbox_tests.cpp
+        pressure_transfer_tests.cpp
 )
 
 target_link_libraries(

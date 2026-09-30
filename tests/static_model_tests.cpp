@@ -1,3 +1,4 @@
+#include "relaycore/core/paths.h"
 #include "relaycore/render/static_model.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/player_feedback.h"
@@ -5,6 +6,7 @@
 
 #include <doctest/doctest.h>
 #include <fstream>
+#include <glm/common.hpp>
 
 #include "scoped_temp_directory.h"
 
@@ -40,6 +42,32 @@ TEST_CASE("OBJ preserves separate UV/normal indices and rejects malformed geomet
         doctest::Contains("missing.obj"),
         std::runtime_error
     );
+}
+
+TEST_CASE("shotgun body and pump preserve a shared metre scale and material UVs")
+{
+    glm::vec3 mins{100}, maxs{-100};
+    std::size_t triangles = 0;
+    for (const auto* path : {"models/shotgun_body.obj", "models/shotgun_pump.obj"})
+    {
+        const auto mesh = RelayCore::render::load_obj_mesh(RelayCore::core::asset_path(path));
+        REQUIRE_FALSE(mesh.vertices.empty());
+        triangles += mesh.indices.size() / 3;
+        for (const auto& vertex : mesh.vertices)
+        {
+            mins = glm::min(mins, vertex.position);
+            maxs = glm::max(maxs, vertex.position);
+            CHECK(vertex.uv.x > 0);
+            CHECK(vertex.uv.x < 1);
+            CHECK(vertex.uv.y > 0);
+            CHECK(vertex.uv.y < 1);
+        }
+    }
+    CHECK(maxs.z - mins.z == doctest::Approx(1.02).epsilon(.001));
+    CHECK(maxs.x - mins.x < .08F);
+    CHECK(maxs.y - mins.y < .25F);
+    CHECK(triangles > 1000);
+    CHECK(triangles < 2000);
 }
 
 TEST_CASE("Static props keep transformed collision separate from visible geometry")

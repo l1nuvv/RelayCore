@@ -1,0 +1,244 @@
+# Development facility: safe hub, movement course, device lab, firing range, rover arena.
+# Units are metres. No mission or episode exit: bays can be tested in any order.
+# F7 reloads authored data; F9/F10 repeat the current runtime state.
+
+[[solid_group]]
+boxes = [
+  # Hub (-8..8, -6..6), movement west, devices east, combat north.
+  { origin = [0,-0.15,0], size = [16,0.3,12], material = "service_floor" },
+  { origin = [-20,-0.15,0], size = [24,0.3,12], material = "maintenance_floor" },
+  { origin = [20,-0.15,0], size = [24,0.3,12], material = "filtration_floor" },
+  { origin = [-16,-0.15,17], size = [32,0.3,22], material = "maintenance_floor" },
+  { origin = [16,-0.15,17], size = [32,0.3,22], material = "service_floor" },
+  { origin = [0,4.8,11], size = [64,0.25,34], material = "Concrete", tint = [0.65,0.68,0.67] },
+  { origin = [0,2.4,-6], size = [64,4.8,0.3], material = "WallPanel" },
+  { origin = [0,2.4,28], size = [64,4.8,0.3], material = "WallPanel" },
+  { origin = [-32,2.4,11], size = [0.3,4.8,34], material = "WallPanel" },
+  { origin = [32,2.4,11], size = [0.3,4.8,34], material = "filtration_wall" },
+  # West walk-through; east key-operated doorway.
+  { origin = [-8,2.4,-3.8], size = [0.3,4.8,4.4], material = "WallPanel" },
+  { origin = [-8,2.4,3.8], size = [0.3,4.8,4.4], material = "WallPanel" },
+  { origin = [-8,4,0], size = [0.3,1.6,3.2], material = "Beam" },
+  { origin = [8,2.4,-3.8], size = [0.3,4.8,4.4], material = "filtration_wall" },
+  { origin = [8,2.4,3.8], size = [0.3,4.8,4.4], material = "filtration_wall" },
+  { origin = [8,4,0], size = [0.3,1.6,3.2], material = "Beam" },
+  # Combat bay partitions; openings are 3.2m, closed by independent doors.
+  { origin = [-18.8,2.4,6], size = [26.4,4.8,0.3], material = "WallPanel" },
+  { origin = [0,2.4,6], size = [4.8,4.8,0.3], material = "WallPanel" },
+  { origin = [18.8,2.4,6], size = [26.4,4.8,0.3], material = "WallPanel" },
+  { origin = [-4,4,6], size = [3.2,1.6,0.3], material = "Beam" },
+  { origin = [4,4,6], size = [3.2,1.6,0.3], material = "Beam" },
+  { origin = [0,2.4,17], size = [0.3,4.8,22], material = "WallPanel" },
+  # Movement: increasing step heights, narrow bridge, jump gaps and overhead clearance.
+  { origin = [-12,0.1,-3], size = [1,0.2,2], material = "Concrete" },
+  { origin = [-13,0.2,-3], size = [1,0.4,2], material = "Concrete" },
+  { origin = [-14,0.3,-3], size = [1,0.6,2], material = "Concrete" },
+  { origin = [-15,0.4,-3], size = [1,0.8,2], material = "Concrete" },
+  { origin = [-16,0.5,-3], size = [1,1,2], material = "Concrete" },
+  { origin = [-19.5,0.5,-3], size = [6,1,0.9], material = "Metal" },
+  { origin = [-24.5,0.5,-3], size = [2,1,2], material = "Concrete" },
+  { origin = [-28,0.5,-3], size = [2,1,2], material = "Concrete" },
+  { origin = [-25,0.05,0], size = [10,0.1,1.4], material = "Hazard" },
+  { origin = [-14,2.5,3.8], size = [8,0.3,1.5], material = "Beam" },
+  { origin = [-19,0.6,3.8], size = [1.2,1.2,1.2], material = "Metal" },
+  { origin = [-24,1,3.8], size = [1.2,2,1.2], material = "Metal" },
+  # Device lab: relay chamber with proximity trigger and powered equipment.
+  { origin = [24,2.4,-3.8], size = [0.3,4.8,4.4], material = "filtration_wall" },
+  { origin = [24,2.4,3.8], size = [0.3,4.8,4.4], material = "filtration_wall" },
+  { origin = [24,4,0], size = [0.3,1.6,3.2], material = "Beam" },
+  { origin = [20,0.7,-3.9], size = [2,1.4,1.3], material = "Metal" },
+  { origin = [28,1,-4.8], size = [3,2,1], material = "Block" },
+  # Firing stations and blockers leave an unobstructed straight lane to each target.
+  { origin = [-26,0.4,23], size = [1.2,0.8,1.2], material = "Metal" },
+  { origin = [-20,0.4,23], size = [1.2,0.8,1.2], material = "Metal" },
+  { origin = [-14,0.4,23], size = [1.2,0.8,1.2], material = "Metal" },
+  { origin = [-26,0.025,20], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  { origin = [-20,0.025,16], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  { origin = [-14,0.025,11], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  { origin = [-4,1,15], size = [2.2,2,1], material = "Metal" },
+  { origin = [-8.5,1.8,19], size = [0.3,3.6,10], material = "WallPanel" },
+  # Arena: isolated rover lane west; turret and rover with standing cover east.
+  { origin = [16,1,17], size = [5,2,3], material = "Metal" },
+  { origin = [8,0.55,15], size = [3,1.1,1.2], material = "Block" },
+  { origin = [24,1,20], size = [1.2,2,3], material = "Block" },
+  { origin = [23,1.8,11], size = [8,3.6,0.3], material = "Divider" },
+  { origin = [28,0.525,25], size = [1.2,1.05,1.2], material = "Metal" },
+  { origin = [-4,0.025,13.8], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  { origin = [11,0.025,18], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  { origin = [28,0.025,19], size = [2,0.05,0.2], material = "LightStrip", tint = [0.6,0.7,0.65] },
+  # Safe hub workbench and simple sector markers.
+  { origin = [0,0.5,-4], size = [3,1,1.5], material = "Metal" },
+  { origin = [-7.6,2.6,0], size = [0.04,0.3,2.6], material = "Trim", tint = [0.6,0.7,0.65] },
+  { origin = [7.6,2.6,0], size = [0.04,0.3,2.6], material = "Trim", tint = [0.65,0.75,0.72] },
+  { origin = [-4,3.25,5.8], size = [2.8,0.2,0.04], material = "Trim", tint = [0.85,0.7,0.4] },
+  { origin = [4,3.25,5.8], size = [2.8,0.2,0.04], material = "Trim", tint = [0.85,0.7,0.4] },
+]
+
+[[entity]]
+classname = "player_spawn"
+origin = [0,0.02,0]
+angles = [0,0,0]
+
+[[entity_group]]
+classname = "level_entry"
+entries = [
+  { targetname = "hub", origin = [0,0.02,0], angles = [0,0,0] },
+  { targetname = "movement", origin = [-10,0.02,0], angles = [270,0,0] },
+  { targetname = "devices", origin = [10,0.02,0], angles = [90,0,0] },
+  { targetname = "range", origin = [-4,0.02,9], angles = [0,0,0] },
+  { targetname = "arena", origin = [4,0.02,9], angles = [90,0,0] },
+  { targetname = "cover", origin = [-4,0.06,13.8], angles = [0,0,0] },
+  { targetname = "rover", origin = [11,0.06,18], angles = [0,0,0] },
+  { targetname = "mixed", origin = [28,0.06,19], angles = [0,0,0] },
+]
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "door"
+entries = [
+  { targetname = "device_gate", origin = [8,0,0], size = [0.25,3.1,3.1], move_offset = [0,0,3.3], move_speed = 2 },
+  { targetname = "relay_gate", origin = [24,0,0], size = [0.25,3.1,3.1], move_offset = [0,0,3.3], move_speed = 2 },
+  { targetname = "range_gate", origin = [-4,0,6], size = [3.1,3.1,0.25], move_offset = [-3.3,0,0], move_speed = 2 },
+  { targetname = "arena_gate", origin = [4,0,6], size = [3.1,3.1,0.25], move_offset = [3.3,0,0], move_speed = 2 },
+]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "pickup"
+origin = [0,1.15,-4]
+size = [0.35,0.2,0.3]
+item = "sandbox_card"
+item_name = "карта допуска"
+label = "Взять карту для лаборатории устройств"
+use_radius = 1.8
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "pickup"
+targetname = "sandbox_shotgun"
+origin = [0.7,1.105,-4]
+size = [1.08,0.21,0.14]
+item = "weapon_shotgun"
+item_name = "дробовик"
+label = "Взять дробовик для ближнего боя"
+success_message = "[2] Дробовик: сильнее вблизи, медленнее стреляет. [1] Точное оружие для дистанции."
+use_radius = 1.8
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "panel"
+size = [0.35,0.5,0.12]
+use_radius = 1.8
+entries = [
+  { targetname = "device_reader", origin = [7.76,1.4,-2.3], mount_axis = "-x", target = "device_gate", required_item = "sandbox_card", required_item_name = "карта допуска", label = "Дверь устройств: нужен допуск", denied_message = "Карта лежит на столе в центральном зале" },
+  { targetname = "device_return", origin = [8.24,1.4,2.3], mount_axis = "+x", target = "device_gate", label = "Дверь в центральный зал" },
+  { targetname = "range_control", origin = [-6.4,1.4,5.76], mount_axis = "-z", target = "range_gate", label = "Открыть / закрыть стрельбище" },
+  { targetname = "range_return", origin = [-6.4,1.4,6.24], mount_axis = "+z", target = "range_gate", label = "Дверь в центральный зал" },
+  { targetname = "arena_control", origin = [6.4,1.4,5.76], mount_axis = "-z", target = "arena_gate", label = "Арена: робот слева, робот и турель справа" },
+  { targetname = "arena_return", origin = [6.4,1.4,6.24], mount_axis = "+z", target = "arena_gate", label = "Дверь в центральный зал" },
+]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+origin = [20,1.5,-3.2]
+size = [0.4,0.5,0.12]
+mount_axis = "+z"
+targetname = "lab_power_control"
+target = "lab_power"
+action = "activate_target"
+single_use = true
+label = "Подать питание в лабораторию"
+success_message = "Свет включён; искрение остановлено. F9/F10 повторяют состояние, F7 сбрасывает карту."
+use_radius = 1.8
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "trigger"
+origin = [22,0.1,0]
+size = [2,2.5,3]
+targetname = "relay_sensor"
+target = "relay_gate"
+once = true
+
+[[entity_group]]
+classname = "gameplay_entity"
+kind = "turret"
+size = [0.75,0.9,0.75]
+angles = [180,0,0]
+health = 60
+damage = 4
+warmup = 0.8
+fire_interval = 1.8
+attack_range = 2
+entries = [
+  { targetname = "range_target_3m", origin = [-26,1.25,23], label = "Мишень: 3 метра" },
+  { targetname = "range_target_7m", origin = [-20,1.25,23], label = "Мишень: 7 метров" },
+  { targetname = "range_target_12m", origin = [-14,1.25,23], label = "Мишень: 12 метров" },
+  { targetname = "cover_turret", origin = [-4,1.5,24], attack_range = 12, label = "Турель: испытание укрытия" },
+  { targetname = "mixed_turret", origin = [28,1.5,25], attack_range = 12, label = "Турель: смешанный бой" },
+]
+
+[[entity_group]]
+classname = "enemy_rover"
+health = 60
+speed = 1.6
+detection_range = 12
+entries = [
+  { origin = [11,0.02,20], angles = [180,0,0] },
+  { origin = [28,0.02,15], angles = [270,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+origin = [29,0,2.5]
+model = "models/service_cylinder.obj"
+texture = "models/service_cylinder.bmp"
+collision_mins = [-0.25,0,-0.25]
+collision_maxs = [0.25,1.52,0.25]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "render_light"
+color = [0.4,0.42,0.38]
+radius = 8
+intensity = 1.15
+entries = [
+  { origin = [0,4.2,0] },
+  { origin = [-13,4.2,0] },
+  { origin = [-26,4.2,0] },
+  { origin = [15,4.2,0] },
+  { origin = [28,4.2,0] },
+  { origin = [-24,4.2,13] },
+  { origin = [-24,4.2,24] },
+  { origin = [-12,4.2,17] },
+  { origin = [-4,4.2,23] },
+  { origin = [7,4.2,13] },
+  { origin = [11,4.2,24] },
+  { origin = [25,4.2,23] },
+  { origin = [27,4.2,12] },
+]
+
+[[entity]]
+classname = "render_light"
+origin = [20,3.5,-3]
+color = [0.38,0.48,0.4]
+radius = 5
+intensity = 1.3
+required_target = "lab_power"
+
+[[entity]]
+classname = "world_effect"
+kind = "sparks"
+origin = [28,1.7,-4.2]
+stop_target = "lab_power"
+
+[[entity_group]]
+classname = "world_effect"
+kind = "decal"
+entries = [
+  { mark = "01", origin = [-7.84,1.9,-3.5], angles = [90,0,0] },
+  { mark = "02", origin = [7.84,1.9,3.5], angles = [-90,0,0] },
+  { mark = "03", origin = [-4,3.8,5.84], angles = [180,0,0] },
+  { mark = "warning", origin = [4,3.8,5.84], angles = [180,0,0] },
+]

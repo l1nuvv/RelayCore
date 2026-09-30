@@ -191,7 +191,11 @@ namespace RelayGame
             {pos.x + size.x, pos.y + size.y},
             IM_COL32(8, 12, 11, 255)
         );
-        const char* text = finale_time_ < 2   ? "Питание и охлаждение в норме."
+        const bool pressure_transfer = runtime_.level_path().ends_with("pressure_transfer.toml");
+        const char* text = pressure_transfer  ? (finale_time_ < 2   ? "Перепуск работает. Давление выровнено."
+                                                 : finale_time_ < 4 ? "Выход в технический сектор открыт."
+                                                                    : "Следующий маршрут: технический сектор.")
+                           : finale_time_ < 2 ? "Питание и охлаждение в норме."
                            : finale_time_ < 4 ? "Изоляция сектора завершена. Допуск подтверждён."
                                               : "Следующий маршрут: исследовательский блок.";
         const auto extent = ImGui::CalcTextSize(text);

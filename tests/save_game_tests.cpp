@@ -105,7 +105,7 @@ TEST_CASE("version one progress remains loadable without map history")
     std::ifstream input(path);
     std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     input.close();
-    const auto version = text.find("format_version = 3");
+    const auto version = text.find("format_version = 4");
     REQUIRE(version != std::string::npos);
     text.replace(version, 18, "format_version = 1");
     const auto history = text.find("visited_levels = []");
@@ -126,7 +126,7 @@ TEST_CASE("version two progress remains loadable without enemies")
     std::ifstream input(path);
     std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     input.close();
-    const auto version = text.find("format_version = 3");
+    const auto version = text.find("format_version = 4");
     REQUIRE(version != std::string::npos);
     text.replace(version, 18, "format_version = 2");
     const auto enemies = text.find("enemies = []");
@@ -138,6 +138,39 @@ TEST_CASE("version two progress remains loadable without enemies")
     CHECK(loaded.world.player_combat.health == 75);
 }
 
+TEST_CASE("selected weapon survives disk and version three selects the precise weapon")
+{
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "progress.toml";
+    auto save = sample_save();
+    save.world.inventory_item_ids.emplace_back(RelayGame::shotgun_item_id);
+    save.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+    save.world.player_combat.weapon_cooldown_remaining_seconds = .7F;
+    RelayGame::write_saved_game(path, save);
+    const auto loaded = RelayGame::load_saved_game(path);
+    CHECK(loaded.world.selected_weapon == RelayGame::PlayerWeapon::Shotgun);
+    CHECK(loaded.world.player_combat.weapon_cooldown_remaining_seconds == doctest::Approx(.7F));
+    std::ifstream input(path);
+    std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    input.close();
+    const auto version = text.find("format_version = 4");
+    REQUIRE(version != std::string::npos);
+    text.replace(version, 18, "format_version = 3");
+    const auto selection = text.find("selected_weapon = 'shotgun'");
+    const auto quoted_selection = text.find("selected_weapon = \"shotgun\"");
+    const auto start = selection == std::string::npos ? quoted_selection : selection;
+    REQUIRE(start != std::string::npos);
+    text.erase(start, text.find('\n', start) - start + 1);
+    std::ofstream(path) << text;
+    CHECK(RelayGame::load_saved_game(path).world.selected_weapon == RelayGame::PlayerWeapon::Precise);
+    text.replace(text.find("format_version = 3"), 18, "format_version = 4");
+    std::ofstream(path) << text;
+    CHECK_THROWS_WITH(
+        static_cast<void>(RelayGame::load_saved_game(path)),
+        "Save: missing or invalid field selected_weapon"
+    );
+}
+
 TEST_CASE("invalid save cannot replace valid progress")
 {
     RelayCore::test::ScopedTempDirectory directory;
@@ -147,6 +180,14 @@ TEST_CASE("invalid save cannot replace valid progress")
     SUBCASE("nonfinite position")
     {
         save.player.position.x = std::numeric_limits<float>::quiet_NaN();
+    }
+    SUBCASE("selected weapon is not owned")
+    {
+        save.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+    }
+    SUBCASE("unknown selected weapon")
+    {
+        save.world.selected_weapon = static_cast<RelayGame::PlayerWeapon>(20);
     }
     SUBCASE("invalid door state")
     {
@@ -180,7 +221,7 @@ TEST_CASE("malformed and unsupported saves fail explicitly")
     std::ofstream(path) << "format_version = 99";
     CHECK_THROWS_WITH(
         static_cast<void>(RelayGame::load_saved_game(path)),
-        doctest::Contains("unsupported format version 99; expected 3")
+        doctest::Contains("unsupported format version 99; expected 4")
     );
 }
 

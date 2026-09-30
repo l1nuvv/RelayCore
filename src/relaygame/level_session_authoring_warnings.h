@@ -7,6 +7,7 @@
 #include "relaygame/mission_runtime.h"
 #include "relaygame/runtime_model.h"
 
+#include <algorithm>
 #include <span>
 #include <string>
 #include <string_view>
@@ -242,7 +243,22 @@ namespace RelayGame::detail
                 continue;
             }
 
-            if (binding.resolved_target_count > 0 || mission_declares_target(mission_definition, binding.target))
+            const bool environment_consumes_target =
+                binding.kind == RuntimeBindingKind::ActivateTarget
+                && std::ranges::any_of(level.entities, [&binding](const auto& entity) {
+                       if (entity.classname != "render_light" && entity.classname != "audio_zone"
+                           && entity.classname != "world_effect")
+                           return false;
+                       for (const char* key : {"required_target", "stop_target"})
+                       {
+                           const auto target = entity.properties.find(key);
+                           if (target != entity.properties.end() && target->second == binding.target)
+                               return true;
+                       }
+                       return false;
+                   });
+            if (binding.resolved_target_count > 0 || mission_declares_target(mission_definition, binding.target)
+                || environment_consumes_target)
             {
                 continue;
             }
@@ -250,7 +266,7 @@ namespace RelayGame::detail
             RelayCore::render::AuthoringWarningDiagnostics warning{};
             warning.message = "Unresolved authored " + std::string{RelayGame::runtime_binding_kind_label(binding.kind)}
                               + " link: " + format_binding_label(binding) + " -> '" + binding.target
-                              + "' has no runtime object match and no mission-step contract";
+                              + "' has no runtime object, mission-step or environment consumer";
             warning.source_bucket = binding.source_bucket.empty() ? std::string{"direct"} : binding.source_bucket;
             assign_binding_source(warning, binding);
             warnings.push_back(std::move(warning));

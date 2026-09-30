@@ -83,6 +83,7 @@ namespace RelayCore
             std::span<const render::RenderItem> items,
             std::span<const render::RenderItem> shadow_casters
         );
+        void draw_viewmodel(std::span<const render::RenderItem> items);
 
         [[nodiscard]] auto static_models() noexcept -> render::StaticModelCache&
         {

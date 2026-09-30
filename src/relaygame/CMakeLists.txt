@@ -49,6 +49,7 @@ set(RELAYCORE_DEMO_HEADERS
         usable_interaction.h
         save_game.h
         player_feedback.h
+        player_weapon.h
         player_settings.h
         demo_game_debug_commands_internal.h
         demo_game_iteration_internal.h
@@ -128,6 +129,21 @@ add_custom_target(
 )
 
 add_dependencies(relaycore_demo relaycore_demo_assets)
+
+add_executable(relaycore_level_check EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/level_check.cpp)
+target_link_libraries(relaycore_level_check PRIVATE RelayGame::runtime RelayCore::toml_headers
+    RelayCore::project_options RelayCore::warnings)
+add_executable(relaycore_sandbox EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/sandbox_main.cpp)
+target_link_libraries(relaycore_sandbox PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+foreach(development_target IN ITEMS relaycore_level_check relaycore_sandbox)
+    relaycore_apply_standard_target_settings(${development_target})
+    set_target_properties(${development_target} PROPERTIES FOLDER "tools")
+    add_dependencies(${development_target} relaycore_demo_assets)
+    add_custom_command(TARGET ${development_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:${development_target}>"
+            $<TARGET_RUNTIME_DLLS:${development_target}>
+        COMMAND_EXPAND_LISTS)
+endforeach()
 
 if(WIN32)
     set(RELAYCORE_UPDATE_REPOSITORY "l1nuvv/RelayCore-releases" CACHE STRING "Public GitHub repository for game releases")

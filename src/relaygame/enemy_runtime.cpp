@@ -8,7 +8,9 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec2.hpp>
+#include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace RelayGame
 {
@@ -163,18 +165,19 @@ namespace RelayGame
         return result;
     }
 
-    auto fire_player_weapon(
+    static auto fire_player_ray(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         const glm::vec3& origin,
         const glm::vec3& direction,
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RelayCore::gameplay::RuntimeTurret> turrets,
-        std::span<RuntimeEnemy> enemies
+        std::span<RuntimeEnemy> enemies,
+        float max_distance = std::numeric_limits<float>::max()
     ) -> PlayerAttackResult
     {
         PlayerAttackResult result;
-        float distance = player.weapon_range;
+        float distance = std::min(player.weapon_range, max_distance);
         const float length = glm::length(direction);
         if (length < .001F)
             return result;
@@ -214,6 +217,87 @@ namespace RelayGame
                 state.timer = 0;
             }
         }
+        return result;
+    }
+
+    auto fire_player_weapon(
+        const RelayCore::BlockoutLevel& level,
+        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        RelayCore::gameplay::PlayerCombatState& player,
+        std::span<RelayCore::gameplay::RuntimeTurret> turrets,
+        std::span<RuntimeEnemy> enemies,
+        PlayerWeapon weapon
+    ) -> PlayerAttackResult
+    {
+        if (weapon == PlayerWeapon::Precise)
+        {
+            auto result = fire_player_ray(level, doors, origin, direction, player, turrets, enemies);
+            if (result.combat.fired)
+            {
+                result.rays[0] = result.combat;
+                result.ray_count = 1;
+            }
+            return result;
+        }
+        if (weapon != PlayerWeapon::Shotgun)
+            throw std::runtime_error("Unknown player weapon");
+        PlayerAttackResult result;
+        const auto length = glm::length(direction);
+        if (!player.alive || player.weapon_cooldown_remaining_seconds > 0 || !std::isfinite(length) || length < .001F)
+            return result;
+        const auto forward = direction / length;
+        const auto reference = std::abs(forward.y) > .99F ? glm::vec3{1, 0, 0} : glm::vec3{0, 1, 0};
+        const auto right = glm::normalize(glm::cross(forward, reference));
+        const auto up = glm::cross(right, forward);
+        constexpr std::array<glm::vec2, 7> spread{
+            {{0, 0}, {.16F, 0}, {-.16F, 0}, {.08F, .13856F}, {-.08F, .13856F}, {.08F, -.13856F}, {-.08F, -.13856F}}
+        };
+        auto shot = player;
+        shot.weapon_damage = 14;
+        shot.weapon_range = 14;
+        shot.weapon_refire_seconds = .85F;
+        std::array<RelayCore::physics::Aabb, 7> killed_bounds{};
+        std::size_t killed_count = 0;
+        for (std::size_t i = 0; i < spread.size(); ++i)
+        {
+            shot.weapon_cooldown_remaining_seconds = 0;
+            const auto pellet_direction = glm::normalize(forward + right * spread[i].x + up * spread[i].y);
+            float distance = shot.weapon_range;
+            for (std::size_t killed = 0; killed < killed_count; ++killed)
+                if (const auto hit = RelayCore::physics::ray_intersection_distance(
+                        origin,
+                        pellet_direction,
+                        killed_bounds[killed],
+                        distance
+                    ))
+                    distance = *hit;
+            auto ray = fire_player_ray(level, doors, origin, pellet_direction, shot, turrets, enemies, distance);
+            // Every pellet belongs to the same discharge: an early kill cannot expose a target behind it.
+            if (ray.killed_enemy)
+                killed_bounds[killed_count++] = enemy_bounds(enemies[static_cast<std::size_t>(ray.enemy_index)].state);
+            else if (ray.combat.killed_turret)
+                killed_bounds[killed_count++] = turrets[static_cast<std::size_t>(ray.combat.turret_index)].bounds;
+            result.rays[i] = ray.combat;
+            result.pellet_traces[i] = shot.shot_trace;
+            result.pellet_traces[i].remaining_seconds = .06F;
+            ++result.ray_count;
+            if (ray.enemy_index >= 0 && result.enemy_index < 0)
+                result.enemy_index = ray.enemy_index;
+            result.killed_enemy = result.killed_enemy || ray.killed_enemy;
+            if (ray.combat.hit_turret
+                && (!result.combat.hit_turret || (ray.combat.killed_turret && !result.combat.killed_turret)))
+                result.combat = ray.combat;
+        }
+        result.combat.fired = true;
+        shot.shot_trace = {};
+        shot.shots_fired = player.shots_fired + 1;
+        shot.shots_hit = player.shots_hit + (result.enemy_index >= 0 || result.combat.hit_turret ? 1 : 0);
+        shot.weapon_damage = player.weapon_damage;
+        shot.weapon_range = player.weapon_range;
+        shot.weapon_refire_seconds = player.weapon_refire_seconds;
+        player = std::move(shot);
         return result;
     }
 } // namespace RelayGame

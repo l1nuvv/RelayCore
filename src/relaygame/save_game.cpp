@@ -108,7 +108,7 @@ namespace RelayGame
         auto decode(const toml::table& table, bool visited = false) -> SavedGame
         {
             const auto version = required<std::int64_t>(table, "format_version");
-            if (version != 1 && version != 2 && version != saved_game_format_version)
+            if (version != 1 && version != 2 && version != 3 && version != saved_game_format_version)
                 throw std::runtime_error(
                     "Save: unsupported format version " + std::to_string(version) + "; expected "
                     + std::to_string(saved_game_format_version)
@@ -200,6 +200,18 @@ namespace RelayGame
             if (world.level_path.empty() || world.registry_signature == 0 || save.level_fingerprint == 0
                 || world.player_combat.alive != (world.player_combat.health > 0))
                 throw std::runtime_error("Save: inconsistent player or level state");
+            if (version >= 4)
+            {
+                const auto weapon = required<std::string>(table, "selected_weapon");
+                if (weapon == "precise")
+                    world.selected_weapon = PlayerWeapon::Precise;
+                else if (weapon == "shotgun"
+                         && std::ranges::find(world.inventory_item_ids, shotgun_item_id)
+                                != world.inventory_item_ids.end())
+                    world.selected_weapon = PlayerWeapon::Shotgun;
+                else
+                    throw std::runtime_error("Save: invalid or unavailable selected_weapon");
+            }
             if (version >= 3)
             {
                 std::unordered_set<int> ids;
@@ -309,8 +321,11 @@ namespace RelayGame
         const auto& world = save.world;
         const auto& player = save.player;
         const auto& combat = world.player_combat;
+        if (world.selected_weapon != PlayerWeapon::Precise && world.selected_weapon != PlayerWeapon::Shotgun)
+            throw std::runtime_error("Save: invalid selected_weapon");
         toml::table table{
             {"format_version", saved_game_format_version},
+            {"selected_weapon", world.selected_weapon == PlayerWeapon::Shotgun ? "shotgun" : "precise"},
             {"level_path", world.level_path},
             {"level_fingerprint", std::to_string(save.level_fingerprint)},
             {"registry_signature", std::to_string(world.registry_signature)},

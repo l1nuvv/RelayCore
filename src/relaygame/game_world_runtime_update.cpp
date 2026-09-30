@@ -46,6 +46,8 @@ namespace RelayGame
         // Latch discrete sim actions until a fixed step consumes them.
         frame_actions_.use_pressed = frame_actions_.use_pressed || captured_actions.use_pressed;
         frame_actions_.fire_pressed = frame_actions_.fire_pressed || captured_actions.fire_pressed;
+        if (captured_actions.weapon_selection)
+            frame_actions_.weapon_selection = captured_actions.weapon_selection;
         frame_actions_.inspector_pin_pressed = captured_actions.inspector_pin_pressed;
         frame_iteration_commands_ = capture_frame_iteration_commands();
         tick_transient_hud_event(delta_seconds);
@@ -58,6 +60,7 @@ namespace RelayGame
         FrameGameplayActions actions{};
         actions.use_pressed = player_controller_.consume_use_pressed();
         actions.fire_pressed = player_controller_.consume_fire_pressed();
+        actions.weapon_selection = player_controller_.consume_weapon_selection();
         actions.inspector_pin_pressed = player_controller_.consume_inspector_pin_pressed();
         return actions;
     }

@@ -5,6 +5,7 @@
 #include "relaycore/physics/collision.h"
 #include "relaycore/physics/player_motion.h"
 #include "relaygame/gameplay_input_ownership.h"
+#include "relaygame/player_weapon.h"
 
 #include <SDL3/SDL.h>
 #include <cstdint>
@@ -161,6 +162,8 @@ namespace RelayGame
         [[nodiscard]] auto player_bounds() const noexcept -> RelayCore::physics::Aabb;
 
         [[nodiscard]] auto consume_fire_pressed() noexcept -> bool;
+        [[nodiscard]] auto consume_weapon_selection() noexcept -> std::optional<PlayerWeapon>;
+        void apply_weapon_recoil(float radians) noexcept;
 
         [[nodiscard]] auto consume_use_pressed() noexcept -> bool;
 
@@ -224,6 +227,7 @@ namespace RelayGame
         float noclip_fast_multiplier_ = 3.0F;
         float noclip_slow_multiplier_ = 0.35F;
         bool fire_pressed_ = false;
+        std::optional<PlayerWeapon> weapon_selection_;
         bool use_pressed_ = false;
         bool inspector_pin_pressed_ = false;
         bool reload_level_pressed_ = false;

@@ -399,6 +399,20 @@ namespace RelayGame
                 ? RelayCore::render::TextureEncoding::srgb
                 : RelayCore::render::TextureEncoding::linear
         );
+        const auto shotgun_encoding =
+            scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                ? RelayCore::render::TextureEncoding::srgb
+                : RelayCore::render::TextureEncoding::linear;
+        shotgun_body_model_ = models.load(
+            RelayCore::core::asset_path("models/shotgun_body.obj"),
+            RelayCore::core::asset_path("models/shotgun.bmp"),
+            shotgun_encoding
+        );
+        shotgun_pump_model_ = models.load(
+            RelayCore::core::asset_path("models/shotgun_pump.obj"),
+            RelayCore::core::asset_path("models/shotgun.bmp"),
+            shotgun_encoding
+        );
         for (const auto& prop : scene_data.props)
             props_.push_back(
                 {models.load(
@@ -419,6 +433,7 @@ namespace RelayGame
         RelayCore::render::CpuColorMeshData inspector_solid_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData inspector_hit_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData player_shot_mesh_data = RelayCore::render::make_color_box_mesh_data();
+        RelayCore::render::CpuColorMeshData pellet_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData turret_shot_mesh_data = RelayCore::render::make_color_box_mesh_data();
 
         const auto tint = [&scene_data](auto& mesh, const glm::vec3& multiplier, const float bias) {
@@ -433,6 +448,7 @@ namespace RelayGame
         tint(inspector_solid_mesh_data, {1.18F, 1.55F, 2.18F}, 0.08F);
         tint(inspector_hit_mesh_data, {2.60F, 2.60F, 2.60F}, 0.16F);
         tint(player_shot_mesh_data, {2.4F, 1.9F, 0.85F}, 0.20F);
+        tint(pellet_mesh_data, {1.6F, 1.5F, 1.3F}, 0.10F);
         tint(turret_shot_mesh_data, {2.5F, 0.75F, 0.35F}, 0.10F);
 
         door_mesh_.initialize(door_mesh_data);
@@ -444,6 +460,7 @@ namespace RelayGame
         inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
         inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
         player_shot_mesh_.initialize(player_shot_mesh_data);
+        pellet_mesh_.initialize(pellet_mesh_data);
         turret_shot_mesh_.initialize(turret_shot_mesh_data);
         initialize_prop_meshes(scene_data.color_pipeline_mode);
         initialize_environment_meshes(scene_data.color_pipeline_mode);
@@ -502,6 +519,8 @@ namespace RelayGame
         enemy_model_.reset();
         destroyed_enemy_model_.reset();
         power_fuse_model_.reset();
+        shotgun_body_model_.reset();
+        shotgun_pump_model_.reset();
         turret_model_.reset();
         destroyed_turret_model_.reset();
 
@@ -524,6 +543,7 @@ namespace RelayGame
         inspector_solid_mesh_ = RelayCore::render::StaticColorMesh{};
         inspector_hit_mesh_ = RelayCore::render::StaticColorMesh{};
         player_shot_mesh_ = RelayCore::render::StaticColorMesh{};
+        pellet_mesh_ = RelayCore::render::StaticColorMesh{};
         turret_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         turret_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         local_lights_.clear();
@@ -556,7 +576,8 @@ namespace RelayGame
         const ScientistPose& scientist,
         const std::span<const EnvironmentEffect> environment,
         const std::span<const RuntimeEnemy> enemies,
-        const RelayCore::gameplay::PlayerCombatState* player_combat
+        const RelayCore::gameplay::PlayerCombatState* player_combat,
+        const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces
     )
     {
         RELAYCORE_PROFILE_ZONE_N("WorldSceneRenderer::render");
@@ -650,6 +671,8 @@ namespace RelayGame
         render_turrets(camera, turrets);
         if (player_combat != nullptr)
             render_shot_trace(camera, player_combat->shot_trace, false);
+        for (const auto& trace : pellet_traces)
+            render_shot_trace(camera, trace, false, true);
         for (const auto& turret : turrets)
             render_shot_trace(camera, turret.shot_trace, true);
         if (enemy_model_)

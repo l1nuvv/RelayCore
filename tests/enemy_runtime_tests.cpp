@@ -38,6 +38,174 @@ TEST_CASE("rover detects pursues and attacks at a bounded cadence")
     CHECK(enemies[0].state.position.y >= -.002F);
 }
 
+TEST_CASE("shotgun has a close range advantage and counts one discharge")
+{
+    for (float distance : {3.0F, 12.0F})
+    {
+        CAPTURE(distance);
+        auto level = room();
+        level.entities[0].origin.z = distance;
+        auto shotgun_enemies = RelayGame::build_enemies(level);
+        auto precise_enemies = shotgun_enemies;
+        RelayCore::gameplay::PlayerCombatState shotgun, precise;
+        const auto shot = RelayGame::fire_player_weapon(
+            level,
+            {},
+            {0, .45F, 0},
+            {0, 0, 1},
+            shotgun,
+            {},
+            shotgun_enemies,
+            RelayGame::PlayerWeapon::Shotgun
+        );
+        REQUIRE(shot.combat.fired);
+        CHECK(shot.ray_count == 7);
+        CHECK(shotgun.shot_trace.remaining_seconds == 0);
+        for (const auto& trace : shot.pellet_traces)
+        {
+            CHECK(trace.start == glm::vec3{0, .45F, 0});
+            CHECK(trace.remaining_seconds > 0);
+            CHECK(glm::distance(trace.start, trace.end) <= 14.001F);
+        }
+        CHECK(shot.pellet_traces[1].end.x * shot.pellet_traces[2].end.x < 0);
+        CHECK(shotgun.shots_fired == 1);
+        CHECK(shotgun.shots_hit == 1);
+        CHECK(shotgun.weapon_cooldown_remaining_seconds == doctest::Approx(.85F));
+        CHECK(shotgun.weapon_damage == precise.weapon_damage);
+        static_cast<void>(
+            RelayGame::fire_player_weapon(level, {}, {0, .45F, 0}, {0, 0, 1}, precise, {}, precise_enemies)
+        );
+        if (distance == 3)
+        {
+            CHECK(shot.killed_enemy);
+            CHECK(shotgun.kills == 1);
+            CHECK(shotgun.damage_dealt == 60);
+            CHECK(precise_enemies[0].state.health == 35);
+        } else
+        {
+            CHECK_FALSE(shot.killed_enemy);
+            CHECK(shotgun.damage_dealt < precise.damage_dealt);
+            CHECK(shotgun.kills == 0);
+        }
+        CHECK_FALSE(
+            RelayGame::fire_player_weapon(level, {}, {0, .45F, 0}, {0, 0, 1}, shotgun, {}, shotgun_enemies).combat.fired
+        );
+    }
+}
+
+TEST_CASE("shotgun respects walls doors range and nearest target throughout a discharge")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    RelayCore::gameplay::PlayerCombatState player;
+    std::vector<RelayCore::gameplay::RuntimeDoor> doors;
+    std::vector<RelayCore::gameplay::RuntimeTurret> turrets;
+    SUBCASE("wall")
+    {
+        level.solids.push_back({{-2, 0, 1}, {2, 3, 1.2F}, RelayCore::SurfaceMaterial::Wall});
+    }
+    SUBCASE("closed door")
+    {
+        RelayCore::gameplay::RuntimeDoor door;
+        door.closed_bounds = {{-2, 0, 1}, {2, 3, 1.2F}};
+        doors.push_back(door);
+    }
+    SUBCASE("range")
+    {
+        enemies[0].state.position.z = 16;
+    }
+    SUBCASE("early kill does not let later pellets penetrate the target")
+    {
+        enemies[0].state.health = 14;
+        RelayCore::gameplay::RuntimeTurret behind;
+        behind.origin = {0, 1, 5};
+        behind.bounds = {{-2, 0, 4.5F}, {2, 3, 5.5F}};
+        turrets.push_back(behind);
+    }
+    const auto shot = RelayGame::fire_player_weapon(
+        level,
+        doors,
+        {0, .45F, 0},
+        {0, 0, 1},
+        player,
+        turrets,
+        enemies,
+        RelayGame::PlayerWeapon::Shotgun
+    );
+    CHECK(player.shots_fired == 1);
+    if (turrets.empty())
+    {
+        CHECK(enemies[0].state.health == 60);
+        CHECK(player.shots_hit == 0);
+        if (enemies[0].state.position.z < 14)
+            for (const auto& trace : shot.pellet_traces)
+                CHECK(trace.end.z <= 1.201F);
+    } else
+    {
+        CHECK(shot.killed_enemy);
+        CHECK(turrets[0].health == turrets[0].max_health);
+        CHECK(player.kills == 1);
+    }
+}
+
+TEST_CASE("shotgun can destroy multiple turrets with one event per target")
+{
+    auto level = room();
+    level.entities.clear();
+    std::array<RelayCore::gameplay::RuntimeTurret, 2> turrets;
+    for (std::size_t i = 0; i < turrets.size(); ++i)
+    {
+        const float x = i == 0 ? -.4F : .4F;
+        turrets[i].origin = {x, 1, 3};
+        turrets[i].bounds = {{x - .15F, 0, 2.7F}, {x + .15F, 2, 3.3F}};
+        turrets[i].health = 14;
+        turrets[i].destroy_target = i == 0 ? "left" : "right";
+        turrets[i].destroy_action = RelayCore::gameplay::CombatTargetActionKind::ActivateTarget;
+    }
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto result = RelayGame::fire_player_weapon(
+        level,
+        {},
+        {0, .6F, 0},
+        {0, 0, 1},
+        player,
+        turrets,
+        {},
+        RelayGame::PlayerWeapon::Shotgun
+    );
+    CHECK(player.shots_fired == 1);
+    CHECK(player.shots_hit == 1);
+    CHECK(player.kills == 2);
+    CHECK(player.damage_dealt == 28);
+    unsigned left = 0, right = 0;
+    for (std::size_t i = 0; i < result.ray_count; ++i)
+    {
+        if (!result.rays[i].killed_turret)
+            continue;
+        left += result.rays[i].target_event.target == "left";
+        right += result.rays[i].target_event.target == "right";
+    }
+    CHECK(left == 1);
+    CHECK(right == 1);
+}
+
+TEST_CASE("shotgun handles vertical aim and does not fire an invalid direction")
+{
+    auto level = room();
+    RelayCore::gameplay::PlayerCombatState player;
+    CHECK_FALSE(
+        RelayGame::fire_player_weapon(level, {}, {0, 1, 0}, {}, player, {}, {}, RelayGame::PlayerWeapon::Shotgun)
+            .combat.fired
+    );
+    CHECK(player.shots_fired == 0);
+    CHECK(
+        RelayGame::fire_player_weapon(level, {}, {0, 1, 0}, {0, 1, 0}, player, {}, {}, RelayGame::PlayerWeapon::Shotgun)
+            .combat.fired
+    );
+    CHECK(player.shots_fired == 1);
+    CHECK(player.shots_hit == 0);
+}
+
 TEST_CASE("rover signals windup once and a dodged strike does not damage the player")
 {
     auto level = room();

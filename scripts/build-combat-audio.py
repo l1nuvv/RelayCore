@@ -52,15 +52,34 @@ def pistol_report():
     return sample
 
 
+def shotgun_report():
+    low = 0.0
+    direct = []
+
+    def sample(t, noise):
+        nonlocal low
+        low += 0.09 * (noise - low)
+        value = (noise - low) * math.exp(-t * 110) + 3.6 * low * math.exp(-t * 30)
+        direct.append(value)
+        for delay, gain in ((0.016, 0.20), (0.035, 0.12), (0.060, 0.06)):
+            index = len(direct) - 1 - round(delay * RATE)
+            if index >= 0:
+                value += direct[index] * gain
+        return value
+
+    return sample
+
+
 if __name__ == "__main__":
     ROOT.mkdir(parents=True, exist_ok=True)
     # Dry report, metal impact, rising motor, heavy discharge, servo strike,
     # falling motor with debris, and a low body impact have distinct envelopes.
     write("weapon_fire.wav", .16, pistol_report())
+    write("shotgun_fire.wav", .30, shotgun_report())
     write("weapon_hit.wav", .12, lambda t, n: (.25*n + .22*tone(t, 1750) + .12*tone(t, 2630)) * math.exp(-48*t))
     write("threat_windup.wav", .30, lambda t, n: .24 * math.sin(2*math.pi*(350*t + 1100*t*t)) * min(1, t*35) + .05*n)
     write("turret_fire.wav", .23, lambda t, n: (.52*n + .32*tone(t, 75)) * math.exp(-23*t))
     write("rover_attack.wav", .20, lambda t, n: (.26*n + .22*tone(t, 420)) * math.exp(-22*t))
     write("destroyed.wav", .55, lambda t, n: .34*n*math.exp(-9*t) + .20*math.sin(2*math.pi*(480*t-330*t*t))*math.exp(-5*t))
     write("player_hurt.wav", .20, lambda t, n: (.35*tone(t, 62) + .13*n) * math.exp(-22*t))
-    print("Generated 7 combat cues in", ROOT)
+    print("Generated 8 combat cues in", ROOT)

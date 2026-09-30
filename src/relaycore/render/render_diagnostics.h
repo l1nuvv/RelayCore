@@ -114,6 +114,9 @@ namespace RelayCore::render
         std::uint32_t dynamic_blockers = 0;
         std::uint32_t collision_world_solids = 0;
         std::string primary_attack_label{};
+        std::string weapon_label{};
+        std::string weapon_selection_hint{};
+        float weapon_reticle_radius = 0;
         std::string last_damage_source{};
         bool ground_probe_hit = false;
         bool ground_snap_applied = false;

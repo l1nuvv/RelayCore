@@ -701,6 +701,36 @@ namespace RelayCore
         }
     }
 
+    void Renderer::draw_viewmodel(const std::span<const render::RenderItem> items)
+    {
+        if (items.empty())
+            return;
+        // The world is complete; retain self-occlusion without clipping the held mesh against walls.
+        glDepthMask(GL_TRUE);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+        auto& program = overlay_shader_program_;
+        bind_scene_program_uniforms(program);
+        program.set_int(40, 0);
+        program.set_int(65, 0);
+        program.set_int(81, 0);
+        program.set_int(72, 0);
+        for (const auto& item : items)
+        {
+            if (item.mesh == nullptr)
+                continue;
+            program.set_mat4(0, camera_.view_projection_matrix() * item.model_matrix);
+            program.set_mat4(1, item.model_matrix);
+            program.set_int(78, item.diffuse_texture != nullptr ? 1 : 0);
+            program.set_int(79, 4);
+            if (item.diffuse_texture != nullptr)
+                item.diffuse_texture->bind(4);
+            item.mesh->draw();
+        }
+    }
+
     void Renderer::set_local_lights(const std::span<const render::LocalLight> lights)
     {
         local_lights_.assign(lights.begin(), lights.end());

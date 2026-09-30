@@ -66,6 +66,7 @@ namespace RelayGame
         grounded_ = false;
         movement_mode_ = MovementMode::Air;
         fire_pressed_ = false;
+        weapon_selection_.reset();
         use_pressed_ = false;
         inspector_pin_pressed_ = false;
         reload_level_pressed_ = false;
@@ -217,6 +218,11 @@ namespace RelayGame
                 } else if (binding_matches(config_.bindings.restore_runtime_snapshot, event.key.scancode))
                 {
                     restore_runtime_snapshot_pressed_ = true;
+                } else if (gameplay_keyboard_input_enabled() && window.relative_mouse_mode()
+                           && (event.key.scancode == SDL_SCANCODE_1 || event.key.scancode == SDL_SCANCODE_2))
+                {
+                    weapon_selection_ =
+                        event.key.scancode == SDL_SCANCODE_1 ? PlayerWeapon::Precise : PlayerWeapon::Shotgun;
                 } else if (gameplay_keyboard_input_enabled()
                            && binding_matches(config_.bindings.use, event.key.scancode))
                 {
@@ -234,6 +240,7 @@ namespace RelayGame
     void GroundedPlayerController::clear_keyboard_transient_input() noexcept
     {
         use_pressed_ = false;
+        weapon_selection_.reset();
     }
 
     void GroundedPlayerController::clear_mouse_transient_input() noexcept
@@ -402,6 +409,18 @@ namespace RelayGame
         const bool pressed = fire_pressed_;
         fire_pressed_ = false;
         return pressed;
+    }
+
+    auto GroundedPlayerController::consume_weapon_selection() noexcept -> std::optional<PlayerWeapon>
+    {
+        const auto selection = weapon_selection_;
+        weapon_selection_.reset();
+        return selection;
+    }
+
+    void GroundedPlayerController::apply_weapon_recoil(float radians) noexcept
+    {
+        pitch_radians_ = glm::clamp(pitch_radians_ + radians, -kPitchClamp, kPitchClamp);
     }
 
     auto GroundedPlayerController::consume_inspector_pin_pressed() noexcept -> bool

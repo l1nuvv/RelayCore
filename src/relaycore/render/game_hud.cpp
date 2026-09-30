@@ -119,6 +119,8 @@ namespace RelayCore::render
             }
             draw->AddCircleFilled(center, 2.0F, IM_COL32(15, 20, 18, 210));
             draw->AddCircleFilled(center, 1.0F, color);
+            if (player.weapon_reticle_radius > 0)
+                draw->AddCircle(center, player.weapon_reticle_radius, color, 24, 1.0F);
             if (player.hit_confirmation_strength > 0.0F)
             {
                 const ImU32 hit_color =
@@ -174,12 +176,14 @@ namespace RelayCore::render
                                         + "/" + std::to_string(static_cast<int>(std::lround(player.max_health)));
         const std::string attack_label = player.primary_attack_label.empty() ? "Mouse1" : player.primary_attack_label;
         const std::string weapon_text =
-            player.alive ? "[" + attack_label + "] Стрелять"
+            player.alive ? "[" + attack_label + "] " + player.weapon_label
+                               + (player.weapon_cooldown_remaining_seconds > 0 ? " · Пауза" : " · Стрелять")
                          : "Ко входу через "
                                + std::to_string(static_cast<int>(std::ceil(player.respawn_remaining_seconds))) + " с";
         const std::string damage_text =
-            !player.alive ? "Выполненные задачи и изменения мира сохранятся."
-                          : (player.active_hazard_contacts > 0 ? "Отойдите с опасной поверхности" : std::string{});
+            !player.alive
+                ? "Выполненные задачи и изменения мира сохранятся."
+                : (player.active_hazard_contacts > 0 ? "Отойдите с опасной поверхности" : player.weapon_selection_hint);
 
         const ImVec2 header_size = ImGui::CalcTextSize(header.c_str());
         const ImVec2 health_size = calc_wrapped_text_size(font, font_size, 320.0F, health_text);

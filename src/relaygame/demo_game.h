@@ -18,8 +18,8 @@ namespace RelayGame
 {
     class DemoGame final : public RelayCore::AppDelegate {
     public:
-        explicit DemoGame(std::filesystem::path user_data_directory = {}) :
-            user_data_directory_(std::move(user_data_directory))
+        explicit DemoGame(std::filesystem::path user_data_directory = {}, bool development_sandbox = false) :
+            user_data_directory_(std::move(user_data_directory)), development_sandbox_(development_sandbox)
         {}
         void on_startup(RelayCore::EngineServices& services) override;
 
@@ -120,6 +120,7 @@ namespace RelayGame
         LevelEditor editor_{};
         std::vector<SavedGame> visited_levels_;
         std::string new_game_level_;
+        bool development_sandbox_ = false;
         RelayCore::render::IterationDiagnostics iteration_diagnostics_{};
         std::optional<EncounterSnapshot> saved_runtime_snapshot_{};
     };

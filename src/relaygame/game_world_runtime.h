@@ -142,6 +142,21 @@ namespace RelayGame
         [[nodiscard]] auto mission_status() const -> RelayGame::MissionStatus;
 
         [[nodiscard]] auto player_combat_state() const noexcept -> const RelayCore::gameplay::PlayerCombatState&;
+        [[nodiscard]] auto player_pellet_traces() const noexcept
+            -> std::span<const RelayCore::gameplay::CombatShotTrace>
+        {
+            return combat_state_.pellet_traces;
+        }
+
+        [[nodiscard]] auto selected_weapon() const noexcept -> PlayerWeapon
+        {
+            return selected_weapon_;
+        }
+        auto select_weapon(PlayerWeapon weapon) noexcept -> bool;
+        [[nodiscard]] auto shotgun_cycle_remaining_seconds() const noexcept -> float
+        {
+            return combat_state_.shotgun_cycle_remaining_seconds;
+        }
 
         [[nodiscard]] auto scientist_pose() const noexcept -> ScientistPose;
 
@@ -189,6 +204,7 @@ namespace RelayGame
             std::filesystem::path access_denied{};
             std::filesystem::path mission_complete{};
             std::filesystem::path weapon_fire{};
+            std::filesystem::path shotgun_fire{};
             std::filesystem::path weapon_hit{};
             std::filesystem::path threat_windup{};
             std::filesystem::path rover_attack{};
@@ -234,6 +250,8 @@ namespace RelayGame
             glm::vec3 spawn_position{0.0F};
             std::optional<glm::vec2> spawn_view_angles{};
             RelayCore::gameplay::PlayerCombatState player{};
+            std::array<RelayCore::gameplay::CombatShotTrace, 7> pellet_traces{};
+            float shotgun_cycle_remaining_seconds = 0;
             std::vector<RelayCore::gameplay::RuntimeTurret> turrets{};
             std::vector<RelayCore::gameplay::RuntimeHazardVolume> hazards{};
             std::string fire_binding_label{"Mouse1"};
@@ -259,6 +277,7 @@ namespace RelayGame
             bool use_pressed = false;
             bool fire_pressed = false;
             bool inspector_pin_pressed = false;
+            std::optional<PlayerWeapon> weapon_selection;
         };
 
         void simulate_fixed_step(
@@ -276,6 +295,7 @@ namespace RelayGame
         void process_use_input(bool use_pressed_this_step, RelayCore::EngineServices& services);
 
         void process_fire_input(bool fire_pressed_this_step, RelayCore::EngineServices& services);
+        void tick_combat_state(float dt) noexcept;
 
         void apply_combat_target_event(const RelayCore::gameplay::CombatTargetEvent& event);
 
@@ -371,6 +391,7 @@ namespace RelayGame
 
         RelayGame::GroundedPlayerController player_controller_{};
         PlayerFeedback player_feedback_{};
+        PlayerWeapon selected_weapon_ = PlayerWeapon::Precise;
         std::vector<RelayCore::physics::Aabb> interaction_occluders_;
         float camera_motion_ = 0.6F;
         bool paused_ = false;

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "relaycore/gameplay/combat_runtime.h"
+#include "relaygame/player_weapon.h"
+
+#include <array>
 
 namespace RelayGame
 {
@@ -52,6 +55,9 @@ namespace RelayGame
         RelayCore::gameplay::CombatFireResult combat;
         int enemy_index = -1;
         bool killed_enemy = false;
+        std::array<RelayCore::gameplay::CombatFireResult, 7> rays{};
+        std::array<RelayCore::gameplay::CombatShotTrace, 7> pellet_traces{};
+        std::size_t ray_count = 0;
     };
     [[nodiscard]] auto fire_player_weapon(
         const RelayCore::BlockoutLevel& level,
@@ -60,6 +66,7 @@ namespace RelayGame
         const glm::vec3& direction,
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RelayCore::gameplay::RuntimeTurret> turrets,
-        std::span<RuntimeEnemy> enemies
+        std::span<RuntimeEnemy> enemies,
+        PlayerWeapon weapon = PlayerWeapon::Precise
     ) -> PlayerAttackResult;
 } // namespace RelayGame

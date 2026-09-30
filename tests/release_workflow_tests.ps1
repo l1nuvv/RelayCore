@@ -133,7 +133,7 @@ Assert ((Version) -eq '1.3.5') 'Invalid manifest changed VERSION before validati
 Write-Fixture 'vcpkg.json' '{"version-string":"1.3.5"}'
 Run-Release @('-Release')
 Assert ((Version) -eq '1.3.6' -and (State).status -eq 'published') 'Manifest repair did not resume the pending version.'
-$configuration = [xml](Get-Content (Join-Path $projectRoot '.run/RelayCore Release.run.xml') -Raw)
+$configuration = [xml](Get-Content (Join-Path $projectRoot '.run/RelayCore — Release.run.xml') -Raw)
 $options = @{}
 foreach ($option in $configuration.component.configuration.option) { $options[$option.name] = $option.value }
 $interpreter = $options.INTERPRETER_PATH.Replace('$USER_HOME$', [Environment]::GetFolderPath('UserProfile'))

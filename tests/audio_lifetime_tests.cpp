@@ -46,6 +46,7 @@ int main()
                 audio.set_master_volume(0);
                 for (const auto& cue : std::array{
                          cues.weapon_fire,
+                         std::string{"audio/combat/shotgun_fire.wav"},
                          cues.weapon_hit,
                          cues.threat_windup,
                          cues.rover_attack,

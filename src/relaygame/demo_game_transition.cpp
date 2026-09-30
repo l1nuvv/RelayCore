@@ -44,6 +44,7 @@ namespace RelayGame
                 arrival.player = entry_position;
             }
             arrival.world.inventory_item_ids = previous.world.inventory_item_ids;
+            arrival.world.selected_weapon = previous.world.selected_weapon;
             arrival.world.player_combat = previous.world.player_combat;
             arrival.world.player_combat.weapon_cooldown_remaining_seconds = 0;
             arrival.world.player_combat.hurt_flash_remaining_seconds = 0;

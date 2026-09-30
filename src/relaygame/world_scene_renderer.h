@@ -76,10 +76,16 @@ namespace RelayGame
             const ScientistPose& scientist = {},
             std::span<const EnvironmentEffect> environment = {},
             std::span<const RuntimeEnemy> enemies = {},
-            const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr
+            const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
+            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {}
         );
 
         [[nodiscard]] auto diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&;
+        void render_shotgun_viewmodel(
+            RelayCore::Renderer& renderer,
+            const RelayCore::render::PerspectiveCamera& camera,
+            float cycle_remaining_seconds
+        );
 
         [[nodiscard]] auto authoring_warnings() const noexcept
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
@@ -114,7 +120,8 @@ namespace RelayGame
         void render_shot_trace(
             const RelayCore::render::PerspectiveCamera& camera,
             const RelayCore::gameplay::CombatShotTrace& trace,
-            bool hostile
+            bool hostile,
+            bool pellet = false
         );
 
         void render_inspector_pick(
@@ -156,12 +163,15 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh inspector_solid_mesh_{};
         RelayCore::render::StaticColorMesh inspector_hit_mesh_{};
         RelayCore::render::StaticColorMesh player_shot_mesh_{};
+        RelayCore::render::StaticColorMesh pellet_mesh_{};
         RelayCore::render::StaticColorMesh turret_shot_mesh_{};
         RelayCore::render::StaticColorMesh turret_warning_mesh_{};
         std::vector<RenderChunk> render_chunks_{};
         std::shared_ptr<const RelayCore::render::StaticModel> enemy_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_enemy_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> power_fuse_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> shotgun_body_model_;
+        std::shared_ptr<const RelayCore::render::StaticModel> shotgun_pump_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> turret_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_turret_model_;
         std::vector<WorldLocalLight> local_lights_{};
