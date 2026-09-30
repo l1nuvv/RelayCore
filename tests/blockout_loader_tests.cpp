@@ -7,17 +7,87 @@
 #include <filesystem>
 #include <fstream>
 
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
+
+TEST_CASE("blockout loader preserves integer properties instead of converting them to booleans")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "integer_properties.toml";
+    {
+        std::ofstream out{path};
+        out << "[[solid]]\norigin = [0, -0.1, 0]\nsize = [4, 0.2, 4]\nmaterial = \"Floor\"\n"
+            << "[[entity]]\nclassname = \"audio_zone\"\norigin = [0, 1, 0]\n"
+            << "size = [2, 3, 4]\npriority = 2\nenabled = false\n";
+    }
+    const auto level = RelayCore::load_blockout_level(path);
+    REQUIRE(level.entities.size() == 1);
+    CHECK(level.entities.front().properties.at("size") == "2 3 4");
+    CHECK(level.entities.front().properties.at("priority") == "2");
+    CHECK(level.entities.front().properties.at("enabled") == "false");
+}
+
+TEST_CASE("blockout loader rejects non-finite and unrepresentable geometry values")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "invalid_geometry.toml";
+
+    for (const char* value : {"nan", "inf", "-inf", "1e100", "-1e100"})
+    {
+        CAPTURE(value);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[solid]]\nmins = [" << value << ", 0, 0]\nmaxs = [1, 2, 3]\nmaterial = \"Wall\"\n";
+        }
+        CHECK_THROWS_WITH(static_cast<void>(RelayCore::load_blockout_level(path)), doctest::Contains("solid.mins"));
+    }
+}
+
+TEST_CASE("blockout loader rejects non-finite and unrepresentable brightness")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "invalid_brightness.toml";
+
+    for (const char* value : {"nan", "inf", "-inf", "1e100", "-1e100"})
+    {
+        CAPTURE(value);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[solid]]\nmins = [0, 0, 0]\nmaxs = [1, 2, 3]\nmaterial = \"Wall\"\nbrightness = " << value << '\n';
+        }
+        CHECK_THROWS_WITH(
+            static_cast<void>(RelayCore::load_blockout_level(path)),
+            doctest::Contains("solid.brightness")
+        );
+    }
+}
+
+TEST_CASE("blockout loader rejects bounds that overflow after module placement")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "overflowed_module.toml";
+    {
+        std::ofstream out{path};
+        REQUIRE(out.is_open());
+        out << "[[module_template]]\nname = \"large\"\n"
+               "solids = [{ origin = [3e38, 0, 0], size = [1, 1, 1], material = \"Wall\" }]\n"
+               "[[module_instance]]\ntemplate = \"large\"\noffset = [3e38, 0, 0]\n";
+    }
+    CHECK_THROWS_WITH(static_cast<void>(RelayCore::load_blockout_level(path)), doctest::Contains("non-finite bounds"));
+}
+
 TEST_CASE("blockout loader parses optional tint and brightness")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_tint_brightness.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_tint_brightness.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -44,15 +114,10 @@ TEST_CASE("blockout loader parses optional tint and brightness")
 
 TEST_CASE("blockout loader supports grouped solids and native TOML entity values")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_grouped_format.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_grouped_format.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -135,15 +200,10 @@ TEST_CASE("blockout loader supports grouped solids and native TOML entity values
 
 TEST_CASE("blockout loader applies group offsets to solids and entities")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_group_offsets.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_group_offsets.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -199,15 +259,10 @@ TEST_CASE("blockout loader applies group offsets to solids and entities")
 
 TEST_CASE("blockout loader records authored source locations for solids and entities")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_source_locations.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_source_locations.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -253,15 +308,10 @@ TEST_CASE("blockout loader records authored source locations for solids and enti
 
 TEST_CASE("blockout loader records placement provenance for solid template instances")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_solid_instance_provenance.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_solid_instance_provenance.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -298,15 +348,10 @@ TEST_CASE("blockout loader records placement provenance for solid template insta
 
 TEST_CASE("blockout loader supports solid origin size syntax")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_origin_size.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_origin_size.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -341,15 +386,10 @@ TEST_CASE("blockout loader supports solid origin size syntax")
 
 TEST_CASE("blockout loader supports solid template instances")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_template_instances.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_template_instances.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -382,15 +422,10 @@ TEST_CASE("blockout loader supports solid template instances")
 
 TEST_CASE("blockout loader supports module template instances")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_module_instances.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_module_instances.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -483,15 +518,10 @@ TEST_CASE("blockout loader supports module template instances")
 
 TEST_CASE("blockout loader records placement provenance for module template instances")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_module_instance_provenance.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_module_instance_provenance.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -539,11 +569,8 @@ TEST_CASE("blockout loader records placement provenance for module template inst
 
 TEST_CASE("blockout loader loads shipped facility levels")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs", true};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const std::filesystem::path levels_dir = repo_root / "assets" / "levels";
@@ -568,15 +595,10 @@ TEST_CASE("blockout loader loads shipped facility levels")
 
 TEST_CASE("blockout loader rejects degenerate solids")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_degenerate_solid.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_degenerate_solid.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -601,15 +623,10 @@ TEST_CASE("blockout loader rejects degenerate solids")
 
 TEST_CASE("blockout loader rejects duplicate entity targetnames")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_duplicate_targetname.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_duplicate_targetname.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -642,15 +659,10 @@ TEST_CASE("blockout loader rejects duplicate entity targetnames")
 
 TEST_CASE("blockout loader rejects gameplay targets that reference unknown targetnames")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_unknown_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_unknown_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -683,15 +695,10 @@ TEST_CASE("blockout loader rejects gameplay targets that reference unknown targe
 
 TEST_CASE("blockout loader rejects unknown anchor references")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_unknown_anchor.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_unknown_anchor.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -725,15 +732,10 @@ TEST_CASE("blockout loader rejects unknown anchor references")
 
 TEST_CASE("blockout loader rejects activate targets that point at non-door entities")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_non_door_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_non_door_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -774,15 +776,10 @@ TEST_CASE("blockout loader rejects activate targets that point at non-door entit
 
 TEST_CASE("blockout loader rejects signal receivers without targetname")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_signal_receiver.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_signal_receiver.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -809,15 +806,10 @@ TEST_CASE("blockout loader rejects signal receivers without targetname")
 
 TEST_CASE("blockout loader rejects unknown chain targets")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_chain_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_chain_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -851,15 +843,10 @@ TEST_CASE("blockout loader rejects unknown chain targets")
 
 TEST_CASE("blockout loader rejects non-positive gameplay entity sizes")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_entity_size.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_entity_size.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -892,15 +879,10 @@ TEST_CASE("blockout loader rejects non-positive gameplay entity sizes")
 
 TEST_CASE("blockout loader rejects duplicate pickup item ids")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_duplicate_item_id.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_duplicate_item_id.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -933,15 +915,10 @@ TEST_CASE("blockout loader rejects duplicate pickup item ids")
 
 TEST_CASE("blockout loader rejects unknown required_item references")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_required_item.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_required_item.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -975,15 +952,10 @@ TEST_CASE("blockout loader rejects unknown required_item references")
 
 TEST_CASE("blockout loader rejects signal entities that reference unknown targets")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_signal_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_signal_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1011,15 +983,10 @@ TEST_CASE("blockout loader rejects signal entities that reference unknown target
 
 TEST_CASE("blockout loader rejects signal entities that target non-receiver usables")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_signal_receiver.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_signal_receiver.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1060,15 +1027,10 @@ TEST_CASE("blockout loader rejects signal entities that target non-receiver usab
 
 TEST_CASE("blockout loader accepts trigger signal actions that target signal receivers")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_valid_trigger_signal_receiver.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_valid_trigger_signal_receiver.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1105,15 +1067,10 @@ TEST_CASE("blockout loader accepts trigger signal actions that target signal rec
 
 TEST_CASE("blockout loader accepts trigger authored activate_target ids for mission steps")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_valid_trigger_activate_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_valid_trigger_activate_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1139,15 +1096,10 @@ TEST_CASE("blockout loader accepts trigger authored activate_target ids for miss
 
 TEST_CASE("blockout loader rejects mission signal steps that target non-signal activations")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_mission_signal_step.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_mission_signal_step.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1179,15 +1131,10 @@ TEST_CASE("blockout loader rejects mission signal steps that target non-signal a
 
 TEST_CASE("blockout loader rejects unsupported usable actions")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_usable_action.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_usable_action.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1221,15 +1168,10 @@ TEST_CASE("blockout loader rejects unsupported usable actions")
 
 TEST_CASE("blockout loader rejects pickup actions on non-pickup entities")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_panel_pickup_action.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_panel_pickup_action.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1263,15 +1205,10 @@ TEST_CASE("blockout loader rejects pickup actions on non-pickup entities")
 
 TEST_CASE("blockout loader rejects unsupported signal actions")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_signal_action.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_signal_action.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1299,15 +1236,10 @@ TEST_CASE("blockout loader rejects unsupported signal actions")
 
 TEST_CASE("blockout loader rejects signal actions on non-usable entities")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_door_signal_action.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_door_signal_action.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1335,15 +1267,10 @@ TEST_CASE("blockout loader rejects signal actions on non-usable entities")
 
 TEST_CASE("blockout loader rejects chain targets that point to non-receiver usables")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_chain_receiver.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_chain_receiver.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1384,15 +1311,10 @@ TEST_CASE("blockout loader rejects chain targets that point to non-receiver usab
 
 TEST_CASE("blockout loader rejects mission pickup steps that reference unknown items")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_mission_pickup_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_mission_pickup_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1418,15 +1340,10 @@ TEST_CASE("blockout loader rejects mission pickup steps that reference unknown i
 
 TEST_CASE("blockout loader rejects mission activate_target steps that reference unknown usable targets")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_mission_activate_target.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_mission_activate_target.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1465,15 +1382,10 @@ TEST_CASE("blockout loader rejects mission activate_target steps that reference 
 
 TEST_CASE("blockout loader rejects duplicate module template anchor names")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_duplicate_anchor.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_duplicate_anchor.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1503,15 +1415,10 @@ TEST_CASE("blockout loader rejects duplicate module template anchor names")
 
 TEST_CASE("blockout loader rejects non-pickup entities with item properties")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_panel_item_id.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_panel_item_id.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1547,15 +1454,10 @@ TEST_CASE("blockout loader rejects non-pickup entities with item properties")
 
 TEST_CASE("blockout loader rejects pickup inventory gates")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_pickup_requirement.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_pickup_requirement.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1585,15 +1487,10 @@ TEST_CASE("blockout loader rejects pickup inventory gates")
 
 TEST_CASE("blockout loader rejects locked pickups")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_locked_pickup.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_locked_pickup.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1623,15 +1520,10 @@ TEST_CASE("blockout loader rejects locked pickups")
 
 TEST_CASE("blockout loader rejects required_item_name without required_item")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_required_item_name.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_required_item_name.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -1667,15 +1559,10 @@ TEST_CASE("blockout loader rejects required_item_name without required_item")
 
 TEST_CASE("blockout loader rejects trigger chain_target authoring")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_blockout_loader_invalid_trigger_chain.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_blockout_loader_invalid_trigger_chain.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};

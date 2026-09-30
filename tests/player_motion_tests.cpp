@@ -45,6 +45,28 @@ namespace
     }
 } // namespace
 
+TEST_CASE("small thresholds are walkable at the 120 Hz game simulation rate")
+{
+    auto world = make_floor_world();
+    world.push_back({{-1.5F, 0, 0.5F}, {1.5F, 0.022F, 0.88F}});
+    for (const float speed : {1.0F, 3.5F, 10.5F})
+    {
+        glm::vec3 position{0, 0.001F, 0};
+        for (int tick = 0; tick < 240; ++tick)
+            position = RelayCore::physics::move_and_collide(
+                           world,
+                           position,
+                           {0, -0.1F, speed},
+                           1.0F / 120.0F,
+                           make_config().collision,
+                           true
+            )
+                           .position;
+        CAPTURE(speed);
+        CHECK(position.z > 1.5F);
+    }
+}
+
 TEST_CASE("player falls onto floor and becomes grounded")
 {
     const PlayerMotionConfig config = make_config();
@@ -88,12 +110,10 @@ TEST_CASE("wall collision blocks forward movement")
 {
     const PlayerMotionConfig config = make_config();
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.8F, 0.0F, -1.0F},
-            .maxs = {1.0F, 2.0F, 1.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.8F, 0.0F, -1.0F},
+        .maxs = {1.0F, 2.0F, 1.0F},
+    });
 
     PlayerMotionState state{};
     state.position = {0.0F, 0.0F, 0.0F};
@@ -114,12 +134,10 @@ TEST_CASE("diagonal move into wall slides along free axis")
 {
     const PlayerMotionConfig config = make_config();
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.8F, 0.0F, -4.0F},
-            .maxs = {1.0F, 2.0F, 4.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.8F, 0.0F, -4.0F},
+        .maxs = {1.0F, 2.0F, 4.0F},
+    });
 
     PlayerMotionState state{};
     state.position = {0.0F, 0.0F, 0.0F};
@@ -163,12 +181,10 @@ TEST_CASE("step-up climbs small obstacle")
 {
     const PlayerMotionConfig config = make_config();
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.6F, 0.0F, -4.0F},
-            .maxs = {1.4F, 0.25F, 4.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.6F, 0.0F, -4.0F},
+        .maxs = {1.4F, 0.25F, 4.0F},
+    });
 
     PlayerMotionState state{};
     state.position = {0.0F, 0.0F, 0.0F};
@@ -190,12 +206,10 @@ TEST_CASE("move_and_collide reports successful step-up queries")
 {
     RelayCore::physics::CollisionConfig collision = make_config().collision;
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.6F, 0.0F, -4.0F},
-            .maxs = {1.4F, 0.25F, 4.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.6F, 0.0F, -4.0F},
+        .maxs = {1.4F, 0.25F, 4.0F},
+    });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
         CollisionWorld{world},
@@ -217,12 +231,10 @@ TEST_CASE("move_and_collide reports blocked step queries on tall obstacles")
 {
     RelayCore::physics::CollisionConfig collision = make_config().collision;
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.6F, 0.0F, -4.0F},
-            .maxs = {1.4F, 0.60F, 4.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.6F, 0.0F, -4.0F},
+        .maxs = {1.4F, 0.60F, 4.0F},
+    });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
         CollisionWorld{world},
@@ -243,12 +255,10 @@ TEST_CASE("move_and_collide blocks diagonal tunneling through a thin wall")
 {
     RelayCore::physics::CollisionConfig collision = make_config().collision;
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.55F, 0.0F, 0.15F},
-            .maxs = {0.67F, 2.0F, 1.20F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.55F, 0.0F, 0.15F},
+        .maxs = {0.67F, 2.0F, 1.20F},
+    });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
         CollisionWorld{world},
@@ -262,6 +272,54 @@ TEST_CASE("move_and_collide blocks diagonal tunneling through a thin wall")
     CHECK(result.hit_x);
     CHECK(result.position.x < 0.30F);
     CHECK(result.position.z > 0.20F);
+}
+
+TEST_CASE("move_and_collide blocks vertical tunneling through a thin floor")
+{
+    const RelayCore::physics::CollisionConfig collision = make_config().collision;
+    const std::vector<Aabb> world{
+        Aabb{
+            .mins = {-2.0F, 0.0F, -2.0F},
+            .maxs = {2.0F, 0.05F, 2.0F},
+        },
+    };
+
+    const MoveResult result = RelayCore::physics::move_and_collide(
+        CollisionWorld{world},
+        {0.0F, 2.0F, 0.0F},
+        {0.0F, -20.0F, 0.0F},
+        0.25F,
+        collision,
+        false
+    );
+
+    CHECK(result.hit_y);
+    CHECK(result.grounded);
+    CHECK(result.position.y == doctest::Approx(0.051F).epsilon(0.01));
+}
+
+TEST_CASE("move_and_collide blocks vertical tunneling through a thin ceiling")
+{
+    const RelayCore::physics::CollisionConfig collision = make_config().collision;
+    const std::vector<Aabb> world{
+        Aabb{
+            .mins = {-2.0F, 3.0F, -2.0F},
+            .maxs = {2.0F, 3.05F, 2.0F},
+        },
+    };
+
+    const MoveResult result = RelayCore::physics::move_and_collide(
+        CollisionWorld{world},
+        {0.0F, 0.0F, 0.0F},
+        {0.0F, 20.0F, 0.0F},
+        0.25F,
+        collision,
+        false
+    );
+
+    CHECK(result.hit_y);
+    CHECK_FALSE(result.grounded);
+    CHECK(result.position.y == doctest::Approx(1.199F).epsilon(0.01));
 }
 
 TEST_CASE("grounded update diagnostics report probe and snap when landing")
@@ -297,12 +355,10 @@ TEST_CASE("obstacle higher than step height blocks movement")
 {
     const PlayerMotionConfig config = make_config();
     std::vector<Aabb> world = make_floor_world();
-    world.push_back(
-        Aabb{
-            .mins = {0.6F, 0.0F, -4.0F},
-            .maxs = {1.4F, 0.60F, 4.0F},
-        }
-    );
+    world.push_back(Aabb{
+        .mins = {0.6F, 0.0F, -4.0F},
+        .maxs = {1.4F, 0.60F, 4.0F},
+    });
 
     PlayerMotionState state{};
     state.position = {0.0F, 0.0F, 0.0F};

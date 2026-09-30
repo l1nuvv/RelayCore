@@ -1,5 +1,5 @@
 {
-  "$schema": "https://cmake.org/cmake/help/v4.3/manual/cmake-presets.7.json",
+  "$schema": "https://cmake.org/cmake/help/v4.0/manual/cmake-presets.7.json",
   "version": 10,
   "cmakeMinimumRequired": {
     "major": 4,
@@ -17,7 +17,6 @@
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "RELAYCORE_ENABLE_IPO": "OFF",
         "RELAYCORE_ENABLE_ASAN": "OFF",
-        "RELAYCORE_ENABLE_PCH": "OFF",
         "RELAYCORE_ENABLE_TRACY": "OFF",
         "RELAYCORE_ENABLE_MSVC_ANALYZE": "OFF"
       }
@@ -63,7 +62,6 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_UNITY_BUILD": "ON",
         "RELAYCORE_ENABLE_IPO": "ON",
-        "RELAYCORE_ENABLE_PCH": "ON",
         "RELAYCORE_ENABLE_TRACY": "ON"
       }
     },
@@ -75,8 +73,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_UNITY_BUILD": "ON",
-        "RELAYCORE_ENABLE_IPO": "ON",
-        "RELAYCORE_ENABLE_PCH": "ON"
+        "RELAYCORE_ENABLE_IPO": "ON"
       }
     },
     {
@@ -119,19 +116,42 @@
       "name": "tests-debug",
       "displayName": "Build Tests (Debug)",
       "configurePreset": "msvc-debug",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
+    },
+    {
+      "name": "graphics-baseline-debug",
+      "displayName": "Build Graphics Baseline (Debug)",
+      "configurePreset": "msvc-debug",
+      "targets": ["relaycore_graphics_baseline"]
+    },
+    {
+      "name": "graphics-debug",
+      "displayName": "Build Graphics Tests (Debug)",
+      "configurePreset": "msvc-debug",
+      "targets": [
+        "relaycore_window_lifetime_tests",
+        "relaycore_vulkan_window_tests",
+        "relaycore_vulkan_device_tests",
+        "relaycore_vulkan_presentation_tests",
+        "relaycore_vulkan_upload_tests",
+        "relaycore_vulkan_mesh_tests",
+        "relaycore_game_lifecycle",
+        "relaycore_power_restoration_graphics",
+        "relaycore_graphics_baseline",
+        "relaycore_default_framebuffer_probe"
+      ]
     },
     {
       "name": "tests-relwithdebinfo",
       "displayName": "Build Tests (RelWithDebInfo)",
       "configurePreset": "msvc-relwithdebinfo",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
     },
     {
       "name": "tests-asan",
       "displayName": "Build Tests (ASan)",
       "configurePreset": "msvc-asan",
-      "targets": ["relaycore_tests"]
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
     },
     {
       "name": "validation-debug",
@@ -156,6 +176,23 @@
     {
       "name": "test-debug",
       "configurePreset": "msvc-debug",
+      "filter": {
+        "include": {
+          "name": "^relaycore\\."
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "graphics-debug",
+      "configurePreset": "msvc-debug",
+      "filter": {
+        "include": {
+          "name": "^graphics\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -163,6 +200,11 @@
     {
       "name": "test-relwithdebinfo",
       "configurePreset": "msvc-relwithdebinfo",
+      "filter": {
+        "include": {
+          "name": "^relaycore\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -170,6 +212,11 @@
     {
       "name": "test-asan",
       "configurePreset": "msvc-asan",
+      "filter": {
+        "include": {
+          "name": "^relaycore\\."
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -240,8 +287,8 @@
       "steps": [
         { "type": "configure", "name": "msvc-debug" },
         { "type": "build", "name": "tests-debug" },
-        { "type": "test", "name": "test-debug" },
         { "type": "build", "name": "validation-debug" },
+        { "type": "test", "name": "test-debug" },
         { "type": "test", "name": "validation-debug" },
         { "type": "build", "name": "demo-debug" }
       ]
@@ -270,6 +317,15 @@
       ]
     },
     {
+      "name": "relwithdebinfo-discipline-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-relwithdebinfo" },
+        { "type": "build", "name": "tests-relwithdebinfo" },
+        { "type": "test", "name": "test-relwithdebinfo" },
+        { "type": "build", "name": "demo-relwithdebinfo" }
+      ]
+    },
+    {
       "name": "tests-asan-workflow",
       "steps": [
         { "type": "configure", "name": "msvc-asan" },
@@ -290,6 +346,16 @@
       "steps": [
         { "type": "configure", "name": "msvc-asan" },
         { "type": "build", "name": "demo-asan" }
+      ]
+    },
+    {
+      "name": "asan-discipline-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-asan" },
+        { "type": "build", "name": "tests-asan" },
+        { "type": "test", "name": "test-asan" },
+        { "type": "build", "name": "validation-asan" },
+        { "type": "test", "name": "validation-asan" }
       ]
     }
   ]

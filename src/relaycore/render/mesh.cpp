@@ -4,6 +4,8 @@
 
 #include <cstddef>
 #include <glad/gl.h>
+#include <glm/common.hpp>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -45,6 +47,15 @@ namespace RelayCore::render
             );
 
             glEnableVertexAttribArray(3);
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(
+                4,
+                2,
+                GL_FLOAT,
+                GL_FALSE,
+                static_cast<GLsizei>(sizeof(ColorVertex)),
+                reinterpret_cast<const void*>(offsetof(ColorVertex, uv))
+            );
             glVertexAttribPointer(
                 3,
                 1,
@@ -141,6 +152,9 @@ namespace RelayCore::render
         index_buffer_id_(std::exchange(other.index_buffer_id_, 0)), index_count_(std::exchange(other.index_count_, 0))
     {
         RELAYCORE_PROFILE_FUNCTION();
+        bounds_min_ = other.bounds_min_;
+        bounds_max_ = other.bounds_max_;
+        cpu_data_ = std::move(other.cpu_data_);
     }
 
     auto StaticColorMesh::operator=(StaticColorMesh&& other) noexcept -> StaticColorMesh&
@@ -153,12 +167,15 @@ namespace RelayCore::render
             vertex_buffer_id_ = std::exchange(other.vertex_buffer_id_, 0);
             index_buffer_id_ = std::exchange(other.index_buffer_id_, 0);
             index_count_ = std::exchange(other.index_count_, 0);
+            bounds_min_ = other.bounds_min_;
+            bounds_max_ = other.bounds_max_;
+            cpu_data_ = std::move(other.cpu_data_);
         }
 
         return *this;
     }
 
-    void StaticColorMesh::initialize(const CpuColorMeshData& mesh_data)
+    void StaticColorMesh::initialize(const CpuColorMeshData& mesh_data, const ResourceUpload upload)
     {
         RELAYCORE_PROFILE_FUNCTION();
         if (mesh_data.vertices.empty() || mesh_data.indices.empty())
@@ -166,8 +183,26 @@ namespace RelayCore::render
             throw std::runtime_error("StaticColorMesh requires non-empty vertex and index buffers");
         }
 
+        if (mesh_data.indices.size() > static_cast<size_t>(std::numeric_limits<GLsizei>::max()))
+            throw std::invalid_argument("StaticColorMesh index count exceeds draw limits");
+        for (const auto index : mesh_data.indices)
+            if (index >= mesh_data.vertices.size())
+                throw std::invalid_argument("StaticColorMesh index is outside its vertex buffer");
+
         reset();
+        if (upload == ResourceUpload::cpu)
+            cpu_data_ = std::make_shared<CpuColorMeshData>(mesh_data);
         index_count_ = static_cast<GLsizei>(mesh_data.indices.size());
+        bounds_min_ = mesh_data.vertices.front().position;
+        bounds_max_ = bounds_min_;
+        for (const ColorVertex& vertex : mesh_data.vertices)
+        {
+            bounds_min_ = glm::min(bounds_min_, vertex.position);
+            bounds_max_ = glm::max(bounds_max_, vertex.position);
+        }
+
+        if (upload == ResourceUpload::cpu)
+            return;
 
         glGenVertexArrays(1, &vertex_array_id_);
         glGenBuffers(1, &vertex_buffer_id_);
@@ -233,5 +268,6 @@ namespace RelayCore::render
         }
 
         index_count_ = 0;
+        cpu_data_.reset();
     }
 } // namespace RelayCore::render

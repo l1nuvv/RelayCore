@@ -54,7 +54,9 @@ namespace RelayCore::render
         )
         {
             RELAYCORE_PROFILE_FUNCTION();
-            const std::size_t index = static_cast<std::size_t>(((y * atlas.width) + x) * 4);
+            const std::size_t index =
+                ((static_cast<std::size_t>(y) * static_cast<std::size_t>(atlas.width)) + static_cast<std::size_t>(x))
+                * 4;
             atlas.pixels[index + 0] = r;
             atlas.pixels[index + 1] = g;
             atlas.pixels[index + 2] = b;
@@ -170,7 +172,7 @@ namespace RelayCore::render
             CpuRgbaTextureData atlas{};
             atlas.width = kExpectedWidth;
             atlas.height = kExpectedHeight;
-            atlas.pixels.resize(static_cast<std::size_t>(atlas.width * atlas.height * 4), 0);
+            atlas.pixels.resize(static_cast<std::size_t>(atlas.width) * static_cast<std::size_t>(atlas.height) * 4, 0);
 
             for (const SurfaceMaterial material : RelayCore::all_surface_materials())
             {
@@ -223,8 +225,8 @@ namespace RelayCore::render
             return std::nullopt;
         }
 
-        atlas.pixels.resize(static_cast<std::size_t>(atlas.width * atlas.height * 4));
-        const std::size_t row_bytes = static_cast<std::size_t>(atlas.width * 4);
+        atlas.pixels.resize(static_cast<std::size_t>(atlas.width) * static_cast<std::size_t>(atlas.height) * 4);
+        const std::size_t row_bytes = static_cast<std::size_t>(atlas.width) * 4;
         for (int y = 0; y < atlas.height; ++y)
         {
             const std::byte* source_row =

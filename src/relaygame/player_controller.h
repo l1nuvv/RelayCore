@@ -4,6 +4,8 @@
 #include "relaycore/core/spatial_index_2d.h"
 #include "relaycore/physics/collision.h"
 #include "relaycore/physics/player_motion.h"
+#include "relaygame/gameplay_input_ownership.h"
+#include "relaygame/player_weapon.h"
 
 #include <SDL3/SDL.h>
 #include <cstdint>
@@ -100,6 +102,16 @@ namespace RelayGame
 
     class GroundedPlayerController {
     public:
+        struct State {
+            glm::vec3 position{};
+            glm::vec3 velocity{};
+            glm::vec2 view_angles{};
+            bool grounded = false;
+        };
+
+        [[nodiscard]] auto capture_state() const noexcept -> State;
+        void restore_state(const State& state) noexcept;
+
         explicit GroundedPlayerController(
             const GroundedPlayerControllerConfig& config = GroundedPlayerControllerConfig{}
         );
@@ -111,7 +123,17 @@ namespace RelayGame
 
         void set_static_collision_world(const RelayCore::BlockoutLevel& level);
 
-        void enable_capture(RelayCore::Window& window) const;
+        void set_session_capture(RelayCore::Window& window, bool capture) const;
+
+        void set_input_ownership(GameplayInputOwnership ownership) noexcept;
+        void set_mouse_sensitivity(float radians) noexcept
+        {
+            config_.mouse_sensitivity_radians = radians;
+        }
+        void set_eye_offset(float offset) noexcept
+        {
+            eye_offset_ = offset;
+        }
 
         void on_event(const SDL_Event& event, RelayCore::Window& window, RelayCore::EngineServices& services);
 
@@ -123,7 +145,7 @@ namespace RelayGame
             std::span<const RelayCore::physics::Aabb> dynamic_blockers = {}
         );
 
-        void apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept;
+        void apply_camera(RelayCore::render::PerspectiveCamera& camera) const;
 
         [[nodiscard]] auto position() const noexcept -> const glm::vec3&;
 
@@ -140,6 +162,8 @@ namespace RelayGame
         [[nodiscard]] auto player_bounds() const noexcept -> RelayCore::physics::Aabb;
 
         [[nodiscard]] auto consume_fire_pressed() noexcept -> bool;
+        [[nodiscard]] auto consume_weapon_selection() noexcept -> std::optional<PlayerWeapon>;
+        void apply_weapon_recoil(float radians) noexcept;
 
         [[nodiscard]] auto consume_use_pressed() noexcept -> bool;
 
@@ -159,6 +183,18 @@ namespace RelayGame
         static constexpr float kStaticCollisionCellSize = 4.0F;
 
         void toggle_noclip() noexcept;
+
+        void clear_keyboard_transient_input() noexcept;
+
+        void clear_mouse_transient_input() noexcept;
+
+        void clear_transient_input() noexcept;
+
+        void clear_focus_loss_input() noexcept;
+
+        [[nodiscard]] auto gameplay_keyboard_input_enabled() const noexcept -> bool;
+
+        [[nodiscard]] auto gameplay_mouse_input_enabled() const noexcept -> bool;
 
         void update_grounded(
             const RelayCore::FrameInfo& frame,
@@ -184,18 +220,22 @@ namespace RelayGame
         float pitch_radians_ = 0.0F;
         float pending_yaw_delta_ = 0.0F;
         float pending_pitch_delta_ = 0.0F;
+        float eye_offset_ = 0.0F;
         bool grounded_ = false;
         MovementMode movement_mode_ = MovementMode::Air;
         float noclip_speed_ = 8.0F;
         float noclip_fast_multiplier_ = 3.0F;
         float noclip_slow_multiplier_ = 0.35F;
         bool fire_pressed_ = false;
+        std::optional<PlayerWeapon> weapon_selection_;
         bool use_pressed_ = false;
         bool inspector_pin_pressed_ = false;
         bool reload_level_pressed_ = false;
         bool open_inspector_source_pressed_ = false;
         bool save_runtime_snapshot_pressed_ = false;
         bool restore_runtime_snapshot_pressed_ = false;
+        bool keyboard_input_blocked_ = false;
+        bool mouse_input_blocked_ = false;
         std::vector<RelayCore::physics::Aabb> static_collision_world_{};
         std::vector<RelayCore::physics::Aabb> collision_world_{};
         RelayCore::core::SpatialIndex2D<std::uint32_t> static_collision_index_{kStaticCollisionCellSize};

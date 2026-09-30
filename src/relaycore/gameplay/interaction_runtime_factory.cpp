@@ -19,35 +19,33 @@ namespace RelayCore::gameplay
         doors.reserve(descriptors.doors.size());
         for (const DoorDesc& descriptor : descriptors.doors)
         {
-            doors.push_back(
-                RuntimeDoor{
-                    .authored_entity_index = descriptor.authored_entity_index,
-                    .name = descriptor.name,
-                    .closed_bounds = descriptor.closed_bounds,
-                    .open_offset = descriptor.open_offset,
-                    .open_fraction = 0.0F,
-                    .move_speed = descriptor.move_speed,
-                    .blocks_when_closed = descriptor.blocks_when_closed,
-                    .activation_policy = descriptor.activation_policy,
-                    .state = DoorState::Closed,
-                }
-            );
+            doors.push_back(RuntimeDoor{
+                .authored_entity_index = descriptor.authored_entity_index,
+                .name = descriptor.name,
+                .closed_bounds = descriptor.closed_bounds,
+                .open_offset = descriptor.open_offset,
+                .open_fraction = 0.0F,
+                .move_speed = descriptor.move_speed,
+                .blocks_when_closed = descriptor.blocks_when_closed,
+                .activation_policy = descriptor.activation_policy,
+                .state = DoorState::Closed,
+            });
         }
 
         triggers.reserve(descriptors.triggers.size());
         for (const TriggerDesc& descriptor : descriptors.triggers)
         {
-            triggers.push_back(
-                RuntimeTrigger{
-                    .authored_entity_index = descriptor.authored_entity_index,
-                    .name = descriptor.name,
-                    .target = descriptor.target,
-                    .bounds = descriptor.bounds,
-                    .once = descriptor.once,
-                    .fired = false,
-                    .action_kind = descriptor.action_kind,
-                }
-            );
+            triggers.push_back(RuntimeTrigger{
+                .authored_entity_index = descriptor.authored_entity_index,
+                .name = descriptor.name,
+                .target = descriptor.target,
+                .bounds = descriptor.bounds,
+                .once = descriptor.once,
+                .fired = false,
+                .was_overlapping = false,
+                .overlapping = false,
+                .action_kind = descriptor.action_kind,
+            });
         }
 
         usables.reserve(descriptors.usables.size());

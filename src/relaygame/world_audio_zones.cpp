@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 namespace RelayGame
@@ -26,9 +28,9 @@ namespace RelayGame
             const std::string& value = found->second;
             float result = 0.0F;
             const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), result);
-            if (ec != std::errc{} || ptr != value.data() + value.size())
+            if (ec != std::errc{} || ptr != value.data() + value.size() || !std::isfinite(result))
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be a finite number");
             }
 
             return result;
@@ -49,7 +51,7 @@ namespace RelayGame
             const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), result);
             if (ec != std::errc{} || ptr != value.data() + value.size())
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be an integer");
             }
 
             return result;
@@ -67,10 +69,15 @@ namespace RelayGame
 
             std::istringstream stream(found->second);
             glm::vec3 value{};
-            if (!(stream >> value.x >> value.y >> value.z))
+            if (!(stream >> value.x >> value.y >> value.z) || !std::isfinite(value.x) || !std::isfinite(value.y)
+                || !std::isfinite(value.z))
             {
-                return std::nullopt;
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be three finite numbers");
             }
+
+            stream >> std::ws;
+            if (!stream.eof())
+                throw std::runtime_error("audio_zone." + std::string(key) + " must be three finite numbers");
 
             return value;
         }
@@ -166,6 +173,7 @@ namespace RelayGame
             zone.loop_path = asset_root / loop;
             zone.gain = std::clamp(parse_float_property(entity, "volume").value_or(1.0F), 0.0F, 1.0F);
             zone.priority = parse_int_property(entity, "priority").value_or(0);
+            zone.required_target = parse_string_property(entity, "required_target");
             zones.push_back(std::move(zone));
         }
 
@@ -175,7 +183,8 @@ namespace RelayGame
     auto find_active_audio_zone(
         const std::span<const RuntimeAudioZone> zones,
         const RelayCore::physics::Aabb& listener_bounds,
-        const int current_zone_index
+        const int current_zone_index,
+        const std::span<const std::string> activated_targets
     ) -> int
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -186,6 +195,11 @@ namespace RelayGame
         for (std::size_t index = 0; index < zones.size(); ++index)
         {
             const RuntimeAudioZone& zone = zones[index];
+            if (!zone.required_target.empty()
+                && std::ranges::find(activated_targets, zone.required_target) == activated_targets.end())
+            {
+                continue;
+            }
             if (!RelayCore::physics::overlaps(zone.bounds, listener_bounds, 0.001F))
             {
                 continue;

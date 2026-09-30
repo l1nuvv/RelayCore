@@ -165,10 +165,16 @@ namespace RelayGame
             combat_state_.player.hurt_flash_remaining_seconds > 0.0F
                 ? std::clamp(combat_state_.player.hurt_flash_remaining_seconds / 0.30F, 0.0F, 1.0F)
                 : 0.0F;
+        player_diagnostics.hit_confirmation_strength =
+            std::clamp(combat_state_.player.hit_confirmation_remaining_seconds / 0.16F, 0.0F, 1.0F);
         player_diagnostics.respawn_remaining_seconds = combat_state_.player.respawn_remaining_seconds;
         player_diagnostics.damage_dealt = combat_state_.player.damage_dealt;
         player_diagnostics.damage_taken = combat_state_.player.damage_taken;
         player_diagnostics.primary_attack_label = combat_state_.fire_binding_label;
+        player_diagnostics.weapon_label = selected_weapon_ == PlayerWeapon::Shotgun ? "Дробовик" : "Точное оружие";
+        player_diagnostics.weapon_reticle_radius = selected_weapon_ == PlayerWeapon::Shotgun ? 12.0F : 0.0F;
+        if (std::ranges::find(inventory_item_ids_, shotgun_item_id) != inventory_item_ids_.end())
+            player_diagnostics.weapon_selection_hint = "[1] Точное  [2] Дробовик";
         player_diagnostics.last_damage_source = combat_state_.player.last_damage_source;
         const auto& collision_diagnostics = player_controller_.collision_query_diagnostics();
         player_diagnostics.static_collision_solids = collision_diagnostics.static_world_solids;
@@ -276,7 +282,7 @@ namespace RelayGame
         diagnostics.last_event_chain_target = interaction_state_.last_event.chain_target;
         diagnostics.last_event_item = interaction_state_.last_event.item_id;
 
-        const RelayCore::gameplay::MissionStatus mission = mission_runtime_.status();
+        const RelayGame::MissionStatus mission = mission_runtime_.status();
         diagnostics.has_objective = mission.active;
         diagnostics.mission_complete = mission.completed;
         diagnostics.objective_current = mission.current_step;
@@ -356,24 +362,22 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         std::vector<RelayCore::render::RuntimeRegistryEntryDiagnostics> diagnostics{};
         diagnostics.reserve(runtime_registry_.objects().size());
-        for (const RelayCore::gameplay::RuntimeObjectHandle& handle : runtime_registry_.objects())
+        for (const RelayGame::RuntimeObjectHandle& handle : runtime_registry_.objects())
         {
-            diagnostics.push_back(
-                RelayCore::render::RuntimeRegistryEntryDiagnostics{
-                    .runtime_id = handle.id,
-                    .storage_index = static_cast<std::uint32_t>(handle.storage_index),
-                    .runtime_handle = handle.debug_handle,
-                    .object_kind = RelayCore::gameplay::runtime_object_kind_label(handle.kind),
-                    .source_bucket = handle.source_bucket,
-                    .name = handle.name,
-                    .label = handle.label,
-                    .target = handle.target,
-                    .source_reference = handle.source_reference,
-                    .source_file_path = handle.source_file_path,
-                    .source_line = handle.source_line,
-                    .source_column = handle.source_column,
-                }
-            );
+            diagnostics.push_back(RelayCore::render::RuntimeRegistryEntryDiagnostics{
+                .runtime_id = handle.id,
+                .storage_index = static_cast<std::uint32_t>(handle.storage_index),
+                .runtime_handle = handle.debug_handle,
+                .object_kind = RelayGame::runtime_object_kind_label(handle.kind),
+                .source_bucket = handle.source_bucket,
+                .name = handle.name,
+                .label = handle.label,
+                .target = handle.target,
+                .source_reference = handle.source_reference,
+                .source_file_path = handle.source_file_path,
+                .source_line = handle.source_line,
+                .source_column = handle.source_column,
+            });
         }
         return diagnostics;
     }
@@ -384,24 +388,27 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         std::vector<RelayCore::render::RuntimeBindingDiagnostics> diagnostics{};
         diagnostics.reserve(runtime_registry_.bindings().size());
-        for (const RelayCore::gameplay::RuntimeBindingInfo& binding : runtime_registry_.bindings())
+        for (const RelayGame::RuntimeBindingInfo& binding : runtime_registry_.bindings())
         {
-            diagnostics.push_back(
-                RelayCore::render::RuntimeBindingDiagnostics{
-                    .source_handle = binding.source_handle,
-                    .source_kind = RelayCore::gameplay::runtime_object_kind_label(binding.source_kind),
-                    .source_name = binding.source_name,
-                    .source_bucket = binding.source_bucket,
-                    .binding_kind = RelayCore::gameplay::runtime_binding_kind_label(binding.kind),
-                    .target = binding.target,
-                    .source_reference = binding.source_reference,
-                    .source_file_path = binding.source_file_path,
-                    .source_line = binding.source_line,
-                    .source_column = binding.source_column,
-                    .resolved_target_count = binding.resolved_target_count,
-                    .resolved_targets_summary = binding.resolved_targets_summary,
-                }
-            );
+            const bool expects_resolved_target = RelayGame::runtime_binding_requires_resolved_target(binding.kind);
+            diagnostics.push_back(RelayCore::render::RuntimeBindingDiagnostics{
+                .source_handle = binding.source_handle,
+                .source_kind = RelayGame::runtime_object_kind_label(binding.source_kind),
+                .source_name = binding.source_name,
+                .source_bucket = binding.source_bucket,
+                .binding_kind = RelayGame::runtime_binding_kind_label(binding.kind),
+                .target = binding.target,
+                .source_reference = binding.source_reference,
+                .source_file_path = binding.source_file_path,
+                .source_line = binding.source_line,
+                .source_column = binding.source_column,
+                .expects_resolved_target = expects_resolved_target,
+                .unresolved_target =
+                    expects_resolved_target && !binding.target.empty() && binding.resolved_target_count == 0,
+                .ambiguous_target = expects_resolved_target && binding.resolved_target_count > 1,
+                .resolved_target_count = binding.resolved_target_count,
+                .resolved_targets_summary = binding.resolved_targets_summary,
+            });
         }
         return diagnostics;
     }

@@ -9,9 +9,14 @@ macro(relaycore_find_dependencies)
         find_package(Tracy CONFIG REQUIRED)
     endif()
 
-    if(RELAYCORE_ENABLE_IMGUI)
-        find_package(imgui CONFIG REQUIRED)
-    endif()
+    find_package(imgui CONFIG REQUIRED)
+    find_package(Vulkan REQUIRED)
+    find_package(vk-bootstrap CONFIG REQUIRED)
+    find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+    find_package(slang CONFIG REQUIRED)
+
+    message(STATUS "Vulkan headers: ${Vulkan_VERSION}; loader: ${Vulkan_LIBRARY}")
+    message(STATUS "Slang compiler: ${SLANGC_EXECUTABLE}")
 
     find_path(RELAYCORE_TOMLPLUSPLUS_INCLUDE_DIR toml++/toml.hpp REQUIRED)
     find_path(RELAYCORE_MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
@@ -20,18 +25,16 @@ macro(relaycore_find_dependencies)
         find_path(RELAYCORE_DOCTEST_INCLUDE_DIR doctest/doctest.h REQUIRED)
     endif()
 
-    if(RELAYCORE_ENABLE_IMGUI)
-        relaycore_find_first_target(
-            RELAYCORE_IMGUI_TARGET
-            Unofficial::DearImGui::imgui
-            unofficial::imgui::imgui
-            imgui::imgui
-            imgui
-        )
+    relaycore_find_first_target(
+        RELAYCORE_IMGUI_TARGET
+        Unofficial::DearImGui::imgui
+        unofficial::imgui::imgui
+        imgui::imgui
+        imgui
+    )
 
-        if(RELAYCORE_IMGUI_TARGET STREQUAL "")
-            message(FATAL_ERROR "Could not resolve the imported target for imgui. Check your vcpkg installation and imgui features.")
-        endif()
+    if(RELAYCORE_IMGUI_TARGET STREQUAL "")
+        message(FATAL_ERROR "Could not resolve the imported target for imgui. Check your vcpkg installation and imgui features.")
     endif()
 endmacro()
 

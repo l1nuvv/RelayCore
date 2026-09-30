@@ -184,7 +184,8 @@ namespace RelayCore::detail
 
         std::istringstream stream(normalized);
         glm::vec3 result{};
-        if (!(stream >> result.x >> result.y >> result.z))
+        if (!(stream >> result.x >> result.y >> result.z) || !std::isfinite(result.x) || !std::isfinite(result.y)
+            || !std::isfinite(result.z))
         {
             throw std::runtime_error("Field '" + field_name + "' must be a 3-component vector string");
         }
@@ -285,7 +286,8 @@ namespace RelayCore::detail
         EntitySpawnData transformed = entity;
         transformed.origin = rotate_vec3_y(entity.origin, rotation) + offset;
         transformed.angles = entity.angles;
-        transformed.angles.y += quarter_turn_degrees(rotation);
+        // Authored entity angles are [yaw, pitch, roll], with yaw=0 facing +Z.
+        transformed.angles.x += quarter_turn_degrees(rotation);
 
         if (rotation == QuarterTurn::Deg0)
         {

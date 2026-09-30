@@ -70,6 +70,42 @@ namespace RelayCore::physics
 
             return position;
         }
+
+        [[nodiscard]] auto move_vertical(
+            const CollisionWorld world,
+            const glm::vec3& start_position,
+            const CollisionConfig& config,
+            const float desired_delta_y,
+            bool* const out_hit_y
+        ) -> glm::vec3
+        {
+            RELAYCORE_PROFILE_FUNCTION();
+            glm::vec3 position = start_position;
+            bool hit_y = false;
+
+            const float max_substep_distance = std::max(config.radius * 0.5F, 0.05F);
+            const int step_count =
+                std::max(1, static_cast<int>(std::ceil(std::abs(desired_delta_y) / max_substep_distance)));
+            const float step_delta_y = desired_delta_y / static_cast<float>(step_count);
+
+            for (int step_index = 0; step_index < step_count; ++step_index)
+            {
+                const AxisMoveResult result = move_axis(world, position, config, 1, step_delta_y);
+                position.y = result.position_axis;
+                if (result.hit)
+                {
+                    hit_y = true;
+                    break;
+                }
+            }
+
+            if (out_hit_y != nullptr)
+            {
+                *out_hit_y = hit_y;
+            }
+
+            return position;
+        }
     } // namespace
 
     auto make_player_aabb(const glm::vec3& position, const float radius, const float height) -> Aabb
@@ -281,7 +317,7 @@ namespace RelayCore::physics
             {
                 const float flat_progress = planar_distance_sq(flat_position, position);
                 const float step_progress = planar_distance_sq(*stepped, position);
-                if (step_progress > flat_progress + config.epsilon)
+                if (step_progress > flat_progress + config.epsilon * config.epsilon)
                 {
                     flat_position = *stepped;
                     hit_x = false;
@@ -293,9 +329,7 @@ namespace RelayCore::physics
 
         position = flat_position;
 
-        const AxisMoveResult y_result = move_axis(world, position, config, 1, desired_delta.y);
-        hit_y = y_result.hit;
-        position.y = y_result.position_axis;
+        position = move_vertical(world, position, config, desired_delta.y, &hit_y);
 
         const bool can_probe_ground = desired_delta.y <= config.epsilon;
         const bool probed_ground = !hit_y && can_probe_ground && probe_ground(world, position, config);

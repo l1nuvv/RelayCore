@@ -2,6 +2,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaygame/game_world_runtime.h"
+#include "relaygame/usable_interaction.h"
 
 #include <algorithm>
 
@@ -24,6 +25,16 @@ namespace RelayGame
             }
         }
     } // namespace
+
+    void GameWorldRuntime::tick_combat_state(float dt) noexcept
+    {
+        RelayCore::gameplay::tick_combat_state(dt, combat_state_.player, combat_state_.turrets);
+        const float step = std::max(dt, 0.0F);
+        combat_state_.shotgun_cycle_remaining_seconds =
+            std::max(0.0F, combat_state_.shotgun_cycle_remaining_seconds - step);
+        for (auto& trace : combat_state_.pellet_traces)
+            trace.remaining_seconds = std::max(0.0F, trace.remaining_seconds - step);
+    }
 
     void GameWorldRuntime::configure_audio_cues(const RelayCore::core::GameplayAudioConfig& gameplay_audio)
     {
@@ -51,6 +62,16 @@ namespace RelayGame
         audio_cues_.weapon_fire = gameplay_audio.weapon_fire.empty()
                                       ? audio_cues_.panel_press
                                       : RelayCore::core::asset_path(gameplay_audio.weapon_fire);
+        audio_cues_.shotgun_fire = RelayCore::core::asset_path("audio/combat/shotgun_fire.wav");
+        audio_cues_.weapon_hit = gameplay_audio.weapon_hit.empty()
+                                     ? std::filesystem::path{}
+                                     : RelayCore::core::asset_path(gameplay_audio.weapon_hit);
+        audio_cues_.threat_windup = gameplay_audio.threat_windup.empty()
+                                        ? std::filesystem::path{}
+                                        : RelayCore::core::asset_path(gameplay_audio.threat_windup);
+        audio_cues_.rover_attack = gameplay_audio.rover_attack.empty()
+                                       ? std::filesystem::path{}
+                                       : RelayCore::core::asset_path(gameplay_audio.rover_attack);
         audio_cues_.turret_fire = gameplay_audio.turret_fire.empty()
                                       ? audio_cues_.access_denied
                                       : RelayCore::core::asset_path(gameplay_audio.turret_fire);
@@ -76,7 +97,7 @@ namespace RelayGame
 
         RelayCore::gameplay::RuntimeUsable& usable =
             usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
-        const RelayCore::gameplay::InteractionEvent event = RelayCore::gameplay::apply_usable_interaction(
+        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
             usable,
             doors_,
             usables_,
@@ -171,20 +192,46 @@ namespace RelayGame
             return;
         }
 
-        const RelayCore::gameplay::CombatFireResult fire_result = RelayCore::gameplay::apply_player_fire(
+        const auto attack = fire_player_weapon(
             level_,
             doors_,
             player_controller_.eye_position_world(),
             player_controller_.view_forward(),
             combat_state_.player,
-            combat_state_.turrets
+            combat_state_.turrets,
+            enemies_,
+            selected_weapon_
         );
+
+        const auto& fire_result = attack.combat;
         if (!fire_result.fired)
         {
             return;
         }
 
-        play_gameplay_audio(services, audio_cues_.weapon_fire);
+        combat_state_.pellet_traces = attack.pellet_traces;
+        if (selected_weapon_ == PlayerWeapon::Shotgun)
+            combat_state_.shotgun_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
+        play_gameplay_audio(
+            services,
+            selected_weapon_ == PlayerWeapon::Shotgun ? audio_cues_.shotgun_fire : audio_cues_.weapon_fire
+        );
+        if (selected_weapon_ == PlayerWeapon::Shotgun)
+            player_controller_.apply_weapon_recoil(.035F * camera_motion_);
+        for (std::size_t i = 0; i < attack.ray_count; ++i)
+            if (attack.rays[i].killed_turret)
+                apply_combat_target_event(attack.rays[i].target_event);
+        if (attack.enemy_index >= 0 || fire_result.hit_turret)
+            play_gameplay_audio(services, audio_cues_.weapon_hit);
+        if (attack.killed_enemy)
+        {
+            play_gameplay_audio(services, audio_cues_.turret_destroyed);
+            push_transient_hud_event(
+                "Охранный робот выведен из строя",
+                RelayCore::render::HudEventStyle::Success,
+                1.4F
+            );
+        }
         if (!fire_result.hit_turret)
         {
             return;
@@ -193,7 +240,6 @@ namespace RelayGame
         if (fire_result.killed_turret)
         {
             play_gameplay_audio(services, audio_cues_.turret_destroyed);
-            apply_combat_target_event(fire_result.target_event);
             const RelayCore::gameplay::RuntimeTurret& turret =
                 combat_state_.turrets[static_cast<std::size_t>(fire_result.turret_index)];
             const std::string label = turret.label.empty() ? turret.name : turret.label;
@@ -283,7 +329,8 @@ namespace RelayGame
         const int next_zone_index = RelayGame::find_active_audio_zone(
             audio_zones_,
             player_controller_.player_bounds(),
-            audio_state_.active_zone_index
+            audio_state_.active_zone_index,
+            activated_target_ids_
         );
 
         std::filesystem::path desired_loop_path{};
@@ -398,7 +445,7 @@ namespace RelayGame
     }
 
     void GameWorldRuntime::push_mission_status_event(
-        const RelayCore::gameplay::MissionStatus& mission,
+        const RelayGame::MissionStatus& mission,
         const RelayCore::render::HudEventStyle style,
         const float duration_seconds
     )
@@ -425,6 +472,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         player_controller_.initialize(combat_state_.spawn_position, combat_state_.spawn_view_angles);
+        player_feedback_.reset();
         RelayCore::gameplay::respawn_player_combat_state(combat_state_.player);
         refresh_runtime_usables_and_focus();
     }

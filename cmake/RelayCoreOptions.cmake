@@ -61,12 +61,9 @@ macro(relaycore_initialize_project)
 
     option(RELAYCORE_ENABLE_IPO "Enable IPO/LTO for optimized builds" ON)
     option(RELAYCORE_ENABLE_ASAN "Enable AddressSanitizer flags for Asan builds" ON)
-    option(RELAYCORE_ENABLE_PCH "Enable precompiled headers for RelayCore targets" OFF)
     option(RELAYCORE_ENABLE_TRACY "Enable Tracy instrumentation and linking" OFF)
     option(RELAYCORE_ENABLE_MSVC_ANALYZE "Enable MSVC /analyze static analysis" OFF)
-    option(RELAYCORE_ENABLE_IMGUI "Enable Dear ImGui debug overlay" ON)
-    option(RELAYCORE_ENABLE_AUDIO "Enable miniaudio audio system" ON)
-    option(RELAYCORE_ENABLE_CONFIG "Enable TOML engine config loading" ON)
+    option(RELAYCORE_ENABLE_VULKAN_VALIDATION "Require Vulkan validation and debug-utils in Debug/Asan Vulkan startup and checks" ON)
 
     check_ipo_supported(
         RESULT RELAYCORE_IPO_SUPPORTED
@@ -92,21 +89,15 @@ macro(relaycore_initialize_project)
             relaycore_project_options
             INTERFACE
                 /permissive-
-                /EHsc
                 /Zc:preprocessor
                 /Zc:__cplusplus
                 /utf-8
-                $<$<CONFIG:Release>:/O2>
-                $<$<CONFIG:RelWithDebInfo>:/O2>
-                $<$<CONFIG:MinSizeRel>:/O1>
-                $<$<CONFIG:Debug>:/Od>
-                 $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>,$<CONFIG:Asan>>:/Zi>
+                $<$<CONFIG:Asan>:/Zi>
         )
         target_link_options(
             relaycore_project_options
             INTERFACE
                 $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>,$<CONFIG:Asan>>:/DEBUG>
-                $<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO>
         )
         target_compile_definitions(
             relaycore_project_options
@@ -138,7 +129,6 @@ macro(relaycore_initialize_project)
         )
     endif()
 
-    set(RELAYCORE_PCH_HEADERS "" CACHE INTERNAL "RelayCore PCH headers")
 endmacro()
 
 function(relaycore_apply_standard_target_settings target_name)
@@ -151,7 +141,8 @@ function(relaycore_apply_standard_target_settings target_name)
 
         if(RELAYCORE_ENABLE_ASAN)
             target_compile_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
-            target_link_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
+            # Match the STL ABI of prebuilt vcpkg libraries; address instrumentation remains enabled.
+            target_compile_definitions("${target_name}" PRIVATE $<$<CONFIG:Asan>:_DISABLE_STL_ANNOTATION>)
 
             get_target_property(target_type "${target_name}" TYPE)
             if(target_type STREQUAL "EXECUTABLE")
@@ -188,7 +179,4 @@ function(relaycore_apply_standard_target_settings target_name)
         message(STATUS "IPO/LTO not enabled for ${target_name}: ${RELAYCORE_IPO_OUTPUT}")
     endif()
 
-    if(RELAYCORE_ENABLE_PCH AND RELAYCORE_PCH_HEADERS)
-        target_precompile_headers("${target_name}" PRIVATE ${RELAYCORE_PCH_HEADERS})
-    endif()
 endfunction()

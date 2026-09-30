@@ -9,17 +9,17 @@ bounce_neutral_color = [0.06, 0.06, 0.07]
 bounce_floor = 0.04
 bounce_underside = 0.18
 bounce_darkness = 0.06
-ambient_floor = 0.54
-ambient_zenith = 0.82
-ambient_min = 0.32
+ambient_floor = 0.38
+ambient_zenith = 0.56
+ambient_min = 0.24
 ambient_max = 1.02
-cavity_broad_strength = 0.12
-cavity_micro_strength = 0.05
+cavity_broad_strength = 0.0
+cavity_micro_strength = 0.0
 cavity_underside_strength = 0.10
 cavity_ambient_darken = 0.78
 local_light_wrap = 0.55
 local_light_fill = 0.45
-local_light_gain = 1.28
+local_light_gain = 2.0
 
 [render_light]
 default_color = [0.18, 0.22, 0.30]
@@ -33,26 +33,29 @@ max_intensity = 8.0
 [[materials]]
 name = "concrete"
 profile = "default"
-base_color = [0.62, 0.64, 0.67]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 2.8
+atlas_mix = 1.0
 
 [[materials]]
 name = "metal"
 profile = "default"
-base_color = [0.60, 0.67, 0.74]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.5
+atlas_mix = 1.0
 
 [[materials]]
 name = "tile"
 profile = "default"
-base_color = [0.73, 0.76, 0.78]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "glass"
@@ -69,122 +72,173 @@ emissive_strength = 0.03
 [[materials]]
 name = "hazard"
 profile = "default"
-base_color = [0.92, 0.78, 0.18]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.2
+atlas_mix = 1.0
 
 [[materials]]
 name = "floor"
-profile = "floor_grid"
-base_color = [0.29, 0.30, 0.32]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
-atlas_world_scale = 1.35
+bevel_enabled = false
+atlas_world_scale = 2
+atlas_mix = 1.0
 
 [[materials]]
 name = "ceiling"
-profile = "ceiling_grid"
-base_color = [0.18, 0.20, 0.22]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = true
-atlas_world_scale = 1.15
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "wall"
-profile = "panel"
-base_color = [0.43, 0.46, 0.50]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = true
-atlas_world_scale = 1.6
+atlas_world_scale = 2.8
+atlas_mix = 1.0
 
 [[materials]]
 name = "wall_panel"
-profile = "panel_inset"
-base_color = [0.58, 0.61, 0.66]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
-atlas_world_scale = 1.6
+bevel_enabled = false
+atlas_world_scale = 1.8
+atlas_mix = 1.0
 
 [[materials]]
 name = "corridor"
-profile = "panel_service"
-base_color = [0.28, 0.34, 0.40]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
-bevel_enabled = true
-atlas_world_scale = 1.6
+bevel_enabled = false
+atlas_world_scale = 1.2
+atlas_mix = 1.0
+
+[[materials]]
+name = "service_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.1
+atlas_mix = 1.0
+
+[[materials]]
+name = "maintenance_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.4
+atlas_mix = 1.0
+
+[[materials]]
+name = "filtration_floor"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 1.7
+atlas_mix = 1.0
+
+[[materials]]
+name = "filtration_wall"
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
+transparent = false
+bevel_enabled = false
+atlas_world_scale = 2.2
+atlas_mix = 1.0
 
 [[materials]]
 name = "platform"
-profile = "panel"
-base_color = [0.37, 0.38, 0.43]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = true
-atlas_world_scale = 1.35
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "platform_top"
-profile = "platform_top"
-base_color = [0.72, 0.63, 0.24]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = true
-atlas_world_scale = 1.35
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "platform_top_2"
-profile = "platform_top"
-base_color = [0.82, 0.43, 0.18]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = true
-atlas_world_scale = 1.35
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "pillar"
 profile = "default"
-base_color = [0.48, 0.55, 0.60]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "cover"
 profile = "default"
-base_color = [0.25, 0.38, 0.31]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "block"
 profile = "default"
-base_color = [0.46, 0.39, 0.31]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "beam"
-profile = "structural"
-base_color = [0.64, 0.39, 0.16]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 0.75
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "trim"
-profile = "structural"
-base_color = [0.26, 0.29, 0.33]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 0.75
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "divider"
-profile = "divider"
-base_color = [0.24, 0.63, 0.72]
+profile = "default"
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 0.75
+atlas_world_scale = 1.6
+atlas_mix = 1.0
 
 [[materials]]
 name = "light_strip"
@@ -201,15 +255,17 @@ emissive_pulse_speed = 2.4
 [[materials]]
 name = "crate"
 profile = "default"
-base_color = [0.48, 0.33, 0.18]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.3
+atlas_mix = 1.0
 
 [[materials]]
 name = "post"
 profile = "default"
-base_color = [0.73, 0.75, 0.79]
+base_color = [0.92, 0.92, 0.92]
 transparent = false
 bevel_enabled = false
-atlas_world_scale = 1.0
+atlas_world_scale = 1.6
+atlas_mix = 1.0

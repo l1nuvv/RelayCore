@@ -23,9 +23,9 @@ shadow_enabled = true
 shadow_map_resolution = 1536
 shadow_light_direction = [0.34, -1.0, 0.28]
 shadow_light_color = [0.46, 0.50, 0.54]
-shadow_light_intensity = 1.08
+shadow_light_intensity = 0.0
 shadow_strength = 0.62
-shadow_contact_strength = 0.05
+shadow_contact_strength = 0.0
 shadow_bias_near = 0.0023
 shadow_bias_far = 0.0036
 shadow_slope_bias_scale = 0.0038
@@ -54,7 +54,7 @@ show_demo_window = false
 
 [input]
 move_speed = 3.5
-sprint_multiplier = 3.0
+sprint_multiplier = 1.5
 mouse_sensitivity_radians = 0.0022
 capture_mouse_on_start = true
 
@@ -64,7 +64,7 @@ master_volume = 1.0
 startup_sound = ""
 
 [game]
-level_path = "levels/test_room.toml"
+level_path = "levels/power_restoration.toml"
 spawn_classname = "player_spawn"
 
 [game.controls]
@@ -100,8 +100,11 @@ door_open = "audio/door_open.wav"
 door_close = "audio/door_close.wav"
 access_denied = "audio/access_denied.wav"
 mission_complete = "audio/door_open.wav"
-weapon_fire = "audio/panel_press.wav"
-turret_fire = "audio/access_denied.wav"
-turret_destroyed = "audio/door_open.wav"
-player_hurt = "audio/access_denied.wav"
+weapon_fire = "audio/combat/weapon_fire.wav"
+weapon_hit = "audio/combat/weapon_hit.wav"
+threat_windup = "audio/combat/threat_windup.wav"
+rover_attack = "audio/combat/rover_attack.wav"
+turret_fire = "audio/combat/turret_fire.wav"
+turret_destroyed = "audio/combat/destroyed.wav"
+player_hurt = "audio/combat/player_hurt.wav"
 player_respawn = "audio/door_close.wav"

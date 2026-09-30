@@ -12,13 +12,13 @@ namespace RelayCore::core
 {
     /**
      * @brief Returns the base directory of the running executable.
-     * @return Base directory reported by SDL or a build-time fallback.
+     * @return Base directory reported by SDL.
      */
     [[nodiscard]] auto executable_base_path() -> std::filesystem::path;
 
     /**
      * @brief Returns the runtime asset root directory.
-     * @return Path to the resolved asset root.
+     * @return Validated runtime override or the executable-relative assets directory.
      */
     [[nodiscard]] auto asset_root_path() -> std::filesystem::path;
 

@@ -16,6 +16,8 @@ namespace RelayCore
 {
     namespace
     {
+        constexpr Sint32 kNonPresentableEventWaitTimeoutMs = 20;
+
         /**
          * @brief Ensures the active delegate receives on_shutdown() exactly once.
          */
@@ -48,13 +50,19 @@ namespace RelayCore
         };
     } // namespace
 
-    Application::Application(std::unique_ptr<AppDelegate> app_delegate) :
-        app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>())
+    Application::Application(
+        std::unique_ptr<AppDelegate> app_delegate,
+        std::filesystem::path config_path,
+        const render::ColorPipelineMode color_pipeline_mode
+    ) : app_delegate_(app_delegate ? std::move(app_delegate) : std::make_unique<NullAppDelegate>())
     {
         RELAYCORE_PROFILE_FUNCTION();
-        config_.emplace(core::load_default_engine_config());
-        window_.emplace(config_->window);
-        renderer_.emplace(config_->renderer);
+        config_.emplace(
+            config_path.empty() ? core::load_default_engine_config() : core::load_engine_config(config_path)
+        );
+        log::info("Loaded engine config: {}", config_->source_path.string());
+        window_.emplace(config_->window, color_pipeline_mode);
+        renderer_.emplace(config_->renderer, color_pipeline_mode);
         audio_system_.emplace(config_->audio);
 
         renderer_->initialize(*window_);
@@ -85,16 +93,33 @@ namespace RelayCore
         {
             RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
 
-            const auto frame_cpu_start = Clock::now();
-            const FrameInfo frame = frame_timer_.begin_frame();
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
-                process_events(services);
+                process_events(services, !can_present(window_->presentation_state()));
             }
+            if (!is_running_)
+            {
+                break;
+            }
+
+            const WindowPresentationState presentation_state = window_->presentation_state();
+            const FrameInfo frame = frame_timer_.begin_frame();
+            const auto cpu_work_start = Clock::now();
             {
                 RELAYCORE_PROFILE_ZONE_N("app_update");
                 app_delegate_->on_update(frame, services);
             }
+            if (!is_running_)
+            {
+                break;
+            }
+
+            if (!can_present(presentation_state))
+            {
+                RELAYCORE_PROFILE_FRAME();
+                continue;
+            }
+
             {
                 RELAYCORE_PROFILE_ZONE_N("begin_frame");
                 renderer_->begin_frame();
@@ -105,19 +130,27 @@ namespace RelayCore
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("render_ui");
-                renderer_->draw_ui(frame, *audio_system_);
+                if (renderer_->begin_ui(frame, *audio_system_, app_delegate_->has_custom_ui()))
+                {
+                    app_delegate_->on_ui(services);
+                    renderer_->end_ui();
+                }
             }
+            const auto present_start = Clock::now();
             {
                 RELAYCORE_PROFILE_ZONE_N("swap_buffers");
                 window_->swap_buffers();
             }
 
-            const auto cpu_frame_end = Clock::now();
-            const auto cpu_frame_ms =
-                std::chrono::duration<double, std::milli>(cpu_frame_end - frame_cpu_start).count();
+            const auto present_end = Clock::now();
+            [[maybe_unused]] const auto cpu_work_ms =
+                std::chrono::duration<double, std::milli>(present_start - cpu_work_start).count();
+            [[maybe_unused]] const auto present_ms =
+                std::chrono::duration<double, std::milli>(present_end - present_start).count();
 
             RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.delta_seconds * 1000.0);
-            RELAYCORE_PROFILE_PLOT("cpu_frame_ms", cpu_frame_ms);
+            RELAYCORE_PROFILE_PLOT("cpu_work_ms", cpu_work_ms);
+            RELAYCORE_PROFILE_PLOT("present_ms", present_ms);
 
             RELAYCORE_PROFILE_FRAME();
         }
@@ -125,11 +158,16 @@ namespace RelayCore
         return 0;
     }
 
-    void Application::process_events(EngineServices& services)
+    void Application::process_events(EngineServices& services, const bool wait_for_first_event)
     {
         RELAYCORE_PROFILE_FUNCTION();
         SDL_Event event{};
-        while (SDL_PollEvent(&event))
+        if (wait_for_first_event && SDL_WaitEventTimeout(&event, kNonPresentableEventWaitTimeoutMs))
+        {
+            handle_event(event, services);
+        }
+
+        while (is_running_ && SDL_PollEvent(&event))
         {
             handle_event(event, services);
         }
@@ -143,6 +181,7 @@ namespace RelayCore
         switch (event.type)
         {
             case SDL_EVENT_QUIT:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 services.request_quit();
                 break;
 

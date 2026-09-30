@@ -47,8 +47,20 @@ namespace RelayCore::debug
 
         ImGui::StyleColorsDark();
 
-        ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context());
-        ImGui_ImplOpenGL3_Init("#version 460 core");
+        if (!ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context()))
+        {
+            log::warn("ImGui overlay disabled: SDL3 backend initialization failed");
+            ImGui::DestroyContext();
+            return;
+        }
+
+        if (!ImGui_ImplOpenGL3_Init("#version 460 core"))
+        {
+            log::warn("ImGui overlay disabled: OpenGL3 backend initialization failed");
+            ImGui_ImplSDL3_Shutdown();
+            ImGui::DestroyContext();
+            return;
+        }
 
         window_ = &window;
         fps_log_accumulator_ = 0.0F;
@@ -286,6 +298,21 @@ namespace RelayCore::debug
         return config_.enabled;
     }
 
+    auto ImGuiOverlay::wants_keyboard_capture() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantCaptureKeyboard;
+    }
+
+    auto ImGuiOverlay::wants_mouse_capture() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantCaptureMouse;
+    }
+
+    auto ImGuiOverlay::wants_text_input() const noexcept -> bool
+    {
+        return config_.enabled && should_render() && ImGui::GetIO().WantTextInput;
+    }
+
     auto ImGuiOverlay::diagnostics_visible() const noexcept -> bool
     {
         return diagnostics_visible_;
@@ -337,82 +364,32 @@ namespace RelayCore::debug
         return initialized_ && (diagnostics_visible_ || advanced_diagnostics_visible_ || config_.show_demo_window);
     }
 
-    auto ImGuiOverlay::consume_save_runtime_snapshot_requested() noexcept -> bool
+    auto ImGuiOverlay::consume_iteration_command_requests() noexcept -> IterationCommandRequests
     {
-        const bool requested = save_runtime_snapshot_requested_;
+        IterationCommandRequests requests{};
+        requests.save_runtime_snapshot = save_runtime_snapshot_requested_;
+        requests.restore_runtime_snapshot = restore_runtime_snapshot_requested_;
+        requests.open_first_authoring_warning = open_first_authoring_warning_requested_;
+        requests.dump_authoring_warnings = dump_authoring_warnings_requested_;
+        requests.open_first_runtime_registry = open_first_runtime_registry_requested_;
+        requests.dump_runtime_registry = dump_runtime_registry_requested_;
+        requests.open_first_runtime_binding = open_first_runtime_binding_requested_;
+        requests.dump_runtime_bindings = dump_runtime_bindings_requested_;
+        requests.dump_render_authoring_contract = dump_render_authoring_contract_requested_;
+        requests.authoring_warning_source_filter = authoring_warning_source_filter_;
+        requests.runtime_registry_source_filter = runtime_registry_source_filter_;
+        requests.runtime_binding_source_filter = runtime_binding_source_filter_;
+
         save_runtime_snapshot_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_restore_runtime_snapshot_requested() noexcept -> bool
-    {
-        const bool requested = restore_runtime_snapshot_requested_;
         restore_runtime_snapshot_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_open_first_authoring_warning_requested() noexcept -> bool
-    {
-        const bool requested = open_first_authoring_warning_requested_;
         open_first_authoring_warning_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_dump_authoring_warnings_requested() noexcept -> bool
-    {
-        const bool requested = dump_authoring_warnings_requested_;
         dump_authoring_warnings_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_open_first_runtime_registry_requested() noexcept -> bool
-    {
-        const bool requested = open_first_runtime_registry_requested_;
         open_first_runtime_registry_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_dump_runtime_registry_requested() noexcept -> bool
-    {
-        const bool requested = dump_runtime_registry_requested_;
         dump_runtime_registry_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_open_first_runtime_binding_requested() noexcept -> bool
-    {
-        const bool requested = open_first_runtime_binding_requested_;
         open_first_runtime_binding_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_dump_runtime_bindings_requested() noexcept -> bool
-    {
-        const bool requested = dump_runtime_bindings_requested_;
         dump_runtime_bindings_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::consume_dump_render_authoring_contract_requested() noexcept -> bool
-    {
-        const bool requested = dump_render_authoring_contract_requested_;
         dump_render_authoring_contract_requested_ = false;
-        return requested;
-    }
-
-    auto ImGuiOverlay::authoring_warning_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return authoring_warning_source_filter_;
-    }
-
-    auto ImGuiOverlay::runtime_registry_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return runtime_registry_source_filter_;
-    }
-
-    auto ImGuiOverlay::runtime_binding_source_filter() const noexcept -> render::DiagnosticsSourceFilter
-    {
-        return runtime_binding_source_filter_;
+        return requests;
     }
 
     void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept

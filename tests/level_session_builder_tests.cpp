@@ -6,6 +6,12 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 #include <fstream>
+#include <glm/trigonometric.hpp>
+#include <limits>
+#include <utility>
+
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 namespace
 {
@@ -15,17 +21,106 @@ namespace
     }
 } // namespace
 
+TEST_CASE("level session builder rejects an unresolvable presentation activation")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "power.toml";
+    for (const auto* classname : {"render_light", "audio_zone"})
+    {
+        std::ofstream out{path};
+        out << "[[solid]]\norigin = [0, -0.1, 0]\nsize = [4, 0.2, 4]\nmaterial = \"Floor\"\n"
+            << "[[entity]]\nclassname = \"" << classname
+            << "\"\norigin = [0, 1, 0]\nrequired_target = \"missing_power\"\n";
+        out.close();
+        RelayCore::core::GameplayConfig config{};
+        config.level_path = path.string();
+        CHECK_THROWS_WITH_AS(
+            (void) RelayGame::LevelSessionBuilder{config}.build(),
+            doctest::Contains("required_target 'missing_power'"),
+            std::runtime_error
+        );
+    }
+}
+
+TEST_CASE("disk and in-memory sessions reject unsafe solid coordinates before runtime construction")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "unsafe.toml";
+    RelayCore::core::GameplayConfig config{};
+    RelayGame::LevelSessionBuilder builder{config};
+
+    for (const auto [coordinate, diagnostic] : {
+             std::pair{1.0e20F, "signed cell range"},
+             std::pair{1000.0F, "too many cells"},
+         })
+    {
+        RelayCore::BlockoutLevel level;
+        level.solids.push_back({{-coordinate, 0.0F, -coordinate}, {coordinate, 1.0F, coordinate}});
+        CHECK_THROWS_WITH(static_cast<void>(builder.build(level, path)), doctest::Contains(diagnostic));
+
+        std::ofstream out{path};
+        REQUIRE(out.is_open());
+        out << "[[solid]]\nmins = [" << -coordinate << ", 0, " << -coordinate << "]\nmaxs = [" << coordinate << ", 1, "
+            << coordinate << "]\nmaterial = \"Wall\"\n";
+        out.close();
+        CHECK_THROWS_WITH(static_cast<void>(builder.build(path)), doctest::Contains(diagnostic));
+    }
+
+    RelayCore::BlockoutLevel overflow;
+    overflow.solids.push_back({{0.0F, 0.0F, 0.0F}, {std::numeric_limits<float>::infinity(), 1.0F, 1.0F}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(std::move(overflow), path)),
+        doctest::Contains("non-finite bounds")
+    );
+}
+
+TEST_CASE("session validation rejects non-finite entity properties")
+{
+    RelayCore::core::GameplayConfig config{};
+    RelayGame::LevelSessionBuilder builder{config};
+    RelayCore::BlockoutLevel level;
+    level.entities.push_back({.classname = "trigger", .properties = {{"kind", "trigger"}, {"width", "nan"}}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-trigger.toml")),
+        doctest::Contains("property 'width'")
+    );
+
+    level.entities.clear();
+    level.entities.push_back(
+        {.classname = "audio_zone", .properties = {{"size", "2 2 2"}, {"loop", "audio/ambient.wav"}, {"volume", "inf"}}}
+    );
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-audio.toml")),
+        doctest::Contains("audio_zone.volume")
+    );
+
+    level.entities.clear();
+    level.entities.push_back({.classname = "gameplay_entity", .properties = {{"kind", "door"}, {"targetname", "gate"}}}
+    );
+    level.entities.push_back(
+        {.classname = "gameplay_entity", .properties = {{"kind", "panel"}, {"target", "gate"}, {"use_radius", "nan"}}}
+    );
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-radius.toml")),
+        doctest::Contains("property 'use_radius'")
+    );
+
+    level.entities.clear();
+    level.entities.push_back({.classname = "player_spawn", .origin = {std::numeric_limits<float>::infinity(), 0, 0}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "invalid-origin.toml")),
+        doctest::Contains("non-finite transform")
+    );
+}
+
 TEST_CASE("level session builder applies authored spawn view angles")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_spawn_angles.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_spawn_angles.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -57,17 +152,41 @@ TEST_CASE("level session builder applies authored spawn view angles")
     RelayCore::log::shutdown();
 }
 
+TEST_CASE("level session builder rotates module spawn yaw while preserving pitch")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = temp.path() / "rotated_spawn.toml";
+
+    for (const int rotation : {0, 90, 180, 270, -90, 450})
+    {
+        CAPTURE(rotation);
+        {
+            std::ofstream out{path};
+            REQUIRE(out.is_open());
+            out << "[[module_template]]\nname = \"spawn_room\"\n"
+                   "solids = [{ origin = [0, -0.1, 0], size = [4, 0.2, 4], material = \"Floor\" }]\n"
+                   "entities = [{ classname = \"player_spawn\", origin = [0, 0, 0], angles = [180, 15, 0] }]\n"
+                   "[[module_instance]]\ntemplate = \"spawn_room\"\nrotation_y = "
+                << rotation << '\n';
+        }
+        RelayCore::core::GameplayConfig config{};
+        config.level_path = path.string();
+        const auto session = RelayGame::LevelSessionBuilder{config}.build();
+        REQUIRE(session.spawn_view_angles.has_value());
+        const float normalized_rotation = static_cast<float>((rotation % 360 + 360) % 360);
+        const float expected_yaw = glm::radians(90.0F - (180.0F + normalized_rotation));
+        CHECK(spawn_angles_nearly_equal(session.spawn_view_angles->x, expected_yaw));
+        CHECK(spawn_angles_nearly_equal(session.spawn_view_angles->y, glm::radians(15.0F)));
+    }
+}
+
 TEST_CASE("level session builder collects authoring overlap warnings")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "relaycore_level_session_builder_warnings.toml";
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_warnings.toml";
 
     {
         std::ofstream out{path, std::ios::trunc};
@@ -100,6 +219,48 @@ TEST_CASE("level session builder collects authoring overlap warnings")
     CHECK(session.authoring_warnings.front().message.find("Suspicious overlap between trigger") != std::string::npos);
     CHECK(session.authoring_warnings.front().primary_line > 0);
     CHECK(session.authoring_warnings.front().secondary_line > 0);
+
+    std::filesystem::remove(path);
+    RelayCore::log::shutdown();
+}
+
+TEST_CASE("level session builder collects unresolved authored target warnings")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+
+    const std::filesystem::path path = temp.path() / "relaycore_level_session_builder_unresolved_target.toml";
+
+    {
+        std::ofstream out{path, std::ios::trunc};
+        REQUIRE(out.is_open());
+        out << "[[solid]]\n";
+        out << "origin = [0.0, -0.1, 0.0]\n";
+        out << "size = [8.0, 0.2, 8.0]\n";
+        out << "material = \"Floor\"\n\n";
+        out << "[[entity]]\n";
+        out << "classname = \"gameplay_entity\"\n";
+        out << "kind = \"usable\"\n";
+        out << "origin = [0.0, 1.0, 1.0]\n";
+        out << "size = [0.4, 0.6, 0.2]\n";
+        out << "label = \"Broken panel\"\n";
+        out << "targetname = \"broken_panel\"\n";
+        out << "target = \"missing_bulkhead\"\n";
+        out << "action = \"activate_target\"\n";
+    }
+
+    RelayCore::core::GameplayConfig config{};
+    config.level_path = path.string();
+    RelayGame::LevelSessionBuilder builder{config};
+    const RelayGame::LevelSession session = builder.build();
+
+    REQUIRE(session.authoring_warnings.size() == 1);
+    CHECK(
+        session.authoring_warnings.front().message.find("Unresolved authored activate_target link") != std::string::npos
+    );
+    CHECK(session.authoring_warnings.front().message.find("missing_bulkhead") != std::string::npos);
+    CHECK(session.authoring_warnings.front().primary_line > 0);
+    CHECK(session.authoring_warnings.front().primary_column > 0);
 
     std::filesystem::remove(path);
     RelayCore::log::shutdown();

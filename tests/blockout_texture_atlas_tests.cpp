@@ -6,29 +6,20 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 
-namespace
-{
-    void init_test_logger()
-    {
-        RelayCore::log::shutdown();
-        RelayCore::log::Config log_config{};
-        log_config.enable_console_sink = false;
-        log_config.enable_timestamped_log = false;
-        log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-        RelayCore::log::init(log_config);
-    }
-} // namespace
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 TEST_CASE("blockout texture atlas loads from external asset")
 {
-    init_test_logger();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const auto atlas =
         RelayCore::render::load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
 
     REQUIRE(atlas.has_value());
-    CHECK(atlas->width == 512);
-    CHECK(atlas->height == 256);
+    CHECK(atlas->width == 2048);
+    CHECK(atlas->height == 1024);
     CHECK(atlas->pixels.size() == static_cast<std::size_t>(atlas->width * atlas->height * 4));
 
     RelayCore::log::shutdown();
@@ -36,7 +27,8 @@ TEST_CASE("blockout texture atlas loads from external asset")
 
 TEST_CASE("blockout texture atlas is generated with expected dimensions and alpha")
 {
-    init_test_logger();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const RelayCore::render::CpuRgbaTextureData atlas = RelayCore::render::build_blockout_texture_atlas();
 
@@ -47,7 +39,7 @@ TEST_CASE("blockout texture atlas is generated with expected dimensions and alph
     REQUIRE_FALSE(atlas.pixels.empty());
     CHECK(atlas.pixels[3] == 255);
     CHECK(atlas.pixels[(atlas.width * 4) - 1] == 255);
-    CHECK(atlas.pixels[0] != atlas.pixels[64 * 4]);
+    CHECK(atlas.pixels[0] != atlas.pixels[(atlas.width / 8) * 4]);
 
     RelayCore::log::shutdown();
 }

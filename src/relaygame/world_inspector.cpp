@@ -390,7 +390,7 @@ namespace RelayGame
 
         void assign_runtime_handle(
             RelayCore::render::InspectorDiagnostics& diagnostics,
-            const RelayCore::gameplay::RuntimeObjectRegistry* registry,
+            const RelayGame::RuntimeObjectRegistry* registry,
             const PickKind kind,
             const std::size_t storage_index
         )
@@ -400,7 +400,7 @@ namespace RelayGame
                 return;
             }
 
-            const RelayCore::gameplay::RuntimeObjectHandle* handle = nullptr;
+            const RelayGame::RuntimeObjectHandle* handle = nullptr;
             switch (kind)
             {
                 case PickKind::Door:
@@ -433,7 +433,7 @@ namespace RelayGame
             std::span<const RelayCore::gameplay::RuntimeDoor> doors,
             std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
             std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-            const RelayCore::gameplay::RuntimeObjectRegistry* registry,
+            const RelayGame::RuntimeObjectRegistry* registry,
             const PickHit& pick,
             const glm::vec3& eye_position,
             const glm::vec3& direction
@@ -660,7 +660,7 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const RelayCore::gameplay::RuntimeObjectRegistry& registry,
+        const RelayGame::RuntimeObjectRegistry& registry,
         const glm::vec3& eye_position,
         const glm::vec3& view_forward,
         const float max_distance
@@ -881,8 +881,8 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const RelayCore::gameplay::RuntimeObjectRegistry& registry,
-        const RelayCore::gameplay::RuntimeObjectId runtime_id,
+        const RelayGame::RuntimeObjectRegistry& registry,
+        const RelayGame::RuntimeObjectId runtime_id,
         const glm::vec3& eye_position
     ) -> RelayCore::render::InspectorDiagnostics
     {
@@ -893,14 +893,14 @@ namespace RelayGame
             return {};
         }
 
-        const RelayCore::gameplay::RuntimeObjectHandle* handle = registry.find(runtime_id);
+        const RelayGame::RuntimeObjectHandle* handle = registry.find(runtime_id);
         if (handle == nullptr)
         {
             return {};
         }
 
         const glm::vec3 fallback_direction{0.0F, 0.0F, 1.0F};
-        if (handle->kind == RelayCore::gameplay::RuntimeObjectKind::Door && handle->storage_index < doors.size())
+        if (handle->kind == RelayGame::RuntimeObjectKind::Door && handle->storage_index < doors.size())
         {
             const RelayCore::physics::Aabb bounds =
                 RelayCore::gameplay::current_door_bounds(doors[handle->storage_index]);
@@ -928,7 +928,7 @@ namespace RelayGame
             return diagnostics;
         }
 
-        if (handle->kind == RelayCore::gameplay::RuntimeObjectKind::Trigger && handle->storage_index < triggers.size())
+        if (handle->kind == RelayGame::RuntimeObjectKind::Trigger && handle->storage_index < triggers.size())
         {
             const RelayCore::physics::Aabb bounds = triggers[handle->storage_index].bounds;
             const glm::vec3 center = bounds_center(bounds);
@@ -955,8 +955,8 @@ namespace RelayGame
             return diagnostics;
         }
 
-        if ((handle->kind == RelayCore::gameplay::RuntimeObjectKind::Usable
-             || handle->kind == RelayCore::gameplay::RuntimeObjectKind::Pickup)
+        if ((handle->kind == RelayGame::RuntimeObjectKind::Usable
+             || handle->kind == RelayGame::RuntimeObjectKind::Pickup)
             && handle->storage_index < usables.size())
         {
             const RelayCore::physics::Aabb bounds = usable_pick_bounds(usables[handle->storage_index]);

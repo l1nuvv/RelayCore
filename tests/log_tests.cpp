@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "scoped_temp_directory.h"
+
 namespace
 {
     void write_text_file(const std::filesystem::path& path, const std::string_view contents)
@@ -40,8 +42,8 @@ TEST_CASE("logger truncates latest log and prunes old timestamped runs")
 {
     RelayCore::log::shutdown();
 
-    const std::filesystem::path logs_dir = std::filesystem::temp_directory_path() / "relaycore_log_tests";
-    std::filesystem::remove_all(logs_dir);
+    RelayCore::test::ScopedTempDirectory temp;
+    const std::filesystem::path logs_dir = temp.path() / "relaycore_log_tests";
     std::filesystem::create_directories(logs_dir);
 
     const std::filesystem::path old_run_a = logs_dir / "RelayCore_2026-04-01_10-00-00.log";
@@ -103,6 +105,4 @@ TEST_CASE("logger truncates latest log and prunes old timestamped runs")
     CHECK(std::filesystem::exists(run_log_path));
     CHECK(!std::filesystem::exists(old_run_a));
     CHECK(!std::filesystem::exists(old_run_b));
-
-    std::filesystem::remove_all(logs_dir);
 }

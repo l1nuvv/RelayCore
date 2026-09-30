@@ -10,7 +10,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         static_collision_world_.clear();
-        static_collision_world_.reserve(level.solids.size());
+        static_collision_world_.reserve(level.solids.size() + level.prop_colliders.size());
 
         for (const RelayCore::BlockoutSolid& solid : level.solids)
         {
@@ -18,6 +18,8 @@ namespace RelayGame
         }
 
         static_collision_index_.set_cell_size(kStaticCollisionCellSize);
+        for (const auto& solid : level.prop_colliders)
+            static_collision_world_.push_back({solid.mins, solid.maxs});
         static_collision_index_.reset(static_collision_world_.size());
 
         for (std::size_t index = 0; index < static_collision_world_.size(); ++index)
@@ -76,7 +78,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_ZONE_N("physics::update_grounded");
 
-        if (static_collision_world_.size() != level.solids.size())
+        if (static_collision_world_.size() != level.solids.size() + level.prop_colliders.size())
         {
             set_static_collision_world(level);
         }

@@ -105,6 +105,7 @@ namespace RelayCore::render
         float max_health = 0.0F;
         float weapon_cooldown_remaining_seconds = 0.0F;
         float hurt_flash_strength = 0.0F;
+        float hit_confirmation_strength = 0.0F;
         float respawn_remaining_seconds = 0.0F;
         float damage_dealt = 0.0F;
         float damage_taken = 0.0F;
@@ -113,6 +114,9 @@ namespace RelayCore::render
         std::uint32_t dynamic_blockers = 0;
         std::uint32_t collision_world_solids = 0;
         std::string primary_attack_label{};
+        std::string weapon_label{};
+        std::string weapon_selection_hint{};
+        float weapon_reticle_radius = 0;
         std::string last_damage_source{};
         bool ground_probe_hit = false;
         bool ground_snap_applied = false;
@@ -264,6 +268,9 @@ namespace RelayCore::render
         std::string source_file_path{};
         int source_line = 0;
         int source_column = 0;
+        bool expects_resolved_target = false;
+        bool unresolved_target = false;
+        bool ambiguous_target = false;
         std::uint32_t resolved_target_count = 0;
         std::string resolved_targets_summary{};
     };

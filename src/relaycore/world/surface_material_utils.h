@@ -11,7 +11,7 @@ namespace RelayCore
 {
     [[nodiscard]] constexpr auto surface_material_count() noexcept -> std::size_t
     {
-        return static_cast<std::size_t>(SurfaceMaterial::Post) + 1;
+        return static_cast<std::size_t>(SurfaceMaterial::FiltrationWall) + 1;
     }
 
     [[nodiscard]] auto all_surface_materials() noexcept -> const std::array<SurfaceMaterial, surface_material_count()>&;

@@ -19,7 +19,8 @@ namespace RelayCore::gameplay
             const std::size_t candidate_count,
             IndexProvider&& index_provider,
             const float max_distance,
-            const float min_facing_dot
+            const float min_facing_dot,
+            const physics::CollisionWorld blockers
         ) -> InteractionQueryResult
         {
             RELAYCORE_PROFILE_FUNCTION();
@@ -87,6 +88,18 @@ namespace RelayCore::gameplay
                     continue;
                 }
 
+                const auto sight_direction = (eye_target - eye_position) / distance;
+                if (std::ranges::any_of(blockers, [&](const physics::Aabb& bounds) {
+                        return physics::ray_intersection_distance(
+                                   eye_position,
+                                   sight_direction,
+                                   bounds,
+                                   std::max(0.0F, distance - 0.025F)
+                        )
+                            .has_value();
+                    }))
+                    continue;
+
                 if (distance < best_distance)
                 {
                     best_distance = distance;
@@ -114,6 +127,12 @@ namespace RelayCore::gameplay
             RELAYCORE_PROFILE_FUNCTION();
             std::uint32_t fired_count = 0;
 
+            for (RuntimeTrigger& trigger : triggers)
+            {
+                trigger.was_overlapping = trigger.overlapping;
+                trigger.overlapping = false;
+            }
+
             for (std::size_t candidate = 0; candidate < candidate_count; ++candidate)
             {
                 const std::size_t index = static_cast<std::size_t>(index_provider(candidate));
@@ -123,11 +142,17 @@ namespace RelayCore::gameplay
                 }
 
                 RuntimeTrigger& trigger = triggers[index];
-                if (trigger.once && trigger.fired)
+                if (!detail::aabb_overlaps(player_bounds, trigger.bounds))
                 {
                     continue;
                 }
-                if (!detail::aabb_overlaps(player_bounds, trigger.bounds))
+                if (trigger.overlapping)
+                {
+                    continue;
+                }
+
+                trigger.overlapping = true;
+                if (trigger.was_overlapping || (trigger.once && trigger.fired))
                 {
                     continue;
                 }
@@ -245,7 +270,8 @@ namespace RelayCore::gameplay
         const std::vector<RuntimeUsable>& usables,
         const std::span<const std::uint32_t> candidate_indices,
         const float max_distance,
-        const float min_facing_dot
+        const float min_facing_dot,
+        const physics::CollisionWorld blockers
     ) -> InteractionQueryResult
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -258,7 +284,8 @@ namespace RelayCore::gameplay
                 return candidate_indices[candidate];
             },
             max_distance,
-            min_facing_dot
+            min_facing_dot,
+            blockers
         );
     }
 
@@ -267,7 +294,8 @@ namespace RelayCore::gameplay
         const glm::vec3& view_forward,
         const std::vector<RuntimeUsable>& usables,
         const float max_distance,
-        const float min_facing_dot
+        const float min_facing_dot,
+        const physics::CollisionWorld blockers
     ) -> InteractionQueryResult
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -280,7 +308,8 @@ namespace RelayCore::gameplay
                 return candidate;
             },
             max_distance,
-            min_facing_dot
+            min_facing_dot,
+            blockers
         );
     }
 

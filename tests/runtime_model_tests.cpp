@@ -1,6 +1,6 @@
-#include "relaycore/gameplay/mission_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/mission_runtime.h"
+#include "relaygame/runtime_model.h"
 
 #include <doctest/doctest.h>
 
@@ -10,13 +10,7 @@ namespace
     using RelayCore::BlockoutLevel;
     using RelayCore::EntitySpawnData;
     using RelayCore::gameplay::DoorState;
-    using RelayCore::gameplay::MissionDefinition;
-    using RelayCore::gameplay::MissionRuntime;
-    using RelayCore::gameplay::MissionStep;
-    using RelayCore::gameplay::MissionStepKind;
     using RelayCore::gameplay::RuntimeDoor;
-    using RelayCore::gameplay::RuntimeObjectKind;
-    using RelayCore::gameplay::RuntimeObjectRegistry;
     using RelayCore::gameplay::RuntimeTrigger;
     using RelayCore::gameplay::RuntimeTurret;
     using RelayCore::gameplay::RuntimeUsable;
@@ -24,6 +18,12 @@ namespace
     using RelayCore::gameplay::UsableActionKind;
     using RelayCore::gameplay::UsableSignalAction;
     using RelayCore::physics::Aabb;
+    using RelayGame::MissionDefinition;
+    using RelayGame::MissionRuntime;
+    using RelayGame::MissionStep;
+    using RelayGame::MissionStepKind;
+    using RelayGame::RuntimeObjectKind;
+    using RelayGame::RuntimeObjectRegistry;
 
     [[nodiscard]] auto make_bounds(const glm::vec3& center, const glm::vec3& half_extents) -> Aabb
     {
@@ -120,10 +120,10 @@ TEST_CASE("runtime registry builds stable ids and resolved bindings")
     REQUIRE(first_registry.bindings().size() == 5);
     CHECK(first_registry.bindings()[0].resolved_target_count == 1);
     CHECK(first_registry.bindings()[0].resolved_targets_summary.find("bulkhead_alpha") != std::string::npos);
-    CHECK(first_registry.bindings()[1].kind == RelayCore::gameplay::RuntimeBindingKind::RequireItem);
-    CHECK(first_registry.bindings()[2].kind == RelayCore::gameplay::RuntimeBindingKind::ActivateTarget);
-    CHECK(first_registry.bindings()[3].kind == RelayCore::gameplay::RuntimeBindingKind::PickupItem);
-    CHECK(first_registry.bindings()[4].kind == RelayCore::gameplay::RuntimeBindingKind::ChainTarget);
+    CHECK(first_registry.bindings()[1].kind == RelayGame::RuntimeBindingKind::RequireItem);
+    CHECK(first_registry.bindings()[2].kind == RelayGame::RuntimeBindingKind::ActivateTarget);
+    CHECK(first_registry.bindings()[3].kind == RelayGame::RuntimeBindingKind::PickupItem);
+    CHECK(first_registry.bindings()[4].kind == RelayGame::RuntimeBindingKind::ChainTarget);
 }
 
 TEST_CASE("runtime level snapshot restores mutable gameplay state by stable ids")
@@ -229,7 +229,7 @@ TEST_CASE("runtime level snapshot restores mutable gameplay state by stable ids"
         signaled_target_ids
     );
 
-    const auto snapshot = RelayCore::gameplay::capture_runtime_level_snapshot(
+    const auto snapshot = RelayGame::capture_runtime_level_snapshot(
         "levels/test_room.toml",
         registry,
         doors,
@@ -258,7 +258,7 @@ TEST_CASE("runtime level snapshot restores mutable gameplay state by stable ids"
     player_combat.alive = false;
     player_combat.respawn_remaining_seconds = 0.7F;
 
-    const auto restore = RelayCore::gameplay::restore_runtime_level_snapshot(
+    const auto restore = RelayGame::restore_runtime_level_snapshot(
         snapshot,
         "levels/test_room.toml",
         registry,

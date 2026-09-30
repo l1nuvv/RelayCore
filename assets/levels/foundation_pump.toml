@@ -1,0 +1,91 @@
+# Narrow pump gallery with a return link and a key-operated exit.
+[[solid_group]]
+boxes = [
+  { origin = [0,-0.125,3], size = [4,0.25,14], material = "Concrete" },
+  { origin = [0,3.5,3], size = [4,0.25,14], material = "Ceiling" },
+  { origin = [-2,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
+  { origin = [2,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
+  { origin = [0,1.7,-4], size = [4,3.4,0.25], material = "Wall" },
+  { origin = [0,1.7,10], size = [4,3.4,0.25], material = "Wall" },
+  { origin = [-1.5,1.7,6], size = [1,3.4,0.25], material = "Wall" },
+  { origin = [1.5,1.7,6], size = [1,3.4,0.25], material = "Wall" },
+  { origin = [0,3.15,6], size = [2,0.5,0.25], material = "Wall" },
+]
+[[entity]]
+classname = "player_spawn"
+origin = [0,0.01,-1]
+angles = [0,0,0]
+[[entity]]
+classname = "level_entry"
+targetname = "arrival"
+origin = [0,0.01,-1]
+angles = [0,0,0]
+[[entity]]
+classname = "inventory_item"
+item_id = "service_key"
+[[entity]]
+classname = "render_light"
+origin = [0,2.9,1]
+color = [0.55,0.7,0.85]
+radius = 7
+intensity = 1.5
+[[entity]]
+classname = "render_light"
+origin = [0,2.9,7]
+color = [0.55,0.8,0.65]
+radius = 6
+intensity = 1.5
+[[entity]]
+classname = "prop_static"
+origin = [-1.3,0,2]
+model = "models/service_cylinder.obj"
+texture = "models/service_cylinder.bmp"
+collision_mins = [-0.25,0,-0.25]
+collision_maxs = [0.25,1.52,0.25]
+collision_material = "Metal"
+[[entity]]
+classname = "gameplay_entity"
+kind = "door"
+targetname = "pump_door"
+origin = [0,0,6]
+size = [2,2.9,0.2]
+move_offset = [0,3,0]
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+targetname = "pump_button"
+target = "pump_door"
+origin = [1.4,1.3,5.75]
+size = [0.3,0.5,0.15]
+mount_axis = "-z"
+required_item = "service_key"
+required_item_name = "Сервисный ключ"
+label = "Разблокировать выход"
+[[entity]]
+classname = "mission_step"
+kind = "door_open"
+target = "pump_door"
+title = "Открыть выход сервисным ключом"
+detail = "Используйте ключ из первого сектора на пульте у двери. Для возврата идите назад."
+[[entity]]
+classname = "mission_step"
+kind = "zone"
+origin = [0,0,8]
+size = [2,2,2]
+title = "Покинуть насосную"
+detail = "Пройдите в выходной отсек."
+[[entity]]
+classname = "level_exit"
+origin = [0,0,-3]
+size = [2,2,1]
+next_map = "levels/foundation_intake.toml"
+next_entry = "return"
+requires_completion = false
+
+[[entity]]
+classname = "enemy_rover"
+origin = [0.7,0.01,4]
+angles = [180,0,0]
+health = 60
+speed = 1.6
+detection_range = 10

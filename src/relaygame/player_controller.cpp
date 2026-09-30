@@ -51,6 +51,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         position_ = spawn_position;
+        eye_offset_ = 0.0F;
         velocity_ = glm::vec3{0.0F};
         motion_state_.position = spawn_position;
         motion_state_.velocity = glm::vec3{0.0F};
@@ -65,28 +66,60 @@ namespace RelayGame
         grounded_ = false;
         movement_mode_ = MovementMode::Air;
         fire_pressed_ = false;
+        weapon_selection_.reset();
         use_pressed_ = false;
         inspector_pin_pressed_ = false;
         reload_level_pressed_ = false;
         open_inspector_source_pressed_ = false;
         save_runtime_snapshot_pressed_ = false;
         restore_runtime_snapshot_pressed_ = false;
+        keyboard_input_blocked_ = false;
+        mouse_input_blocked_ = false;
         pending_yaw_delta_ = 0.0F;
         pending_pitch_delta_ = 0.0F;
         movement_diagnostics_ = {};
         collision_query_diagnostics_ = {};
     }
 
-    void GroundedPlayerController::enable_capture(RelayCore::Window& window) const
+    auto GroundedPlayerController::capture_state() const noexcept -> State
+    {
+        return {position_, velocity_, {yaw_radians_, pitch_radians_}, grounded_};
+    }
+
+    void GroundedPlayerController::restore_state(const State& state) noexcept
+    {
+        initialize(state.position, state.view_angles);
+        velocity_ = state.velocity;
+        grounded_ = state.grounded;
+        motion_state_.velocity = state.velocity;
+        motion_state_.grounded = state.grounded;
+        movement_mode_ = state.grounded ? MovementMode::Grounded : MovementMode::Air;
+    }
+
+    void GroundedPlayerController::set_session_capture(RelayCore::Window& window, const bool capture) const
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (!config_.capture_mouse_on_start)
-        {
+        window.set_relative_mouse_mode(capture);
+        if (!capture)
             return;
+
+        RelayCore::log::info("Player capture enabled (movement bindings loaded from config)");
+    }
+
+    void GroundedPlayerController::set_input_ownership(const GameplayInputOwnership ownership) noexcept
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        if (!keyboard_input_blocked_ && ownership.keyboard_blocked)
+        {
+            clear_keyboard_transient_input();
+        }
+        if (!mouse_input_blocked_ && ownership.mouse_blocked)
+        {
+            clear_mouse_transient_input();
         }
 
-        window.set_relative_mouse_mode(true);
-        RelayCore::log::info("Player capture enabled (movement bindings loaded from config)");
+        keyboard_input_blocked_ = ownership.keyboard_blocked;
+        mouse_input_blocked_ = ownership.mouse_blocked;
     }
 
     void GroundedPlayerController::on_event(
@@ -98,9 +131,23 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         switch (event.type)
         {
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                clear_focus_loss_input();
+                break;
+
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                break;
+
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                clear_focus_loss_input();
+                break;
+
+            case SDL_EVENT_WINDOW_RESTORED:
+                break;
+
             case SDL_EVENT_MOUSE_MOTION:
             {
-                if (window.relative_mouse_mode())
+                if (gameplay_mouse_input_enabled() && window.relative_mouse_mode())
                 {
                     pending_yaw_delta_ += event.motion.xrel * config_.mouse_sensitivity_radians;
                     pending_pitch_delta_ -= event.motion.yrel * config_.mouse_sensitivity_radians;
@@ -110,7 +157,8 @@ namespace RelayGame
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             {
-                if (window.relative_mouse_mode() && event.button.button == config_.bindings.primary_attack_button)
+                if (gameplay_mouse_input_enabled() && window.relative_mouse_mode()
+                    && event.button.button == config_.bindings.primary_attack_button)
                 {
                     fire_pressed_ = true;
                 }
@@ -131,6 +179,7 @@ namespace RelayGame
                 {
                     const bool enabled = !window.relative_mouse_mode();
                     window.set_relative_mouse_mode(enabled);
+                    clear_mouse_transient_input();
                     RelayCore::log::info("Relative mouse mode {}", enabled ? "enabled" : "disabled");
                 } else if (binding_matches(config_.bindings.toggle_vsync, event.key.scancode))
                 {
@@ -169,7 +218,13 @@ namespace RelayGame
                 } else if (binding_matches(config_.bindings.restore_runtime_snapshot, event.key.scancode))
                 {
                     restore_runtime_snapshot_pressed_ = true;
-                } else if (binding_matches(config_.bindings.use, event.key.scancode))
+                } else if (gameplay_keyboard_input_enabled() && window.relative_mouse_mode()
+                           && (event.key.scancode == SDL_SCANCODE_1 || event.key.scancode == SDL_SCANCODE_2))
+                {
+                    weapon_selection_ =
+                        event.key.scancode == SDL_SCANCODE_1 ? PlayerWeapon::Precise : PlayerWeapon::Shotgun;
+                } else if (gameplay_keyboard_input_enabled()
+                           && binding_matches(config_.bindings.use, event.key.scancode))
                 {
                     use_pressed_ = true;
                 }
@@ -180,6 +235,45 @@ namespace RelayGame
             default:
                 break;
         }
+    }
+
+    void GroundedPlayerController::clear_keyboard_transient_input() noexcept
+    {
+        use_pressed_ = false;
+        weapon_selection_.reset();
+    }
+
+    void GroundedPlayerController::clear_mouse_transient_input() noexcept
+    {
+        fire_pressed_ = false;
+        pending_yaw_delta_ = 0.0F;
+        pending_pitch_delta_ = 0.0F;
+    }
+
+    void GroundedPlayerController::clear_transient_input() noexcept
+    {
+        clear_keyboard_transient_input();
+        clear_mouse_transient_input();
+    }
+
+    void GroundedPlayerController::clear_focus_loss_input() noexcept
+    {
+        clear_transient_input();
+        inspector_pin_pressed_ = false;
+        reload_level_pressed_ = false;
+        open_inspector_source_pressed_ = false;
+        save_runtime_snapshot_pressed_ = false;
+        restore_runtime_snapshot_pressed_ = false;
+    }
+
+    auto GroundedPlayerController::gameplay_keyboard_input_enabled() const noexcept -> bool
+    {
+        return !keyboard_input_blocked_;
+    }
+
+    auto GroundedPlayerController::gameplay_mouse_input_enabled() const noexcept -> bool
+    {
+        return !mouse_input_blocked_;
     }
 
     void GroundedPlayerController::flush_pending_look() noexcept
@@ -194,6 +288,10 @@ namespace RelayGame
     auto GroundedPlayerController::poll_move_input() const -> RelayCore::physics::MoveInput
     {
         RELAYCORE_PROFILE_FUNCTION();
+        if (!gameplay_keyboard_input_enabled())
+        {
+            return {};
+        }
         const bool* key_states = SDL_GetKeyboardState(nullptr);
 
         RelayCore::physics::MoveInput input{};
@@ -243,7 +341,7 @@ namespace RelayGame
         return input;
     }
 
-    void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const noexcept
+    void GroundedPlayerController::apply_camera(RelayCore::render::PerspectiveCamera& camera) const
     {
         RELAYCORE_PROFILE_FUNCTION();
         camera.set_position(eye_position_world());
@@ -277,20 +375,18 @@ namespace RelayGame
     auto GroundedPlayerController::eye_position_world() const noexcept -> glm::vec3
     {
         RELAYCORE_PROFILE_FUNCTION();
-        return position_ + glm::vec3{0.0F, config_.eye_height, 0.0F};
+        return position_ + glm::vec3{0.0F, config_.eye_height + eye_offset_, 0.0F};
     }
 
     auto GroundedPlayerController::view_forward() const noexcept -> glm::vec3
     {
         RELAYCORE_PROFILE_FUNCTION();
         const float cos_pitch = std::cos(pitch_radians_);
-        return glm::normalize(
-            glm::vec3{
-                std::cos(yaw_radians_) * cos_pitch,
-                std::sin(pitch_radians_),
-                std::sin(yaw_radians_) * cos_pitch,
-            }
-        );
+        return glm::normalize(glm::vec3{
+            std::cos(yaw_radians_) * cos_pitch,
+            std::sin(pitch_radians_),
+            std::sin(yaw_radians_) * cos_pitch,
+        });
     }
 
     auto GroundedPlayerController::player_bounds() const noexcept -> RelayCore::physics::Aabb
@@ -313,6 +409,18 @@ namespace RelayGame
         const bool pressed = fire_pressed_;
         fire_pressed_ = false;
         return pressed;
+    }
+
+    auto GroundedPlayerController::consume_weapon_selection() noexcept -> std::optional<PlayerWeapon>
+    {
+        const auto selection = weapon_selection_;
+        weapon_selection_.reset();
+        return selection;
+    }
+
+    void GroundedPlayerController::apply_weapon_recoil(float radians) noexcept
+    {
+        pitch_radians_ = glm::clamp(pitch_radians_ + radians, -kPitchClamp, kPitchClamp);
     }
 
     auto GroundedPlayerController::consume_inspector_pin_pressed() noexcept -> bool

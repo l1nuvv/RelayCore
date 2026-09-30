@@ -1,5 +1,6 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/camera.h"
+#include "relaycore/render/renderer.h"
 #include "relaygame/world_scene_renderer.h"
 
 #include <cmath>
@@ -126,41 +127,6 @@ namespace RelayGame
             return {0.0F, 0.0F, 1.0F};
         }
 
-        [[nodiscard]] auto make_panel_plate_model_matrix(
-            const RelayCore::gameplay::RuntimeUsable& usable,
-            const RelayCore::render::PerspectiveCamera& camera,
-            const float in_plane_padding,
-            const float camera_offset
-        ) -> glm::mat4
-        {
-            RELAYCORE_PROFILE_FUNCTION();
-            const RelayCore::physics::Aabb& bounds = usable.visual_bounds;
-            const glm::vec3 center = (bounds.mins + bounds.maxs) * 0.5F;
-            const glm::vec3 size = bounds.maxs - bounds.mins;
-            const glm::vec3 plane_normal = panel_plane_normal(usable, camera);
-
-            glm::mat4 model{1.0F};
-            model = glm::translate(model, center + (plane_normal * camera_offset));
-
-            glm::vec3 scale{size.x + in_plane_padding, size.y + in_plane_padding, 1.0F};
-            switch (thinnest_panel_axis(bounds))
-            {
-                case PanelPlaneAxis::X:
-                    model = glm::rotate(model, glm::half_pi<float>(), glm::vec3{0.0F, 1.0F, 0.0F});
-                    scale = {size.z + in_plane_padding, size.y + in_plane_padding, 1.0F};
-                    break;
-                case PanelPlaneAxis::Y:
-                    model = glm::rotate(model, -glm::half_pi<float>(), glm::vec3{1.0F, 0.0F, 0.0F});
-                    scale = {size.x + in_plane_padding, size.z + in_plane_padding, 1.0F};
-                    break;
-                case PanelPlaneAxis::Z:
-                    break;
-            }
-
-            model = glm::scale(model, scale);
-            return model;
-        }
-
         [[nodiscard]] auto mesh_triangle_count(const RelayCore::render::StaticColorMesh& mesh) -> std::uint32_t
         {
             RELAYCORE_PROFILE_FUNCTION();
@@ -205,6 +171,56 @@ namespace RelayGame
 
     } // namespace
 
+    void WorldSceneRenderer::render_shotgun_viewmodel(
+        RelayCore::Renderer& renderer,
+        const RelayCore::render::PerspectiveCamera& camera,
+        float cycle_remaining_seconds
+    )
+    {
+        const auto items = prepare_shotgun_viewmodel(camera, cycle_remaining_seconds);
+        for (const auto& item : items)
+            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(*item.mesh));
+        renderer.draw_viewmodel(items);
+    }
+
+    auto WorldSceneRenderer::prepare_shotgun_viewmodel(
+        const RelayCore::render::PerspectiveCamera& camera,
+        float cycle_remaining_seconds
+    ) -> std::array<RelayCore::render::RenderItem, 2>
+    {
+        const float elapsed = .85F - cycle_remaining_seconds;
+        const float recoil =
+            cycle_remaining_seconds > 0 ? std::sin(glm::pi<float>() * glm::clamp(elapsed / .14F, 0.0F, 1.0F)) : 0;
+        const float pump = cycle_remaining_seconds > 0
+                               ? .07F * std::sin(glm::pi<float>() * glm::clamp((elapsed - .18F) / .54F, 0.0F, 1.0F))
+                               : 0;
+        glm::mat4 basis{1};
+        basis[0] = glm::vec4{camera.right(), 0};
+        basis[1] = glm::vec4{camera.up(), 0};
+        basis[2] = glm::vec4{-camera.forward(), 0};
+        basis[3] = glm::vec4{camera.position(), 1};
+        auto model = glm::translate(basis, {.28F, -.22F + recoil * .018F, -.65F + recoil * .025F});
+        model = glm::rotate(model, .15F, glm::vec3{0, 1, 0});
+        model = glm::rotate(model, recoil * .04F, glm::vec3{1, 0, 0});
+        const std::array items{
+            RelayCore::render::RenderItem{
+                &shotgun_body_model_->mesh,
+                model,
+                RelayCore::render::RenderPass::Opaque,
+                &shotgun_body_model_->texture,
+                false
+            },
+            RelayCore::render::RenderItem{
+                &shotgun_pump_model_->mesh,
+                glm::translate(model, {0, 0, pump}),
+                RelayCore::render::RenderPass::Opaque,
+                &shotgun_pump_model_->texture,
+                false
+            }
+        };
+        return items;
+    }
+
     void WorldSceneRenderer::render_doors(
         const RelayCore::render::PerspectiveCamera&,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors
@@ -216,6 +232,7 @@ namespace RelayGame
             const RelayCore::physics::Aabb bounds = RelayCore::gameplay::current_door_bounds(door);
             if (!aabb_intersects_planes(frustum_planes_, bounds.mins, bounds.maxs))
             {
+                shadow_casters_.push(door_mesh_, make_aabb_model_matrix(bounds));
                 continue;
             }
 
@@ -229,7 +246,8 @@ namespace RelayGame
         const RelayCore::render::PerspectiveCamera& camera,
         const float scene_time_seconds,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const int focused_usable_index
+        const int focused_usable_index,
+        const bool highlight_visible
     )
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -238,129 +256,206 @@ namespace RelayGame
         for (std::size_t usable_index = 0; usable_index < usables.size(); ++usable_index)
         {
             const RelayCore::gameplay::RuntimeUsable& usable = usables[usable_index];
-            if (!usable.enabled || !usable.has_visual_bounds
+            if ((!usable.enabled
+                 && !(usable.consumed && usable.visual_kind == RelayCore::gameplay::UsableVisualKind::Panel))
+                || !usable.has_visual_bounds
                 || (usable.visual_kind != RelayCore::gameplay::UsableVisualKind::Panel
                     && usable.visual_kind != RelayCore::gameplay::UsableVisualKind::Pickup))
             {
                 continue;
             }
 
-            if (!aabb_intersects_planes(frustum_planes_, usable.visual_bounds.mins, usable.visual_bounds.maxs))
+            using RelayCore::render::RenderPass;
+            const bool camera_visible =
+                aabb_intersects_planes(frustum_planes_, usable.visual_bounds.mins, usable.visual_bounds.maxs);
+            const bool focused = static_cast<int>(usable_index) == focused_usable_index;
+            if (usable.visual_kind == RelayCore::gameplay::UsableVisualKind::Panel)
             {
-                continue;
-            }
-
-            const bool is_focused = static_cast<int>(usable_index) == focused_usable_index;
-            const bool is_panel = usable.visual_kind == RelayCore::gameplay::UsableVisualKind::Panel;
-            const bool is_blocked = usable.locked || !usable.requirement_met;
-            const RelayCore::render::StaticColorMesh& base_mesh =
-                is_panel ? (is_blocked ? panel_blocked_mesh_ : panel_mesh_) : pickup_mesh_;
-            const RelayCore::render::StaticColorMesh& highlight_mesh =
-                is_panel ? (is_blocked ? panel_warning_mesh_ : panel_highlight_mesh_) : pickup_highlight_mesh_;
-            const float highlight_padding = is_panel ? (0.08F + (focus_pulse * 0.045F)) : 0.05F;
-            const float highlight_offset = is_panel ? (0.014F + (focus_pulse * 0.006F)) : 0.014F;
-            const float base_offset = is_panel ? 0.020F : 0.010F;
-            const float feedback_strength =
-                usable.feedback_total_seconds > 0.001F
-                    ? glm::clamp(usable.feedback_remaining_seconds / usable.feedback_total_seconds, 0.0F, 1.0F)
-                    : 0.0F;
-            const RelayCore::physics::Aabb pickup_bounds =
-                is_panel ? usable.visual_bounds : expanded_pickup_visual_bounds(usable.visual_bounds);
-
-            if (is_panel && feedback_strength > 0.0F
-                && usable.feedback_style != RelayCore::gameplay::UsableFeedbackStyle::None)
-            {
-                const RelayCore::render::StaticColorMesh& feedback_mesh =
-                    usable.feedback_style == RelayCore::gameplay::UsableFeedbackStyle::Success ? panel_success_mesh_
-                                                                                               : panel_warning_mesh_;
-                const float feedback_padding = 0.045F + (feedback_strength * 0.085F);
-                const float feedback_offset = 0.012F + (feedback_strength * 0.014F);
-
-                ++diagnostics_.feedback_draw_calls;
-                record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(feedback_mesh));
-                render_queue_.push(
-                    feedback_mesh,
-                    make_panel_plate_model_matrix(usable, camera, feedback_padding, feedback_offset),
-                    RelayCore::render::RenderPass::Overlay
-                );
-            }
-
-            if (is_focused)
-            {
-                ++diagnostics_.highlight_draw_calls;
-                record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(highlight_mesh));
-                if (is_panel)
+                using RelayCore::gameplay::UsableFeedbackStyle;
+                const auto normal = panel_plane_normal(usable, camera);
+                const auto size = usable.visual_bounds.maxs - usable.visual_bounds.mins;
+                const glm::vec3 up = std::abs(normal.y) > 0.5F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
+                const auto right = glm::cross(up, normal);
+                const auto axis = thinnest_panel_axis(usable.visual_bounds);
+                glm::mat4 model{1.0F};
+                model[0] = glm::vec4{right * (axis == PanelPlaneAxis::X ? size.z : size.x), 0};
+                model[1] = glm::vec4{glm::cross(normal, right) * (axis == PanelPlaneAxis::Y ? size.z : size.y), 0};
+                model[2] = glm::vec4{normal, 0};
+                model[3] = glm::vec4{(usable.visual_bounds.mins + usable.visual_bounds.maxs) * 0.5F, 1};
+                const bool feedback = usable.feedback_remaining_seconds > 0.0F;
+                const bool success =
+                    usable.consumed || (feedback && usable.feedback_style == UsableFeedbackStyle::Success);
+                const bool warning = feedback && usable.feedback_style == UsableFeedbackStyle::Warning;
+                const auto& actuator = success                                      ? panel_success_mesh_
+                                       : warning                                    ? panel_warning_mesh_
+                                       : (usable.locked || !usable.requirement_met) ? panel_blocked_mesh_
+                                       : focused                                    ? panel_highlight_mesh_
+                                                                                    : panel_mesh_;
+                if (!camera_visible)
                 {
-                    render_queue_.push(
-                        highlight_mesh,
-                        make_panel_plate_model_matrix(usable, camera, highlight_padding, highlight_offset),
-                        RelayCore::render::RenderPass::Overlay
+                    shadow_casters_.push(panel_housing_mesh_, model);
+                    shadow_casters_.push(actuator, model);
+                    continue;
+                }
+                ++diagnostics_.usable_draw_calls;
+                record_render_draw(RenderPass::Opaque, mesh_triangle_count(panel_housing_mesh_));
+                render_queue_.push(panel_housing_mesh_, model, RenderPass::Opaque);
+                record_render_draw(RenderPass::Opaque, mesh_triangle_count(actuator));
+                render_queue_.push(actuator, model, RenderPass::Opaque);
+                if (feedback)
+                {
+                    ++diagnostics_.feedback_draw_calls;
+                }
+                if (focused)
+                {
+                    ++diagnostics_.highlight_draw_calls;
+                }
+            } else
+            {
+                const auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
+                glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
+                const bool is_power_fuse = usable.item_id == "power_fuse";
+                const bool is_shotgun = usable.item_id == shotgun_item_id;
+                if (is_shotgun)
+                {
+                    const auto center = (glm::min(shotgun_body_model_->mins, shotgun_pump_model_->mins)
+                                         + glm::max(shotgun_body_model_->maxs, shotgun_pump_model_->maxs))
+                                        * .5F;
+                    pickup_model = glm::translate(glm::mat4{1}, (bounds.mins + bounds.maxs) * .5F);
+                    pickup_model = glm::rotate(pickup_model, glm::half_pi<float>(), glm::vec3{0, 1, 0});
+                    pickup_model = glm::translate(pickup_model, -center);
+                }
+                if (!camera_visible)
+                {
+                    if (is_shotgun)
+                    {
+                        shadow_casters_.push(shotgun_body_model_->mesh, pickup_model);
+                        shadow_casters_.push(shotgun_pump_model_->mesh, pickup_model);
+                    } else if (is_power_fuse)
+                        shadow_casters_.push(power_fuse_model_->mesh, pickup_model);
+                    else
+                        shadow_casters_.push(pickup_mesh_, pickup_model);
+                    continue;
+                }
+                ++diagnostics_.usable_draw_calls;
+                if (is_shotgun)
+                {
+                    for (const auto& part : {shotgun_body_model_, shotgun_pump_model_})
+                    {
+                        record_render_draw(RenderPass::Opaque, mesh_triangle_count(part->mesh));
+                        render_queue_.push(part->mesh, pickup_model, RenderPass::Opaque, &part->texture);
+                    }
+                } else if (is_power_fuse)
+                {
+                    record_render_draw(
+                        RenderPass::Opaque,
+                        static_cast<std::uint32_t>(power_fuse_model_->mesh.index_count() / 3)
                     );
+                    render_queue_
+                        .push(power_fuse_model_->mesh, pickup_model, RenderPass::Opaque, &power_fuse_model_->texture);
                 } else
                 {
-                    const glm::vec3 pulse_extent = glm::vec3{
-                        0.014F + (focus_pulse * 0.010F),
-                        0.014F + (focus_pulse * 0.010F),
-                        0.010F + (focus_pulse * 0.006F),
-                    };
+                    record_render_draw(RenderPass::Opaque, mesh_triangle_count(pickup_mesh_));
+                    render_queue_.push(pickup_mesh_, pickup_model, RenderPass::Opaque);
+                }
+                if (focused && highlight_visible)
+                {
+                    ++diagnostics_.highlight_draw_calls;
+                    record_render_draw(RenderPass::Overlay, mesh_triangle_count(pickup_highlight_mesh_));
                     render_queue_.push(
-                        highlight_mesh,
-                        make_aabb_model_matrix(expand_aabb(pickup_bounds, pulse_extent)),
-                        RelayCore::render::RenderPass::Overlay
+                        pickup_highlight_mesh_,
+                        make_aabb_model_matrix(expand_aabb(bounds, glm::vec3{0.02F + focus_pulse * 0.01F})),
+                        RenderPass::Overlay
                     );
                 }
             }
-
-            ++diagnostics_.usable_draw_calls;
-            const RelayCore::render::RenderPass base_pass =
-                is_panel ? RelayCore::render::RenderPass::Overlay : RelayCore::render::RenderPass::Opaque;
-            record_render_draw(base_pass, mesh_triangle_count(base_mesh));
-            if (is_panel)
-            {
-                render_queue_.push(
-                    base_mesh,
-                    make_panel_plate_model_matrix(usable, camera, 0.040F, base_offset),
-                    RelayCore::render::RenderPass::Overlay
-                );
-            } else
-            {
-                render_queue_
-                    .push(base_mesh, make_aabb_model_matrix(pickup_bounds), RelayCore::render::RenderPass::Opaque);
-            }
         }
     }
-
     void WorldSceneRenderer::render_turrets(
-        const RelayCore::render::PerspectiveCamera&,
+        const RelayCore::render::PerspectiveCamera& camera,
         const std::span<const RelayCore::gameplay::RuntimeTurret> turrets
     )
     {
         RELAYCORE_PROFILE_FUNCTION();
         for (const RelayCore::gameplay::RuntimeTurret& turret : turrets)
         {
+            const glm::vec3 size = turret.bounds.maxs - turret.bounds.mins;
+            const auto& turret_model = turret.destroyed ? destroyed_turret_model_ : turret_model_;
+            auto model = glm::translate(glm::mat4{1.0F}, turret.origin);
+            model = glm::rotate(model, glm::radians(turret.yaw), glm::vec3{0, 1, 0});
+            model = glm::scale(model, size);
             if (!aabb_intersects_planes(frustum_planes_, turret.bounds.mins, turret.bounds.maxs))
             {
+                shadow_casters_.push(turret_model->mesh, model);
                 continue;
             }
 
-            const RelayCore::render::StaticColorMesh& base_mesh =
-                turret.destroyed ? turret_destroyed_mesh_ : turret_mesh_;
-            record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(base_mesh));
-            render_queue_.push(base_mesh, make_aabb_model_matrix(turret.bounds), RelayCore::render::RenderPass::Opaque);
-
-            const float alert_strength =
-                std::max(turret.hit_flash_remaining_seconds * 4.5F, turret.fire_flash_remaining_seconds * 5.5F);
-            if (turret.destroyed || alert_strength <= 0.001F)
-            {
-                continue;
-            }
-
-            const RelayCore::physics::Aabb alert_bounds =
-                expand_aabb(turret.bounds, glm::vec3{0.025F + std::min(alert_strength, 0.06F)});
-            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(turret_alert_mesh_));
+            record_render_draw(
+                RelayCore::render::RenderPass::Opaque,
+                static_cast<std::uint32_t>(turret_model->mesh.index_count() / 3)
+            );
             render_queue_
-                .push(turret_alert_mesh_, make_aabb_model_matrix(alert_bounds), RelayCore::render::RenderPass::Overlay);
+                .push(turret_model->mesh, model, RelayCore::render::RenderPass::Opaque, &turret_model->texture);
+            if (turret.enabled && !turret.destroyed && turret.warming_up
+                && std::sin(turret.warmup_remaining_seconds * 24.0F) >= 0.0F)
+            {
+                record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(turret_warning_mesh_));
+                render_queue_.push(turret_warning_mesh_, model, RelayCore::render::RenderPass::Opaque);
+            }
+            if (turret.destroyed && turret.hit_flash_remaining_seconds > 0.0F)
+            {
+                const float yaw = glm::radians(turret.yaw);
+                const glm::vec3 head =
+                    turret.origin
+                    + glm::vec3{std::sin(yaw) * size.z * 0.42F, -size.y * 0.25F, std::cos(yaw) * size.z * 0.42F};
+                const float remaining = std::min(turret.hit_flash_remaining_seconds, 0.25F);
+                render_shot_trace(camera, {head, head + glm::vec3{-0.35F, 0.30F, 0.10F}, remaining}, true);
+                render_shot_trace(camera, {head, head + glm::vec3{0.30F, 0.15F, 0.30F}, remaining}, true);
+                render_shot_trace(camera, {head, head + glm::vec3{0.12F, -0.28F, -0.25F}, remaining}, true);
+            }
         }
+    }
+
+    void WorldSceneRenderer::render_shot_trace(
+        const RelayCore::render::PerspectiveCamera& camera,
+        const RelayCore::gameplay::CombatShotTrace& trace,
+        const bool hostile,
+        const bool pellet
+    )
+    {
+        if (trace.remaining_seconds <= 0.0F)
+            return;
+        const glm::vec3 visual_start =
+            hostile ? trace.start
+                    : trace.start + camera.right() * 0.22F - camera.up() * 0.17F + camera.forward() * 0.32F;
+        const glm::vec3 delta = trace.end - visual_start;
+        const float distance = glm::length(delta);
+        if (distance <= 0.05F)
+            return;
+
+        const glm::vec3 forward = delta / distance;
+        const float progress = glm::clamp(1.0F - trace.remaining_seconds / (pellet ? .06F : .25F), 0.0F, 1.0F);
+        const float front = std::max(progress, pellet ? .18F : .08F);
+        const float back = std::max(0.0F, front - 0.18F);
+        const float end_distance = hostile ? distance : front * distance;
+        const float start_distance =
+            hostile ? 0.0F : (pellet ? std::max(.05F, end_distance - .08F) : std::max(0.05F, back * distance));
+        if (end_distance <= start_distance)
+            return;
+
+        const glm::vec3 up = std::abs(forward.y) > 0.95F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
+        const glm::vec3 right = glm::normalize(glm::cross(up, forward));
+        const glm::vec3 normal = glm::cross(forward, right);
+        glm::mat4 model{1.0F};
+        const float width =
+            hostile ? 0.018F * glm::clamp(trace.remaining_seconds / 0.08F, 0.0F, 1.0F) : (pellet ? 0.008F : 0.045F);
+        model[0] = glm::vec4{right * width, 0.0F};
+        model[1] = glm::vec4{normal * width, 0.0F};
+        model[2] = glm::vec4{forward * (end_distance - start_distance), 0.0F};
+        model[3] = glm::vec4{visual_start + forward * ((start_distance + end_distance) * 0.5F), 1.0F};
+        const auto& mesh = hostile ? turret_shot_mesh_ : (pellet ? pellet_mesh_ : player_shot_mesh_);
+        record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(mesh));
+        render_queue_.push(mesh, model, RelayCore::render::RenderPass::Overlay, nullptr, false);
     }
 
     void WorldSceneRenderer::render_inspector_pick(

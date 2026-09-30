@@ -1,27 +1,57 @@
 #pragma once
 
 #include "relaycore/app/engine_services.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaygame/game_world_runtime.h"
+#include "relaygame/runtime_model.h"
 #include "relaygame/world_scene_renderer.h"
 
 #include <optional>
 
 namespace RelayGame::detail
 {
+    struct PreparedLevelSession {
+        GameWorldRuntime runtime;
+        WorldSceneRenderer world_scene;
+    };
+
+    [[nodiscard]] auto prepare_level_session(
+        const RelayCore::core::EngineConfig& config,
+        LevelSession level,
+        const RelayCore::render::RenderAuthoringConfig& authoring,
+        RelayCore::render::ColorPipelineMode pipeline,
+        RelayCore::render::StaticModelCache& models,
+        const SavedGame* save = nullptr
+    ) -> PreparedLevelSession;
+
+    enum class IterationToolResult {
+        None,
+        Reloaded,
+        Snapshot
+    };
+
     struct DemoGameRuntimeState {
         RelayGame::GameWorldRuntime& runtime;
         RelayGame::WorldSceneRenderer& world_scene;
         RelayCore::render::IterationDiagnostics& iteration_diagnostics;
-        std::optional<RelayCore::gameplay::RuntimeLevelSnapshot>& saved_runtime_snapshot;
+        std::optional<EncounterSnapshot>& saved_runtime_snapshot;
+        float& played_seconds;
+        float& scene_time;
+        bool& flashlight;
     };
 
     void start_level_session(DemoGameRuntimeState state, RelayCore::EngineServices& services);
 
-    void reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services);
+    void replace_level_session(
+        DemoGameRuntimeState state,
+        PreparedLevelSession&& prepared,
+        RelayCore::EngineServices& services
+    );
 
-    void handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services);
+    auto reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool;
+
+    auto handle_debug_iteration_tools(DemoGameRuntimeState state, RelayCore::EngineServices& services)
+        -> IterationToolResult;
 
     void publish_iteration_diagnostics(DemoGameRuntimeState state, RelayCore::EngineServices& services);
 } // namespace RelayGame::detail

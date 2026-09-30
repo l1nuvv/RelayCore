@@ -5,14 +5,13 @@
 
 #include "relaycore/core/paths.h"
 
-#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_filesystem.h>
-
-#ifndef RELAYCORE_ASSET_DIR
-#error "RELAYCORE_ASSET_DIR must be defined by the build system"
-#endif
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
 
 namespace RelayCore::core
 {
@@ -20,25 +19,51 @@ namespace RelayCore::core
     {
         RELAYCORE_PROFILE_FUNCTION();
         const char* base_path = SDL_GetBasePath();
-        if (base_path != nullptr)
+        if (base_path == nullptr)
         {
-            return std::filesystem::path(base_path);
+            throw std::runtime_error(
+                std::string("SDL_GetBasePath failed while resolving runtime assets: ") + SDL_GetError()
+            );
         }
 
-        log::warn("SDL_GetBasePath failed, falling back to build-time asset path: {}", SDL_GetError());
-        return std::filesystem::path(RELAYCORE_ASSET_DIR).parent_path();
+        return std::filesystem::path(base_path);
     }
 
     auto asset_root_path() -> std::filesystem::path
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const std::filesystem::path runtime_asset_root = executable_base_path() / "assets";
-        if (std::filesystem::exists(runtime_asset_root))
+
+        std::filesystem::path asset_root;
+        if (const char* override_path = std::getenv("RELAYCORE_ASSET_ROOT"); override_path != nullptr)
         {
-            return runtime_asset_root;
+            asset_root = std::filesystem::path(override_path);
+            if (!asset_root.is_absolute())
+            {
+                throw std::runtime_error(
+                    "RELAYCORE_ASSET_ROOT must be an absolute path: '" + asset_root.string() + "'"
+                );
+            }
+        } else
+        {
+            asset_root = executable_base_path() / "assets";
         }
 
-        return std::filesystem::path(RELAYCORE_ASSET_DIR);
+        std::error_code path_error;
+        const bool is_directory = std::filesystem::is_directory(asset_root, path_error);
+        if (path_error)
+        {
+            throw std::runtime_error(
+                "Failed to inspect asset directory '" + asset_root.string() + "': " + path_error.message()
+            );
+        }
+        if (!is_directory)
+        {
+            throw std::runtime_error(
+                "Asset directory does not exist or is not a directory: '" + asset_root.string() + "'"
+            );
+        }
+
+        return asset_root;
     }
 
     auto asset_path(const std::string_view relative_path) -> std::filesystem::path

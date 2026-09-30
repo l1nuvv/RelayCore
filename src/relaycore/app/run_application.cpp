@@ -6,6 +6,7 @@
 #include "relaycore/app/run_application.h"
 
 #include "relaycore/app/application.h"
+#include "relaycore/app/startup_options.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 
@@ -49,22 +50,29 @@ namespace RelayCore
     auto run_application(std::unique_ptr<AppDelegate> app_delegate, int argc, char** argv) -> int
     {
         RELAYCORE_PROFILE_FUNCTION();
-        (void) argc;
-        (void) argv;
-
-        LogLifetime log_lifetime{};
-
         try
         {
-            Application app{std::move(app_delegate)};
-            return app.run();
+            LogLifetime log_lifetime{};
+
+            try
+            {
+                const StartupOptions options = parse_startup_options(argc, argv);
+                log::info("Color pipeline mode: {}", render::color_pipeline_mode_name(options.color_pipeline_mode));
+                Application app{std::move(app_delegate), options.config_path, options.color_pipeline_mode};
+                return app.run();
+            } catch (const std::exception& exception)
+            {
+                const std::string_view message{exception.what()};
+                std::fprintf(stderr, "RelayCore exception: %s\n", exception.what());
+                std::fflush(stderr);
+                log::critical("Unhandled exception: {}", message);
+                log::flush();
+                return 1;
+            }
         } catch (const std::exception& exception)
         {
-            const std::string_view message{exception.what()};
-            std::fprintf(stderr, "RelayCore exception: %s\n", message.data());
+            std::fprintf(stderr, "RelayCore logger initialization failed: %s\n", exception.what());
             std::fflush(stderr);
-            log::critical("Unhandled exception: {}", message);
-            log::flush();
             return 1;
         }
     }

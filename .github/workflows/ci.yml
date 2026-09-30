@@ -15,7 +15,7 @@ concurrency:
 
 env:
   VCPKG_DEFAULT_TRIPLET: x64-windows
-  CMAKE_VERSION: 4.3.1
+  CMAKE_VERSION: 4.0.0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   VCPKG_BINARY_CACHE_DIR: ${{ github.workspace }}\.vcpkg-bincache
 
@@ -93,3 +93,172 @@ jobs:
         run: |
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
           cmake --workflow --preset debug-discipline-workflow
+
+      - name: Run graphics lifecycle tests
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --build --preset graphics-debug
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics test build failed' }
+          ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics tests failed' }
+          [xml]$results = Get-Content build/msvc-debug/graphics-results.xml -Raw
+          $cases = @($results.SelectNodes('//testcase'))
+          $skipped = @($results.SelectNodes('//testcase/skipped'))
+          if ($cases.Count -ne 5 -or $skipped.Count -ne 0) {
+            throw "Expected 5 completed graphics tests; found $($cases.Count) tests and $($skipped.Count) skipped"
+          }
+
+  msvc-relwithdebinfo:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          ninja --version
+          cl
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.vcpkg-bincache
+            ~\AppData\Local\vcpkg\downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Run RelWithDebInfo discipline workflow
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --workflow --preset relwithdebinfo-discipline-workflow
+
+  msvc-asan:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          ninja --version
+          cl
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.vcpkg-bincache
+            ~\AppData\Local\vcpkg\downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Run ASan discipline workflow
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --workflow --preset asan-discipline-workflow
+
+  clang-tidy:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.vcpkg-bincache
+            ~\AppData\Local\vcpkg\downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Install LLVM 22.1.6
+        shell: pwsh
+        run: |
+          $llvmRoot = 'C:\LLVM-22.1.6'
+          $installer = "$env:RUNNER_TEMP\LLVM-22.1.6-win64.exe"
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.6/LLVM-22.1.6-win64.exe' `
+            -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList '/S', "/D=$llvmRoot" -Wait -NoNewWindow
+          if (-not (Test-Path -LiteralPath "$llvmRoot\bin\clang-tidy.exe" -PathType Leaf)) {
+            throw 'LLVM 22.1.6 installation did not provide clang-tidy.exe'
+          }
+          "$llvmRoot\bin" >> $env:GITHUB_PATH
+
+      - name: Verify clang-tidy configuration
+        shell: pwsh
+        run: |
+          clang-tidy --version
+          clang-tidy --verify-config
+
+      - name: Configure compile commands
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --fresh --preset msvc-debug
+
+      - name: Run targeted clang-tidy
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug

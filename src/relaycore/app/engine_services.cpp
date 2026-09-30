@@ -11,10 +11,13 @@
 #include "relaycore/render/camera.h"
 #include "relaycore/render/renderer.h"
 
+#include <type_traits>
+#include <utility>
+
 namespace RelayCore
 {
     EngineServices::EngineServices(
-        const core::EngineConfig& config,
+        core::EngineConfig& config,
         Window& window,
         Renderer& renderer,
         AudioSystem& audio_system,
@@ -28,6 +31,16 @@ namespace RelayCore
     auto EngineServices::config() const noexcept -> const core::EngineConfig&
     {
         return *config_;
+    }
+
+    void EngineServices::commit_live_reload_config(core::EngineConfig&& config) noexcept
+    {
+        static_assert(std::is_nothrow_move_assignable_v<render::RendererConfig>);
+        static_assert(std::is_nothrow_move_assignable_v<FlyCameraControllerConfig>);
+        static_assert(std::is_nothrow_move_assignable_v<core::GameplayConfig>);
+        config_->renderer = std::move(config.renderer);
+        config_->input = std::move(config.input);
+        config_->gameplay = std::move(config.gameplay);
     }
 
     auto EngineServices::window() noexcept -> Window&

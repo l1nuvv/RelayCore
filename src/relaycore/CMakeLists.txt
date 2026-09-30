@@ -1,9 +1,9 @@
 set(RELAYCORE_ENGINE_SOURCES
     app/application.cpp
     app/engine_services.cpp
-    app/fly_camera_controller.cpp
     app/frame_timer.cpp
     app/run_application.cpp
+    app/startup_options.cpp
     audio/audio_system.cpp
     audio/miniaudio_impl.cpp
     core/engine_config.cpp
@@ -22,20 +22,31 @@ set(RELAYCORE_ENGINE_SOURCES
     gameplay/interaction_runtime_doors.cpp
     gameplay/interaction_runtime_factory.cpp
     gameplay/interaction_runtime_queries.cpp
-    gameplay/mission_runtime.cpp
-    gameplay/runtime_model.cpp
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
+    platform/open_gl_context.cpp
     platform/window.cpp
     render/blockout_mesh_builder.cpp
     render/blockout_texture_atlas.cpp
+    render/authored_color.cpp
+    render/default_framebuffer_srgb_verifier.cpp
     render/camera.cpp
     render/game_hud.cpp
     render/gl_debug.cpp
     render/gl_loader.cpp
+    render/vulkan_device.cpp
+    render/vulkan_swapchain.cpp
+    render/vulkan_resources.cpp
+    render/vulkan_uploads.cpp
+    render/vulkan_mesh_renderer.cpp
+    render/vma_impl.cpp
     render/mesh.cpp
+    render/static_model.cpp
     render/render_authoring_config.cpp
+    render/pipeline_authoring_overlay.cpp
+
+
     render/renderer.cpp
     render/shader_program.cpp
     render/shader_source_loader.cpp
@@ -44,6 +55,7 @@ set(RELAYCORE_ENGINE_SOURCES
     world/blockout_loader_parse.cpp
     world/blockout_loader_transform.cpp
     world/blockout_loader_pipeline.cpp
+    world/blockout_loader_templates.cpp
     world/blockout_loader_validation.cpp
     world/surface_material_utils.cpp
 )
@@ -52,9 +64,9 @@ set(RELAYCORE_ENGINE_HEADERS
     app/app_delegate.h
     app/application.h
     app/engine_services.h
-    app/fly_camera_controller.h
     app/frame_timer.h
     app/run_application.h
+    app/startup_options.h
     audio/audio_system.h
     core/engine_config.h
     core/log.h
@@ -74,20 +86,30 @@ set(RELAYCORE_ENGINE_HEADERS
     gameplay/entity_spawn_parsing.h
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
-    gameplay/mission_runtime.h
-    gameplay/runtime_model.h
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h
+    platform/open_gl_context.h
     platform/window.h
     render/blockout_mesh_builder.h
     render/blockout_texture_atlas.h
+    render/authored_color.h
+    render/default_framebuffer_srgb_verifier.h
     render/camera.h
     render/game_hud.h
     render/gl_debug.h
     render/gl_loader.h
+    render/vulkan_device.h
+    render/vulkan_swapchain.h
+    render/vulkan_resources.h
+    render/vulkan_uploads.h
+    render/vulkan_mesh_renderer.h
+    render/resource_upload.h
     render/mesh.h
     render/render_authoring_config.h
+    render/pipeline_authoring_overlay.h
+
+
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h
@@ -97,6 +119,7 @@ set(RELAYCORE_ENGINE_HEADERS
     world/blockout_level.h
     world/blockout_loader.h
     world/blockout_loader_entity_props.h
+    world/blockout_loader_templates.h
     world/blockout_loader_validation.h
     world/surface_material_utils.h
 )
@@ -124,25 +147,6 @@ target_include_directories(
         $<INSTALL_INTERFACE:include>
 )
 
-target_compile_definitions(
-    relaycore_engine
-    PRIVATE
-        RELAYCORE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
-        RELAYCORE_PROJECT_ROOT="${PROJECT_SOURCE_DIR}"
-)
-
-if (NOT RELAYCORE_ENABLE_AUDIO)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_AUDIO_DISABLED)
-endif()
-
-if (NOT RELAYCORE_ENABLE_CONFIG)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_CONFIG_DISABLED)
-endif()
-
-if (NOT RELAYCORE_ENABLE_IMGUI)
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_IMGUI_DISABLED)
-endif()
-
 target_link_libraries(
     relaycore_engine
     PUBLIC
@@ -155,12 +159,17 @@ target_link_libraries(
         RelayCore::glad
     PRIVATE
         RelayCore::miniaudio_headers
+        ${RELAYCORE_IMGUI_TARGET}
+        Vulkan::Vulkan
+        vk-bootstrap::vk-bootstrap
+        GPUOpen::VulkanMemoryAllocator
 )
 
-if (RELAYCORE_ENABLE_IMGUI)
-    target_link_libraries(relaycore_engine PRIVATE ${RELAYCORE_IMGUI_TARGET})
-    target_compile_definitions(relaycore_engine PRIVATE RELAYCORE_ENABLE_IMGUI=1)
-endif()
+target_compile_definitions(relaycore_engine PRIVATE
+    RELAYCORE_VULKAN_VALIDATION=$<AND:$<BOOL:${RELAYCORE_ENABLE_VULKAN_VALIDATION}>,$<OR:$<CONFIG:Debug>,$<CONFIG:Asan>>>)
+set_source_files_properties(render/vma_impl.cpp PROPERTIES
+    SKIP_UNITY_BUILD_INCLUSION ON
+    COMPILE_DEFINITIONS "VMA_STATIC_VULKAN_FUNCTIONS=0;VMA_DYNAMIC_VULKAN_FUNCTIONS=1")
 
 if (RELAYCORE_ENABLE_TRACY)
     target_link_libraries(relaycore_engine PRIVATE Tracy::TracyClient)

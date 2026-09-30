@@ -1,0 +1,107 @@
+[window]
+title = "RelayCore RC-022 reference"
+width = 2560
+height = 1440
+high_dpi = true
+vsync = true
+
+[render]
+clear_r = 0.06
+clear_g = 0.07
+clear_b = 0.09
+indirect_bounce_strength = 0.24
+fog_enabled = true
+fog_color = [0.08, 0.09, 0.11]
+fog_start = 12.0
+fog_end = 34.0
+postfx_vignette_strength = 0.0
+postfx_grain_strength = 0.0
+postfx_scanline_strength = 0.0
+postfx_contrast = 1.0
+postfx_saturation = 1.0
+shadow_enabled = true
+shadow_map_resolution = 1536
+shadow_light_direction = [0.0, -1.0, 1.0]
+shadow_light_color = [0.46, 0.50, 0.54]
+shadow_light_intensity = 1.08
+shadow_strength = 0.62
+shadow_contact_strength = 0.05
+shadow_bias_near = 0.0023
+shadow_bias_far = 0.0036
+shadow_slope_bias_scale = 0.0038
+shadow_normal_offset_near = 0.018
+shadow_normal_offset_far = 0.030
+shadow_pcf_radius_near = 1.0
+shadow_pcf_radius_far = 1.75
+shadow_cascade_split_distance = 14.0
+shadow_cascade_blend_range = 2.4
+shadow_debug_cascades = true
+shadow_focus_distance = 14.0
+shadow_projection_radius = 18.0
+shadow_projection_depth = 34.0
+shadow_far_focus_distance = 28.0
+shadow_far_projection_radius = 40.0
+shadow_far_projection_depth = 72.0
+fov_degrees = 60.0
+near_plane = 0.1
+far_plane = 100.0
+camera_position = [0.0, 1.6, 0.0]
+camera_target = [0.0, 1.6, 1.0]
+
+[imgui]
+enabled = true
+show_demo_window = false
+
+[input]
+move_speed = 3.5
+sprint_multiplier = 3.0
+mouse_sensitivity_radians = 0.0022
+capture_mouse_on_start = true
+
+[audio]
+enabled = false
+master_volume = 1.0
+startup_sound = ""
+
+[game]
+level_path = "levels/rc022_reference.toml"
+spawn_classname = "player_spawn"
+
+[game.controls]
+move_forward = "W"
+move_backward = "S"
+move_right = "D"
+move_left = "A"
+jump = "Space"
+sprint = "Left Shift"
+sprint_alt = "Right Shift"
+slow = "Left Alt"
+slow_alt = "Right Alt"
+noclip_down = "Left Ctrl"
+noclip_down_alt = "Right Ctrl"
+primary_attack = "Mouse Left"
+use = "E"
+toggle_capture = "F1"
+toggle_vsync = "V"
+toggle_noclip = "F3"
+toggle_inspector = "F4"
+pin_inspector = "F5"
+reload_level = "F7"
+open_inspector_source = "F8"
+save_runtime_snapshot = "F9"
+restore_runtime_snapshot = "F10"
+quit = "Escape"
+
+[game.audio]
+ambient_loop = ""
+panel_press = ""
+pickup = ""
+door_open = ""
+door_close = ""
+access_denied = ""
+mission_complete = ""
+weapon_fire = ""
+turret_fire = ""
+turret_destroyed = ""
+player_hurt = ""
+player_respawn = ""

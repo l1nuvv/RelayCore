@@ -15,5 +15,7 @@ vec2 blockout_atlas_uv(int material_id, vec2 uv)
 
 vec3 sample_blockout_atlas(int material_id, vec2 uv)
 {
-    return texture(u_blockout_atlas, blockout_atlas_uv(material_id, uv)).rgb;
+    // Derivatives of the unwrapped coordinates prevent blurry bands at tile boundaries.
+    vec2 scale = vec2(0.875 / 8.0, 0.875 / 4.0) / max(atlas_world_scale(material_id), 0.001);
+    return textureGrad(u_blockout_atlas, blockout_atlas_uv(material_id, uv), dFdx(uv) * scale, dFdy(uv) * scale).rgb;
 }

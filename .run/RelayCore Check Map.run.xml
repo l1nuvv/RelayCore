@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="RelayCore — Check Map" type="CMakeRunConfiguration" factoryName="Application" PROGRAM_PARAMS="&quot;$PROJECT_DIR$/assets/levels/development_sandbox.toml&quot;" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="RelayCore" TARGET_NAME="relaycore_level_check" CONFIG_NAME="msvc-debug" RUN_TARGET_PROJECT_NAME="RelayCore" RUN_TARGET_NAME="relaycore_level_check">
+    <envs>
+      <env name="RELAYCORE_ASSET_ROOT" value="$PROJECT_DIR$/assets" />
+    </envs>
+    <method v="2">
+      <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+    </method>
+  </configuration>
+</component>

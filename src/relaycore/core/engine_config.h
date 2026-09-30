@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "relaycore/app/fly_camera_controller.h"
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/platform/window.h"
@@ -13,6 +12,19 @@
 
 #include <filesystem>
 #include <string>
+
+namespace RelayCore
+{
+    /**
+     * @brief Input tuning loaded into the engine configuration.
+     */
+    struct FlyCameraControllerConfig {
+        float move_speed = 3.5F;                   ///< Base movement speed in world units per second.
+        float sprint_multiplier = 3.0F;            ///< Multiplier applied while sprint is held.
+        float mouse_sensitivity_radians = 0.0022F; ///< Mouse delta to radians conversion factor.
+        bool capture_mouse_on_start = true;        ///< Enables relative mouse mode during startup.
+    };
+} // namespace RelayCore
 
 namespace RelayCore::render
 {
@@ -33,7 +45,7 @@ namespace RelayCore::render
         float postfx_scanline_strength = 0.04F;   ///< Scanline modulation strength for retro presentation.
         float postfx_contrast = 1.06F;            ///< Final color-contrast multiplier around mid grey.
         float postfx_saturation = 0.94F;          ///< Final color saturation after lighting and fog.
-        bool shadow_enabled = true;               ///< Enables the directional shadow pass.
+        bool shadow_enabled = true;               ///< Enables scene shadow passes.
         int shadow_map_resolution = 1536;         ///< Square shadow map size in texels.
         glm::vec3 shadow_light_direction{0.28F, -1.0F, 0.22F}; ///< Light-to-scene direction for the key light.
         glm::vec3 shadow_light_color{0.34F, 0.38F, 0.42F};     ///< Tint of the shadowed directional key light.
@@ -98,6 +110,9 @@ namespace RelayCore::core
         std::string access_denied{};
         std::string mission_complete{};
         std::string weapon_fire{};
+        std::string weapon_hit{};
+        std::string threat_windup{};
+        std::string rover_attack{};
         std::string turret_fire{};
         std::string turret_destroyed{};
         std::string player_hurt{};
@@ -118,11 +133,12 @@ namespace RelayCore::core
      * @brief Aggregate configuration consumed by the engine runtime.
      */
     struct EngineConfig {
-        WindowConfig window{};             ///< Window-system settings.
-        render::RendererConfig renderer{}; ///< Renderer settings.
-        FlyCameraControllerConfig input{}; ///< Fly-camera input settings.
-        AudioSystemConfig audio{};         ///< Audio-system settings.
-        GameplayConfig gameplay{};         ///< Demo/gameplay bootstrap settings.
+        std::filesystem::path source_path{}; ///< Engine config selected during startup.
+        WindowConfig window{};               ///< Window-system settings.
+        render::RendererConfig renderer{};   ///< Renderer settings.
+        FlyCameraControllerConfig input{};   ///< Input settings consumed by gameplay startup.
+        AudioSystemConfig audio{};           ///< Audio-system settings.
+        GameplayConfig gameplay{};           ///< Demo/gameplay bootstrap settings.
     };
 
     /**

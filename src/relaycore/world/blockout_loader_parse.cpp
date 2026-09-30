@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -75,6 +77,12 @@ namespace RelayCore::detail
             {
                 throw std::runtime_error("Field '" + std::string(field_name) + "' must contain only numbers");
             }
+            if (!std::isfinite(*value) || std::abs(*value) > std::numeric_limits<float>::max())
+            {
+                throw std::runtime_error(
+                    "Field '" + std::string(field_name) + "' must contain only finite values representable as float"
+                );
+            }
 
             result[i] = static_cast<float>(*value);
         }
@@ -95,6 +103,12 @@ namespace RelayCore::detail
         if (!value.has_value())
         {
             throw std::runtime_error("Field '" + std::string(field_name) + "' must be a number");
+        }
+        if (!std::isfinite(*value) || std::abs(*value) > std::numeric_limits<float>::max())
+        {
+            throw std::runtime_error(
+                "Field '" + std::string(field_name) + "' must be finite and representable as float"
+            );
         }
 
         return static_cast<float>(*value);
@@ -171,8 +185,8 @@ namespace RelayCore::detail
     {
         if (const auto value = node.value<std::string>(); value.has_value())
             return *value;
-        if (const auto value = node.value<bool>(); value.has_value())
-            return *value ? "true" : "false";
+        if (const auto* value = node.as_boolean(); value != nullptr)
+            return value->get() ? "true" : "false";
         if (const auto value = node.value<std::int64_t>(); value.has_value())
             return std::to_string(*value);
         if (const auto value = node.value<double>(); value.has_value())

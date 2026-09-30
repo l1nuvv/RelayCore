@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include <SDL3/SDL.h>
-
 #include "relaycore/app/frame_timer.h"
+
+#include <SDL3/SDL.h>
 
 namespace RelayCore
 {
@@ -52,6 +52,13 @@ namespace RelayCore
          * @param services Runtime services exposed to the game layer.
          */
         virtual void on_render(const FrameInfo& /*frame*/, EngineServices& /*services*/) {}
+
+        [[nodiscard]] virtual auto has_custom_ui() const noexcept -> bool
+        {
+            return false;
+        }
+
+        virtual void on_ui(EngineServices& /*services*/) {}
 
         /**
          * @brief Called during shutdown before engine systems are torn down.

@@ -4,9 +4,13 @@
 #include "relaycore/physics/collision.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_loader_entity_props.h"
+#include "relaygame/mission_runtime.h"
+#include "relaygame/runtime_model.h"
 
+#include <algorithm>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace RelayGame::detail
@@ -75,10 +79,51 @@ namespace RelayGame::detail
         return (primary_instanced || secondary_instanced) ? std::string{"instanced"} : std::string{"direct"};
     }
 
+    [[nodiscard]] inline auto format_binding_label(const RelayGame::RuntimeBindingInfo& binding) -> std::string
+    {
+        const std::string_view source_kind = RelayGame::runtime_object_kind_label(binding.source_kind);
+        if (!binding.source_name.empty())
+        {
+            return std::string{source_kind} + " '" + binding.source_name + "'";
+        }
+        if (!binding.source_handle.empty())
+        {
+            return binding.source_handle;
+        }
+        return std::string{source_kind};
+    }
+
+    inline void assign_binding_source(
+        RelayCore::render::AuthoringWarningDiagnostics& warning,
+        const RelayGame::RuntimeBindingInfo& binding
+    )
+    {
+        warning.primary_label = format_binding_label(binding);
+        warning.primary_file_path = binding.source_file_path;
+        warning.primary_line = binding.source_line;
+        warning.primary_column = binding.source_column;
+    }
+
+    [[nodiscard]] inline auto
+    mission_declares_target(const RelayGame::MissionDefinition& mission_definition, std::string_view target) -> bool
+    {
+        for (const RelayGame::MissionStep& step : mission_definition.steps)
+        {
+            if (step.target == target)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     [[nodiscard]] inline auto collect_authoring_warnings(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
-        std::span<const RelayCore::gameplay::RuntimeTrigger> triggers
+        std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
+        std::span<const RelayGame::RuntimeBindingInfo> bindings,
+        const RelayGame::MissionDefinition& mission_definition
     ) -> std::vector<RelayCore::render::AuthoringWarningDiagnostics>
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -176,6 +221,55 @@ namespace RelayGame::detail
                 );
                 warnings.push_back(std::move(warning));
             }
+        }
+
+        for (const RelayGame::RuntimeBindingInfo& binding : bindings)
+        {
+            if (!RelayGame::runtime_binding_requires_resolved_target(binding.kind) || binding.target.empty())
+            {
+                continue;
+            }
+
+            if (binding.resolved_target_count > 1)
+            {
+                RelayCore::render::AuthoringWarningDiagnostics warning{};
+                warning.message =
+                    "Ambiguous authored " + std::string{RelayGame::runtime_binding_kind_label(binding.kind)}
+                    + " link: " + format_binding_label(binding) + " -> '" + binding.target + "' resolved to "
+                    + std::to_string(binding.resolved_target_count) + " runtime objects";
+                warning.source_bucket = binding.source_bucket.empty() ? std::string{"direct"} : binding.source_bucket;
+                assign_binding_source(warning, binding);
+                warnings.push_back(std::move(warning));
+                continue;
+            }
+
+            const bool environment_consumes_target =
+                binding.kind == RuntimeBindingKind::ActivateTarget
+                && std::ranges::any_of(level.entities, [&binding](const auto& entity) {
+                       if (entity.classname != "render_light" && entity.classname != "audio_zone"
+                           && entity.classname != "world_effect")
+                           return false;
+                       for (const char* key : {"required_target", "stop_target"})
+                       {
+                           const auto target = entity.properties.find(key);
+                           if (target != entity.properties.end() && target->second == binding.target)
+                               return true;
+                       }
+                       return false;
+                   });
+            if (binding.resolved_target_count > 0 || mission_declares_target(mission_definition, binding.target)
+                || environment_consumes_target)
+            {
+                continue;
+            }
+
+            RelayCore::render::AuthoringWarningDiagnostics warning{};
+            warning.message = "Unresolved authored " + std::string{RelayGame::runtime_binding_kind_label(binding.kind)}
+                              + " link: " + format_binding_label(binding) + " -> '" + binding.target
+                              + "' has no runtime object, mission-step or environment consumer";
+            warning.source_bucket = binding.source_bucket.empty() ? std::string{"direct"} : binding.source_bucket;
+            assign_binding_source(warning, binding);
+            warnings.push_back(std::move(warning));
         }
 
         return warnings;

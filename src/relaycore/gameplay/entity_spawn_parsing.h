@@ -6,10 +6,12 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <glm/common.hpp>
 #include <glm/vec3.hpp>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -68,16 +70,18 @@ namespace RelayCore::gameplay::detail
         -> std::optional<float>
     {
         const std::string* value = find_property(entity, key);
-        if (value == nullptr || value->empty())
+        if (value == nullptr)
         {
             return std::nullopt;
         }
 
         float parsed_value = 0.0F;
         const auto [ptr, ec] = std::from_chars(value->data(), value->data() + value->size(), parsed_value);
-        if (ec != std::errc{} || ptr != value->data() + value->size())
+        if (ec != std::errc{} || ptr != value->data() + value->size() || !std::isfinite(parsed_value))
         {
-            return std::nullopt;
+            throw std::runtime_error(
+                "Entity property '" + std::string(key) + "' must be a finite number, got '" + *value + "'"
+            );
         }
 
         return parsed_value;
@@ -87,7 +91,7 @@ namespace RelayCore::gameplay::detail
         -> std::optional<glm::vec3>
     {
         const std::string* value = find_property(entity, key);
-        if (value == nullptr || value->empty())
+        if (value == nullptr)
         {
             return std::nullopt;
         }
@@ -97,15 +101,20 @@ namespace RelayCore::gameplay::detail
 
         std::istringstream stream(normalized);
         glm::vec3 parsed_value{};
-        if (!(stream >> parsed_value.x >> parsed_value.y >> parsed_value.z))
+        if (!(stream >> parsed_value.x >> parsed_value.y >> parsed_value.z) || !std::isfinite(parsed_value.x)
+            || !std::isfinite(parsed_value.y) || !std::isfinite(parsed_value.z))
         {
-            return std::nullopt;
+            throw std::runtime_error(
+                "Entity property '" + std::string(key) + "' must be three finite numbers, got '" + *value + "'"
+            );
         }
 
         stream >> std::ws;
         if (!stream.eof())
         {
-            return std::nullopt;
+            throw std::runtime_error(
+                "Entity property '" + std::string(key) + "' must be three finite numbers, got '" + *value + "'"
+            );
         }
 
         return parsed_value;

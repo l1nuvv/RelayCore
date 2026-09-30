@@ -1,12 +1,12 @@
 #include "relaycore/render/blockout_mesh_builder.h"
 
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/authored_color.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <stdexcept>
 #include <vector>
@@ -47,11 +47,6 @@ namespace RelayCore::render
         [[nodiscard]] auto shade(const glm::vec3& color, const float factor) -> glm::vec3
         {
             return color * factor;
-        }
-
-        [[nodiscard]] auto clamp_color(const glm::vec3& color) -> glm::vec3
-        {
-            return glm::clamp(color, glm::vec3{0.0F}, glm::vec3{1.0F});
         }
 
         [[nodiscard]] auto same_surface_appearance(const BlockoutSolid& a, const BlockoutSolid& b) -> bool
@@ -813,7 +808,8 @@ namespace RelayCore::render
     [[nodiscard]] auto build_blockout_mesh_for_solid(
         const BlockoutLevel& level,
         const std::size_t solid_index,
-        const RenderAuthoringConfig& authoring_config
+        const RenderAuthoringConfig& authoring_config,
+        const ColorPipelineMode color_pipeline_mode
     ) -> CpuColorMeshData
     {
         const BlockoutSolid& solid = level.solids[solid_index];
@@ -827,7 +823,10 @@ namespace RelayCore::render
         mesh.indices.reserve(36);
 
         const auto& material = material_authoring(authoring_config, solid.material);
-        const glm::vec3 base_color = clamp_color(material.base_color * solid.tint * solid.brightness);
+        const glm::vec3 base_color =
+            color_pipeline_mode == ColorPipelineMode::hardware_srgb
+                ? compose_linear_surface_color(material.base_color, solid.tint, solid.brightness)
+                : compose_legacy_surface_color(material.base_color, solid.tint, solid.brightness);
 
         if (material.transparent)
         {
@@ -893,8 +892,11 @@ namespace RelayCore::render
         return mesh;
     }
 
-    auto build_blockout_mesh(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
-        -> CpuColorMeshData
+    auto build_blockout_mesh(
+        const BlockoutLevel& level,
+        const RenderAuthoringConfig& authoring_config,
+        const ColorPipelineMode color_pipeline_mode
+    ) -> CpuColorMeshData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_mesh");
 
@@ -904,7 +906,8 @@ namespace RelayCore::render
 
         for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
         {
-            CpuColorMeshData solid_mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
+            CpuColorMeshData solid_mesh =
+                build_blockout_mesh_for_solid(level, solid_index, authoring_config, color_pipeline_mode);
 
             const std::uint32_t base_index = static_cast<std::uint32_t>(mesh.vertices.size());
             mesh.vertices.insert(mesh.vertices.end(), solid_mesh.vertices.begin(), solid_mesh.vertices.end());
@@ -920,11 +923,14 @@ namespace RelayCore::render
 
     auto build_blockout_mesh(const BlockoutLevel& level) -> CpuColorMeshData
     {
-        return build_blockout_mesh(level, default_render_authoring_config());
+        return build_blockout_mesh(level, default_render_authoring_config(), ColorPipelineMode::legacy_gamma);
     }
 
-    auto build_blockout_render_data(const BlockoutLevel& level, const RenderAuthoringConfig& authoring_config)
-        -> BlockoutRenderData
+    auto build_blockout_render_data(
+        const BlockoutLevel& level,
+        const RenderAuthoringConfig& authoring_config,
+        const ColorPipelineMode color_pipeline_mode
+    ) -> BlockoutRenderData
     {
         RELAYCORE_PROFILE_ZONE_N("build_blockout_render_data");
 
@@ -937,7 +943,7 @@ namespace RelayCore::render
             const auto& material = material_authoring(authoring_config, solid.material);
 
             BlockoutRenderChunkData chunk{};
-            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config);
+            chunk.mesh = build_blockout_mesh_for_solid(level, solid_index, authoring_config, color_pipeline_mode);
             if (chunk.mesh.indices.empty())
             {
                 continue;
@@ -947,6 +953,7 @@ namespace RelayCore::render
             chunk.maxs = solid.maxs;
             chunk.triangle_count = static_cast<std::uint32_t>(chunk.mesh.indices.size() / 3);
             chunk.transparent = material.transparent;
+            chunk.casts_directional_shadow = solid.material != SurfaceMaterial::Ceiling;
 
             render_data.total_triangles += chunk.triangle_count;
             render_data.chunks.push_back(std::move(chunk));
@@ -957,6 +964,6 @@ namespace RelayCore::render
 
     auto build_blockout_render_data(const BlockoutLevel& level) -> BlockoutRenderData
     {
-        return build_blockout_render_data(level, default_render_authoring_config());
+        return build_blockout_render_data(level, default_render_authoring_config(), ColorPipelineMode::legacy_gamma);
     }
 } // namespace RelayCore::render

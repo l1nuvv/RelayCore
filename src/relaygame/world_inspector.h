@@ -1,9 +1,9 @@
 #pragma once
 
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/runtime_model.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/runtime_model.h"
 
 #include <glm/vec3.hpp>
 #include <span>
@@ -26,7 +26,7 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const RelayCore::gameplay::RuntimeObjectRegistry& registry,
+        const RelayGame::RuntimeObjectRegistry& registry,
         const glm::vec3& eye_position,
         const glm::vec3& view_forward,
         float max_distance = 24.0F
@@ -47,8 +47,8 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
         std::span<const RelayCore::gameplay::RuntimeTrigger> triggers,
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
-        const RelayCore::gameplay::RuntimeObjectRegistry& registry,
-        RelayCore::gameplay::RuntimeObjectId runtime_id,
+        const RelayGame::RuntimeObjectRegistry& registry,
+        RelayGame::RuntimeObjectId runtime_id,
         const glm::vec3& eye_position
     ) -> RelayCore::render::InspectorDiagnostics;
 } // namespace RelayGame

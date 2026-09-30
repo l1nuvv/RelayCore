@@ -16,6 +16,7 @@ namespace RelayGame
         std::filesystem::path loop_path{};
         float gain = 1.0F;
         int priority = 0;
+        std::string required_target{};
     };
 
     [[nodiscard]] auto build_audio_zones(const RelayCore::BlockoutLevel& level, const std::filesystem::path& asset_root)
@@ -24,6 +25,7 @@ namespace RelayGame
     [[nodiscard]] auto find_active_audio_zone(
         std::span<const RuntimeAudioZone> zones,
         const RelayCore::physics::Aabb& listener_bounds,
-        int current_zone_index = -1
+        int current_zone_index = -1,
+        std::span<const std::string> activated_targets = {}
     ) -> int;
 } // namespace RelayGame

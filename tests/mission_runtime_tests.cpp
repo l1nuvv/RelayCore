@@ -1,27 +1,30 @@
 #include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/gameplay/mission_runtime.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaygame/mission_runtime.h"
 
 #include <algorithm>
 #include <doctest/doctest.h>
 #include <filesystem>
 
+#include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
+
 namespace
 {
     using RelayCore::gameplay::DoorState;
-    using RelayCore::gameplay::MissionBuilder;
-    using RelayCore::gameplay::MissionDefinition;
-    using RelayCore::gameplay::MissionRuntime;
-    using RelayCore::gameplay::MissionStep;
-    using RelayCore::gameplay::MissionStepKind;
     using RelayCore::gameplay::RuntimeDoor;
     using RelayCore::gameplay::RuntimeTrigger;
     using RelayCore::gameplay::RuntimeUsable;
     using RelayCore::gameplay::UsableActionKind;
     using RelayCore::physics::Aabb;
+    using RelayGame::MissionBuilder;
+    using RelayGame::MissionDefinition;
+    using RelayGame::MissionRuntime;
+    using RelayGame::MissionStep;
+    using RelayGame::MissionStepKind;
 
     [[nodiscard]] auto make_mission_bounds(const glm::vec3& center, const glm::vec3& half_extents) -> Aabb
     {
@@ -37,67 +40,61 @@ namespace
 TEST_CASE("mission builder parses shipped-style step entities")
 {
     RelayCore::BlockoutLevel level{};
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_settings",
-            .properties = {
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_settings",
+        .properties =
+            {
                 {"completion_title", "Observation lab secured"},
                 {"completion_detail", "Route complete."},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_step",
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_step",
+        .properties =
+            {
                 {"kind", "door_open"},
                 {"target", "outer_bulkhead"},
                 {"title", "Cycle outer bulkhead"},
                 {"detail", "Use the intake wall panel."},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_step",
-            .origin = {0.0F, 0.1F, 6.5F},
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_step",
+        .origin = {0.0F, 0.1F, 6.5F},
+        .properties =
+            {
                 {"kind", "zone"},
                 {"size", "2.6 2.4 2.8"},
                 {"title", "Enter the airlock"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_step",
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_step",
+        .properties =
+            {
                 {"kind", "pickup_item"},
                 {"target", "lab_keycard"},
                 {"title", "Secure the keycard"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_step",
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_step",
+        .properties =
+            {
                 {"kind", "signal"},
                 {"target", "reader_lock"},
                 {"title", "Ping the reader interlock"},
             },
-        }
-    );
-    level.entities.push_back(
-        RelayCore::EntitySpawnData{
-            .classname = "mission_step",
-            .properties = {
+    });
+    level.entities.push_back(RelayCore::EntitySpawnData{
+        .classname = "mission_step",
+        .properties =
+            {
                 {"kind", "activate_target"},
                 {"target", "lab_relay_console"},
                 {"title", "Stabilize the relay core"},
             },
-        }
-    );
+    });
 
     const MissionDefinition definition = MissionBuilder{level}.build();
 
@@ -293,12 +290,8 @@ TEST_CASE("mission runtime advances when required target is signaled")
 
 TEST_CASE("shipped test_room preserves the authored bulkhead to terminal mission flow")
 {
-    RelayCore::log::shutdown();
-    RelayCore::log::Config log_config{};
-    log_config.enable_console_sink = false;
-    log_config.enable_timestamped_log = false;
-    log_config.logs_directory = (std::filesystem::temp_directory_path() / "relaycore_test_logs").string();
-    RelayCore::log::init(log_config);
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
 
     const std::filesystem::path repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const RelayCore::BlockoutLevel level =
@@ -310,12 +303,13 @@ TEST_CASE("shipped test_room preserves the authored bulkhead to terminal mission
     RelayCore::gameplay::build_runtime_interactions(level, doors, triggers, usables);
 
     const MissionDefinition definition = MissionBuilder{level}.build();
-    REQUIRE(definition.steps.size() == 5);
+    REQUIRE(definition.steps.size() == 6);
     CHECK(definition.steps[0].target == "intake/outer_bulkhead");
     CHECK(definition.steps[1].kind == MissionStepKind::EnterZone);
     CHECK(definition.steps[2].target == "lab_keycard");
     CHECK(definition.steps[3].target == "inner_bulkhead");
     CHECK(definition.steps[4].target == "lab_relay_console");
+    CHECK(definition.steps[5].kind == MissionStepKind::EnterZone);
 
     const auto outer_door = std::find_if(doors.begin(), doors.end(), [](const RuntimeDoor& door) {
         return door.name == "intake/outer_bulkhead";
@@ -386,10 +380,24 @@ TEST_CASE("shipped test_room preserves the authored bulkhead to terminal mission
     activated_targets.push_back("lab_relay_console");
     runtime.update(player_bounds, doors, inventory_items, activated_targets, signaled_targets);
 
+    const auto post_console_status = runtime.status();
+    CHECK_FALSE(post_console_status.completed);
+    CHECK(post_console_status.current_step == 6);
+    CHECK(post_console_status.title == "Выйти к реакторной галерее");
+
+    const glm::vec3 gallery_center = bounds_center(definition.steps[5].bounds);
+    runtime.update(
+        make_mission_bounds(gallery_center, {0.3F, 0.9F, 0.3F}),
+        doors,
+        inventory_items,
+        activated_targets,
+        signaled_targets
+    );
+
     const auto status = runtime.status();
     CHECK(status.completed);
-    CHECK(status.title == "Лаборатория наблюдения защищена");
-    CHECK(status.detail == "Маршрут завершен. Сектор комплекса зачищен.");
+    CHECK(status.title == "Проход к реакторной галерее открыт");
+    CHECK(status.detail == "Ядро ретранслятора стабилизировано. Лабораторный сектор зачищен.");
 
     RelayCore::log::shutdown();
 }

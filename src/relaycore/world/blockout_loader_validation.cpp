@@ -1,8 +1,10 @@
 #include "relaycore/world/blockout_loader_validation.h"
 
 #include "relaycore/core/log.h"
+#include "relaycore/core/spatial_index_2d.h"
 #include "relaycore/world/blockout_loader_entity_props.h"
 
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -22,6 +24,11 @@ namespace RelayCore::detail
             glm::vec3 maxs{};
         };
 
+        [[nodiscard]] auto finite_vec3(const glm::vec3& value) noexcept -> bool
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        }
+
         [[nodiscard]] auto format_entity_label(const EntitySpawnData& entity, const std::size_t entity_index)
             -> std::string
         {
@@ -37,7 +44,7 @@ namespace RelayCore::detail
 
         void validate_positive_size(const std::string_view kind, const glm::vec3& size)
         {
-            if (size.x <= 0.0F || size.y <= 0.0F || size.z <= 0.0F)
+            if (!finite_vec3(size) || size.x <= 0.0F || size.y <= 0.0F || size.z <= 0.0F)
             {
                 throw std::runtime_error(
                     "Entity of kind '" + std::string(kind)
@@ -368,18 +375,29 @@ namespace RelayCore::detail
     void validate_loaded_blockout_level(const BlockoutLevel& level)
     {
         constexpr float kMinExtent = 0.0001F;
+        const core::SpatialIndex2D<std::uint32_t> spatial_index;
 
-        for (std::size_t solid_index = 0; solid_index < level.solids.size(); ++solid_index)
-        {
-            const BlockoutSolid& solid = level.solids[solid_index];
-            const glm::vec3 extents = solid.maxs - solid.mins;
-            if (extents.x <= kMinExtent || extents.y <= kMinExtent || extents.z <= kMinExtent)
+        const auto validate_solids = [&](const std::vector<BlockoutSolid>& solids, const std::string_view label) {
+            for (std::size_t solid_index = 0; solid_index < solids.size(); ++solid_index)
             {
-                throw std::runtime_error(
-                    "Degenerate solid at index " + std::to_string(solid_index) + " has non-positive extents"
-                );
+                const BlockoutSolid& solid = solids[solid_index];
+                const glm::vec3 extents = solid.maxs - solid.mins;
+                const std::string identity = std::string(label) + " at index " + std::to_string(solid_index);
+                if (!finite_vec3(solid.mins) || !finite_vec3(solid.maxs) || !finite_vec3(extents))
+                    throw std::runtime_error(identity + " has non-finite bounds");
+                if (extents.x <= kMinExtent || extents.y <= kMinExtent || extents.z <= kMinExtent)
+                    throw std::runtime_error("Degenerate " + identity + " has non-positive extents");
+                try
+                {
+                    spatial_index.validate_bounds({solid.mins, solid.maxs});
+                } catch (const std::exception& error)
+                {
+                    throw std::runtime_error(identity + ": " + error.what());
+                }
             }
-        }
+        };
+        validate_solids(level.solids, "solid");
+        validate_solids(level.prop_colliders, "prop collider");
 
         std::unordered_map<std::string, std::string> target_name_kinds{};
         std::unordered_map<std::string, std::size_t> pickup_item_ids{};
@@ -397,6 +415,17 @@ namespace RelayCore::detail
         for (std::size_t entity_index = 0; entity_index < level.entities.size(); ++entity_index)
         {
             const EntitySpawnData& entity = level.entities[entity_index];
+            if (!finite_vec3(entity.origin) || !finite_vec3(entity.angles))
+                throw std::runtime_error(
+                    "Entity at index " + std::to_string(entity_index) + " has non-finite transform"
+                );
+            try
+            {
+                spatial_index.validate_bounds({entity.origin, entity.origin});
+            } catch (const std::exception& error)
+            {
+                throw std::runtime_error("Entity at index " + std::to_string(entity_index) + ": " + error.what());
+            }
             const std::string kind = normalized_entity_kind(entity);
             validate_entity_definition(entity, entity_index);
 
@@ -417,6 +446,12 @@ namespace RelayCore::detail
                 }
             }
 
+            if (entity.classname == "inventory_item")
+            {
+                const auto* id = find_entity_property(entity, "item_id");
+                if (id == nullptr || id->empty() || !pickup_item_ids.emplace(*id, entity_index).second)
+                    throw std::runtime_error("inventory_item requires a unique item_id");
+            }
             if (is_pickup_entity_kind(kind))
             {
                 const std::string item_id = resolved_pickup_item_id(entity, pickup_index++);
@@ -437,6 +472,17 @@ namespace RelayCore::detail
 
             if (const auto bounds = build_validation_bounds(entity); bounds.has_value())
             {
+                if (!finite_vec3(bounds->mins) || !finite_vec3(bounds->maxs))
+                    throw std::runtime_error(
+                        "Entity at index " + std::to_string(entity_index) + " has non-finite bounds"
+                    );
+                try
+                {
+                    spatial_index.validate_bounds({bounds->mins, bounds->maxs});
+                } catch (const std::exception& error)
+                {
+                    throw std::runtime_error("Entity at index " + std::to_string(entity_index) + ": " + error.what());
+                }
                 if (kind == "door")
                 {
                     door_bounds.emplace_back(entity_index, *bounds);
