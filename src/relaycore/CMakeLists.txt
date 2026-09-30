@@ -25,6 +25,7 @@ set(RELAYCORE_ENGINE_SOURCES
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
+    platform/open_gl_context.cpp
     platform/window.cpp
     render/blockout_mesh_builder.cpp
     render/blockout_texture_atlas.cpp
@@ -34,6 +35,12 @@ set(RELAYCORE_ENGINE_SOURCES
     render/game_hud.cpp
     render/gl_debug.cpp
     render/gl_loader.cpp
+    render/vulkan_device.cpp
+    render/vulkan_swapchain.cpp
+    render/vulkan_resources.cpp
+    render/vulkan_uploads.cpp
+    render/vulkan_mesh_renderer.cpp
+    render/vma_impl.cpp
     render/mesh.cpp
     render/static_model.cpp
     render/render_authoring_config.cpp
@@ -82,6 +89,7 @@ set(RELAYCORE_ENGINE_HEADERS
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h
+    platform/open_gl_context.h
     platform/window.h
     render/blockout_mesh_builder.h
     render/blockout_texture_atlas.h
@@ -91,6 +99,12 @@ set(RELAYCORE_ENGINE_HEADERS
     render/game_hud.h
     render/gl_debug.h
     render/gl_loader.h
+    render/vulkan_device.h
+    render/vulkan_swapchain.h
+    render/vulkan_resources.h
+    render/vulkan_uploads.h
+    render/vulkan_mesh_renderer.h
+    render/resource_upload.h
     render/mesh.h
     render/render_authoring_config.h
     render/pipeline_authoring_overlay.h
@@ -146,7 +160,16 @@ target_link_libraries(
     PRIVATE
         RelayCore::miniaudio_headers
         ${RELAYCORE_IMGUI_TARGET}
+        Vulkan::Vulkan
+        vk-bootstrap::vk-bootstrap
+        GPUOpen::VulkanMemoryAllocator
 )
+
+target_compile_definitions(relaycore_engine PRIVATE
+    RELAYCORE_VULKAN_VALIDATION=$<AND:$<BOOL:${RELAYCORE_ENABLE_VULKAN_VALIDATION}>,$<OR:$<CONFIG:Debug>,$<CONFIG:Asan>>>)
+set_source_files_properties(render/vma_impl.cpp PROPERTIES
+    SKIP_UNITY_BUILD_INCLUSION ON
+    COMPILE_DEFINITIONS "VMA_STATIC_VULKAN_FUNCTIONS=0;VMA_DYNAMIC_VULKAN_FUNCTIONS=1")
 
 if (RELAYCORE_ENABLE_TRACY)
     target_link_libraries(relaycore_engine PRIVATE Tracy::TracyClient)

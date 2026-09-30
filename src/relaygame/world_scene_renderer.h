@@ -80,6 +80,32 @@ namespace RelayGame
             std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {}
         );
 
+        void prepare_render_queue(
+            const RelayCore::render::PerspectiveCamera& camera,
+            float scene_time_seconds,
+            std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+            std::span<const RelayCore::gameplay::RuntimeTurret> turrets,
+            std::span<const RelayCore::gameplay::RuntimeUsable> usables,
+            int focused_usable_index,
+            const RelayCore::render::InspectorDiagnostics& inspector,
+            bool inspector_visible,
+            std::span<const std::string> activated_targets = {},
+            const ScientistPose& scientist = {},
+            std::span<const EnvironmentEffect> environment = {},
+            std::span<const RuntimeEnemy> enemies = {},
+            const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
+            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {}
+        );
+
+        [[nodiscard]] auto render_items() const noexcept -> std::span<const RelayCore::render::RenderItem>
+        {
+            return render_queue_.items();
+        }
+
+        [[nodiscard]] auto
+        prepare_shotgun_viewmodel(const RelayCore::render::PerspectiveCamera& camera, float cycle_remaining_seconds)
+            -> std::array<RelayCore::render::RenderItem, 2>;
+
         [[nodiscard]] auto diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&;
         void render_shotgun_viewmodel(
             RelayCore::Renderer& renderer,
@@ -143,6 +169,7 @@ namespace RelayGame
             bool casts_directional_shadow = true;
         };
 
+        RelayCore::render::ResourceUpload upload_ = RelayCore::render::ResourceUpload::opengl;
         std::array<glm::vec4, 6> frustum_planes_{};
         RelayCore::render::StaticColorMesh door_mesh_{};
         RelayCore::render::StaticColorMesh panel_mesh_{};

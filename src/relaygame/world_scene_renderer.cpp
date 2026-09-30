@@ -354,6 +354,7 @@ namespace RelayGame
         RelayCore::render::StaticModelCache& models
     )
     {
+        upload_ = models.upload_mode();
         RELAYCORE_PROFILE_FUNCTION();
         props_.clear();
         enemy_model_.reset();
@@ -451,17 +452,17 @@ namespace RelayGame
         tint(pellet_mesh_data, {1.6F, 1.5F, 1.3F}, 0.10F);
         tint(turret_shot_mesh_data, {2.5F, 0.75F, 0.35F}, 0.10F);
 
-        door_mesh_.initialize(door_mesh_data);
-        pickup_mesh_.initialize(pickup_mesh_data);
-        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data);
-        inspector_usable_mesh_.initialize(inspector_usable_mesh_data);
-        inspector_door_mesh_.initialize(inspector_door_mesh_data);
-        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data);
-        inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
-        inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
-        player_shot_mesh_.initialize(player_shot_mesh_data);
-        pellet_mesh_.initialize(pellet_mesh_data);
-        turret_shot_mesh_.initialize(turret_shot_mesh_data);
+        door_mesh_.initialize(door_mesh_data, upload_);
+        pickup_mesh_.initialize(pickup_mesh_data, upload_);
+        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data, upload_);
+        inspector_usable_mesh_.initialize(inspector_usable_mesh_data, upload_);
+        inspector_door_mesh_.initialize(inspector_door_mesh_data, upload_);
+        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data, upload_);
+        inspector_solid_mesh_.initialize(inspector_solid_mesh_data, upload_);
+        inspector_hit_mesh_.initialize(inspector_hit_mesh_data, upload_);
+        player_shot_mesh_.initialize(player_shot_mesh_data, upload_);
+        pellet_mesh_.initialize(pellet_mesh_data, upload_);
+        turret_shot_mesh_.initialize(turret_shot_mesh_data, upload_);
         initialize_prop_meshes(scene_data.color_pipeline_mode);
         initialize_environment_meshes(scene_data.color_pipeline_mode);
         environment_ = scene_data.environment;
@@ -475,7 +476,7 @@ namespace RelayGame
         for (const auto& chunk_data : scene_data.blockout.chunks)
         {
             RenderChunk chunk{};
-            chunk.mesh.initialize(chunk_data.mesh);
+            chunk.mesh.initialize(chunk_data.mesh, upload_);
             chunk.mins = chunk_data.mins;
             chunk.maxs = chunk_data.maxs;
             chunk.triangle_count = chunk_data.triangle_count;
@@ -564,6 +565,43 @@ namespace RelayGame
 
     void WorldSceneRenderer::render(
         RelayCore::Renderer& renderer,
+        const RelayCore::render::PerspectiveCamera& camera,
+        const float scene_time_seconds,
+        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        std::span<const RelayCore::gameplay::RuntimeTurret> turrets,
+        std::span<const RelayCore::gameplay::RuntimeUsable> usables,
+        const int focused_usable_index,
+        const RelayCore::render::InspectorDiagnostics& inspector,
+        const bool inspector_visible,
+        const std::span<const std::string> activated_targets,
+        const ScientistPose& scientist,
+        const std::span<const EnvironmentEffect> environment,
+        const std::span<const RuntimeEnemy> enemies,
+        const RelayCore::gameplay::PlayerCombatState* player_combat,
+        const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces
+    )
+    {
+        prepare_render_queue(
+            camera,
+            scene_time_seconds,
+            doors,
+            turrets,
+            usables,
+            focused_usable_index,
+            inspector,
+            inspector_visible,
+            activated_targets,
+            scientist,
+            environment,
+            enemies,
+            player_combat,
+            pellet_traces
+        );
+        renderer.set_local_lights(active_local_lights_);
+        renderer.draw_render_queue(render_queue_.items(), shadow_casters_.items());
+    }
+
+    void WorldSceneRenderer::prepare_render_queue(
         const RelayCore::render::PerspectiveCamera& camera,
         const float scene_time_seconds,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
@@ -751,7 +789,6 @@ namespace RelayGame
         }
 
         diagnostics_.local_light_count = static_cast<std::uint32_t>(active_local_lights_.size());
-        renderer.set_local_lights(active_local_lights_);
         RELAYCORE_PROFILE_PLOT("Render/VisibleChunks", diagnostics_.visible_chunks);
         RELAYCORE_PROFILE_PLOT("Render/TransparentVisibleChunks", diagnostics_.transparent_visible_chunks);
         RELAYCORE_PROFILE_PLOT("Render/DrawCalls", diagnostics_.draw_calls);
@@ -776,7 +813,6 @@ namespace RelayGame
                     item.casts_directional_shadow
                 );
         }
-        renderer.draw_render_queue(render_queue_.items(), shadow_casters_.items());
     }
 
     auto WorldSceneRenderer::diagnostics() const noexcept -> const RelayCore::render::WorldDiagnostics&

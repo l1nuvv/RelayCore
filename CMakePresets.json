@@ -130,6 +130,11 @@
       "configurePreset": "msvc-debug",
       "targets": [
         "relaycore_window_lifetime_tests",
+        "relaycore_vulkan_window_tests",
+        "relaycore_vulkan_device_tests",
+        "relaycore_vulkan_presentation_tests",
+        "relaycore_vulkan_upload_tests",
+        "relaycore_vulkan_mesh_tests",
         "relaycore_game_lifecycle",
         "relaycore_power_restoration_graphics",
         "relaycore_graphics_baseline",

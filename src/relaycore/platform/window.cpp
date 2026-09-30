@@ -1,153 +1,113 @@
 /**
  * @file src/relaycore/platform/window.cpp
- * @brief SDL window and OpenGL context implementation.
+ * @brief SDL window implementation.
  */
 
 #include "relaycore/platform/window.h"
 
-#include "relaycore/core/log.h"
-#include "relaycore/core/profiling.h"
 #include "relaycore/core/sdl_error.h"
 
-#include <SDL3/SDL.h>
-#include <memory>
+#include <SDL3/SDL_vulkan.h>
+#include <stdexcept>
 
 namespace RelayCore
 {
-    namespace
+    Window::Window(
+        const WindowConfig& config,
+        const render::ColorPipelineMode color_pipeline_mode,
+        const WindowGraphicsApi graphics_api
+    )
     {
-        /**
-         * @brief Configures the SDL OpenGL attributes required by RelayCore.
-         */
-        void set_gl_attributes(const render::ColorPipelineMode color_pipeline_mode)
+        if (graphics_api == WindowGraphicsApi::opengl)
         {
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4), "Failed to set GL major version");
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6), "Failed to set GL minor version");
-            core::require_sdl(
-                SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE),
-                "Failed to set GL profile mask"
-            );
-
-#ifndef NDEBUG
-            core::require_sdl(
-                SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG),
-                "Failed to enable GL debug context"
-            );
-#else
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0), "Failed to clear GL context flags");
-#endif
-
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1), "Failed to enable GL double buffering");
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24), "Failed to set GL depth buffer size");
-            core::require_sdl(SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8), "Failed to set GL stencil buffer size");
-            if (color_pipeline_mode == render::ColorPipelineMode::hardware_srgb)
-            {
-                core::require_sdl(
-                    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1),
-                    "Failed to request an sRGB-capable default framebuffer"
-                );
-            }
+            OpenGlContext::configure_window(color_pipeline_mode);
         }
-    } // namespace
 
-    Window::Window(const WindowConfig& config, const render::ColorPipelineMode color_pipeline_mode)
-    {
-        set_gl_attributes(color_pipeline_mode);
-
-        SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+        flags |= graphics_api == WindowGraphicsApi::opengl ? SDL_WINDOW_OPENGL : SDL_WINDOW_VULKAN;
         if (config.high_dpi)
         {
             flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
         }
 
-        std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> created_window{
-            SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags),
-            SDL_DestroyWindow,
-        };
-        if (created_window == nullptr)
+        window_.reset(SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags));
+        if (window_ == nullptr)
         {
             core::throw_sdl_error("Failed to create SDL window");
         }
 
         SDL_Rect usable_bounds{};
         core::require_sdl(
-            SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(created_window.get()), &usable_bounds),
+            SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window_.get()), &usable_bounds),
             "Failed to query window display usable bounds"
         );
         int top = 0, left = 0, bottom = 0, right = 0;
         // Border sizes may be unavailable until the window system has decorated the window.
-        static_cast<void>(SDL_GetWindowBordersSize(created_window.get(), &top, &left, &bottom, &right));
+        static_cast<void>(SDL_GetWindowBordersSize(window_.get(), &top, &left, &bottom, &right));
         if (config.width + left + right > usable_bounds.w || config.height + top + bottom > usable_bounds.h)
         {
-            core::require_sdl(SDL_MaximizeWindow(created_window.get()), "Failed to fit window to display");
-            core::require_sdl(SDL_SyncWindow(created_window.get()), "Failed to synchronize fitted window");
+            core::require_sdl(SDL_MaximizeWindow(window_.get()), "Failed to fit window to display");
+            core::require_sdl(SDL_SyncWindow(window_.get()), "Failed to synchronize fitted window");
         }
 
-        std::unique_ptr<SDL_GLContextState, decltype(&SDL_GL_DestroyContext)> created_context{
-            SDL_GL_CreateContext(created_window.get()),
-            SDL_GL_DestroyContext,
-        };
-        if (created_context == nullptr)
+        if (graphics_api == WindowGraphicsApi::opengl)
         {
-            core::throw_sdl_error("Failed to create OpenGL context");
+            gl_context_.emplace(window_.get(), config.vsync, color_pipeline_mode);
         }
-
-        const int requested_swap_interval = config.vsync ? 1 : 0;
-        if (!SDL_GL_SetSwapInterval(requested_swap_interval))
-        {
-            core::throw_sdl_error("Failed to set swap interval");
-        }
-
-        if (color_pipeline_mode == render::ColorPipelineMode::hardware_srgb
-            && !SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &framebuffer_srgb_capable_))
-        {
-            core::throw_sdl_error("Failed to query sRGB default framebuffer capability");
-        }
-
-        log_context_info();
-        window_ = created_window.release();
-        gl_context_ = created_context.release();
     }
 
-    Window::~Window() noexcept
-    {
-        if (gl_context_ != nullptr)
-        {
-            SDL_GL_DestroyContext(gl_context_);
-        }
-
-        if (window_ != nullptr)
-        {
-            SDL_DestroyWindow(window_);
-        }
-    }
+    Window::~Window() noexcept = default;
 
     auto Window::handle() const noexcept -> SDL_Window*
     {
-        return window_;
+        return window_.get();
     }
 
     auto Window::gl_context() const noexcept -> SDL_GLContext
     {
-        return gl_context_;
+        return gl_context_ ? gl_context_->handle() : nullptr;
     }
 
-    auto Window::framebuffer_srgb_capable() const noexcept -> int
+    auto Window::require_gl_context() const -> const OpenGlContext&
     {
-        return framebuffer_srgb_capable_;
+        if (!gl_context_)
+        {
+            throw std::logic_error("OpenGL presentation requested for a Vulkan window");
+        }
+        return *gl_context_;
+    }
+
+    auto Window::framebuffer_srgb_capable() const -> int
+    {
+        return require_gl_context().framebuffer_srgb_capable();
+    }
+
+    auto Window::vulkan_instance_extensions() const -> std::span<const char* const>
+    {
+        if ((SDL_GetWindowFlags(window_.get()) & SDL_WINDOW_VULKAN) == 0)
+        {
+            throw std::logic_error("Vulkan instance extensions requested for an OpenGL window");
+        }
+        Uint32 count = 0;
+        const auto extensions = SDL_Vulkan_GetInstanceExtensions(&count);
+        if (extensions == nullptr)
+        {
+            core::throw_sdl_error("Failed to query SDL Vulkan instance extensions");
+        }
+        return {extensions, count};
     }
 
     auto Window::pixel_extent() const -> PixelExtent
     {
         PixelExtent extent{};
-        SDL_GetWindowSizeInPixels(window_, &extent.width, &extent.height);
+        SDL_GetWindowSizeInPixels(window_.get(), &extent.width, &extent.height);
         return extent;
     }
 
     auto Window::presentation_state() const -> WindowPresentationState
     {
         const PixelExtent extent = pixel_extent();
-        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
+        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_.get());
         return WindowPresentationState{
             .pixel_width = extent.width,
             .pixel_height = extent.height,
@@ -158,12 +118,12 @@ namespace RelayCore
 
     auto Window::relative_mouse_mode() const -> bool
     {
-        return SDL_GetWindowRelativeMouseMode(window_);
+        return SDL_GetWindowRelativeMouseMode(window_.get());
     }
 
     auto Window::refresh_rate_hz() const -> float
     {
-        const SDL_DisplayID display_id = SDL_GetDisplayForWindow(window_);
+        const SDL_DisplayID display_id = SDL_GetDisplayForWindow(window_.get());
         if (display_id == 0)
         {
             return 0.0F;
@@ -180,12 +140,7 @@ namespace RelayCore
 
     auto Window::swap_interval() const -> int
     {
-        int interval = 0;
-        if (!SDL_GL_GetSwapInterval(&interval))
-        {
-            return 0;
-        }
-        return interval;
+        return require_gl_context().swap_interval();
     }
 
     auto Window::vsync_enabled() const -> bool
@@ -193,78 +148,23 @@ namespace RelayCore
         return swap_interval() != 0;
     }
 
-    auto Window::set_swap_interval(int interval) -> bool
+    auto Window::set_swap_interval(const int interval) -> bool
     {
-        if (SDL_GL_SetSwapInterval(interval))
-        {
-            return true;
-        }
-
-        log::warn("SDL_GL_SetSwapInterval({}) failed: {}", interval, SDL_GetError());
-        return false;
+        return require_gl_context().set_swap_interval(interval);
     }
 
     auto Window::toggle_vsync() -> bool
     {
-        const int current = swap_interval();
-        const int next = (current == 0) ? 1 : 0;
-
-        if (!set_swap_interval(next))
-        {
-            return false;
-        }
-
-        log::info("VSync: {}", next == 0 ? "off" : "on");
-        return true;
+        return require_gl_context().toggle_vsync();
     }
 
     void Window::set_relative_mouse_mode(const bool enabled) const
     {
-        core::require_sdl(SDL_SetWindowRelativeMouseMode(window_, enabled), "Failed to set relative mouse mode");
+        core::require_sdl(SDL_SetWindowRelativeMouseMode(window_.get(), enabled), "Failed to set relative mouse mode");
     }
 
     void Window::swap_buffers() const
     {
-        RELAYCORE_PROFILE_ZONE_N("SDL_GL_SwapWindow");
-        if (!SDL_GL_SwapWindow(window_))
-        {
-            core::throw_sdl_error("Failed to swap OpenGL window buffers");
-        }
-    }
-
-    void Window::log_context_info() const
-    {
-        int major_version = 0;
-        int minor_version = 0;
-        int profile_mask = 0;
-        int context_flags = 0;
-
-        if (!SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major_version)
-            || !SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor_version)
-            || !SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &profile_mask)
-            || !SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &context_flags))
-        {
-            core::throw_sdl_error("Failed to query OpenGL context attributes");
-        }
-
-        const char* profile = "unknown";
-        if (profile_mask == SDL_GL_CONTEXT_PROFILE_CORE)
-        {
-            profile = "core";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_COMPATIBILITY)
-        {
-            profile = "compatibility";
-        } else if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES)
-        {
-            profile = "es";
-        }
-
-        log::info(
-            "OpenGL context created: {}.{} | profile={} | flags=0x{:X}",
-            major_version,
-            minor_version,
-            profile,
-            context_flags
-        );
+        require_gl_context().swap_buffers();
     }
 } // namespace RelayCore

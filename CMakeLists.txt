@@ -69,6 +69,57 @@ relaycore_initialize_project()
 relaycore_find_dependencies()
 relaycore_create_dependency_targets()
 
+set(RELAYCORE_SPIRV_DIRECTORY "${PROJECT_BINARY_DIR}/generated/shaders")
+add_custom_command(
+    OUTPUT "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+    COMMAND "${SLANGC_EXECUTABLE}"
+        "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/toolchain_check.slang"
+        -entry vertex_main -stage vertex -target spirv -profile spirv_1_5
+        -o "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv"
+    DEPENDS
+        "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/toolchain_check.slang"
+        "${SLANGC_EXECUTABLE}"
+    COMMENT "Compiling Vulkan toolchain shader to SPIR-V"
+    VERBATIM
+)
+set(RELAYCORE_MESH_SPIRV)
+foreach(stage IN ITEMS vert frag)
+    if(stage STREQUAL "vert")
+        set(entry vertex_main)
+        set(shader_stage vertex)
+    else()
+        set(entry fragment_main)
+        set(shader_stage fragment)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/mesh.${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+add_custom_target(relaycore_vulkan_shaders ALL
+    DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})
+set_target_properties(relaycore_vulkan_shaders PROPERTIES FOLDER "render")
+
+add_executable(relaycore_vulkan_toolchain_check EXCLUDE_FROM_ALL tools/vulkan_toolchain_check.cpp)
+target_link_libraries(relaycore_vulkan_toolchain_check PRIVATE
+    RelayCore::project_options RelayCore::warnings Vulkan::Vulkan
+    vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)
+target_compile_definitions(relaycore_vulkan_toolchain_check PRIVATE
+    RELAYCORE_VULKAN_VALIDATION=$<AND:$<BOOL:${RELAYCORE_ENABLE_VULKAN_VALIDATION}>,$<OR:$<CONFIG:Debug>,$<CONFIG:Asan>>>)
+set_target_properties(relaycore_vulkan_toolchain_check PROPERTIES FOLDER "tools")
+relaycore_apply_standard_target_settings(relaycore_vulkan_toolchain_check)
+add_custom_command(TARGET relaycore_vulkan_toolchain_check POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_vulkan_toolchain_check>"
+        $<TARGET_RUNTIME_DLLS:relaycore_vulkan_toolchain_check>
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
+
 find_package(Git QUIET)
 find_program(CLANG_FORMAT_EXE NAMES clang-format clang-format.exe)
 

@@ -53,7 +53,7 @@ namespace RelayGame
 
     void WorldSceneRenderer::initialize_environment_meshes(RelayCore::render::ColorPipelineMode pipeline)
     {
-        const auto color = [pipeline](glm::vec3 rgb) {
+        const auto color = [this, pipeline](glm::vec3 rgb) {
             return RelayCore::render::visual_rgb_for_pipeline(rgb, pipeline);
         };
         CpuColorMeshData frame, rotor;
@@ -99,21 +99,21 @@ namespace RelayGame
         rect(frame, 0, 0, 0.025F, 1.05F, metal);
         for (auto i = brace_start; i < frame.vertices.size(); ++i)
             frame.vertices[i].position.z = 0.065F;
-        fan_frame_mesh_.initialize(frame);
-        fan_rotor_mesh_.initialize(rotor);
+        fan_frame_mesh_.initialize(frame, upload_);
+        fan_rotor_mesh_.initialize(rotor, upload_);
         CpuColorMeshData steam, spark;
         const float steam_material = static_cast<float>(RelayCore::surface_material_count() + 1);
         const float emissive_material = steam_material + 1;
         rect(steam, 0, 0, 1, 1, color({0.65F, 0.68F, 0.66F}), steam_material);
         rect(spark, 0, 0, 0.012F, 0.12F, color({1.0F, 0.59F, 0.17F}), emissive_material);
-        steam_mesh_.initialize(steam);
-        spark_mesh_.initialize(spark);
+        steam_mesh_.initialize(steam, upload_);
+        spark_mesh_.initialize(spark, upload_);
         for (int i = 0; i < 16; ++i)
         {
             CpuColorMeshData lamp;
             const float value = 0.055F + static_cast<float>(i) / 15 * 0.88F;
             rect(lamp, 0, 0, 0.56F, 0.18F, color({value * 0.95F, value, value * 0.91F}), emissive_material);
-            lamp_meshes_[static_cast<std::size_t>(i)].initialize(lamp);
+            lamp_meshes_[static_cast<std::size_t>(i)].initialize(lamp, upload_);
         }
         const auto paint = color({0.72F, 0.65F, 0.37F});
         for (std::size_t i = 0; i < decal_meshes_.size(); ++i)
@@ -156,7 +156,7 @@ namespace RelayGame
                             );
                 }
             }
-            decal_meshes_[i].initialize(decal);
+            decal_meshes_[i].initialize(decal, upload_);
         }
     }
 

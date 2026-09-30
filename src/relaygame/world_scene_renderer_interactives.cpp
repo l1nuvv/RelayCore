@@ -177,6 +177,17 @@ namespace RelayGame
         float cycle_remaining_seconds
     )
     {
+        const auto items = prepare_shotgun_viewmodel(camera, cycle_remaining_seconds);
+        for (const auto& item : items)
+            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(*item.mesh));
+        renderer.draw_viewmodel(items);
+    }
+
+    auto WorldSceneRenderer::prepare_shotgun_viewmodel(
+        const RelayCore::render::PerspectiveCamera& camera,
+        float cycle_remaining_seconds
+    ) -> std::array<RelayCore::render::RenderItem, 2>
+    {
         const float elapsed = .85F - cycle_remaining_seconds;
         const float recoil =
             cycle_remaining_seconds > 0 ? std::sin(glm::pi<float>() * glm::clamp(elapsed / .14F, 0.0F, 1.0F)) : 0;
@@ -207,9 +218,7 @@ namespace RelayGame
                 false
             }
         };
-        for (const auto& item : items)
-            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(*item.mesh));
-        renderer.draw_viewmodel(items);
+        return items;
     }
 
     void WorldSceneRenderer::render_doors(

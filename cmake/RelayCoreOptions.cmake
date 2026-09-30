@@ -63,6 +63,7 @@ macro(relaycore_initialize_project)
     option(RELAYCORE_ENABLE_ASAN "Enable AddressSanitizer flags for Asan builds" ON)
     option(RELAYCORE_ENABLE_TRACY "Enable Tracy instrumentation and linking" OFF)
     option(RELAYCORE_ENABLE_MSVC_ANALYZE "Enable MSVC /analyze static analysis" OFF)
+    option(RELAYCORE_ENABLE_VULKAN_VALIDATION "Require Vulkan validation and debug-utils in Debug/Asan Vulkan startup and checks" ON)
 
     check_ipo_supported(
         RESULT RELAYCORE_IPO_SUPPORTED
@@ -140,7 +141,8 @@ function(relaycore_apply_standard_target_settings target_name)
 
         if(RELAYCORE_ENABLE_ASAN)
             target_compile_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
-            target_link_options("${target_name}" PRIVATE $<$<CONFIG:Asan>:/fsanitize=address>)
+            # Match the STL ABI of prebuilt vcpkg libraries; address instrumentation remains enabled.
+            target_compile_definitions("${target_name}" PRIVATE $<$<CONFIG:Asan>:_DISABLE_STL_ANNOTATION>)
 
             get_target_property(target_type "${target_name}" TYPE)
             if(target_type STREQUAL "EXECUTABLE")

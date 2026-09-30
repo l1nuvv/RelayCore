@@ -2,10 +2,10 @@
 
 ## Project contract
 
-- RelayCore is a small C++20 engine-learning project: a GoldSource-inspired indoor FPS vertical slice, not a general-purpose engine and not a historical recreation.
+- RelayCore is a custom C++20 engine and GoldSource-inspired indoor FPS product, not a historical recreation or a general-purpose framework. Keep it understandable, debuggable, profileable, and shippable under one-developer direction even when implementation is agent-assisted.
 - Optimize for a codebase one developer can understand, debug, profile, and keep shipping.
 - Prefer a small working vertical slice over framework-building, speculative generality, or architecture for hypothetical future features.
-- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Runtime stack includes SDL3/OpenGL; tests use doctest; performance work uses Tracy.
+- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime uses SDL3/OpenGL 4.6; direct Vulkan is the approved target backend and OpenGL is the temporary migration reference. Tests use doctest; performance work uses Tracy.
 
 ## Design and engineering knowledge
 
@@ -32,6 +32,9 @@
 ## Evidence and scope
 
 - For work on gameplay development, project direction, or the next milestone, read `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical RC/RF/status documents are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
+- For engine/world architecture, asset pipeline, rendering/physics world capabilities, or Source/Source 2 compatibility work, read `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. It is the long-term architecture/capability reference, not an automatic task queue.
+- For Vulkan/backend migration work, also read `docs/VULKAN_MIGRATION_PLAN.md` and operate only within the requested phase/gate. Do not mix parity migration with new renderer architecture unless the phase explicitly requires it.
+- For dependency selection, replacement, addition/removal, version/baseline changes, or third-party subsystem foundations, read `docs/DEPENDENCY_STACK.md`. It records approved responsibilities and staged integration; it is not permission to add future dependencies before their owning milestone.
 
 - Start with the files named by the task, their nearest tests, and direct call sites.
 - Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
@@ -47,7 +50,9 @@
 - Do not mix feature/fix work with unrelated cleanup, renames, reformatting, dependency changes, or speculative refactors.
 - Preserve current module boundaries. Engine code must not depend on game-specific code; rendering consumes prepared data and must not own gameplay rules; debug/UI code must not become required runtime architecture.
 - Prefer explicit ownership, RAII, typed runtime data, direct calls, clear update order, local state changes, and visible failure modes.
-- Do not add a new dependency, ECS, render graph, editor framework, scripting runtime, networking layer, job system, or generalized abstraction unless the task demonstrates a concrete need.
+- Do not add a new dependency, ECS, render graph, editor framework, scripting runtime, networking layer, job system, or generalized abstraction unless the task demonstrates a concrete need. Dependencies assigned a responsibility by `docs/DEPENDENCY_STACK.md`, `docs/ENGINE_ARCHITECTURE_REFERENCE.md`, or `docs/VULKAN_MIGRATION_PLAN.md` are approved only when their owning milestone begins; do not add them early or replace a working foundation merely to make the stack look more modern.
+- Keep third-party implementation types behind the subsystem/tool that owns them. Do not let `JPH::*`, Recast/Detour types, fastgltf types, Vulkan handles, or importer-library types become generic gameplay/world/save/asset-schema contracts.
+- If a required vcpkg port is materially stale, prefer a repository-local overlay port pinned to an exact release/commit. Do not introduce unpinned `FetchContent` or global package state as a shortcut.
 - Do not silently change public behavior, authored formats, runtime paths, presets, CI behavior, dependency baselines, or tool versions.
 - Invalid authored/config data should fail with actionable diagnostics unless existing behavior explicitly defines a fallback. Do not hide bad data with new clamps or silent defaults.
 - Match existing naming and C++ style. Keep headers light. Comments explain non-obvious intent or invariants, not syntax.

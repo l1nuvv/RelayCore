@@ -11,7 +11,10 @@ namespace RelayCore::render
         reset();
     }
 
-    Texture2D::Texture2D(Texture2D&& other) noexcept : texture_id_(std::exchange(other.texture_id_, 0)) {}
+    Texture2D::Texture2D(Texture2D&& other) noexcept :
+        texture_id_(std::exchange(other.texture_id_, 0)), cpu_data_(std::move(other.cpu_data_)),
+        encoding_(other.encoding_)
+    {}
 
     auto Texture2D::operator=(Texture2D&& other) noexcept -> Texture2D&
     {
@@ -19,6 +22,8 @@ namespace RelayCore::render
         {
             reset();
             texture_id_ = std::exchange(other.texture_id_, 0);
+            cpu_data_ = std::move(other.cpu_data_);
+            encoding_ = other.encoding_;
         }
 
         return *this;
@@ -28,7 +33,8 @@ namespace RelayCore::render
         const int width,
         const int height,
         const std::span<const std::uint8_t> pixels,
-        const TextureEncoding encoding
+        const TextureEncoding encoding,
+        const ResourceUpload upload
     )
     {
         if (width <= 0 || height <= 0)
@@ -41,6 +47,13 @@ namespace RelayCore::render
         }
 
         reset();
+        encoding_ = encoding;
+        if (upload == ResourceUpload::cpu)
+        {
+            cpu_data_ =
+                std::make_shared<CpuRgbaTextureData>(CpuRgbaTextureData{width, height, {pixels.begin(), pixels.end()}});
+            return;
+        }
         glGenTextures(1, &texture_id_);
         if (texture_id_ == 0)
         {
@@ -68,11 +81,12 @@ namespace RelayCore::render
 
     auto Texture2D::valid() const noexcept -> bool
     {
-        return texture_id_ != 0;
+        return texture_id_ != 0 || cpu_data_ != nullptr;
     }
 
     void Texture2D::reset() noexcept
     {
+        cpu_data_.reset();
         if (texture_id_ != 0)
         {
             glDeleteTextures(1, &texture_id_);

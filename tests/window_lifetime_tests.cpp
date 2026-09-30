@@ -151,6 +151,28 @@ int main()
             if (!SDL_GetWindowSize(small.handle(), &width, &height) || width != 320 || height != 240
                 || (SDL_GetWindowFlags(small.handle()) & SDL_WINDOW_MAXIMIZED))
                 throw std::runtime_error("Window that fits the display did not retain its requested size");
+
+            {
+                RelayCore::Window vulkan{
+                    RelayCore::WindowConfig{.width = 64, .height = 64},
+                    RelayCore::render::ColorPipelineMode::legacy_gamma,
+                    RelayCore::WindowGraphicsApi::vulkan
+                };
+                if (vulkan.gl_context() != nullptr || SDL_GL_GetCurrentContext() != small.gl_context())
+                    throw std::runtime_error("Vulkan window changed the current OpenGL context");
+                bool rejected_gl_query = false;
+                try
+                {
+                    static_cast<void>(vulkan.swap_interval());
+                } catch (const std::logic_error&)
+                {
+                    rejected_gl_query = true;
+                }
+                if (!rejected_gl_query)
+                    throw std::runtime_error("Vulkan window queried another window's OpenGL swap interval");
+            }
+            if (SDL_GL_GetCurrentContext() != small.gl_context() || !SDL_GL_SwapWindow(small.handle()))
+                throw std::runtime_error("OpenGL presentation did not survive Vulkan window destruction");
         } catch (const std::exception& error)
         {
             std::cerr << "Window display fit failed: " << error.what() << '\n';

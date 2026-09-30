@@ -10,6 +10,13 @@ macro(relaycore_find_dependencies)
     endif()
 
     find_package(imgui CONFIG REQUIRED)
+    find_package(Vulkan REQUIRED)
+    find_package(vk-bootstrap CONFIG REQUIRED)
+    find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+    find_package(slang CONFIG REQUIRED)
+
+    message(STATUS "Vulkan headers: ${Vulkan_VERSION}; loader: ${Vulkan_LIBRARY}")
+    message(STATUS "Slang compiler: ${SLANGC_EXECUTABLE}")
 
     find_path(RELAYCORE_TOMLPLUSPLUS_INCLUDE_DIR toml++/toml.hpp REQUIRED)
     find_path(RELAYCORE_MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)

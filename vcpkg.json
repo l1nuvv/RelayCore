@@ -1,7 +1,7 @@
 {
   "name": "relaycore",
   "version-string": "1.3.4",
-  "builtin-baseline": "40f3c709db80acf154ac4b17a1f83c564ebd022e",
+  "builtin-baseline": "a42757564758c60651ebc616d9b000b7b91249ef",
   "description": "Starter project for a small retro indoor FPS / engine-programming prototype using SDL3, OpenGL, GLM, spdlog, ImGui, miniaudio, doctest, Tracy, and toml++.",
   "license": "MIT",
   "supports": "windows",
@@ -13,13 +13,23 @@
       "default-features": false,
       "features": [
         "opengl3-binding",
-        "sdl3-binding"
+        "sdl3-binding",
+        "vulkan-binding"
       ]
     },
     "miniaudio",
-    "sdl3",
+    {
+      "name": "sdl3",
+      "features": ["vulkan"]
+    },
+    {
+      "name": "shader-slang",
+      "host": true
+    },
     "spdlog",
     "tomlplusplus",
-    "tracy"
+    "tracy",
+    "vk-bootstrap",
+    "vulkan-memory-allocator"
   ]
 }

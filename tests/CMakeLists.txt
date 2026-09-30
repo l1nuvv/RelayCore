@@ -30,6 +30,17 @@ target_link_libraries(relaycore_episode_profile PRIVATE RelayGame::runtime Relay
 set_target_properties(relaycore_episode_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_graphics_baseline)
 add_executable(relaycore_window_lifetime_tests window_lifetime_tests.cpp)
+add_executable(relaycore_vulkan_window_tests vulkan_window_tests.cpp)
+add_executable(relaycore_vulkan_device_tests vulkan_device_tests.cpp)
+add_executable(relaycore_vulkan_presentation_tests vulkan_presentation_tests.cpp)
+add_executable(relaycore_vulkan_upload_tests vulkan_upload_tests.cpp)
+add_executable(relaycore_vulkan_mesh_tests vulkan_mesh_tests.cpp)
+target_link_libraries(relaycore_vulkan_mesh_tests PRIVATE
+    RelayGame::runtime RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+target_compile_definitions(relaycore_vulkan_mesh_tests PRIVATE
+    RELAYCORE_TEST_SPIRV_DIRECTORY="${RELAYCORE_SPIRV_DIRECTORY}")
+add_dependencies(relaycore_vulkan_mesh_tests relaycore_vulkan_shaders)
+set_target_properties(relaycore_vulkan_mesh_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_power_restoration_graphics
     power_restoration_graphics.cpp
 )
@@ -42,6 +53,10 @@ set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_graphics_baseline PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_window_lifetime_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_vulkan_window_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_vulkan_device_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_vulkan_presentation_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+set_target_properties(relaycore_vulkan_upload_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 
 target_sources(
     relaycore_tests
@@ -133,6 +148,19 @@ find_package(doctest CONFIG REQUIRED)
 include(doctest)
 
 target_link_libraries(relaycore_window_lifetime_tests PRIVATE RelayCore::engine)
+target_link_libraries(relaycore_vulkan_window_tests PRIVATE RelayCore::engine)
+target_link_libraries(relaycore_vulkan_device_tests PRIVATE
+    RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+target_compile_definitions(relaycore_vulkan_device_tests PRIVATE
+    RELAYCORE_VULKAN_VALIDATION=$<AND:$<BOOL:${RELAYCORE_ENABLE_VULKAN_VALIDATION}>,$<OR:$<CONFIG:Debug>,$<CONFIG:Asan>>>)
+
+target_link_libraries(relaycore_vulkan_presentation_tests PRIVATE
+    RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+target_link_libraries(relaycore_vulkan_upload_tests PRIVATE
+    RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+if(WIN32)
+    target_link_libraries(relaycore_vulkan_presentation_tests PRIVATE gdi32 user32)
+endif()
 
 add_executable(relaycore_default_framebuffer_probe default_framebuffer_srgb_probe.cpp)
 target_link_libraries(relaycore_default_framebuffer_probe PRIVATE
@@ -146,6 +174,11 @@ foreach(test_target IN ITEMS
     relaycore_content_validation
     relaycore_graphics_baseline
     relaycore_window_lifetime_tests
+    relaycore_vulkan_window_tests
+    relaycore_vulkan_device_tests
+    relaycore_vulkan_presentation_tests
+    relaycore_vulkan_upload_tests
+    relaycore_vulkan_mesh_tests
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
     relaycore_episode_profile
@@ -174,6 +207,64 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
 )
 
 add_test(NAME graphics.window_lifetime COMMAND relaycore_window_lifetime_tests)
+add_test(NAME graphics.vulkan_window COMMAND relaycore_vulkan_window_tests)
+add_test(NAME graphics.vulkan_device COMMAND relaycore_vulkan_device_tests)
+add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation_tests)
+add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
+add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
+set_tests_properties(graphics.vulkan_mesh PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    TIMEOUT 180
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_mesh_tests>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_tests_properties(graphics.vulkan_upload PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    TIMEOUT 120
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_upload_tests>"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed"
+)
+add_test(NAME graphics.vulkan_recreation_failure COMMAND relaycore_vulkan_presentation_tests --allocation-failure)
+set_tests_properties(graphics.vulkan_presentation graphics.vulkan_recreation_failure PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    TIMEOUT 120
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_presentation_tests>"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed"
+)
+# OBS retries failed vkCreateSwapchainKHR with an already retired oldSwapchain.
+# Isolate native allocation failure injection; the normal presentation test retains installed hooks.
+set_tests_properties(graphics.vulkan_recreation_failure PROPERTIES ENVIRONMENT "DISABLE_VULKAN_OBS_CAPTURE=1")
+set_tests_properties(graphics.vulkan_device PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_device_tests>"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan device shutdown failed"
+)
+if(RELAYCORE_ENABLE_VULKAN_VALIDATION AND CMAKE_BUILD_TYPE MATCHES "^(Debug|Asan)$")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/empty-vulkan-layers")
+    add_test(NAME graphics.vulkan_missing_validation
+        COMMAND relaycore_vulkan_device_tests --expect-missing-validation)
+    set_tests_properties(graphics.vulkan_missing_validation PROPERTIES
+        LABELS "integration;graphics"
+        RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_device_tests>"
+        ENVIRONMENT "VK_LAYER_PATH=${CMAKE_CURRENT_BINARY_DIR}/empty-vulkan-layers"
+    )
+endif()
+set_tests_properties(graphics.vulkan_window PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_window_tests>"
+)
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
 set_tests_properties(graphics.game_lifecycle PROPERTIES
     LABELS "integration;graphics"

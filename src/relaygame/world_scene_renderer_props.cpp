@@ -136,12 +136,12 @@ namespace RelayGame
 
     void WorldSceneRenderer::initialize_prop_meshes(const RelayCore::render::ColorPipelineMode pipeline)
     {
-        const auto upload = [pipeline](RelayCore::render::StaticColorMesh& mesh, CpuColorMeshData data) {
+        const auto upload = [this, pipeline](RelayCore::render::StaticColorMesh& mesh, CpuColorMeshData data) {
             for (auto& vertex : data.vertices)
             {
                 vertex.color = RelayCore::render::visual_rgb_for_pipeline(vertex.color, pipeline);
             }
-            mesh.initialize(data);
+            mesh.initialize(data, upload_);
         };
         CpuColorMeshData housing;
         box(housing, {0, 0, -0.025F}, {1, 1, 0.10F}, {0.23F, 0.26F, 0.24F});
