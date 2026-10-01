@@ -354,7 +354,8 @@ namespace RelayCore::render
             VulkanMeshRenderer* renderer = nullptr,
             const std::span<const RenderItem> items = {},
             const PerspectiveCamera* camera = nullptr,
-            const std::span<const RenderItem> viewmodel = {}
+            const std::span<const RenderItem> viewmodel = {},
+            ImDrawData* ui = nullptr
         ) -> bool
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan frame");
@@ -369,7 +370,8 @@ namespace RelayCore::render
                 return false;
             const auto scene_image =
                 renderer
-                    ? renderer->render_color_image(device.handle(), items, *camera, active->swapchain.extent, viewmodel)
+                    ? renderer
+                          ->render_color_image(device.handle(), items, *camera, active->swapchain.extent, viewmodel, ui)
                     : VK_NULL_HANDLE;
             auto& frame = frames[frame_index];
             wait_frame(frame);
@@ -510,12 +512,13 @@ namespace RelayCore::render
         VulkanMeshRenderer& renderer,
         const std::span<const RenderItem> items,
         const PerspectiveCamera& camera,
-        const std::span<const RenderItem> viewmodel
+        const std::span<const RenderItem> viewmodel,
+        ImDrawData* ui
     ) -> bool
     {
         try
         {
-            return state_->draw_clear({0, 0, 0, 1}, &renderer, items, &camera, viewmodel);
+            return state_->draw_clear({0, 0, 0, 1}, &renderer, items, &camera, viewmodel, ui);
         } catch (...)
         {
             state_->stopped = true;

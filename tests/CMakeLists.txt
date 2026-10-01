@@ -36,7 +36,7 @@ add_executable(relaycore_vulkan_presentation_tests vulkan_presentation_tests.cpp
 add_executable(relaycore_vulkan_upload_tests vulkan_upload_tests.cpp)
 add_executable(relaycore_vulkan_mesh_tests vulkan_mesh_tests.cpp)
 target_link_libraries(relaycore_vulkan_mesh_tests PRIVATE
-    RelayGame::runtime RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+    RelayGame::runtime RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator ${RELAYCORE_IMGUI_TARGET})
 target_compile_definitions(relaycore_vulkan_mesh_tests PRIVATE
     RELAYCORE_TEST_SPIRV_DIRECTORY="${RELAYCORE_SPIRV_DIRECTORY}")
 add_dependencies(relaycore_vulkan_mesh_tests relaycore_vulkan_shaders)

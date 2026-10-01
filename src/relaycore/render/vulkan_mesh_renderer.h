@@ -7,22 +7,26 @@
 #include <memory>
 #include <vulkan/vulkan.h>
 
+struct ImDrawData;
+
 namespace RelayCore::render
 {
     class VulkanDevice;
     class PerspectiveCamera;
     struct RenderAuthoringConfig;
+    struct RendererConfig;
 
     class VulkanMeshRenderer {
     public:
-        // Isolated migration path: opaque mesh/atlas/OBJ parity, before lighting and UI migration.
+        // Isolated migration path: render queue and optional UI parity, before lighting migration.
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
         VulkanMeshRenderer(
             const VulkanDevice& device,
             const std::filesystem::path& shader_directory,
             const RenderAuthoringConfig& authoring,
             const CpuRgbaTextureData& atlas,
-            TextureEncoding encoding
+            TextureEncoding encoding,
+            const RendererConfig& config
         );
         ~VulkanMeshRenderer() noexcept;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
@@ -34,7 +38,8 @@ namespace RelayCore::render
             const PerspectiveCamera& camera,
             int width,
             int height,
-            std::span<const RenderItem> viewmodel = {}
+            std::span<const RenderItem> viewmodel = {},
+            ImDrawData* ui = nullptr
         ) -> CpuRgbaTextureData;
         // Stages both shader modules/pipeline; failed reload retains the previous working pipeline.
         void reload_shaders(const std::filesystem::path& shader_directory);
@@ -46,7 +51,8 @@ namespace RelayCore::render
             std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
             VkExtent2D extent,
-            std::span<const RenderItem> viewmodel
+            std::span<const RenderItem> viewmodel,
+            ImDrawData* ui
         ) -> VkImage;
         struct State;
         std::unique_ptr<State> state_;

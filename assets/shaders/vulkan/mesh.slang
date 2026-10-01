@@ -4,11 +4,15 @@ struct DrawData
     float4 modelRow0;
     float4 modelRow1;
     float4 modelRow2;
-    uint modelTextured;
+    // Bit 0 selects the model texture; bit 1 enables transparent material alpha.
+    uint flags;
+    float cameraX;
+    float cameraY;
+    float cameraZ;
 };
 [[vk::push_constant]] ConstantBuffer<DrawData> draw;
 
-struct MaterialData { float4 atlas[32]; };
+struct MaterialData { float4 atlas[32]; float4 scene; };
 [[vk::binding(0, 0)]] ConstantBuffer<MaterialData> materials;
 [[vk::binding(1, 0)]] Sampler2D diffuse;
 
@@ -30,6 +34,7 @@ struct Varying
     float3 objectNormal;
     float2 uv;
     nointerpolation uint material;
+    float fogDistance;
 };
 
 [shader("vertex")]
@@ -46,12 +51,13 @@ Varying vertex_main(Vertex input)
     float3 b = float3(draw.modelRow0.y, draw.modelRow1.y, draw.modelRow2.y);
     float3 c = float3(draw.modelRow0.z, draw.modelRow1.z, draw.modelRow2.z);
     float determinant = dot(a, cross(b, c));
-    output.worldNormal = (cross(b, c) * input.normal.x + cross(c, a) * input.normal.y
-                         + cross(a, b) * input.normal.z) / determinant;
+    output.worldNormal = normalize((cross(b, c) * input.normal.x + cross(c, a) * input.normal.y
+                                  + cross(a, b) * input.normal.z) / determinant);
     output.objectPosition = input.position;
     output.objectNormal = input.normal;
     output.uv = input.uv;
     output.material = uint(input.material + 0.5);
+    output.fogDistance = distance(output.worldPosition, float3(draw.cameraX, draw.cameraY, draw.cameraZ));
     return output;
 }
 
@@ -66,9 +72,21 @@ float2 surface_uv(float3 position, float3 normal)
 [shader("fragment")]
 float4 fragment_main(Varying input) : SV_Target
 {
-    if (draw.modelTextured != 0)
-        return float4(diffuse.Sample(input.uv).rgb * input.color, 1);
     uint id = input.material;
+    if (id == uint(materials.scene.z) + 1)
+        return float4(input.color, (1 - smoothstep(0.05, 0.5, length(input.objectPosition.xy))) * 0.16);
+    float alpha = 1;
+    if ((draw.flags & 2) != 0 && id < 32 && materials.atlas[id].z != 0)
+    {
+        float3 view = float3(draw.cameraX, draw.cameraY, draw.cameraZ) - input.worldPosition;
+        float lengthSquared = dot(view, view);
+        view = lengthSquared <= 0.000001 ? float3(0, 0, 1) : view * rsqrt(lengthSquared);
+        float fresnel = pow(1 - saturate(abs(dot(normalize(input.worldNormal), view))), 2.6);
+        float fog = saturate((input.fogDistance - materials.scene.x) / max(materials.scene.y - materials.scene.x, 0.001));
+        alpha = clamp(0.16 + fresnel * 0.34 + fog * 0.08, 0.14, 0.52);
+    }
+    if ((draw.flags & 1) != 0)
+        return float4(diffuse.Sample(input.uv).rgb * input.color, alpha);
     if (id >= 32) return float4(input.color, 1);
     bool clothing = id >= 23 && id <= 26;
     float2 uv = clothing ? surface_uv(input.objectPosition, normalize(input.objectNormal))
@@ -80,5 +98,5 @@ float4 fragment_main(Varying input) : SV_Target
     float2 atlasUV = origin + gutter + frac(uv / scale) * (tileSize - 2 * gutter);
     float2 gradient = float2(0.875 / 8, 0.875 / 4) / scale;
     float3 sample = diffuse.SampleGrad(atlasUV, ddx(uv) * gradient, ddy(uv) * gradient).rgb;
-    return float4(lerp(input.color, input.color * sample, materials.atlas[id].y), 1);
+    return float4(lerp(input.color, input.color * sample, materials.atlas[id].y), alpha);
 }

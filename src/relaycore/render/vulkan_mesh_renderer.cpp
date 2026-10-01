@@ -1,5 +1,6 @@
 #include "relaycore/render/vulkan_mesh_renderer.h"
 
+#include "relaycore/core/engine_config.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/render/vulkan_device.h"
@@ -9,6 +10,7 @@
 #include <array>
 #include <cstdio>
 #include <fstream>
+#include <imgui_impl_vulkan.h>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -27,11 +29,13 @@ namespace RelayCore::render
         struct DrawPush {
             glm::mat4 mvp;
             std::array<glm::vec4, 3> model_rows;
-            uint32_t model_textured;
+            uint32_t flags;
+            std::array<float, 3> camera_position;
         };
         static_assert(offsetof(DrawPush, model_rows) == 64);
-        static_assert(offsetof(DrawPush, model_textured) == 112);
-        static_assert(sizeof(DrawPush) == 116);
+        static_assert(offsetof(DrawPush, flags) == 112);
+        static_assert(offsetof(DrawPush, camera_position) == 116);
+        static_assert(sizeof(DrawPush) == 128);
 
         struct MeshImage {
             const VulkanDevice& device;
@@ -172,7 +176,7 @@ namespace RelayCore::render
         std::unordered_map<const CpuRgbaTextureData*, std::unique_ptr<Material>> materials;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
-        VkPipeline pipeline = VK_NULL_HANDLE;
+        std::array<VkPipeline, 3> pipelines{};
         VkCommandPool pool = VK_NULL_HANDLE;
         VkCommandBuffer commands = VK_NULL_HANDLE;
         VkFence fence = VK_NULL_HANDLE;
@@ -182,7 +186,7 @@ namespace RelayCore::render
 
         explicit State(const VulkanDevice& owner) :
             device(owner), uploads(owner),
-            material_data(owner, sizeof(glm::vec4) * 32, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload)
+            material_data(owner, sizeof(glm::vec4) * 33, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload)
         {}
 
         void wait()
@@ -209,8 +213,9 @@ namespace RelayCore::render
             if (fence)
                 vkDestroyFence(device.handle(), fence, nullptr);
             materials.clear();
-            if (pipeline)
-                vkDestroyPipeline(device.handle(), pipeline, nullptr);
+            for (const auto pipeline : pipelines)
+                if (pipeline)
+                    vkDestroyPipeline(device.handle(), pipeline, nullptr);
             if (layout)
                 vkDestroyPipelineLayout(device.handle(), layout, nullptr);
             if (descriptor_layout)
@@ -220,7 +225,8 @@ namespace RelayCore::render
         void initialize(
             const RenderAuthoringConfig& authoring,
             const CpuRgbaTextureData& atlas,
-            const TextureEncoding encoding
+            const TextureEncoding encoding,
+            const RendererConfig& config
         )
         {
             VkPhysicalDeviceProperties properties{};
@@ -233,16 +239,28 @@ namespace RelayCore::render
                 throw std::runtime_error("Vulkan mesh renderer requires D32_SFLOAT depth attachments");
             VkFormatProperties color_properties{};
             vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &color_properties);
-            constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT
-                                            | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+            constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+                                            | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT
+                                            | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
             if ((color_properties.optimalTilingFeatures & color_features) != color_features)
                 throw std::runtime_error(
-                    "Vulkan mesh renderer requires RGBA8 UNORM color attachment/readback/blit support"
+                    "Vulkan mesh renderer requires RGBA8 UNORM color attachment/blend/readback/blit support"
                 );
-            std::array<glm::vec4, 32> parameters{};
+            std::array<glm::vec4, 33> parameters{};
             static_assert(surface_material_count() <= 32);
             for (size_t i = 0; i < authoring.materials.size(); ++i)
-                parameters[i] = {authoring.materials[i].atlas_world_scale, authoring.materials[i].atlas_mix, 0, 0};
+                parameters[i] = {
+                    authoring.materials[i].atlas_world_scale,
+                    authoring.materials[i].atlas_mix,
+                    authoring.materials[i].render_profile == MaterialRenderProfile::Glass ? 1.0F : 0.0F,
+                    0
+                };
+            parameters[32] = {
+                config.fog_enabled ? config.fog_start : config.camera.far_plane,
+                config.fog_enabled ? config.fog_end : config.camera.far_plane,
+                static_cast<float>(surface_material_count()),
+                0
+            };
             material_data.write(std::as_bytes(std::span{parameters}));
             atlas_source.initialize_rgba(atlas.width, atlas.height, atlas.pixels, encoding, ResourceUpload::cpu);
             const std::array bindings{
@@ -311,7 +329,7 @@ namespace RelayCore::render
             );
         }
 
-        auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
+        auto create_pipeline(const std::filesystem::path& directory, const RenderPass pass) const -> VkPipeline
         {
             MeshShaders shaders{device.handle()};
             shaders.vertex = shaders.load(directory / "mesh.vert.spv", "vertex_main");
@@ -357,7 +375,8 @@ namespace RelayCore::render
             const VkPipelineRasterizationStateCreateInfo raster{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                 .polygonMode = VK_POLYGON_MODE_FILL,
-                .cullMode = VK_CULL_MODE_BACK_BIT,
+                .cullMode = pass == RenderPass::Opaque ? VkCullModeFlags{VK_CULL_MODE_BACK_BIT}
+                                                       : VkCullModeFlags{VK_CULL_MODE_NONE},
                 .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
                 .lineWidth = 1,
             };
@@ -368,10 +387,17 @@ namespace RelayCore::render
             const VkPipelineDepthStencilStateCreateInfo depth{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 .depthTestEnable = VK_TRUE,
-                .depthWriteEnable = VK_TRUE,
+                .depthWriteEnable = pass == RenderPass::Opaque ? VK_TRUE : VK_FALSE,
                 .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
             };
             const VkPipelineColorBlendAttachmentState blend_attachment{
+                .blendEnable = pass == RenderPass::Opaque ? VK_FALSE : VK_TRUE,
+                .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
                 .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT
                                   | VK_COLOR_COMPONENT_A_BIT,
             };
@@ -515,17 +541,23 @@ namespace RelayCore::render
         void prepare(const std::span<const RenderItem> items)
         {
             for (const auto& item : items)
-                if (item.pass == RenderPass::Opaque && item.mesh)
+                if (item.mesh)
                 {
                     static_cast<void>(mesh(*item.mesh));
                     static_cast<void>(material(item.diffuse_texture ? *item.diffuse_texture : atlas_source));
                 }
         }
-        void draw(const std::span<const RenderItem> items, const PerspectiveCamera& camera)
+        void draw(
+            const std::span<const RenderItem> items,
+            const PerspectiveCamera& camera,
+            const RenderPass pass,
+            const bool viewmodel = false
+        )
         {
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[static_cast<size_t>(pass)]);
             for (const auto& item : items)
             {
-                if (item.pass != RenderPass::Opaque || !item.mesh)
+                if ((!viewmodel && item.pass != pass) || !item.mesh)
                     continue;
                 const auto& geometry = meshes.at(item.mesh->cpu_data().get());
                 const auto& texture = item.diffuse_texture ? *item.diffuse_texture : atlas_source;
@@ -535,7 +567,13 @@ namespace RelayCore::render
                 vkCmdBindVertexBuffers(commands, 0, 1, &vertex, &offset);
                 vkCmdBindIndexBuffer(commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
                 vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
-                DrawPush push{camera.view_projection_matrix() * item.model_matrix, {}, item.diffuse_texture ? 1U : 0U};
+                const auto position = camera.position();
+                DrawPush push{
+                    camera.view_projection_matrix() * item.model_matrix,
+                    {},
+                    (item.diffuse_texture ? 1U : 0U) | (pass == RenderPass::Transparent ? 2U : 0U),
+                    {position.x, position.y, position.z}
+                };
                 for (int row = 0; row < 3; ++row)
                     for (int col = 0; col < 4; ++col)
                         push.model_rows[row][col] = item.model_matrix[col][row];
@@ -557,7 +595,8 @@ namespace RelayCore::render
             const int width,
             const int height,
             const std::span<const RenderItem> viewmodel,
-            const bool capture
+            const bool capture,
+            ImDrawData* ui
         ) -> CpuRgbaTextureData
         {
             if (width <= 0 || height <= 0)
@@ -652,9 +691,9 @@ namespace RelayCore::render
             const VkRect2D scissor{{0, 0}, extent};
             vkCmdSetViewport(commands, 0, 1, &viewport);
             vkCmdSetScissor(commands, 0, 1, &scissor);
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
             vkCmdBeginRendering(commands, &rendering);
-            draw(items, camera);
+            for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                draw(items, camera, pass);
             vkCmdEndRendering(commands);
             if (!viewmodel.empty())
             {
@@ -676,7 +715,29 @@ namespace RelayCore::render
                 vkCmdPipelineBarrier2(commands, &reuse_info);
                 color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 vkCmdBeginRendering(commands, &rendering);
-                draw(viewmodel, camera);
+                draw(viewmodel, camera, RenderPass::Opaque, true);
+                vkCmdEndRendering(commands);
+            }
+            if (ui)
+            {
+                const VkMemoryBarrier2 reuse{
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+                };
+                const VkDependencyInfo reuse_info{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .memoryBarrierCount = 1,
+                    .pMemoryBarriers = &reuse
+                };
+                vkCmdPipelineBarrier2(commands, &reuse_info);
+                color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                auto ui_rendering = rendering;
+                ui_rendering.pDepthAttachment = nullptr;
+                vkCmdBeginRendering(commands, &ui_rendering);
+                ImGui_ImplVulkan_RenderDrawData(ui, commands);
                 vkCmdEndRendering(commands);
             }
             auto& transfer = barriers[0];
@@ -741,10 +802,11 @@ namespace RelayCore::render
         const std::filesystem::path& shader_directory,
         const RenderAuthoringConfig& authoring,
         const CpuRgbaTextureData& atlas,
-        const TextureEncoding encoding
+        const TextureEncoding encoding,
+        const RendererConfig& config
     ) : state_(std::make_unique<State>(device))
     {
-        state_->initialize(authoring, atlas, encoding);
+        state_->initialize(authoring, atlas, encoding, config);
         reload_shaders(shader_directory);
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
@@ -752,27 +814,41 @@ namespace RelayCore::render
     void VulkanMeshRenderer::reload_shaders(const std::filesystem::path& directory)
     {
         state_->wait();
-        const auto replacement = state_->create_pipeline(directory);
-        if (state_->pipeline)
-            vkDestroyPipeline(state_->device.handle(), state_->pipeline, nullptr);
-        state_->pipeline = replacement;
+        std::array<VkPipeline, 3> replacement{};
+        try
+        {
+            for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                replacement[static_cast<size_t>(pass)] = state_->create_pipeline(directory, pass);
+        } catch (...)
+        {
+            for (const auto pipeline : replacement)
+                if (pipeline)
+                    vkDestroyPipeline(state_->device.handle(), pipeline, nullptr);
+            throw;
+        }
+        for (const auto pipeline : state_->pipelines)
+            if (pipeline)
+                vkDestroyPipeline(state_->device.handle(), pipeline, nullptr);
+        state_->pipelines = replacement;
     }
     auto VulkanMeshRenderer::render_image(
         const std::span<const RenderItem> items,
         const PerspectiveCamera& camera,
         const int width,
         const int height,
-        const std::span<const RenderItem> viewmodel
+        const std::span<const RenderItem> viewmodel,
+        ImDrawData* ui
     ) -> CpuRgbaTextureData
     {
-        return state_->render(items, camera, width, height, viewmodel, true);
+        return state_->render(items, camera, width, height, viewmodel, true, ui);
     }
     auto VulkanMeshRenderer::render_color_image(
         const VkDevice presenting_device,
         const std::span<const RenderItem> items,
         const PerspectiveCamera& camera,
         const VkExtent2D extent,
-        const std::span<const RenderItem> viewmodel
+        const std::span<const RenderItem> viewmodel,
+        ImDrawData* ui
     ) -> VkImage
     {
         if (presenting_device != state_->device.handle())
@@ -783,7 +859,8 @@ namespace RelayCore::render
             static_cast<int>(extent.width),
             static_cast<int>(extent.height),
             viewmodel,
-            false
+            false,
+            ui
         ));
         return state_->target->color.image;
     }

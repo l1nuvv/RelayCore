@@ -5,6 +5,8 @@
 #include <span>
 #include <vulkan/vulkan.h>
 
+struct ImDrawData;
+
 namespace RelayCore
 {
     class Window;
@@ -38,7 +40,8 @@ namespace RelayCore::render
             VulkanMeshRenderer& renderer,
             std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
-            std::span<const RenderItem> viewmodel = {}
+            std::span<const RenderItem> viewmodel = {},
+            ImDrawData* ui = nullptr
         ) -> bool;
         // Explicit recovery after a failed recreation; never acquires from a retired swapchain.
         void recreate();

@@ -458,6 +458,8 @@ Gate: representative current level geometry and static props match OpenGL placem
 
 ### VK-007 — ImGui/debug HUD parity
 
+Status: **done** on 2026-10-01; joint VK-007/VK-008 execution evidence is recorded in section 14.
+
 Scope:
 
 - enable `imgui[vulkan-binding]` while retaining SDL3 platform binding;
@@ -468,6 +470,8 @@ Scope:
 Gate: UI renders/resizes/shuts down cleanly and does not own core renderer state.
 
 ### VK-008 — Transparency/overlays/state parity
+
+Status: **done** on 2026-10-01; joint VK-007/VK-008 execution evidence is recorded in section 14.
 
 Scope:
 
@@ -945,3 +949,50 @@ Results:
 - Full main/content/ASan suites, other GPUs/OS, API-1.3-only hardware, remote CI, throughput measurements and RenderDoc/Tracy GPU captures were not run. Complete lighting/material/color-pipeline equivalence is not claimed by these mesh gates.
 
 Evidence: `build/vk-005-*.log`, `build/vk-006-*.log`, `build/msvc-debug/vk-006-{graphics,unit,mesh}.xml`, and optimized/ASan `vk-006-mesh-final.xml`. Paired BMPs are under each build's `tests/vulkan-mesh-captures/`. The VK-005 and VK-006 gates are satisfied for these tested paths.
+
+### VK-007 / VK-008 — 2026-10-01
+
+Status: done for the UI and render-pass state gates. The main game continues to use the OpenGL reference path until cutover; lighting, shadows and the complete material/color/post pipeline remain VK-009–VK-011.
+
+`ImGuiOverlay` now initializes either the existing OpenGL binding or the already-installed Vulkan binding with SDL3, API 1.3 and dynamic rendering. It owns the ImGui context/backend resources, while the caller owns the device, scene renderer and presentation. `finish_frame()` exposes prepared UI data; `VulkanMeshRenderer` records it in a color-only load pass after the world and viewmodel, and `VulkanSwapchain` presents the composed image. UI submission uses the existing mesh completion fence; UI teardown follows completed submissions. A null UI pointer and disabled overlay leave scene rendering independent of ImGui initialization. No backend interface, runtime compiler, dependency or main-game backend switch was added.
+
+The existing diagnostics visibility/toggle API used by F2 and `GameHud::draw` run on the Vulkan backend without OpenGL context creation. Diagnostics no longer queries the OpenGL swap interval for a Vulkan window; its VSync label identifies swapchain ownership instead. Tests forward SDL events and exercise the existing toggle API; they do not claim an end-to-end Vulkan `Application`/game input path before cutover.
+
+`VulkanMeshRenderer` consumes all current render passes in the reference order: opaque, overlay, transparent, retaining submission order within each pass. Opaque uses LEQUAL depth testing/writes and CCW backface culling; overlays/transparency retain depth testing, disable depth writes/culling and use SRC_ALPHA/ONE_MINUS_SRC_ALPHA for both RGB and alpha, matching `glBlendFunc`. World viewport/scissor are reset each frame; the viewmodel restores opaque state and clears depth before drawing all held items, matching the GL owner. All replacement pipelines are staged before shader reload publishes them.
+
+Slang preserves the current steam radial alpha and glass Fresnel/distance-fog alpha; overlay glass forces opaque alpha while steam retains its early-return alpha. The material UBO carries the existing authored glass profile and configured fog range solely for this alpha contract. The push block is exactly 128 bytes, with asserted offsets for draw flags and camera position. RGBA8 blend support is checked alongside attachment/readback/blit support. A new smooth-glass/nonuniform-transform fixture reproduced a normal-interpolation discrepancy, then passed after normalizing inverse-transpose normals in the vertex stage as the current GL shader does. RGB lighting, procedural surface shading, fog color and postfx are deliberately excluded from these comparisons and remain later gates.
+
+Changed paths: `src/relaycore/debug/imgui_overlay.{h,cpp}`, `src/relaycore/render/vulkan_mesh_renderer.{h,cpp}`, `src/relaycore/render/vulkan_swapchain.{h,cpp}`, `assets/shaders/vulkan/mesh.slang`, `tests/vulkan_mesh_tests.cpp`, `tests/CMakeLists.txt`, and this plan. The working tree was clean at task start.
+
+Commands ran with the existing VS developer environment, cache-matching `VCPKG_ROOT` and Vulkan SDK. Reconfiguration occurred automatically where Ninja required it; the dependency versions did not change.
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_demo --parallel 4
+cmake --build --preset graphics-debug --target relaycore_vulkan_presentation_tests --parallel 4
+cmake --build --preset tests-relwithdebinfo --target relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_demo --parallel 4
+cmake --build --preset tests-relwithdebinfo --target relaycore_vulkan_presentation_tests --parallel 4
+cmake --build --preset tests-asan --target relaycore_vulkan_mesh_tests --parallel 4
+$env:VK_LAYER_VALIDATE_SYNC = '1'
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_presentation|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit vk-007-008-final.xml --test-output-size-passed 20000
+ctest --preset test-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_presentation|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit vk-007-008-final.xml --test-output-size-passed 20000
+ctest --preset test-asan -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --output-junit vk-007-008-final.xml --test-output-size-passed 20000
+```
+
+After the smooth-glass fix, the mesh/shader targets were rebuilt in all three configurations; Debug/RelWithDebInfo demo assets were synchronized again. Final checks of the affected paths:
+
+```powershell
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_presentation)$' --output-on-failure --no-tests=error --output-junit vk-007-008-mesh-final.xml --test-output-size-passed 20000
+ctest --preset test-relwithdebinfo -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --output-junit vk-007-008-mesh-final.xml --test-output-size-passed 20000
+ctest --preset test-asan -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --output-junit vk-007-008-mesh-final.xml --test-output-size-passed 20000
+```
+
+`C:/VulkanSDK/Bin/spirv-val.exe --target-env vulkan1.3` accepted both final mesh modules in Debug, RelWithDebInfo and ASan. Changed C++ files pass `clang-format --dry-run --Werror`; `git diff --check` passes. Debug/RelWithDebInfo packaged SPIR-V hashes match the generated products.
+
+Results on the local NVIDIA GeForce RTX 4060 Ti:
+
+- Debug demo and selected graphics targets build; four distinct graphics checks pass. RelWithDebInfo/Tracy demo builds and mesh, presentation and game lifecycle pass (3). The final mesh/UI check also passes in all three configurations, with zero skips; Debug/ASan produce no core/synchronization-validation warning/error or sanitizer report, including shutdown.
+- Twenty-seven GL/Vulkan comparisons cover the previous mesh/OBJ/level cases and eleven pass fixtures: interleaved queues, reversed transparency, opaque occlusion, back-facing overlays/glass, steam, viewmodel/next-frame state, reload, distant-glass alpha, overlay alpha exceptions and smooth nonuniform glass. Coverage masks agree exactly and no pixels exceed eight RGB byte values of difference. All eleven new fixtures have zero RGB difference; the largest mean RGB-byte error across the complete set remains 0.001651/255. Alpha agrees within two byte values.
+- Three Vulkan-only UI initialization/shutdown cycles exercise twelve HUD/diagnostics frames and presentation at 640×360 and 960×540, Cyrillic fonts, hidden/visible diagnostics, a clipped draw after ImGui state-reset callback, and simulated 2× framebuffer scaling. Scene output before UI and after its shutdown agrees exactly. Disabled UI initializes no backend; the renderer remains usable. Final VMA allocation counts return to zero. HUD/diagnostics and transparency captures were visually inspected.
+- Full unit/content suites, other GPUs/OS, API-1.3-only hardware, remote CI, continuous playtests, performance measurements and RenderDoc/Tracy GPU captures were not run. Existing unrelated save/debug-command compiler warnings remain. These gates establish UI and ordering/depth/blend parity, not complete final game appearance.
+
+Evidence: `build/msvc-debug/vk-007-008-{final,mesh-final}.xml`, optimized/ASan `vk-007-008-{final,mesh-final}.xml`, the failing regression `build/msvc-debug/vk-008-smooth-regression.xml`, and each build's `tests/vulkan-mesh-captures/` paired/UI BMPs. The VK-007 and VK-008 gates are satisfied for the tested paths.

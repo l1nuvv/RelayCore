@@ -14,13 +14,16 @@
 #include "relaycore/debug/imgui_overlay_system_panel.h"
 #include "relaycore/debug/imgui_overlay_widgets.h"
 #include "relaycore/platform/window.h"
+#include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
 #include <cmath>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
 #include <span>
+#include <stdexcept>
 
 namespace RelayCore::debug
 {
@@ -72,6 +75,62 @@ namespace RelayCore::debug
         log::info("ImGui overlay initialized");
     }
 
+    void ImGuiOverlay::initialize(const Window& window, const render::VulkanDevice& device)
+    {
+        if (initialized_ || !config_.enabled)
+            return;
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        auto& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        configure_imgui_font(io);
+        ImGui::StyleColorsDark();
+        if (!ImGui_ImplSDL3_InitForVulkan(window.handle()))
+        {
+            ImGui::DestroyContext();
+            log::warn("ImGui overlay disabled: SDL3 Vulkan backend initialization failed");
+            return;
+        }
+        try
+        {
+            constexpr VkFormat color = VK_FORMAT_R8G8B8A8_UNORM;
+            ImGui_ImplVulkan_InitInfo info{};
+            info.ApiVersion = render::kVulkanApiVersion;
+            info.Instance = device.instance();
+            info.PhysicalDevice = device.physical_device();
+            info.Device = device.handle();
+            info.QueueFamily = device.capabilities().graphics_queue_family;
+            info.Queue = device.graphics_queue();
+            info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
+            // The mesh renderer completes each submission before reuse; the UI buffer ring is independent of presentation.
+            info.MinImageCount = 2;
+            info.ImageCount = 2;
+            info.UseDynamicRendering = true;
+            info.PipelineInfoMain.PipelineRenderingCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                .colorAttachmentCount = 1,
+                .pColorAttachmentFormats = &color
+            };
+            info.CheckVkResultFn = [](const VkResult result) {
+                if (result != VK_SUCCESS)
+                    throw std::runtime_error("ImGui Vulkan backend: VkResult " + std::to_string(result));
+            };
+            if (!ImGui_ImplVulkan_Init(&info))
+                throw std::runtime_error("ImGui Vulkan backend initialization failed");
+        } catch (...)
+        {
+            if (io.BackendRendererUserData)
+                ImGui_ImplVulkan_Shutdown();
+            ImGui_ImplSDL3_Shutdown();
+            ImGui::DestroyContext();
+            throw;
+        }
+        window_ = &window;
+        initialized_ = true;
+        vulkan_ = true;
+        log::info("ImGui Vulkan overlay initialized");
+    }
+
     void ImGuiOverlay::shutdown() noexcept
     {
         if (!initialized_)
@@ -79,7 +138,10 @@ namespace RelayCore::debug
             return;
         }
 
-        ImGui_ImplOpenGL3_Shutdown();
+        if (vulkan_)
+            ImGui_ImplVulkan_Shutdown();
+        else
+            ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
 
@@ -89,6 +151,7 @@ namespace RelayCore::debug
         frame_time_sample_cursor_ = 0;
         frame_time_samples_.fill(0.0F);
         initialized_ = false;
+        vulkan_ = false;
     }
 
     void ImGuiOverlay::apply_config(const ImGuiOverlayConfig& config) noexcept
@@ -117,7 +180,10 @@ namespace RelayCore::debug
             return;
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
+        if (vulkan_)
+            ImGui_ImplVulkan_NewFrame();
+        else
+            ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
     }
@@ -185,7 +251,7 @@ namespace RelayCore::debug
         }
 
         const float refresh_rate_hz = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
-        const int swap_interval = window_ != nullptr ? window_->swap_interval() : 0;
+        const int swap_interval = window_ != nullptr && !vulkan_ ? window_->swap_interval() : 0;
         const float target_frame_ms = refresh_rate_hz > 0.0F ? 1000.0F / refresh_rate_hz : 16.667F;
 
         std::array<float, kFrameTimeSampleCount> ordered_frame_times{};
@@ -218,7 +284,7 @@ namespace RelayCore::debug
             .target_frame_ms = target_frame_ms,
             .refresh_rate_hz = refresh_rate_hz,
             .frame_plot_max = frame_plot_max,
-            .vsync_label = vsync_label(swap_interval),
+            .vsync_label = vulkan_ ? "swapchain" : vsync_label(swap_interval),
             .ordered_frame_times = std::span<const float>{ordered_frame_times.data(), frame_time_sample_count_},
         };
         draw_summary_diagnostics_section(summary_frame_stats, runtime, player, interaction, audio, iteration);
@@ -278,14 +344,22 @@ namespace RelayCore::debug
         {
             return;
         }
-        {
-            RELAYCORE_PROFILE_ZONE_N("ImGui::Render");
-            ImGui::Render();
-        }
+        if (vulkan_)
+            throw std::logic_error("Vulkan UI requires finish_frame and renderer submission");
+        auto* draw = finish_frame();
         {
             RELAYCORE_PROFILE_ZONE_N("ImGui_ImplOpenGL3_RenderDrawData");
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui_ImplOpenGL3_RenderDrawData(draw);
         }
+    }
+
+    auto ImGuiOverlay::finish_frame() const -> ImDrawData*
+    {
+        if (!initialized_)
+            return nullptr;
+        RELAYCORE_PROFILE_ZONE_N("ImGui::Render");
+        ImGui::Render();
+        return ImGui::GetDrawData();
     }
 
     auto ImGuiOverlay::is_initialized() const noexcept -> bool
