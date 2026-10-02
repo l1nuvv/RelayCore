@@ -66,9 +66,18 @@ namespace RelayGame
 
     void LevelEditorDocument::reset(RelayCore::BlockoutLevel level)
     {
-        for (const auto& entity : level.entities)
-            if (entity.classname == "prop_static")
-                cache_model(entity.properties.at("model"));
+        auto previous_bounds = std::move(model_bounds_);
+        model_bounds_.clear();
+        try
+        {
+            for (const auto& entity : level.entities)
+                if (entity.classname == "prop_static")
+                    cache_model(entity.properties.at("model"));
+        } catch (...)
+        {
+            model_bounds_ = std::move(previous_bounds);
+            throw;
+        }
         level_ = std::move(level);
         selection_.reset();
         undo_.clear();

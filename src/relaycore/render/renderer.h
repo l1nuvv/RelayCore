@@ -28,7 +28,8 @@ namespace RelayCore
 namespace RelayCore::render
 {
     class VulkanMeshRenderer;
-}
+    struct IrradianceProbeVolume;
+} // namespace RelayCore::render
 
 namespace RelayCore
 {
@@ -58,6 +59,7 @@ namespace RelayCore
 
             render::RendererConfig config{};
             render::RenderAuthoringConfig authoring_config{};
+            render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma;
             std::shared_ptr<render::VulkanMeshRenderer> backend{};
             std::string atlas_source_label{};
         };
@@ -75,6 +77,17 @@ namespace RelayCore
             const render::RendererConfig& config,
             const render::RenderAuthoringConfig& authoring_config
         ) -> PreparedLiveContentReload;
+
+        [[nodiscard]] auto prepare_live_content_reload(
+            const render::RendererConfig& config,
+            const render::RenderAuthoringConfig& authoring_config,
+            render::ColorPipelineMode color_pipeline_mode
+        ) -> PreparedLiveContentReload;
+
+        [[nodiscard]] auto config() const noexcept -> const render::RendererConfig&
+        {
+            return config_;
+        }
 
         void commit_live_content_reload(PreparedLiveContentReload staged_reload);
 
@@ -100,6 +113,7 @@ namespace RelayCore
         }
 
         void set_local_lights(std::span<const render::LocalLight> lights);
+        void set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes);
 
         void set_scene_time(float seconds) noexcept;
         void set_spot_light(const render::SpotLight& light) noexcept;
@@ -196,6 +210,7 @@ namespace RelayCore
         render::AudioDiagnostics audio_diagnostics_{};
         render::IterationDiagnostics iteration_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
+        std::shared_ptr<const render::IrradianceProbeVolume> irradiance_probes_;
         render::StaticModelCache static_models_{};
         render::SpotLight spot_light_{};
         float scene_time_seconds_ = 0.0F;

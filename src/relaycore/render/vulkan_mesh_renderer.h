@@ -16,6 +16,7 @@ namespace RelayCore::render
     class PerspectiveCamera;
     struct RenderAuthoringConfig;
     struct RendererConfig;
+    struct IrradianceProbeVolume;
 
     class VulkanMeshRenderer {
     public:
@@ -60,6 +61,7 @@ namespace RelayCore::render
         void reload_shaders(const std::filesystem::path& shader_directory);
         // Prepared world lights already carry the selected color-pipeline encoding; preserve their order/budget.
         void set_local_lights(std::span<const LocalLight> lights);
+        void set_irradiance_probes(std::shared_ptr<const IrradianceProbeVolume> probes);
         void set_spot_light(const SpotLight& light) noexcept;
         void set_scene_time(float seconds) noexcept;
 

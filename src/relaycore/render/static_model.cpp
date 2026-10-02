@@ -8,6 +8,7 @@
 #include <fstream>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -159,6 +160,59 @@ namespace RelayCore::render
         resource->texture.initialize_rgba(rgba->w, rgba->h, pixels, encoding);
         staged.resource = resource;
         entries_.insert_or_assign(key, std::move(staged));
+        return resource;
+    }
+    auto StaticModelCache::load(const std::filesystem::path& product, const TextureEncoding encoding)
+        -> std::shared_ptr<const ModelAsset>
+    {
+        const auto path = std::filesystem::canonical(product);
+        const auto key = path.generic_string() + (encoding == TextureEncoding::srgb ? "\nsrgb" : "\nlinear");
+        ProductEntry staged{std::filesystem::last_write_time(path), std::filesystem::file_size(path), {}};
+        const auto found = products_.find(key);
+        if (found != products_.end() && found->second.time == staged.time && found->second.size == staged.size)
+            return found->second.resource;
+        auto data = read_model_asset(path);
+        auto resource = std::make_shared<ModelAsset>();
+        resource->mins = glm::vec3{std::numeric_limits<float>::max()};
+        resource->maxs = -resource->mins;
+        for (const auto& part : data.parts)
+            for (const auto& vertex : data.meshes[part.mesh].geometry.vertices)
+            {
+                const auto position = glm::vec3{part.transform * glm::vec4{vertex.position, 1}};
+                resource->mins = glm::min(resource->mins, position);
+                resource->maxs = glm::max(resource->maxs, position);
+            }
+        for (const auto& material : data.materials)
+        {
+            const auto& image = material.base_color;
+            resource->materials.emplace_back();
+            auto& surface = resource->materials.back();
+            surface.base_color.initialize_rgba(image.width, image.height, image.pixels, encoding);
+            if (material.normal)
+            {
+                const auto& normal = *material.normal;
+                surface.normal.initialize_rgba(normal.width, normal.height, normal.pixels, TextureEncoding::linear);
+            }
+            surface.normal_scale = material.normal_scale;
+            surface.metallic_roughness = material.metallic_roughness;
+        }
+        for (auto& mesh : data.meshes)
+        {
+            // Product vertex colours are linear; legacy rendering works in visual sRGB.
+            if (encoding == TextureEncoding::linear)
+                for (auto& vertex : mesh.geometry.vertices)
+                    for (int channel = 0; channel < 3; ++channel)
+                    {
+                        const auto value = vertex.color[channel];
+                        vertex.color[channel] =
+                            value <= .0031308F ? value * 12.92F : 1.055F * std::pow(value, 1.0F / 2.4F) - .055F;
+                    }
+            resource->meshes.emplace_back();
+            resource->meshes.back().initialize(mesh.geometry);
+        }
+        resource->parts = std::move(data.parts);
+        staged.resource = resource;
+        products_.insert_or_assign(key, std::move(staged));
         return resource;
     }
 } // namespace RelayCore::render

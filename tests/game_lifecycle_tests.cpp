@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <imgui_internal.h>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -56,6 +57,308 @@ namespace
         const bool written = SDL_SaveBMP(surface, filename);
         SDL_DestroySurface(surface);
         require(written, "Capture save failed");
+    }
+
+    auto test_hdr_settings() -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 800;
+            config.window.height = 900;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = true;
+            config.audio.enabled = false;
+            config.gameplay.level_path = "levels/power_restoration.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(800, 900);
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            const auto player_path = directory.path() / "player";
+            RelayGame::DemoGame game{player_path};
+            const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            game.on_startup(services);
+            const auto draw = [&] {
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                require(renderer.begin_ui(frame, audio, true), "HDR settings UI was unavailable");
+                game.on_ui(services);
+                renderer.end_ui();
+                return renderer.capture_frame();
+            };
+            const auto activate_menu = [&](const char* label) {
+                auto* menu = ImGui::FindWindowByName("Пауза##player_pause");
+                require(menu != nullptr, "Settings menu was not drawn");
+                ImGui::ActivateItemByID(menu->GetID(label));
+                (void) draw();
+            };
+            const auto choose_range = [&](const char* label) {
+                activate_menu("Режим изображения");
+                require(!ImGui::GetCurrentContext()->OpenPopupStack.empty(), "HDR/SDR selector did not open");
+                auto* popup = ImGui::GetCurrentContext()->OpenPopupStack.back().Window;
+                require(popup != nullptr, "HDR/SDR selector popup was unavailable");
+                const int index = std::string_view{label} == "HDR" ? 1 : 0;
+                ImGui::ActivateItemByID(ImHashStr(label, 0, popup->GetID(index)));
+                (void) draw();
+            };
+            const auto key = [&](SDL_Scancode code) {
+                SDL_Event event{};
+                event.type = SDL_EVENT_KEY_DOWN;
+                event.key.scancode = code;
+                game.on_event(event, services);
+            };
+            const auto scene_image = [&] {
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                return renderer.capture_frame();
+            };
+            const auto shadow_contrast = [&](const char* name) {
+                auto shadowed = scene_image();
+                auto unshadowed_config = renderer.config();
+                unshadowed_config.shadow_enabled = false;
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(unshadowed_config, renderer.authoring_config())
+                );
+                const auto unshadowed = scene_image();
+                auto restored = unshadowed_config;
+                restored.shadow_enabled = true;
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(restored, renderer.authoring_config())
+                );
+                int pixels = 0, maximum = 0;
+                long long total = 0;
+                for (size_t i = 0; i < shadowed.pixels.size(); i += 4)
+                {
+                    int difference = 0;
+                    for (int c = 0; c < 3; ++c)
+                        difference = std::max(difference, int(unshadowed.pixels[i + c]) - int(shadowed.pixels[i + c]));
+                    pixels += difference > 2;
+                    maximum = std::max(maximum, difference);
+                    total += difference;
+                }
+                auto* surface = SDL_CreateSurfaceFrom(
+                    shadowed.width,
+                    shadowed.height,
+                    SDL_PIXELFORMAT_RGBA32,
+                    shadowed.pixels.data(),
+                    shadowed.width * 4
+                );
+                require(surface != nullptr, "Shadow comparison capture surface failed");
+                const auto filename = std::string{"hdr-settings-shadow-"} + name + ".bmp";
+                const bool captured = SDL_SaveBMP(surface, filename.c_str());
+                SDL_DestroySurface(surface);
+                require(captured, "Shadow comparison capture failed");
+                std::cout << name << " shadows: pixels=" << pixels << "; max=" << maximum << "; total=" << total
+                          << '\n';
+                return total;
+            };
+
+            (void) draw();
+            (void) shadow_contrast("SDR");
+            const auto original_sdr = scene_image();
+            activate_menu("Настройки");
+            const auto before = draw();
+            const auto camera = renderer.camera().position();
+            const auto tone_shader = RelayCore::core::asset_path("shaders/vulkan/tone_mapping.frag.spv");
+            auto backup = tone_shader;
+            backup += ".settings-test";
+            std::filesystem::rename(tone_shader, backup);
+            try
+            {
+                choose_range("HDR");
+                require(
+                    !renderer.config().hdr_enabled && !config.renderer.hdr_enabled,
+                    "Failed HDR switch changed the active configuration"
+                );
+                require(
+                    renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                    "Failed HDR switch changed the color pipeline"
+                );
+            } catch (...)
+            {
+                std::filesystem::rename(backup, tone_shader);
+                throw;
+            }
+            std::filesystem::rename(backup, tone_shader);
+            choose_range("HDR");
+            require(
+                renderer.config().hdr_enabled && config.renderer.hdr_enabled,
+                "Settings did not enable HDR without CLI arguments"
+            );
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::hardware_srgb,
+                "HDR settings did not select the linear color pipeline"
+            );
+            require(renderer.camera().position() == camera, "HDR switch moved the player camera");
+            const auto hdr_shadows = shadow_contrast("HDR");
+            const auto hdr_camera = renderer.camera();
+            const auto capture_material = [&](const char* path, glm::vec3 eye, glm::vec3 target) {
+                renderer.camera().set_position(eye);
+                renderer.camera().set_target(target);
+                auto image = scene_image();
+                auto* surface = SDL_CreateSurfaceFrom(
+                    image.width,
+                    image.height,
+                    SDL_PIXELFORMAT_RGBA32,
+                    image.pixels.data(),
+                    image.width * 4
+                );
+                require(surface != nullptr, "HDR material capture failed");
+                const bool saved = SDL_SaveBMP(surface, path);
+                SDL_DestroySurface(surface);
+                require(saved, "HDR material capture save failed");
+            };
+            capture_material("hdr-settings-door.bmp", {0, 1.65F, .5F}, {0, 1.5F, 5});
+            capture_material("hdr-settings-fan.bmp", {-2, 1.8F, 2.8F}, {-4.77F, 2.5F, 2.8F});
+            capture_material("hdr-settings-ceiling.bmp", {0, 1.65F, 12}, {0, 3.2F, 16});
+            renderer.camera() = hdr_camera;
+            auto hdr_menu = draw();
+            require(hdr_menu.pixels != before.pixels, "HDR switch did not change the rendered image");
+            auto* surface = SDL_CreateSurfaceFrom(
+                hdr_menu.width,
+                hdr_menu.height,
+                SDL_PIXELFORMAT_RGBA32,
+                hdr_menu.pixels.data(),
+                hdr_menu.width * 4
+            );
+            require(surface != nullptr, "HDR settings capture surface failed");
+            const bool captured = SDL_SaveBMP(surface, "hdr-settings-menu.bmp");
+            SDL_DestroySurface(surface);
+            require(captured, "HDR settings menu capture failed");
+            activate_menu("Сохранить настройки");
+            require(
+                RelayGame::load_player_settings(player_path / "player_settings.toml", {}).hdr_enabled,
+                "HDR choice was not persisted"
+            );
+            choose_range("SDR");
+            require(!renderer.config().hdr_enabled, "SDR settings did not disable tone mapping");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                "Returning to SDR did not restore the startup color pipeline"
+            );
+            require(
+                scene_image().pixels == original_sdr.pixels,
+                "SDR -> HDR -> SDR changed the original scene colors or shadows"
+            );
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("HDR");
+            require(game.has_custom_ui() && !window.relative_mouse_mode(), "HDR switch disturbed pause");
+            key(SDL_SCANCODE_ESCAPE);
+            key(SDL_SCANCODE_ESCAPE);
+            require(!game.has_custom_ui(), "Game could not resume after HDR switch");
+            game.return_to_menu(services);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("SDR");
+            activate_menu("Сохранить настройки");
+            game.on_shutdown(services);
+
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::legacy_gamma
+            ));
+            game.on_startup(services);
+            game.begin_episode(false, services);
+            game.enter_editor(services);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("HDR");
+            choose_range("SDR");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                "Editor did not restore the SDR color pipeline"
+            );
+            choose_range("HDR");
+            key(SDL_SCANCODE_ESCAPE);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            game.begin_editor_preview(services);
+            require(!game.has_custom_ui(), "HDR switch prevented editor preview");
+            (void) draw();
+            game.return_from_editor(services);
+            require(
+                !game.has_custom_ui() && renderer.config().hdr_enabled,
+                "HDR switch prevented restoring the suspended game"
+            );
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+
+            config.renderer.hdr_enabled = false;
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::legacy_gamma
+            ));
+            game.on_startup(services);
+            require(
+                renderer.config().hdr_enabled && config.renderer.hdr_enabled,
+                "Restart did not restore HDR from player settings"
+            );
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_F7);
+            game.on_update(frame, services);
+            require(
+                renderer.iteration_diagnostics().last_reload_succeeded && renderer.config().hdr_enabled,
+                "F7 discarded the player's HDR choice"
+            );
+            game.return_to_menu(services);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("SDR");
+            activate_menu("Сохранить настройки");
+            game.on_shutdown(services);
+            game.on_startup(services);
+            require(!renderer.config().hdr_enabled, "Restart did not restore SDR from player settings");
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::hardware_srgb
+            ));
+            game.on_startup(services);
+            (void) draw();
+            const auto hardware_sdr = scene_image();
+            require(
+                hdr_shadows * 2 >= shadow_contrast("hardware-SDR"),
+                "HDR washed out shadows relative to the same linear lighting in SDR"
+            );
+            activate_menu("Настройки");
+            choose_range("HDR");
+            choose_range("SDR");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::hardware_srgb,
+                "SDR switch discarded the explicitly selected startup color pipeline"
+            );
+            require(
+                scene_image().pixels == hardware_sdr.pixels,
+                "Hardware-sRGB SDR -> HDR -> SDR changed the original scene"
+            );
+            game.on_shutdown(services);
+            std::cout << "HDR/SDR settings: UI, rollback, pause, editor, persistence and F7 passed\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
     }
 #ifdef _WIN32
     auto test_update_readiness(const std::string_view mode) -> int
@@ -138,6 +441,8 @@ namespace
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--hdr-settings")
+        return test_hdr_settings();
 #ifdef _WIN32
     if (argc == 3 && std::string_view{argv[1]} == "--update-readiness")
         return test_update_readiness(argv[2]);

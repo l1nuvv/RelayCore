@@ -15,7 +15,10 @@
 
 F7 перечитывает карту и сбрасывает её состояние. F9 сохраняет локальную встречу,
 F10 возвращает её; F3/F4/F8 — noclip, инспектор и исходник. Для правок в репозитории
-конфигурации CLion используют `RELAYCORE_ASSET_ROOT=$PROJECT_DIR$/assets`.
+конфигурации Play/Sandbox используют runtime assets своей сборки, включая SPIR-V.
+После изменения исходного TOML пересоберите соответствующий target для синхронизации
+ресурсов, затем нажмите F7. Override на исходный `assets/` подходит для headless
+проверки карты, но не для запуска renderer.
 Редактор сохраняет пользовательскую копию; изменения в исходном TOML делаются отдельно.
 
 Для G-008 добавлены три стартовые полосы на полу: за укрытием стрельбища,
@@ -43,7 +46,7 @@ F10 возвращает её; F3/F4/F8 — noclip, инспектор и исх
 
 ```powershell
 cmake --build --preset demo-debug --target relaycore_sandbox relaycore_level_check
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets).Path
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
 build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/development_sandbox.toml
 build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/development_sandbox.toml --entry arena
 pwsh -NoProfile -File tests/level_check_tests.ps1 -Executable build/msvc-debug/src/relaygame/relaycore_level_check.exe
@@ -67,10 +70,12 @@ cmake --preset msvc-debug
 cmake --build --preset demo-debug
 ```
 
-`Test-Path` должен вернуть `True`. Для работы редактора и игры запускайте
-`build/msvc-debug/src/relaygame/RelayCore.exe` из корня проекта или из CLion.
-Корень ресурсов определяется проектом; переменная `RELAYCORE_ASSET_ROOT` полезна
-только для прямого запуска тестовых бинарников.
+`Test-Path` должен вернуть `True`. Debug используется для отладки и validation.
+Для обычной игры и плейтеста выполните configure `msvc-relwithdebinfo` и
+`cmake --build --preset demo-relwithdebinfo`, затем запустите
+`build/msvc-relwithdebinfo/src/relaygame/RelayCore.exe` или **RelayCore — Play** в CLion.
+Assets по умолчанию находятся рядом с executable; `RELAYCORE_ASSET_ROOT` задаёт
+абсолютный override. Для renderer он должен включать собранные SPIR-V.
 
 ### CLion
 
@@ -79,7 +84,7 @@ cmake --build --preset demo-debug
 `VCPKG_ROOT` в окружении CMake и убедитесь, что `cl.exe` и `rc.exe` доступны CLion.
 Создайте **CMake Application** с target `relaycore_demo` и рабочим каталогом корня
 репозитория. Исполняемый файл называется `RelayCore.exe`. Не выбирайте
-`relaycore_demo_assets`: этот target только копирует ресурсы и не запускает игру.
+`relaycore_demo_assets`: этот target собирает и синхронизирует ресурсы, но не запускает игру.
 
 ### Узкие проверки
 
@@ -124,8 +129,11 @@ cmake --build --preset demo-relwithdebinfo
 
 Запустите собранный `build/msvc-relwithdebinfo/src/relaygame/RelayCore.exe` и
 подключите [Tracy 0.14.1](https://github.com/wolfpld/tracy/releases/tag/v0.14.1), соответствующий текущему manifest client.
-Для текущего slice запишите маршрут «Восстановление питания»: вход, три встречи,
-включение питания и охлаждения, возврат и финал. Меню/редактор выделяйте отдельно.
+Для H-008 после приёмки G-011 запишите непрерывный маршрут «Перепуск давления»:
+обычное движение, все встречи, взаимодействия и финал; меню/редактор выделяйте отдельно.
+Согласуйте бюджет кадра и слабый ПК, запишите GPU/драйвер, архив, разрешение, VSync
+и настройки. First-use uploads сравнивайте с повторным проходом того же участка;
+существующие frame zones включают scene/UI fence waits и не измеряют их отдельно.
 Сравнивайте CPU/GPU зоны на одном разрешении, одном маршруте и одинаковых настройках;
 разделяйте CPU work, GPU и present/VSync wait. Выделения памяти сейчас отдельно не
 размечены; этот профиль не позволяет оценить их количество.
@@ -170,6 +178,17 @@ cmake --build --preset demo-relwithdebinfo
 
 ### Vulkan: capture и validation
 
+Runtime проверяет Vulkan 1.3, dynamic rendering, synchronization2, timeline semaphore,
+graphics/present queues для SDL surface, `VK_KHR_swapchain`, `VK_KHR_swapchain_maintenance1` /
+`swapchainMaintenance1`, `VK_KHR_surface_maintenance1` и `VK_KHR_get_surface_capabilities2`.
+Tracy требует также host query reset и graphics timestamp queries. Presentation fences
+используют maintenance feature для lifetime semaphore/swapchain; это осознанное
+ограничение совместимости. На новом GPU/драйвере проверяйте настоящий запуск игры и
+`graphics.vulkan_device`, `graphics.vulkan_presentation`, `graphics.game_lifecycle`.
+`relaycore_vulkan_toolchain_check` проверяет loader/headers/layers и не подтверждает
+поддержку device features или SDL presentation. Для оптимизированного standalone
+кандидата Vulkan SDK не нужен; Debug/Asan development checks требуют validation layers.
+
 Основной `RelayCore.exe` использует Vulkan. Отдельный Vulkan workload
 отрисовывает `power_restoration` и `pressure_transfer`, тени, viewmodel и ImGui,
 480 кадров в 640×360 с hardware sRGB. Он проверяет profiling/presentation,
@@ -177,7 +196,7 @@ cmake --build --preset demo-relwithdebinfo
 
 ```powershell
 cmake --build --preset demo-relwithdebinfo --target relaycore_vulkan_mesh_tests
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets).Path
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-relwithdebinfo/src/relaygame/assets).Path
 build/msvc-relwithdebinfo/tests/relaycore_vulkan_mesh_tests.exe --profile-views
 ```
 
@@ -261,7 +280,196 @@ warning gate намеренно не ослаблен. `dump_*_after.spv` под
 
 `graphics.vulkan_color_baseline` не создаёт GL context и не использует GL
 framebuffer assertions. Он проверяет transfer function, texture decode/filtering,
-clear, UI и presentation/teardown. GL comparison tests пока остаются migration reference.
+clear, UI и presentation/teardown. Исторические GL comparison captures остаются migration reference; GL runtime tests удалены в VK-013.
+
+## Статические модели: GLB → native product
+
+`relaycore_model_import` компилирует статический GLB в `.rcmodel`. Поддерживаются
+triangle primitives с POSITION/NORMAL, TEXCOORD_0 для текстур, default scene,
+иерархия и transforms узлов, повторное использование meshes, зеркальные экземпляры,
+несколько opaque материалов с base-color factor и встроенными PNG/JPEG. Factors
+применяются в linear space; base color хранит visual sRGB с top-left UV/image origin.
+Normal map требует экспортированных FLOAT VEC4 TANGENT и TEXCOORD_0; без tangent
+importer отказывает с инструкцией включить экспорт в Blender. Tangent xyz — единичный
+вектор, перпендикулярный normal, w = ±1; handedness совпадает внутри треугольника.
+[glTF basis](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes):
+`B = cross(N,T) * w`. Mirrored nodes запекают X reflection в mesh и меняют tangent.w
+вместе с winding; runtime трансформирует T обычной матрицей, N inverse transpose,
+ортогонализует T и учитывает знак determinant.
+Normal map хранит исходные linear UNORM RGB, +Y tangent convention, положительный Z;
+alpha игнорируется. UV и green channel не переворачиваются. `normalTexture.scale`
+сохраняется и применяется к XY перед нормализацией. В обоих цветовых режимах normal
+texture всегда linear. Shadow receiver bias/offset использует геометрическую нормаль,
+освещение — mapped normal.
+Sampler — repeat, linear/trilinear. Неподдерживаемые attributes/extensions, skins,
+animation, morphs, sparse accessors, alpha/double-sided, occlusion/emissive/metallic-roughness
+maps вызывают ошибку с путём source. Metallic/roughness scalars поддерживаются
+при явном выборе новой модели освещения. По умолчанию importer сохраняет прежний
+base-color/normal путь; `--metallic-roughness` включает glTF factors для всех материалов
+модели. В декларации CMake этот выбор задаёт
+`set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet ON)`; cylinder/bench используют
+прежнее освещение. Декларация входит в SHA256 receipts, смена выбора пересобирает product.
+
+Новая модель — GGX distribution, separable Smith visibility, Schlick Fresnel и Lambert
+diffuse по [glTF Appendix B](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-b-brdf-implementation).
+Factors — linear значения в [0,1]; invalid/nonfinite данные отклоняются. Roughness=0
+сохраняется в product, но shader регуляризует сингулярный GGX lobe: perceptual roughness
+минимум 0.05 (alpha минимум 0.0025). Это явное численное приближение.
+Directional/local/spot используют текущие light/shadow contracts, геометрический shadow
+bias и mapped normal для BRDF. Hemisphere ambient — приближение diffuse irradiance;
+environment specular/IBL пока отсутствует. Металл без прямого света остаётся тёмным.
+Для этой модели shading, fog и postfx вычисляются в linear space в обоих color modes,
+затем legacy кодирует RGB вручную, hardware использует sRGB attachment. Прежние материалы
+сохраняют свою цветовую обработку. SDR saturation сохраняется в default-пути;
+opt-in HDR/exposure описаны в разделе Native HDR profile ниже.
+
+```powershell
+cmake --build --preset demo-debug
+# Для работы только с ресурсами или полигоном:
+cmake --build --preset demo-debug --target relaycore_demo_assets
+cmake --build --preset demo-debug --target relaycore_sandbox
+```
+
+E-004 подключает модели к сборке: исходники перечислены явно в
+`cmake/RelayCoreModelAssets.cmake`: `service_cylinder.glb`, `lab_bench.glb` и
+`power_cabinet.glb` из `content/models`.
+Для новой модели добавьте GLB в `content/models` и имя файла в этот список
+(латинские буквы, цифры, `_` и `-`, без подкаталогов);
+product получает путь `models/<имя>.rcmodel`. Файл не нужно добавлять в `assets`:
+двойное authored/generated владение одним путём вызывает ошибку сборки.
+
+Каждая конфигурация создаёт свои products в `build/<preset>/generated/model-assets`,
+затем синхронизирует их в `build/<preset>/src/relaygame/assets` вместе с authored
+ресурсами и SPIR-V. Изменение GLB, importer executable или compiler rules вызывает
+перекомпиляцию; обычная повторная сборка не переписывает неизменившуюся модель.
+Неподдерживаемый/повреждённый GLB останавливает сборку до staging и сохраняет
+прежний рабочий product. CTest и Check Map используют полный staged runtime root.
+
+`generated/model-receipts` хранит build-only receipts с SHA256 source/importer/
+compiler rules/product. Упаковка сверяет их с текущими файлами и staged product,
+поэтому отклоняет устаревшую модель даже при сохранённом timestamp исходника.
+Это timestamp-based CMake dependency tracking и проверка целостности при упаковке;
+content-addressed cache, streaming и автоматический Blender export сюда не входят.
+GLB и receipts не попадают в ZIP. Сам CLI остаётся доступен для отдельного импорта,
+например `build/msvc-debug/relaycore_model_import.exe source.glb build/test.rcmodel`.
+
+Сценарий `scripts/export-service-cylinder-glb.py`
+запускается в Blender через `--background --disable-autoexec --python`; он использует
+исходный project OBJ/BMP, сохраняет метры/+Y вверх и выделяет корпус/вентиль.
+
+В Sandbox баллон у устройств (`[29,0,2.5]`) использует новый путь. `.rcmodel`
+доступен в каталоге моделей редактора; материалы входят в файл, поле `texture`
+для него отсутствует. Коллизия остаётся отдельным authored AABB. F7 после компиляции
+и сборки подготавливает новый ресурс, неудачный reload сохраняет рабочий; bounds
+редактора обновляются при загрузке карты. Runtime не содержит fastgltf/WIC.
+
+Проверочная native-комната N1 — `assets/levels/native_lab.toml`. В меню редактора
+выберите «Открыть карту → native_lab.toml», затем «Играть» для preview. Три стола,
+два шкафа и три баллона используют общие model products с разными поворотами и
+масштабами; коллизия каждого экземпляра — явно заданный local AABB. Верхняя кнопка
+основного шкафа включает рабочий свет, нижняя открывает кладовую. Это content fixture
+без миссии, а не новый эпизод или завершённая production assets phase C.
+
+`scripts/export-native-lab-glb.py` создаёт стол и шкаф в Blender, сохраняет editable
+`.blend` и экспортирует GLB в `content/models`. Запуск: Blender
+`--background --disable-autoexec --python scripts/export-native-lab-glb.py`.
+Размеры в метрах; origin на полу; Blender +Z вверх / фасад -Y переходит в runtime
++Y вверх / фасад +Z. Окрашенная сталь шкафа использует normal map покрытия;
+`power_cabinet_normal.png` — воспроизводимый source, также packed в `.blend` и встроен
+в GLB. Для повторного экспорта только шкафа добавьте `-- --cabinet-only`.
+После изменения GLB выполните обычную сборку, затем повторно запустите preview
+или нажмите F7 в обычной игре. Во время editor preview F7 не выполняет reload:
+редактор сохраняет собственное состояние для возврата.
+Карта и три `.rcmodel` включаются в обычный playtest ZIP; Blender/GLB для запуска
+не требуются. Исходные игровые карты и default startup map остаются прежними.
+
+Compiler пишет только product v3. Loader читает v1–v3; v1 остаётся base-color-only,
+v2 — base-color/normal, оба используют прежнее освещение. Старые runtimes не читают v3:
+для обновлённого runtime
+products пересобираются обычной сборкой, receipts/staging учитывают изменение importer.
+Little-endian header — RMDL/version/mesh/material/part counts. В v2 mesh начинается
+с flags (бит 0 = tangents), vertex/index counts; vertex — 16 float (position, color,
+normal, material_kind, UV, tangent). После base-color width/height/RGBA каждого
+материала идут normal width/height, float scale и RGBA; 0/0 означает отсутствие карты.
+Part mesh/material и column-major transform не изменены. Нет зависимости от GLM padding.
+В v3 после normal payload каждого материала добавлены uint flags (бит 0 = новая модель
+освещения), float roughness и float metallic; при flags=0 записываются 1/0. V1/v2 не
+приобретают новую модель при чтении или повторной записи в v3.
+Normal maps остаются встроенными, repeat/linear, одним mip, без TextureAsset/KTX2;
+отдельные текстурные продукты и mip policy требуют следующего consumer.
+Loader проверяет размеры, indices, finite geometry/transforms,
+материалы и точный конец файла до создания runtime resources; лимит product 256 MiB.
+
+Для проверки normal slice:
+
+```powershell
+ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|tooling.model_assets)' --output-on-failure
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|power_restoration)$' --output-on-failure
+# RenderDoc: 120 кадров native_lab в hardware_srgb, шкаф крупным планом.
+# Рабочая директория build/msvc-debug/tests; RELAYCORE_ASSET_ROOT — staged assets.
+./relaycore_vulkan_mesh_tests.exe --profile-native
+# Только analytical BRDF/material checks в обоих color modes:
+./relaycore_vulkan_mesh_tests.exe --metallic-roughness
+```
+
+## Native HDR profile — N3.1
+
+В игровом меню и паузе: «Настройки» → «Режим изображения» → SDR / HDR.
+Выбор применяется сразу и сохраняется вместе с настройками игрока; перезапуск
+и F7 его сохраняют. Старые settings без `hdr_enabled` наследуют startup config.
+При включении HDR меню само выбирает hardware_srgb и подготавливает сцены игры,
+редактора и сохранённой editor-return сессии; аргументы запуска не нужны.
+При возврате в SDR восстанавливается цветовой путь, выбранный при запуске, и
+отключается tone mapping. Игра, редактор и editor-return сцены подготавливаются
+заново при смене color pipeline. Явный startup hardware_srgb также сохраняется.
+Ошибка подготовки сохраняет рабочий режим и отображается в меню.
+
+`assets/config/native_lab_hdr.toml` явно включает `render.hdr_enabled = true` и
+`exposure_ev = 0`. HDR требует `--color-pipeline hardware_srgb`; с `legacy_gamma`
+startup завершается понятной ошибкой. Default `engine.toml` сохраняет SDR и прежний
+цветовой путь. Exposure задаётся в stops: +1 удваивает linear radiance; допустимы
+finite значения [-10,10]. Это ручная экспозиция, auto-exposure не добавлен.
+
+```powershell
+./build/msvc-debug/src/relaygame/RelayCore.exe --config assets/config/native_lab_hdr.toml --color-pipeline hardware_srgb
+```
+
+World/transparent/viewmodel пишутся в `R16G16B16A16_SFLOAT`; lighting/emissive не
+обрезаются до 1. Прозрачность смешивается в linear space. Отдельный fullscreen pass
+применяет exposure, поканальный Reinhard `x/(1+x)` и существующий postfx в display
+brightness space (contrast/saturation/grain), затем возвращает linear RGB и пишет
+в sRGB attachment над RGBA8 UNORM storage. UI загружается после tone mapping через
+UNORM view в прежних display-space semantics; exposure/postfx не затрагивают его.
+Readback/presentation используют encoded RGBA8 без второй sRGB-конверсии. HDR здесь
+относится к scene radiance; swapchain/display остаётся SDR.
+
+Ambient и `local_light_gain` — скалярные коэффициенты освещения, а не sRGB-цвета;
+они одинаковы в SDR/HDR. Их прежнее HDR-only декодирование удалено: оно затемняло
+поверхности вне прямого света. Postfx contrast применяется после linear → display
+conversion, чтобы не обрезать слабую linear radiance. `graphics.hdr_pipeline`
+проверяет тёмные значения и diffuse hemisphere для classic/MR материалов.
+`graphics.hdr_settings` сравнивает enabled/disabled shadows при одинаковой камере;
+HDR должен сохранять минимум половину суммарного hardware-sRGB SDR shadow contrast.
+Legacy SDR записывается отдельно, его lighting arithmetic отличается.
+Captures: `hdr-settings-shadow-{SDR,HDR,hardware-SDR}.bmp`,
+`hdr-settings-{door,fan,ceiling}.bmp` в test working directory.
+
+HDR format attachment/blend/sampling support проверяется при startup. Изменение
+`hdr_enabled` требует prepared backend reload; exposure можно обновлять через
+`set_config`. Shader reload атомарно включает mesh/shadow/tone pipelines; resize
+пересоздаёт обе color images и descriptor после завершения GPU work. Synchronous
+ownership и submission policy сохранены. Fullscreen shader использует
+[`SV_VulkanVertexID`](https://docs.shader-slang.org/en/latest/external/slang/docs/user-guide/a2-01-spirv-target-specific.html#using-sv_instanceid-and-sv_vertexid-with-spir-v-target),
+поэтому новые device feature bits для DrawParameters не нужны.
+
+```powershell
+ctest --preset graphics-debug -R '^graphics\.(hdr_pipeline|hdr_episode)$' --output-on-failure --no-tests=error
+ctest --preset graphics-debug -R '^graphics\.(hdr_settings|game_lifecycle)$' --output-on-failure --no-tests=error
+# Из build/msvc-debug/tests, RELAYCORE_ASSET_ROOT — staged assets:
+./relaycore_vulkan_mesh_tests.exe --profile-native-hdr
+```
+
+Environment specular/probe bake/import ещё не добавлены: это следующий шаг N3.
 
 ## Где объекты во время игры
 
@@ -281,4 +489,4 @@ clear, UI и presentation/teardown. GL comparison tests пока остаютс�
 посещённых карт сохранение содержит снимки изменяемого состояния дверей,
 предметов, заданий и других игровых объектов; геометрия остаётся в файлах карт.
 
-Graphics lifecycle и episode profile используют runtime assets с собранными SPIR-V; при ручном запуске задайте `RELAYCORE_ASSET_ROOT` на `build/<preset>/src/relaygame/assets`. CTest делает это автоматически. Изолированный mesh workload использует свой build-time SPIR-V path и допускает исходный `assets` для content fixtures.
+Unit/content/graphics tests и episode profile используют staged runtime assets с native моделями и собранными SPIR-V; при ручном запуске задайте `RELAYCORE_ASSET_ROOT` на `build/<preset>/src/relaygame/assets`. CTest делает это автоматически. Изолированный mesh workload использует свой build-time SPIR-V path, но для native моделей также получает staged assets.

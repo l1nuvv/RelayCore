@@ -89,6 +89,7 @@
 
 ## Build and verification
 
+- Routine verification ends with the relevant build/tests. Create or recreate a ZIP/standalone package only when the user directly asks for packaging or a release; do not do it automatically because an older plan or ticket mentions delivery. Reuse existing artifacts when sufficient and avoid spending time, compute, or tokens on unnecessary archives.
 - Use only presets/targets that exist in the current `CMakePresets.json` and CMake files. Never invent a command when the repository can provide the exact one.
 - Run `git diff --check` after edits.
 - Start with the narrowest relevant build/test. Run broader workflows only when the change crosses build/config/runtime boundaries or the user requests full validation.

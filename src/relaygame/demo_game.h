@@ -98,6 +98,7 @@ namespace RelayGame
         void set_pause(bool paused, RelayCore::EngineServices& services);
         void draw_pause_menu(RelayCore::EngineServices& services);
         PlayerSettings settings_{};
+        RelayCore::render::ColorPipelineMode sdr_color_pipeline_ = RelayCore::render::ColorPipelineMode::legacy_gamma;
         std::filesystem::path settings_path_;
         std::string settings_message_;
         bool settings_dirty_ = false;

@@ -30,7 +30,8 @@ namespace RelayCore
 namespace RelayCore::render
 {
     class PerspectiveCamera;
-}
+    struct IrradianceProbeVolume;
+} // namespace RelayCore::render
 
 namespace RelayGame
 {
@@ -40,6 +41,7 @@ namespace RelayGame
     };
 
     struct PreparedWorldSceneData {
+        std::shared_ptr<const RelayCore::render::IrradianceProbeVolume> irradiance;
         std::vector<StaticProp> props;
         bool has_enemies = false;
         RelayCore::render::BlockoutRenderData blockout{};
@@ -61,6 +63,11 @@ namespace RelayGame
         void initialize(const PreparedWorldSceneData& scene_data, RelayCore::render::StaticModelCache& models);
 
         void shutdown() noexcept;
+        [[nodiscard]] auto irradiance() const noexcept
+            -> const std::shared_ptr<const RelayCore::render::IrradianceProbeVolume>&
+        {
+            return irradiance_;
+        }
 
         void render(
             RelayCore::Renderer& renderer,
@@ -206,6 +213,7 @@ namespace RelayGame
         std::shared_ptr<const RelayCore::render::StaticModel> turret_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_turret_model_;
         std::vector<WorldLocalLight> local_lights_{};
+        std::shared_ptr<const RelayCore::render::IrradianceProbeVolume> irradiance_;
         std::vector<EnvironmentEffect> environment_{};
         RelayCore::render::StaticColorMesh fan_frame_mesh_, fan_rotor_mesh_, steam_mesh_, spark_mesh_;
         std::array<RelayCore::render::StaticColorMesh, 5> decal_meshes_;
@@ -227,6 +235,7 @@ namespace RelayGame
         struct PropInstance {
             std::shared_ptr<const RelayCore::render::StaticModel> model;
             glm::mat4 transform{1};
+            std::shared_ptr<const RelayCore::render::ModelAsset> asset;
         };
         std::vector<PropInstance> props_;
         RelayCore::render::RenderQueue render_queue_{};

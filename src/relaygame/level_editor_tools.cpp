@@ -35,7 +35,7 @@ namespace RelayGame
                     continue;
                 const auto path =
                     std::filesystem::relative(file.path(), RelayCore::core::asset_root_path()).generic_string();
-                if (file.path().extension() == ".obj")
+                if (file.path().extension() == ".obj" || file.path().extension() == ".rcmodel")
                     model_files_.push_back(path);
                 if (file.path().extension() == ".bmp")
                     texture_files_.push_back(path);
@@ -379,7 +379,8 @@ namespace RelayGame
                     selected_model_ = path;
             ImGui::EndCombo();
         }
-        if (ImGui::BeginCombo("Текстура модели", selected_texture_.c_str()))
+        if (std::filesystem::path{selected_model_}.extension() != ".rcmodel"
+            && ImGui::BeginCombo("Текстура модели", selected_texture_.c_str()))
         {
             for (const auto& path : texture_files_)
                 if (ImGui::Selectable(path.c_str(), path == selected_texture_))
@@ -465,8 +466,9 @@ namespace RelayGame
             auto angles = entity.angles;
             if (ImGui::InputFloat3("Поворот Y/P/R", &angles.x, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue))
                 document_.set_angles(angles);
-            text("Файл OBJ", "model");
-            text("Файл BMP", "texture");
+            text("Модель", "model");
+            if (std::filesystem::path{prop("model", "")}.extension() != ".rcmodel")
+                text("Файл BMP", "texture");
             bool collision = entity.properties.contains("collision_mins");
             if (ImGui::Checkbox("Коллизия: отдельный бокс", &collision))
                 document_.set_model_collision(collision);

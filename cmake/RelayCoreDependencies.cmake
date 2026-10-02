@@ -14,6 +14,7 @@ macro(relaycore_find_dependencies)
     find_package(vk-bootstrap CONFIG REQUIRED)
     find_package(VulkanMemoryAllocator CONFIG REQUIRED)
     find_package(slang CONFIG REQUIRED)
+    find_package(fastgltf CONFIG REQUIRED)
 
     message(STATUS "Vulkan headers: ${Vulkan_VERSION}; loader: ${Vulkan_LIBRARY}")
     message(STATUS "Slang compiler: ${SLANGC_EXECUTABLE}")

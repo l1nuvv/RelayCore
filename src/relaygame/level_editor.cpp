@@ -88,6 +88,24 @@ namespace RelayGame
         services.window().set_relative_mouse_mode(false);
     }
 
+    auto LevelEditor::prepare_color_pipeline(
+        RelayCore::render::ColorPipelineMode pipeline,
+        RelayCore::EngineServices& services
+    ) const -> WorldSceneRenderer
+    {
+        WorldSceneRenderer scene;
+        scene.initialize(
+            build_prepared_world_scene_data(document_.level(), services.renderer().authoring_config(), pipeline),
+            services.renderer().static_models()
+        );
+        return scene;
+    }
+
+    void LevelEditor::commit_color_pipeline(WorldSceneRenderer scene) noexcept
+    {
+        scene_ = std::move(scene);
+    }
+
     void LevelEditor::leave(RelayCore::EngineServices& services)
     {
         services.window().set_relative_mouse_mode(false);

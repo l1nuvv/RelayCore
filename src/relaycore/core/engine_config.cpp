@@ -230,6 +230,10 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("postfx_scanline_strength", postfx_scanline_strength);
             RELAYCORE_ASSIGN_RENDER("postfx_contrast", postfx_contrast);
             RELAYCORE_ASSIGN_RENDER("postfx_saturation", postfx_saturation);
+            RELAYCORE_ASSIGN_RENDER("hdr_enabled", hdr_enabled);
+            RELAYCORE_ASSIGN_RENDER("exposure_ev", exposure_ev);
+            if (config.renderer.exposure_ev < -10 || config.renderer.exposure_ev > 10)
+                invalid_config_value(config_path, "render.exposure_ev", "must be in [-10, 10] stops");
             RELAYCORE_ASSIGN_RENDER("shadow_enabled", shadow_enabled);
             RELAYCORE_ASSIGN_RENDER("shadow_map_resolution", shadow_map_resolution);
             RELAYCORE_ASSIGN_RENDER("shadow_light_intensity", shadow_light_intensity);

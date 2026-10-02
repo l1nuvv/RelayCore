@@ -66,8 +66,9 @@ namespace RelayGame::detail
         {
             if (current_level_path.empty())
                 throw std::runtime_error("Cannot reload without an active level");
-            const RelayCore::core::EngineConfig reloaded_config =
+            RelayCore::core::EngineConfig reloaded_config =
                 RelayCore::core::load_engine_config(services.config().source_path);
+            reloaded_config.renderer.hdr_enabled = services.renderer().config().hdr_enabled;
             const RelayCore::render::RenderAuthoringConfig reloaded_authoring_config =
                 RelayCore::render::load_default_render_authoring_config();
 

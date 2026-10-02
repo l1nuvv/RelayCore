@@ -37,6 +37,7 @@ set(RELAYCORE_DEMO_SOURCES
         world_scene_renderer_environment.cpp
         world_inspector.cpp
         world_scene_renderer.cpp
+        world_irradiance.cpp
         world_scene_renderer_interactives.cpp
         world_scene_renderer_props.cpp
 )
@@ -65,6 +66,7 @@ set(RELAYCORE_DEMO_HEADERS
         world_audio_zones.h
         world_inspector.h
         world_scene_renderer.h
+        world_irradiance.h
         scientist_pose.h
 )
 
@@ -115,11 +117,22 @@ relaycore_apply_standard_target_settings(relaycore_demo)
 relaycore_apply_standard_target_settings(relaygame_runtime)
 set_target_properties(relaygame_runtime PROPERTIES FOLDER "game")
 
+add_executable(relaycore_irradiance_bake ${PROJECT_SOURCE_DIR}/tools/irradiance_bake_main.cpp)
+target_link_libraries(relaycore_irradiance_bake PRIVATE RelayGame::runtime)
+relaycore_apply_standard_target_settings(relaycore_irradiance_bake)
+set_target_properties(relaycore_irradiance_bake PROPERTIES FOLDER "tools")
+add_custom_command(TARGET relaycore_irradiance_bake POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_irradiance_bake>" $<TARGET_RUNTIME_DLLS:relaycore_irradiance_bake>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(${PROJECT_SOURCE_DIR}/cmake/RelayCoreIrradianceAssets.cmake)
+
 add_custom_target(
         relaycore_demo_assets ALL
         COMMAND
         ${CMAKE_COMMAND}
         "-DRELAYCORE_ASSET_SOURCE=${PROJECT_SOURCE_DIR}/assets"
+        "-DRELAYCORE_GENERATED_ASSETS=${RELAYCORE_MODEL_ASSET_ROOT}"
+        "-DRELAYCORE_GENERATED_ASSET_MANIFEST=${PROJECT_BINARY_DIR}/generated/runtime-assets.txt"
         "-DRELAYCORE_ASSET_OUTPUT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
         "-DRELAYCORE_ASSET_MANIFEST=${CMAKE_CURRENT_BINARY_DIR}/relaycore_demo_assets.manifest"
         -P "${PROJECT_SOURCE_DIR}/cmake/sync_runtime_assets.cmake"
@@ -130,6 +143,8 @@ add_custom_target(
 
 add_dependencies(relaycore_demo relaycore_demo_assets)
 add_dependencies(relaycore_demo_assets relaycore_vulkan_shaders)
+add_dependencies(relaycore_demo_assets relaycore_model_assets)
+add_dependencies(relaycore_demo_assets relaycore_irradiance_assets)
 add_custom_command(TARGET relaycore_demo_assets POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RELAYCORE_MESH_SPIRV}
         "$<TARGET_FILE_DIR:relaycore_demo>/assets/shaders/vulkan"

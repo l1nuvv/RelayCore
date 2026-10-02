@@ -27,8 +27,10 @@ $authoredRoot = Join-Path $projectRoot 'assets'
 $authoredAssets = @(Get-ChildItem -LiteralPath $authoredRoot -Recurse -File)
 $shaderRoot = Join-Path $projectRoot "build/$Preset/generated/shaders"
 $runtimeShaders = @(Get-Content -LiteralPath (Join-Path $shaderRoot 'runtime-shaders.txt'))
+$runtimeModels = @(& (Join-Path $PSScriptRoot 'check-model-assets.ps1') -ProjectRoot $projectRoot `
+    -BuildRoot (Join-Path $projectRoot "build/$Preset") -RuntimeAssets (Join-Path $source 'assets'))
 $stagedAssets = @(Get-ChildItem -LiteralPath (Join-Path $source 'assets') -Recurse -File)
-if ($runtimeShaders.Count -eq 0 -or $authoredAssets.Count + $runtimeShaders.Count -ne $stagedAssets.Count) {
+if ($runtimeShaders.Count -eq 0 -or $authoredAssets.Count + $runtimeShaders.Count + $runtimeModels.Count -ne $stagedAssets.Count) {
     throw "Staged assets are stale. Build with: cmake --build --preset $buildPreset"
 }
 foreach ($shader in $runtimeShaders) {

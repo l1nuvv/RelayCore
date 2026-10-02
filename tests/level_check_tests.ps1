@@ -2,7 +2,7 @@ param([Parameter(Mandatory)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$env:RELAYCORE_ASSET_ROOT = Join-Path $projectRoot 'assets'
+$env:RELAYCORE_ASSET_ROOT = Join-Path (Split-Path -Parent $Executable) 'assets'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('relaycore-level-check-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 function Assert-Check([bool]$Condition, [string]$Message) {

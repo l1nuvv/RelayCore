@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="RelayCore — Sandbox" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="RelayCore" TARGET_NAME="relaycore_sandbox" CONFIG_NAME="msvc-debug" RUN_TARGET_PROJECT_NAME="RelayCore" RUN_TARGET_NAME="relaycore_sandbox">
     <envs>
-      <env name="RELAYCORE_ASSET_ROOT" value="$PROJECT_DIR$/assets" />
+      <env name="RELAYCORE_ASSET_ROOT" value="$PROJECT_DIR$/build/msvc-debug/src/relaygame/assets" />
     </envs>
     <method v="2">
       <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />

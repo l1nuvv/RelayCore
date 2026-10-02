@@ -1,0 +1,142 @@
+# N1 native workflow fixture. Metres, +Y up; GLB props use explicit local AABBs.
+# Three shared models; repeated instances exercise yaw and nonuniform positive scale.
+
+# Single open laboratory volume; storage across the moving door keeps its existing lighting.
+[[entity]]
+classname = "irradiance_volume"
+product = "lighting/native_lab.rcprobe"
+mins = [-5.85,0,-4.85]
+maxs = [5.85,3.475,4.85]
+dimensions = [4,3,4]
+rays = 1024
+
+[[solid_group]]
+boxes = [
+  { origin = [0,-0.15,0], size = [12,0.3,10], material = "filtration_floor" },
+  { origin = [0,-0.15,6], size = [2.4,0.3,2], material = "maintenance_floor" },
+  { origin = [0,3.6,0], size = [12,0.25,10], material = "Concrete" },
+  { origin = [0,3.6,6], size = [2.4,0.25,2], material = "Concrete" },
+  { origin = [-6,1.8,0], size = [0.3,3.6,10], material = "filtration_wall" },
+  { origin = [6,1.8,0], size = [0.3,3.6,10], material = "filtration_wall" },
+  { origin = [0,1.8,-5], size = [12,3.6,0.3], material = "WallPanel" },
+  { origin = [-3.6,1.8,5], size = [4.8,3.6,0.3], material = "filtration_wall" },
+  { origin = [3.6,1.8,5], size = [4.8,3.6,0.3], material = "filtration_wall" },
+  { origin = [0,3.1,5], size = [2.4,1,0.3], material = "Beam" },
+  { origin = [-1.2,1.8,6], size = [0.3,3.6,2], material = "WallPanel" },
+  { origin = [1.2,1.8,6], size = [0.3,3.6,2], material = "WallPanel" },
+  { origin = [0,1.8,7], size = [2.4,3.6,0.3], material = "WallPanel" },
+  # Practical ceiling fixtures, conduit and a muted doorway marker.
+  { origin = [-3,3.42,0], size = [0.45,0.08,2.4], material = "Metal" },
+  { origin = [3,3.42,0], size = [0.45,0.08,2.4], material = "Metal" },
+  { origin = [-3,3.36,0], size = [0.32,0.04,2.2], material = "LightStrip", tint = [0.48,0.52,0.48] },
+  { origin = [3,3.36,0], size = [0.32,0.04,2.2], material = "LightStrip", tint = [0.48,0.52,0.48] },
+  { origin = [5.78,2.8,0], size = [0.08,0.08,9.6], material = "Metal" },
+  { origin = [0,2.76,4.82], size = [2.2,0.12,0.04], material = "Trim", tint = [0.7,0.58,0.3] },
+]
+
+[[entity]]
+classname = "player_spawn"
+origin = [0,0.02,-3.4]
+angles = [0,0,0]
+
+[[entity_group]]
+classname = "level_entry"
+entries = [
+  { targetname = "entrance", origin = [0,0.02,-3.4], angles = [0,0,0] },
+  { targetname = "controls", origin = [1.5,0.02,2.1], angles = [0,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/lab_bench.rcmodel"
+collision_mins = [-1.2,0,-0.45]
+collision_maxs = [1.2,1.06,0.45]
+collision_material = "Metal"
+entries = [
+  { targetname = "west_bench", origin = [-4.6,0,-1.3], angles = [90,0,0] },
+  { targetname = "north_bench", origin = [-2.8,0,3.8], angles = [180,0,0] },
+  { targetname = "east_bench", origin = [4.6,0,0], angles = [270,0,0], scale = [0.8,1,1] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/power_cabinet.rcmodel"
+collision_mins = [-0.6,0,-0.4]
+collision_maxs = [0.6,2.1,0.51]
+collision_material = "Metal"
+entries = [
+  { targetname = "control_cabinet", origin = [1.5,0,3.95], angles = [180,0,0] },
+  { targetname = "auxiliary_cabinet", origin = [4.6,0,3.8], angles = [180,0,0], scale = [1,0.85,1] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/service_cylinder.rcmodel"
+collision_mins = [-0.25,0,-0.25]
+collision_maxs = [0.25,1.52,0.25]
+collision_material = "Metal"
+entries = [
+  { targetname = "bench_supply", origin = [-4.65,0,3.7], angles = [30,0,0] },
+  { targetname = "east_supply", origin = [4.6,0,-2.7], scale = [1.2,1.2,1.2] },
+  { targetname = "stored_supply", origin = [0.65,0,6], angles = [90,0,0], scale = [0.8,0.8,0.8] },
+]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "door"
+targetname = "storage_gate"
+origin = [0,0,5]
+size = [2.3,2.55,0.22]
+move_offset = [2.5,0,0]
+move_speed = 1.5
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+targetname = "native_power_control"
+origin = [1.25,1.45,3.39]
+size = [0.35,0.28,0.08]
+mount_axis = "-z"
+target = "native_power"
+action = "activate_target"
+single_use = true
+label = "Включить рабочий свет лаборатории"
+success_message = "Рабочее освещение включено. Нижняя кнопка открывает кладовую."
+use_radius = 1.8
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+targetname = "storage_control"
+origin = [1.75,1.12,3.39]
+size = [0.24,0.22,0.08]
+mount_axis = "-z"
+target = "storage_gate"
+label = "Открыть / закрыть кладовую"
+use_radius = 1.8
+
+[[entity_group]]
+classname = "render_light"
+color = [0.4,0.42,0.38]
+radius = 7
+intensity = 1.15
+entries = [
+  { origin = [-3,3.15,0] },
+  { origin = [3,3.15,0] },
+  { origin = [0,3.1,6], radius = 3, intensity = 0.8 },
+]
+
+[[entity]]
+classname = "render_light"
+origin = [-2.8,2.7,3]
+color = [0.45,0.44,0.38]
+radius = 4
+intensity = 1.3
+required_target = "native_power"
+
+[[entity]]
+classname = "world_effect"
+kind = "decal"
+mark = "01"
+origin = [-1.65,1.8,4.84]
+angles = [180,0,0]

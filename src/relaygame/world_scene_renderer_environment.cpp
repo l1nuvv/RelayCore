@@ -71,14 +71,7 @@ namespace RelayGame
             face(frame, point(a, 0.52F, 0.08F), point(b, 0.52F, 0.08F), point(b, 0.52F, -0.12F), metal * 0.65F, 1);
             face(frame, point(a, 0.52F, 0.08F), point(b, 0.52F, -0.12F), point(a, 0.52F, -0.12F), metal * 0.65F, 1);
             face(rotor, {0, 0, 0.015F}, point(a, 0.12F, 0.015F), point(b, 0.12F, 0.015F), metal, 1);
-            face(
-                frame,
-                {0, 0, -0.115F},
-                point(a, 0.52F, -0.115F),
-                point(b, 0.52F, -0.115F),
-                color({0.055F, 0.065F, 0.060F}),
-                22
-            );
+            face(frame, {0, 0, -0.115F}, point(a, 0.52F, -0.115F), point(b, 0.52F, -0.115F), metal * 0.65F, 1);
         }
         for (int blade = 0; blade < 5; ++blade)
         {

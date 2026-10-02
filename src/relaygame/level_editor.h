@@ -22,6 +22,10 @@ namespace RelayGame
         void leave(RelayCore::EngineServices& services);
         void leave_scene() noexcept;
         void resume(RelayCore::EngineServices& services);
+        [[nodiscard]] auto
+        prepare_color_pipeline(RelayCore::render::ColorPipelineMode pipeline, RelayCore::EngineServices& services) const
+            -> WorldSceneRenderer;
+        void commit_color_pipeline(WorldSceneRenderer scene) noexcept;
         [[nodiscard]] auto exit_requested() const noexcept -> bool
         {
             return exit_requested_;

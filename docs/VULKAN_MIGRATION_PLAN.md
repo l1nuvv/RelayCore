@@ -574,6 +574,8 @@ Only then schedule corrections. Do not combine this review with HDR/PBR work aut
 
 Only after VK-013/014 should the large renderer capability program proceed normally. Non-renderer foundations follow `DEPENDENCY_STACK.md` and their own milestones rather than being bundled into Vulkan parity:
 
+Current execution priority (2026-10-02): the owner deferred G-011 blind playtesting/another GPU and explicitly authorized the narrow E-003 static MeshAsset/ModelAsset importer slice. G-011/H-008/H-009 acceptance remains open. The capability order below does not authorize the remaining implementations/dependencies.
+
 ```text
 production MeshAsset/ModelAsset
     ↓
@@ -1199,9 +1201,9 @@ Scheduled correction, separate from this read-only phase:
 
 | ID | Priority / status | Evidence and narrow scope | Verification |
 | --- | --- | --- | --- |
-| VK-F01 | P3 / ready | `vulkan_mesh_renderer.cpp::require_mesh_vk` accepts `const std::string&`; literal diagnostics in normal command begin/submit/fence paths construct temporary strings even on success. Use a borrowed string view and build the exception message only on error, preserving diagnostic text. The call structure is confirmed; allocator counts and timing impact are unmeasured. | Existing invalid-SPIR-V/failed-reload assertions plus mesh/lifecycle checks; no speedup claim without a comparable capture. |
+| VK-F01 | P3 / done | `vulkan_mesh_renderer.cpp::require_mesh_vk` now accepts `std::string_view`; literal diagnostics in normal command begin/submit/fence paths no longer require temporary owning strings. Exception text is constructed only on error and preserves its format. Allocator counts and timing impact are unmeasured. | Existing invalid-SPIR-V/failed-reload assertions plus mesh/lifecycle checks; verification is recorded in section 29. No speedup claim. |
 
-Keep synchronous scene/UI ownership for now. Removing its waits requires measured benefit and a complete replacement for command/UBO/image lifetime, UI reload and game-mesh replacement; do not schedule a render graph, async streaming or multi-frame scene architecture from this baseline alone. After the migration review, production MeshAsset/ModelAsset is the next capability block in section 8 and architecture roadmap C, under its own scope/dependency gate. HDR/PBR/lightmaps were not started.
+Keep synchronous scene/UI ownership for now. Removing its waits requires measured benefit and a complete replacement for command/UBO/image lifetime, UI reload and game-mesh replacement; do not schedule a render graph, async streaming or multi-frame scene architecture from this baseline alone. The owner subsequently authorized the narrow E-003 static MeshAsset/ModelAsset slice in section 8. HDR/PBR/lightmaps were not started.
 
 Commands actually completed in a Visual Studio developer shell with valid `VCPKG_ROOT`/`VULKAN_SDK` (the two CTest invocations passed 8/8 and 2/2, respectively):
 
@@ -1221,3 +1223,31 @@ git diff --check
 ```
 
 Build/check logs: `build/vk-014-{build-optimized,build-debug,tests,desktop}.log`; JUnit reports: `build/msvc-debug/vk-014-{review,desktop}.xml`. No new full Debug/ASan/release suite, remote CI, other machine or subjective playtest was claimed. Documentation records the completed phase and the owner's runtime acceptance; all existing working-tree implementation changes were preserved.
+
+## 29. VK-F01 and documentation evidence — 2026-10-02
+
+Status: done. `require_mesh_vk` takes `std::string_view` and constructs owning diagnostic text only for a failed result. Error-message format is unchanged; no frame-time or allocation-count improvement was measured. Scene/UI/presentation waits, dependencies and asset formats are unchanged.
+
+Current documentation now describes Vulkan ownership, runtime requirements, assembled SPIR-V assets, G-009 acceptance and the G-011 → H-008/H-009 queue. Historical GL evidence remains explicitly dated. The CLion Sandbox override now points at its assembled Debug assets rather than the source root, which lacks runtime SPIR-V. The player guide and observer protocol use the optimized G-011 candidate, preserve blind-first observations and separate them from scripted checks.
+
+Checks on RTX 4060 Ti, driver `32.0.15.9649`:
+
+- Debug and RelWithDebInfo builds below pass. Debug graphics: 6/6; optimized graphics: 5/5. JUnit reports contain no failure/error/skipped cases. Existing mesh tests exercise invalid SPIR-V and failed reload; lifecycle checks exercise replacement/shutdown. Debug validation reports no unexpected diagnostics.
+- Playtest archive `build/playtest/RelayCore-playtest-20261002-215444-058.zip`: all 93 ZIP files match staged hashes, including authored assets, the six runtime shaders and the current player guide. SHA256: `A5558BEA3F04EA5168DF4F1C66012A2320C88A0259EF426740E4B4A7418F0021`. Version remains 1.3.4; this is a local candidate with uncommitted source state recorded in its manifest, not a publication.
+- The archive was extracted into a fresh `%TEMP%/RelayCore-vk-f01-*` directory outside checkout. Packaged `RelayCore.exe` with no asset-root override creates a real Vulkan device and exits 0 after WM_CLOSE. Optimized lifecycle and power-restoration graphics binaries pass using the extracted asset root; the latter verifies pressure-transfer continue, SDL use, menu save and finale as well as the previous episode. Debug Sandbox startup with the corrected runtime root also exits 0 after WM_CLOSE. Tests do not constitute a blind playthrough.
+- C++ clang-format, Sandbox XML parsing, changed-document local file links and `git diff --check` pass; final diff reviewed.
+
+Commands completed from the repository root; builds used the Visual Studio developer environment:
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_demo relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_game_lifecycle relaycore_power_restoration_graphics --parallel 1
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_game_lifecycle relaycore_power_restoration_graphics --parallel 1
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|vulkan_presentation|vulkan_recreation_failure|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit vk-f01-debug.xml
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|vulkan_presentation|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit vk-f01-optimized.xml
+pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo -PassThru
+pwsh -NoProfile -File build/vk-f01-standalone-check.ps1
+clang-format --dry-run --Werror src/relaycore/render/vulkan_mesh_renderer.cpp src/relaycore/app/application.h
+git diff --check
+```
+
+Logs: `build/vk-f01-*.log`; JUnit: `build/msvc-debug/vk-f01-debug.xml` and `build/msvc-relwithdebinfo/vk-f01-optimized.xml`. No full unit/content/ASan suite was rerun for this local diagnostic/helper and documentation patch. G-011 remains `awaiting_playtest`; H-008/H-009 remain pending. No second Vulkan-capable GPU is available in this environment. The old Radeon 610M OpenGL run is historical evidence, not a Vulkan compatibility result. Runtime first-use hitch and isolated wait costs remain unmeasured; production MeshAsset/ModelAsset scope follows G-011/H-008.

@@ -8,9 +8,9 @@
 
 Единая очередь задач и результаты проверок находятся в [PLAYABLE_SLICE_ROADMAP](docs/PLAYABLE_SLICE_ROADMAP.md). Цель — законченный эпизод на 5–15 минут самостоятельной игры; длительность и понятность маршрута ещё не подтверждены новым игроком. Таблица статусов в roadmap отделяет выполненные технические проверки от игровой приёмки.
 
-Основной сценарий — **«Восстановление питания» → «Новый эпизод»**, карта `power_restoration.toml`. Он связывает входной зал, сервисный узел с резервной шиной и роботом, щитовую, насосную, фильтрационную с турелью и обратный переход к шлюзу. «Два сектора» остаётся коротким сценарием проверки переходов между картами. Для нового участника используйте [инструкцию без решения маршрута](docs/PLAYTEST_GUIDE.txt); этапы и временные отметки записывает наблюдатель в [протокол G-001](docs/playtests/G-001-2026-09-27.md).
+Текущий playtest G-011 — **«Перепуск давления» → «Новый эпизод»**, карта `pressure_transfer.toml`. Для нового участника используйте [инструкцию без решения маршрута](docs/PLAYTEST_GUIDE.txt); этапы и временные отметки записывает наблюдатель в [протокол G-011](docs/playtests/G-011-2026-09-29.md). «Восстановление питания» остаётся предыдущим эпизодом, а «Два сектора» — коротким сценарием проверки переходов между картами.
 
-Инженерный трек — VK-013/014 завершены: основной runtime использует Vulkan, GL-код удалён; ревью владения ресурсами, 10 целевых проверок и свежие Tracy/RenderDoc baseline не выявили блокирующих проблем. Небольшая задача по диагностическим строкам записана отдельно в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md); следующий capability-блок — production MeshAsset/ModelAsset. Игровой трек — независимый playtest G-011 нового эпизода, затем H-008/H-009; статусы и зависимости находятся в соответствующих планах.
+VK-013/014 и VK-F01 завершены: основной runtime использует Vulkan, GL-код удалён; проверки записаны в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md). Автор отложил независимый playtest G-011/другой GPU и поручил первый MeshAsset/ModelAsset slice E-003: статический GLB → native `.rcmodel` с несколькими частями и opaque base-color материалами. Инструмент и пример Sandbox описаны в [DEVELOPMENT.md](docs/DEVELOPMENT.md#статические-модели-glb--native-product). G-011/H-008/H-009 сохраняют незавершённые критерии.
 
 ## Возможности
 
@@ -25,7 +25,7 @@
 
 Для сборки: Windows 11, Visual Studio с C++ workload и Windows SDK, CMake 4.0+, Ninja, Git, PowerShell 7 и vcpkg в manifest mode. SDL3 с Vulkan support, Vulkan headers/loader, vk-bootstrap, VMA и host-tool Slang устанавливаются из закреплённого manifest; `slangc` компилирует shaders в SPIR-V во время сборки. Отдельный глобальный Slang не нужен. Windows tooling-регрессии также требуют `clang-format`.
 
-Для запуска игры и graphics-тестов нужны Vulkan 1.3, поддерживаемые выбранным устройством features/extensions и рабочая presentation surface; текущий device contract проверяется `VulkanDevice`. Установите LunarG Vulkan SDK с validation layers и корректным `VULKAN_SDK`; SDK предоставляет validation layers и инструменты диагностики; loader/layers проверяются собственным toolchain probe, а build dependencies разрешаются через vcpkg. RenderDoc и Tracy используются для углублённой диагностики. Подготовка окружения описана в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md#11-developer-machine-setup-windows-11).
+Для запуска нужны рабочий Vulkan driver, Vulkan 1.3, features/extensions текущего `VulkanDevice` и рабочая presentation surface. Одной версии API недостаточно: дополнительные требования и порядок проверки GPU описаны в [DEVELOPMENT.md](docs/DEVELOPMENT.md). Оптимизированный playtest ZIP не требует Vulkan SDK. Debug/ASan с validation требуют LunarG Vulkan SDK, validation layers и корректный `VULKAN_SDK`; build dependencies разрешаются через vcpkg. Toolchain probe проверяет loader/layers, а совместимость GPU подтверждают реальные device/presentation/lifecycle проверки. RenderDoc и Tracy используются для углублённой диагностики. Подготовка окружения описана в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md#11-developer-machine-setup-windows-11).
 
 ## Сборка и проверки
 
@@ -117,7 +117,7 @@ pwsh -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug
 
 `hardware_srgb` использует линейные scene data и sRGB image view; `legacy_gamma` — UNORM scene view. ImGui намеренно компонуется в encoded space через UNORM view того же target. Presentation переносит готовый encoded кадр в UNORM swapchain. Vulkan color baseline проверяет численные значения, UI и texture filtering; отсутствующие возможности устройства завершают startup ошибкой без fallback.
 
-CMake копирует каталог `assets` и собранные SPIR-V рядом с demo executable. По умолчанию runtime использует `<exe-directory>/assets`; `RELAYCORE_ASSET_ROOT` допускается только как абсолютный override на полный runtime-каталог с собранными SPIR-V. Основной конфиг — `assets/config/engine.toml`.
+CMake компилирует объявленные GLB в native модели и синхронизирует их, каталог `assets` и собранные SPIR-V рядом с demo executable. По умолчанию runtime использует `<exe-directory>/assets`; `RELAYCORE_ASSET_ROOT` допускается только как абсолютный override на полный runtime-каталог с моделями и SPIR-V. Основной конфиг — `assets/config/engine.toml`.
 
 ## Частный плейтест
 

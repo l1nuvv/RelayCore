@@ -4,6 +4,8 @@
 
 План следующего цикла актуализирован 2026-09-28 по текущему рабочему дереву: раздел 7, блок «Следующий цикл — от полигона к новому эпизоду». Исходный baseline и журнал ниже сохранены как история. Новые задачи описывают рекомендованный порядок; этот запрос на план не запускает их реализацию.
 
+Сводный план развития после E-004 актуализирован 2026-10-02 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native-комната N1 выполнена как E-005 по отдельному поручению автора; следующие capabilities по потребности её контента остаются proposal. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009.
+
 ## 1. Назначение и порядок использования
 
 Этот документ — основная очередь развития RelayCore к небольшому законченному эпизоду. Он предназначен для автора проекта и ИИ, который продолжает работу в новой задаче без истории разговора.
@@ -61,6 +63,8 @@ Scope: S — одна небольшая итерация; M — несколь�
 RelayCore — играбельный прототип небольшого FPS-эпизода со специализированным runtime и встроенным редактором. Игровой цикл уже существует. Следующая цель — качество самостоятельного прохождения, а не создание базовых engine-систем заново.
 
 ### Подтверждённая основа
+
+Таблица фиксирует исходный baseline 2026-09-27. Текущий runtime после VK-013/014 использует SDL3 и прямой Vulkan 1.3; актуальное владение описано в `ARCHITECTURE.md`.
 
 | Слой | Что уже есть |
 | --- | --- |
@@ -194,7 +198,7 @@ E-001 ускоряет настройку, но его задержка не з�
 
 Три трека: G — непосредственно gameplay; E — необходимые runtime/tooling capabilities; H — correctness, проверяемость, performance evidence, build и документация.
 
-Отдельный инженерный трек: VK-013 done — runtime использует только Vulkan; свежие configure/build и 299 тестов прошли без пропусков. Следующий gate — read-only review VK-014 по `VULKAN_MIGRATION_PLAN.md`. Это не меняет игровую приёмку G-011.
+Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; cutover и ревью завершены, evidence в `VULKAN_MIGRATION_PLAN.md`. Автор отложил blind playtest G-011/другой GPU и явно поручил E-003, первый static MeshAsset/ModelAsset slice. Продолжение E-004 автоматизирует сборку и staging моделей, проверяет актуальность перед упаковкой. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability.
 
 | Порядок | ID | Название | Трек | Priority | Статус |
 | --- | --- | --- | --- | --- | --- |
@@ -221,6 +225,13 @@ E-001 ускоряет настройку, но его задержка не з�
 | 21 | H-008 | Профиль нового игрового маршрута | Engine Health | P2 | pending |
 | 22 | H-009 | Проверяемый кандидат следующего эпизода | Engine Health/delivery | P2 | pending |
 | 23 | VK-014 | Ревью архитектуры после Vulkan cutover | Engine Health/rendering | P2 | done |
+| 24 | VK-F01 | Диагностические строки Vulkan mesh backend | Engine Health/rendering | P3 | done |
+| 25 | E-003 | Статический GLB → native MeshAsset/ModelAsset | Engine/content | P2 | done |
+| 26 | E-004 | Сборка и доставка native моделей из GLB | Engine/content tooling | P2 | done |
+| 27 | E-005 / N1 | Проверочная native-комната и полный content workflow | Engine/content | P2 | done |
+| 28 | E-006 / N2.1 | Tangent/normal map для окрашенной стали native-шкафа | Engine/render/content | P2 | done |
+| 29 | E-007 / N2.2 | Roughness/metalness факторов native-шкафа | Engine/render/content | P2 | done |
+| 30 | E-008 / N3.1 | FP16 HDR, exposure, tone mapping и UI composition | Engine/render | P2 | done |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
 
@@ -592,6 +603,402 @@ G-007 принята автором 28 сентября: «полигон я п�
 
 **Готово, когда:** хотя бы один новый игрок проходит без подсказок; записаны длительности участков и три главных затруднения; есть наблюдаемое применение обоих оружий и разные решения во встречах. Проверены смерть и continue до/после получения оружия и смены состояния мира. Ориентир 5–15 минут сохраняется; результат измерить, а короткий маршрут улучшать решениями и содержанием. Старые 90–120 секунд и 3:26 из G-001 не являются измерением нового эпизода.
 
+#### E-003 — первый static MeshAsset/ModelAsset slice
+
+**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** VK-013/014 выполнены;
+автор 2026-10-02 явно перенёс этот scope вперёд после отложения blind playtest/другого GPU.
+
+**Результат:** Blender GLB компилируется CLI в native `.rcmodel`; immutable CPU meshes,
+opaque base-color материалы и transforms частей подаются в текущий Vulkan renderer.
+Несколько primitives/materials, hierarchy, nonuniform/mirrored instances, embedded
+PNG/JPEG; ошибки неподдерживаемых/повреждённых данных называют source. В Sandbox
+service cylinder `[29,0,2.5]` использует две части/два материала; модель доступна
+в каталоге редактора. Collision остаётся независимым AABB. Bounds обновляются при
+reset/reload карты, неудачная подготовка сохраняет предыдущие bounds/resources.
+
+fastgltf `0.9.0` и simdjson `5.0.1` разрешены прежним manifest baseline и принадлежат
+только compiler tool/tests; importer/Vulkan types не входят в native/game contracts.
+Это base-color static slice: skins/animation/PBR/HDR/streaming/общий asset compiler
+не реализуются этим ticket. При закрытии E-003 source GLB перекомпилировался явным
+CLI; E-004 ниже заменяет этот ручной шаг сборкой. Workflow/format/limitations — в `DEVELOPMENT.md`.
+
+**Проверки 2026-10-02:** Debug unit/audio/tooling 260/260, content 31/31;
+graphics Debug/RelWithDebInfo по 4/4. После bounds fix — focused editor/model 19/19,
+graphics/lifecycle 2/2 и ASan model/OBJ 10/10, включая scale 0.01 для DCC units. После добавления map capture graphics
+повторён 1/1; native cylinder и кадр Sandbox просмотрены. В JUnit нет skip.
+Debug/optimized CLI дают одинаковый product; ZIP `224440-223`: 94 файла/хеши,
+внешний standalone exit 0, lifecycle/episode на внешних assets и Sandbox exit 0.
+Runtime DLL inspection, clang-format, local links и diff-check прошли.
+Точные commands/logs — ниже; G-011/H-008/H-009 остаются незавершёнными.
+
+#### E-004 — сборка и доставка native моделей из GLB
+
+**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-003;
+автор поручил продолжить инженерный трек. Цель — изменение GLB доходит до игры
+через обычную сборку, без ручного обновления native файла в source tree.
+
+**Результат:** явный список в `cmake/RelayCoreModelAssets.cmake`; GLB компилируется
+перед staging игры/Sandbox/Check Map и tests. Products и SHA256 receipts принадлежат
+каждому build preset. Модель убрана из authored `assets`; runtime path прежний.
+GLB/importer/compiler rules — file dependencies. Повторная сборка не переписывает
+неизменившийся product; неудачный импорт сохраняет предыдущие product/receipt/staging.
+Снятые с регистрации модели удаляются из runtime assets; двойное владение путём
+отклоняется. Packaging сверяет source/tool/rules/product/staged bytes до создания ZIP.
+Формат/material contract не меняется, Blender export остаётся явным; content-addressed
+cache и новые dependencies не добавлены. Workflow — `DEVELOPMENT.md`.
+
+**Проверки 2026-10-02:** Debug unit/tooling/audio 261/261, content 31/31;
+graphics Debug/RelWithDebInfo по 4/4, ASan model/OBJ/tooling 11/11 без skip.
+Дополненный tooling test повторён отдельно 1/1: реальный importer, Ninja fixture
+с пробелами в пути, GLB/material update, сохранённый source timestamp, compiler/tool
+invalidation, неудачный импорт, повреждённые product/staging, регистрация/удаление
+второй модели и конфликт владельцев. Debug product побайтово совпадает с E-003.
+ZIP `230246-770`: 94 файла/хеши, внешний standalone/device/WM_CLOSE exit 0,
+lifecycle/episode на распакованных assets и Sandbox exit 0. Кадр баллона просмотрен;
+formatting/PowerShell parser/diff-check прошли. G-011/H-008/H-009 сохраняют прежние статусы.
+
+#### E-005 — native-комната N1
+
+**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-003/E-004;
+автор отдельно поручил N1 из `PROJECT_PLAN.md`.
+
+**Результат:** `assets/levels/native_lab.toml` — небольшая лаборатория на существующих
+индустриальных материалах. Три стола, два шкафа и три баллона используют три общих
+model products, разные yaw и positive/nonuniform scale. `lab_bench` и `power_cabinet`
+созданы/экспортированы Blender 5.2.2 LTS; editable `.blend`, GLB и воспроизводимый
+export script сохранены. По три base-color материала в новых моделях; 12/15 parts.
+Один шкаф управляет рабочим светом и дверью кладовой; route и grounded entries
+проверены. Коллизия остаётся отдельным authored AABB, renderer/importer/editor
+capabilities и dependencies не менялись. Отсутствие mission/exit намеренно даёт
+предупреждение редактора «Нет задания или зоны выхода.»
+
+**Проверки 2026-10-02:** Debug content 33/33 и целевые model/editor/tooling 18/18;
+graphics Debug 1/1, RelWithDebInfo lifecycle/episode 2/2, без skip. Tooling теперь
+проверяет GLB/material update и failed import rollback нового стола при трёх declared
+sources. Реальный editor open/save → preview → возврат → F7, изменение материала,
+отказ damaged product, сохранение рабочей сцены и восстановление прошли; framebuffer
+сравнивается с допуском 1/255 из-за временной scanline post-processing. Исходные
+эпизоды, Sandbox и campaign lifecycle сохранили поведение. Debug/optimized products
+стола и шкафа побайтово совпадают. Кадры комнаты и редактора просмотрены.
+ZIP и внешний standalone/native startup, graphics/lifecycle на распакованных assets
+проверены; candidate paths/hash — `build/n1-package.json`, logs — `build/n1-*.log`,
+JUnit — `n1-*.xml` в build presets. G-011/H-008/H-009 не закрываются; phase C и N2
+не считаются выполненными.
+
+Команды в Visual Studio x64 environment, с `VCPKG_ROOT` для текущего build tree:
+
+```powershell
+Blender --background --disable-autoexec --python scripts/export-native-lab-glb.py
+cmake --preset msvc-debug
+cmake --build --preset demo-debug --target relaycore_demo relaycore_sandbox relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n1-content.xml
+ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n1-unit.xml
+ctest --preset graphics-debug -R '^graphics.power_restoration$' --output-on-failure --no-tests=error --output-junit n1-graphics-debug.xml
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_power_restoration_graphics relaycore_game_lifecycle -j 2
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit n1-graphics-optimized.xml
+pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo -PassThru
+pwsh -NoProfile -File build/n1-standalone-check.ps1
+git diff --check
+```
+
+Первый Debug build встретил повреждённые файлы локального build tree: два GLM
+headers и один generated receipt содержали нули. Headers восстановлены из
+RelWithDebInfo с той же GLM 1.0.3, receipt пересоздан обычной сборкой. Кеши/build trees,
+версии зависимостей и исходники runtime не удалялись/не менялись для обхода ошибки;
+все итоговые проверки выполнены после восстановления.
+
+#### E-006 — tangent/normal map, первый шаг N2
+
+**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-005/N1;
+автор поручил продолжить последовательность `PROJECT_PLAN.md`. N2 целиком остаётся
+`in_progress`: roughness/metalness и нужные дополнительные semantics — следующие slices.
+
+**Результат 2026-10-03:** окрашенная сталь `power_cabinet` получила сдержанный рельеф
+покрытия. Blender source, PNG, GLB и export script воспроизводимы; GLB содержит normal
+image и tangents. Compiler пишет `.rcmodel` v2, loader продолжает читать v1 как
+base-color-only. В v2 явно хранятся tangent presence/vec4, optional normal RGBA и scale;
+старый runtime v1 не поддерживает v2. Products пересобираются обычной сборкой.
+
+Importer требует TEXCOORD_0 и экспортированные unit/orthogonal tangents с w = ±1;
+при reflection меняет tangent.x/w и winding. Renderer учитывает nonuniform/mirrored
+transform, Gram–Schmidt basis, normal scale и linear UNORM texture в обоих color modes.
+Shadow bias/offset остаётся на геометрической нормали. Кеш учитывает обе textures и
+scale, освобождает устаревшие resources; ownership/GPU upload остаются в renderer.
+Модель освещения прежняя; roughness/metalness ещё не используются. TextureAsset/KTX2,
+новые dependencies, HDR, alpha, physics и игровой трек не входят в этот шаг.
+
+**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
+model/editor/tooling 21/21, content 33/33, graphics mesh/color baseline/episode 3/3,
+без skip. Проверены чтение фиксированного v1 fixture, детерминизм v2, точные linear
+normal bytes, scale, mirrored handedness, unsupported semantics, staged cabinet
+recompile и обе color encodings. GPU normal output сравнивается с отдельной geometry
+с явно вычисленной world normal; negative/nonuniform transforms, два normal resources
+при общей base color, settled allocations и прежние OBJ/color/shadow scenes прошли.
+Editor/preview/F7 и failed-reload rollback комнаты проверены episode fixture.
+
+Просмотрен кадр шкафа до/после. RenderDoc `build/n2-native_frame8.rdc` снят через
+`--profile-native` (120 кадров комнаты с shadows/UI/presentation): fragment binding 9
+использует normal image 256×256 `R8G8B8A8_UNORM`, scene target — `R8G8B8A8_SRGB`.
+Replay debug messages отсутствуют; core/synchronization validation чистая.
+Evidence: `build/n2-renderdoc-analysis.json`, `build/n2-build-debug.log`,
+`build/msvc-debug/n2-{unit,content,graphics}.xml`,
+`build/msvc-debug/tests/vulkan-mesh-captures/native-cabinet-{normal,flat}-*.bmp`.
+`git diff --check`, formatting и Python syntax check прошли. Optimized/ASan/Release
+в этом шаге не запускались; архивы и release packages не создавались.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_demo relaycore_tests relaycore_content_validation relaycore_vulkan_mesh_tests relaycore_power_restoration_graphics -j 2
+ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n2-unit.xml
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n2-content.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|power_restoration)$' --output-on-failure --no-tests=error --output-junit n2-graphics.xml
+```
+
+#### E-007 — roughness/metalness, N2
+
+**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. По команде автора
+продолжен N2: native-шкаф использует roughness/metalness factors из GLB. Краска —
+roughness 0.68, metalness 0; открытая сталь ручки — 0.38/1; приборы — 0.6/0.
+Это завершает N2 для выбранного потребителя: отдельная material data texture для
+равномерных покрытий не нужна. MR/AO/emissive maps и alpha явно отклоняются;
+TextureAsset/KTX2 и новые dependencies не добавлены.
+
+Импорт новой модели освещения включён только для `power_cabinet` через декларацию
+CMake и `--metallic-roughness`. Cylinder/bench сохраняют прежнее освещение. Compiler
+пишет `.rcmodel` v3 с flags/factors; loader читает v1–v3, старые products не получают
+новую BRDF при чтении или перезаписи. SHA256 декларации покрывает смену режима.
+
+Renderer передаёт typed optional factors и учитывает их в material cache. BRDF —
+GGX/Smith/Schlick/Lambert; directional/local/spot и shadows используют существующие
+владельцы. Valid roughness=0 хранится без изменения; shader ограничивает сингулярный
+lobe perceptual roughness 0.05. Shading/fog/postfx выполняются в linear space в обоих
+color modes. Ambient остаётся приближением diffuse irradiance без environment
+specular: металл без прямого света тёмный. HDR/exposure/IBL относятся к N3.
+
+**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
+model/editor/tooling 23/23, native content 2/2, graphics mesh/color baseline/episode
+3/3, без skip. Проверены independent v1/v2 fixtures, детерминизм v3, invalid factors,
+opt-in recompilation/receipts, оба color modes, аналитическая BRDF reference,
+roughness response, material cache и settled allocations, local/spot lights.
+Прежние OBJ/color/shadow scenes, editor/preview/F7 и reload/rollback прошли.
+
+Просмотрены шкаф и кадр native-комнаты. RenderDoc `build/n2-mr-native_frame8.rdc`
+снят через `--profile-native`: normal image 256×256 UNORM на fragment binding 9,
+binding 10 содержит `[normalScale=1, roughness=0.68, metalness=0, hardwareSrgb=1]`,
+scene target — `R8G8B8A8_SRGB`. Replay debug messages отсутствуют; core/synchronization
+validation чистая. Evidence: `build/n2-mr-renderdoc-analysis.json`,
+`build/n2-mr-build-debug.log`, `build/n2-mr-focused.log`,
+`build/msvc-debug/n2-mr-{unit,content,graphics}.xml`,
+`build/msvc-debug/tests/vulkan-mesh-captures/{mr-*,native-cabinet-*}.bmp`,
+`build/msvc-debug/tests/power-captures/native-lab.bmp`.
+Formatting, Python/PowerShell syntax и `git diff --check` прошли. Optimized/ASan/Release
+в этом шаге не запускались; архивы не создавались. G-011/H-008/H-009 остаются открыты.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
+ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n2-mr-unit.xml
+ctest --preset validation-debug -R '^validation\.native lab' --output-on-failure --no-tests=error --output-junit n2-mr-content.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|power_restoration)$' --output-on-failure --no-tests=error --output-junit n2-mr-graphics.xml
+# Из build/msvc-debug/tests, с RELAYCORE_ASSET_ROOT из staged runtime:
+./relaycore_vulkan_mesh_tests.exe --metallic-roughness
+```
+
+**Коррекция материалов по отзыву автора (2026-10-03):** общий bare-metal материал
+рамы/цоколя/окантовок без environment specular давал почти чёрные полосы, похожие на
+cel outlines. Материалы разделены по конструкции: рама и bezels — окрашенная сталь
+(roughness 0.75, metalness 0), цоколь — тёмное покрытие (0.9/0), вент-прорези и стрелки
+— отдельная тёмная поверхность; открытая сталь оставлена на ручке. BRDF, геометрия,
+normal map и освещение комнаты сохранены. GLB/Blender source и staged product обновлены.
+Debug build demo/tests успешен; cabinet import/staged-product fixture 1/1, native content
+2/2, graphics mesh/episode 2/2 без skip. Fixture проверяет, что bare-metal части остаются
+компактной фурнитурой. Просмотрены новые кадры шкафа и комнаты: чёрные рамки устранены.
+Evidence: `build/cabinet-material-build.log`, `build/cabinet-material-export.log`,
+`build/msvc-debug/cabinet-material-{unit,content,graphics}.xml` и текущие native BMP
+из каталогов выше. Formatting/Python syntax/diff-check прошли; архивы не создавались.
+
+#### E-008 — linear HDR, exposure и UI, первый шаг N3
+
+**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. Автор поручил продолжить
+план после коррекции шкафа. N3 целиком остаётся `in_progress`: выбранный способ
+lighting/environment с reproducible bake/import и invalidation ещё не реализован.
+
+Opt-in `RendererConfig::hdr_enabled` включает отдельную FP16 scene image
+`R16G16B16A16_SFLOAT`, linear blending world/transparent/viewmodel без раннего clipping
+lighting/emissive, manual `exposure_ev` [-10,10] и fullscreen Reinhard + postfx.
+Display output — SRGB attachment над UNORM storage; ImGui после tone mapping загружает
+UNORM view, сохраняя display-space цвета и alpha blending. Presentation/readback
+остаются SDR RGBA8. HDR требует hardware_srgb; legacy_gamma даёт понятный отказ.
+
+Новый `config/native_lab_hdr.toml` явно выбирает native-комнату и EV 0; существующие
+карты/engine.toml сохраняют SDR. Политика цвета не меняется автоматически при выборе
+другой карты. Текущие dynamic lights/shadows и authored материалы используются без
+environment specular. HDR format features проверяются; shader reload атомарно
+покрывает tone pipeline, resize обновляет HDR/display resources и descriptor после
+GPU completion. F7 меняет HDR через prepared backend, failure сохраняет рабочий.
+Frame ownership/submission, зависимости и форматы model products сохранены.
+
+**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
+engine config 9/9, content 33/33, graphics mesh/color baseline/HDR pipeline/episode/
+HDR episode 5/5 без skip. HDR reference использует radiance 0.25/1/4 и EV -1/0/+1;
+яркий metallic GGX highlight >1 также проходит analytical reference. Проверены clear
+decode/encode, linear transparent RGB/alpha, UI в обоих submission paths, resize,
+settled allocations, shader reload rollback и recovery. HDR episode проверяет
+shadows, glass/steam sorting, UI/presentation, native editor/preview/F7/model rollback,
+оба игровых эпизода. Empty test scenes теперь явно наследуют выбранный color mode.
+
+Просмотрены native-комната до/после, HDR captures и UI. RenderDoc
+`build/n3-hdr-native_frame8.rdc` подтверждает 86 HDR draws, sample FP16 image в
+`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`, tone pass → `R8G8B8A8_SRGB`, последующий UI
+→ UNORM. Все sampled radiance values finite; максимум этого native кадра 0.7158203
+(значения >1 проверяются отдельным GPU fixture). Replay debug messages отсутствуют;
+core/synchronization validation чистая. Evidence: `build/n3-hdr-renderdoc-analysis.json`,
+`build/n3-hdr-build-debug.log`, `build/msvc-debug/n3-hdr-{unit,content,graphics,focused}.xml`,
+`build/n3-native-before.bmp`, текущий `build/msvc-debug/tests/power-captures/native-lab.bmp`
+и `build/msvc-debug/tests/vulkan-mesh-captures/hdr-exposure-*.bmp`.
+Formatting/TOML/diff-check прошли. Optimized/ASan/Release и другой GPU в этом шаге
+не проверялись; архивы не создавались. G-011/H-008/H-009 сохраняют прежние статусы.
+
+Дополнение по поручению автора 2026-10-03: меню «Настройки» получило
+«Режим изображения» SDR / HDR. Смена применяется без перезапуска и сохраняется в
+`player_settings.toml`; HDR автоматически выбирает hardware_srgb. Подготовка
+backend и сцен игры/editor/editor-return предшествует публикации; ошибка сохраняет
+рабочий режим. F7 сохраняет выбор игрока. Debug demo/Sandbox/unit/lifecycle targets
+собраны; focused player settings и `graphics.hdr_settings` прошли. Новый GPU check
+активирует реальные menu widgets, проверяет отказ при missing tone shader,
+pause/resume, editor/preview/return, сохранение обоих режимов и F7. Evidence:
+`build/hdr-settings-build.log`, `build/msvc-debug/hdr-settings-{unit,focused,graphics}.xml`
+и `build/msvc-debug/tests/hdr-settings-menu.bmp`. Общий `graphics.game_lifecycle`
+также прошёл; core/synchronization validation без сообщений. Кадр меню просмотрен.
+
+Коррекция HDR по снимку автора 2026-10-03: point shadows строились, но старые SDR
+ambient/gain коэффициенты применялись как linear irradiance. В стартовой комнате
+`power_restoration` сумма shadow/no-shadow RGB differences упала с 1,670,694 в SDR
+до 483,261 в HDR. `mesh.slang` переводит authored ambient/local gain через sRGB curve
+только для HDR; после исправления HDR сумма 1,501,929, максимальная разница 49 вместо
+18 RGB bytes. Кадры одинаковой камеры SDR/HDR просмотрены; тени стола читаются.
+`graphics.hdr_settings` теперь проверяет вклад теней без UI в обоих режимах и
+защищает их контраст, вместо одного факта изменения кадра после toggle. Debug
+demo/Sandbox/lifecycle/mesh targets собраны; settings и mesh/color/HDR/lifecycle
+GPU checks прошли. Evidence: `build/hdr-shadow-{diagnosis,fix}.log`,
+`build/msvc-debug/hdr-shadow-{settings,graphics}.xml`,
+`build/msvc-debug/tests/hdr-settings-shadow-{SDR,HDR}.bmp`. Архивы не создавались.
+Полный `graphics.hdr_episode` также прошёл: итог 6/6 GPU checks без skips или
+validation messages. Native HDR кадр просмотрен, чёрные рамки шкафа не вернулись.
+Дополнительное evidence: `build/msvc-debug/hdr-shadow-episode.xml`.
+
+Коррекция возврата SDR по паре снимков автора 2026-10-03: переключатель сохранял
+hardware_srgb после выключения HDR, поэтому исходный legacy SDR вид не возвращался.
+`DemoGame` теперь запоминает startup color pipeline до применения player settings
+и восстанавливает его при выборе SDR; prepared сцены игры/editor/editor-return
+меняют encoding вместе с backend. HDR shadow correction сохранена. GPU regression
+проверяет побайтное совпадение сцены до/после SDR → HDR → SDR для обоих startup
+color pipelines и обратное переключение в editor. Debug demo/Sandbox/lifecycle
+собраны; `graphics.hdr_settings` и `graphics.game_lifecycle` прошли 2/2 без skip
+или validation messages. Команды: `cmake --build --preset demo-debug --target
+relaycore_demo relaycore_sandbox relaycore_game_lifecycle -j 2`;
+`ctest --preset graphics-debug -R '^graphics\.(hdr_settings|game_lifecycle)$'
+--output-on-failure --no-tests=error --output-junit sdr-return-graphics.xml`.
+Evidence: `build/sdr-return-build.log`, `build/msvc-debug/sdr-return-graphics.xml`.
+Formatting/diff-check прошли; архивы не создавались.
+
+Коррекция читаемости HDR по снимкам дверей/вентилятора 2026-10-03: прежнее
+HDR-only sRGB-декодирование ambient/gain было ошибочным и удалено. Contrast/grain
+теперь применяются к display brightness после tone mapping; слабая radiance больше
+не обрезается linear contrast. Чёрная заглушка вентилятора заменена освещаемым
+металлом. GPU regression проверяет тёмные значения и diffuse hemisphere classic/MR;
+shadow contrast сравнивается с hardware-sRGB SDR при одинаковом lighting arithmetic.
+Побайтный SDR round trip сохранён. Debug demo/Sandbox/два test targets собраны;
+mesh/color baseline/HDR pipeline/settings/lifecycle прошли 5/5 без skip/validation
+messages. Кадры двери, вентилятора и потолка просмотрены. Evidence:
+`build/hdr-readability-build.log`, `build/msvc-debug/hdr-readability-graphics.xml`,
+`build/msvc-debug/tests/hdr-settings-{door,fan,ceiling}.bmp`. N3 indirect lighting
+остаётся незавершённым; текущий FP16 HDR scene выводится на SDR display.
+После изоляции hemisphere fixture и уточнения камеры двери повторно прошли
+`graphics.hdr_pipeline`/`graphics.hdr_settings` 2/2; `git diff --check` чистый.
+Evidence: `build/hdr-readability-final{,-build}.log`,
+`build/msvc-debug/hdr-readability-final.xml`.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
+ctest --preset test-debug -R '^relaycore\.engine config' --output-on-failure --no-tests=error --output-junit n3-hdr-unit.xml
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n3-hdr-content.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|hdr_pipeline|power_restoration|hdr_episode)$' --output-on-failure --no-tests=error --output-junit n3-hdr-graphics.xml
+ctest --preset graphics-debug -R '^graphics\.hdr_pipeline$' --output-on-failure --no-tests=error --output-junit n3-hdr-focused.xml
+```
+
+#### E-009 — baked diffuse irradiance probes, N3.2
+
+**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. По поручению
+автора выбран один lighting primitive из N3: непрямой diffuse свет основной
+комнаты `native_lab`. Новые зависимости и release packages не добавлены.
+
+CPU baker использует 48 проб (4×3×4), 1024 детерминированных spherical Fibonacci
+луча на пробу, 5318 статических треугольников и 3 постоянно включённые лампы.
+Первое попадание и shadow rays дают один Lambert bounce. Albedo моделей — средний
+linear base color × vertex color, с diffuse factor для metalness; blockout —
+подготовленный linear vertex color. Texture/normal detail, emissive, environment,
+specular и последующие bounce в bake не входят. Подвижные двери и переключаемые
+лампы исключены. Существующий hemisphere/ambient сохраняется; вклад bake небольшой.
+
+`.rcprobe` v1 хранит little-endian bounds/grid/settings, content signature и SH9
+linear RGB irradiance/π, уже convolved с cosine ([SH convention, Sloan](https://www.ppsloan.org/publications/StupidSH36.pdf)). X — быстрая ось; grid centres
+отступают на 0.15 м от границ комнаты. Runtime делает trilinear interpolation и
+оценивает SH по shading normal; MR учитывает diffuse metalness factor. Product
+передаётся как immutable typed data; uniform/upload/descriptors принадлежат Vulkan
+renderer. Overlay и оружие исключены, пустые кадры сбрасывают предыдущий volume.
+Legacy SDR получает явную visual conversion вклада; hardware_srgb/HDR — linear.
+Карты без `irradiance_volume` сохраняют прежний свет.
+
+CMake target `relaycore_irradiance_assets` зависит от level, render authoring,
+compiled model products, baker и bake scripts/declaration; обычная demo/Sandbox/test
+сборка запекает и staging переносит только объявленный `lighting/native_lab.rcprobe`.
+Content signature (FNV-1a canonical fields, не security digest) покрывает геометрию,
+diffuse approximation, static lights и settings. Runtime/F7 отказывает при missing,
+broken или stale product с указанием пересборки. Display-mode switching не требует
+rebake. Editor сохраняет декларацию; stale reload удерживает рабочую сцену, rebake
+и F7 публикуют модель/свет вместе. Для локальных preview fixtures допускаются
+абсолютные product paths; shipped native level использует asset-relative путь.
+
+**Проверки:** финальный Debug build demo/Sandbox/baker/unit/content/mesh/episode/lifecycle
+успешен; unit/native 10/10, content 33/33, GPU probe reference и mesh/color/HDR/
+SDR+HDR episode/settings/lifecycle regressions 8/8, без skip. Проверены
+normal direction, interpolation/bounds, constant radiance, HDR coefficients >1,
+MR diffuse/metal, overlay/viewmodel, цветной bounce/opaque blockers, deterministic
+bake/product bytes, invalid products, stale geometry/prop/light/settings и F7
+rollback/rebake. Просмотрены native кадры до/после: суммарная RGB-byte difference
+363789, максимум 3/255; выбранный bake дополняет сильный существующий ambient.
+Повторный native bake дал те же 5240 bytes и SHA256
+`3fff895e93cb32babb7a2f3b9f166a26c9bdb69f8a25e3acfd178db7e5e7fd5b`;
+incremental build без изменений — `ninja: no work to do`. Formatting/diff-check чистые.
+
+RenderDoc `build/probes-native_frame8.rdc`: 86 HDR draws используют binding 11,
+9264-byte uniform и grid [4,3,4,1]; SH coefficients finite/nonzero. FP16 target и
+sampled layout → tone mapping в SRGB подтверждены; replay messages отсутствуют.
+Evidence: `build/probes-renderdoc.json`, `build/probes-{unit,content,focused,regressions}.log`,
+`build/msvc-debug/probes-{unit,content,focused,regressions}.xml`,
+`build/probes-build-final.log`, `build/probes-incremental.log`,
+`build/msvc-debug/probes-final-{unit,graphics}.xml`,
+`build/msvc-debug/tests/vulkan-mesh-captures/irradiance-native-{before,after}.bmp`.
+
+Ограничения slice: один regular volume, максимум 64 probes; без visibility-weighted
+interpolation/relocation возможны утечки через тонкие препятствия. Support volume
+не входит в кладовую за движущейся дверью. Bake предполагает статический свет и
+геометрию; движение двери не меняет indirect. Debug CPU bake этой комнаты занимает
+около шести минут; ускорение и multi-room GI не заявлены. Другой GPU и optimized
+build в этом шаге не проверялись. G-011/H-008/H-009 сохраняют прежние статусы.
+
+```powershell
+cmake --preset msvc-debug
+cmake --build --preset demo-debug --target relaycore_demo relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics relaycore_game_lifecycle -j 2
+ctest --preset test-debug -R '^relaycore\.(irradiance|native)' --output-on-failure --no-tests=error --output-junit probes-unit.xml
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit probes-content.xml
+ctest --preset graphics-debug -R '^graphics\.irradiance_probes$' --output-on-failure --no-tests=error --output-junit probes-focused.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|hdr_pipeline|power_restoration|hdr_episode)$' --output-on-failure --no-tests=error --output-junit probes-regressions.xml
+cmake --build --preset demo-debug --target relaycore_irradiance_assets -j 2
+ctest --preset test-debug -R '^relaycore\.(irradiance|native)' --output-on-failure --no-tests=error --output-junit probes-final-unit.xml
+ctest --preset graphics-debug -R '^graphics\.(irradiance_probes|hdr_settings|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit probes-final-graphics.xml
+git diff --check
+```
+
 #### H-008 — актуальный профиль нового маршрута
 
 **Статус / приоритет / объём:** `pending` / P2 / S–M. **Зависимость:** проходимый G-011. Раннее исследование допустимо при воспроизводимой задержке.
@@ -606,7 +1013,7 @@ G-007 принята автором 28 сентября: «полигон я п�
 
 Использовать существующие Release/packaging/update scripts. Проверить точный архив с manifest/хешами вне проекта, полный проход, save/continue и переход с предыдущей standalone-версии. Выполнить релевантные unit/content/graphics проверки и ASan для изменённого runtime; на слабом ПК проверить окно/HUD, управление, звук и новый бой. Версию и release notes готовить по существующему процессу.
 
-**Готово, когда:** конкретный кандидат принят автором, ограничения записаны, STATUS и этот roadmap отражают фактические результаты. Публикация требует отдельной команды на конкретный проверенный кандидат. Перестройка updater, новая площадка доставки и новые зависимости в этот этап не входят.
+**Готово, когда:** конкретный кандидат принят автором, ограничения записаны, README и этот roadmap отражают фактические результаты. Публикация требует отдельной команды на конкретный проверенный кандидат. Перестройка updater, новая площадка доставки и новые зависимости в этот этап не входят.
 
 #### Проверки и порядок следующей работы
 
@@ -792,5 +1199,80 @@ Vulkan migration и production asset/physics/navigation foundations больше
 
 | 2026-10-02 | VK-013 — авторская приёмка runtime | done — автор сообщил «все ок работает» и поручил продолжить план после исправления запуска и звука пара. | Принят текущий runtime; новых измерений или независимого прохода этим отзывом не заявлено. G-011/H-008 остаются в прежнем состоянии. |
 | 2026-10-02 | VK-014 | done — read-only ревью ownership/error paths, границ API, кэшей и frame waits; обязательных архитектурных исправлений не подтверждено. | Целевые Debug graphics/lifecycle/failure checks 10/10 без skip/validation; optimized workload 11/11, свежая Tracy baseline без concurrent GPU tests, RenderDoc обеих карт и thumbnails. Entrance p50/p95 1,5409/1,9504 мс; GPU Scene median 0,276480 мс. Запланирована отдельная P3 VK-F01 по диагностическим строкам; runtime не менялся. Команды, артефакты и ограничения — `VULKAN_MIGRATION_PLAN.md`, раздел 28. |
+| 2026-10-02 | VK-F01 / documentation | done — borrowed diagnostic strings, актуальный Vulkan contract, G-011 playtest guide и оптимизированный запуск; Sandbox использует runtime assets с SPIR-V. | Debug build и graphics 6/6, RelWithDebInfo build и graphics 5/5; без skip. ZIP 215444-058: 93 файла/хеши сверены, внешний standalone и Sandbox startup/WM_CLOSE exit 0; lifecycle и оба эпизода на внешних ресурсах прошли. Formatting/XML/local links/diff-check прошли. G-011 human measurements и другой Vulkan GPU остаются открытыми; H-008/H-009 pending. Команды и ограничения — `VULKAN_MIGRATION_PLAN.md`, раздел 29. |
+| 2026-10-02 | E-003 | done — первый static GLB → native product slice по явной команде автора; blind playtest/другой GPU отложены. | Blender 5.2.2 export, два meshes/materials, deterministic Debug/optimized compile; units 260/260, content 31/31, graphics по 4/4, ASan 10/10, final editor checks 19/19. GPU cache/reload/allocation checks, native/Sandbox кадры и ZIP 94 файла проверены. Bounds fix проверен отдельно; G-011/H-008/H-009 не закрываются. |
+| 2026-10-02 | E-004 | done — объявленные GLB автоматически компилируются и попадают в staged runtime assets; source/tool/rules/product hashes проверяются до упаковки. | Debug 261/261 unit/tooling/audio и 31/31 content, graphics Debug/optimized по 4/4, ASan 11/11; финальный tooling 1/1. No-op, material update, bad import rollback, registration/removal и stale product checks прошли. ZIP 230246-770: 94 файла/хеши; внешний startup, lifecycle/episode и Sandbox exit 0. Формат/материалы прежние, новых dependencies нет; G-011/H-008/H-009 не закрываются. |
 
 После каждой выполненной задачи добавлять короткую запись и обновлять единую таблицу статусов в разделе 6. Не копировать сюда полные логи. Для `awaiting_playtest` явно написать, какой человек/сценарий/ПК ещё нужен; для `done` перечислить реально выполненные проверки.
+
+### E-003 — команды и артефакты
+
+Это история проверки E-003. Ручная запись product в authored `assets` ниже
+заменена build products и автоматическим staging в E-004; текущий workflow — `DEVELOPMENT.md`.
+
+Build commands выполнены в Visual Studio developer shell, `VCPKG_ROOT` соответствует
+существующему cache. Configure `msvc-debug`, `msvc-relwithdebinfo`, `msvc-asan`
+успешен; baseline/tool versions не менялись. Первую compile error от попытки
+копировать move-only fastgltf Material устранили выбором const-reference ветки.
+Первый import обнаружил initializer-list constructor fastgltf math vector;
+scalar constructors исправлены, последующие regression tests и ASan прошли.
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_tests relaycore_content_validation relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_vulkan_mesh_tests relaycore_demo relaycore_sandbox relaycore_model_import --parallel 2
+cmake --build --preset demo-relwithdebinfo --target relaycore_model_import relaycore_demo relaycore_sandbox relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_vulkan_mesh_tests --parallel 2
+cmake --build --preset tests-asan --target relaycore_tests --parallel 2
+build/msvc-debug/relaycore_model_import.exe content/models/service_cylinder.glb assets/models/service_cylinder.rcmodel
+ctest --preset test-debug --output-on-failure --no-tests=error --output-junit model-assets-unit.xml
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit model-assets-content.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit model-assets-graphics-debug.xml
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit model-assets-graphics-optimized.xml
+ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body|editor)' --output-on-failure --no-tests=error --output-junit model-assets-editor-final.xml
+ctest --preset test-asan -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body)' --output-on-failure --no-tests=error --output-junit model-assets-asan.xml
+pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo -PassThru
+pwsh -NoProfile -File build/model-assets-standalone-check.ps1
+git diff --check
+```
+
+Все результаты/logs: `build/model-assets-*.log`, JUnit — в соответствующих build
+directories. Final editor graphics report `model-assets-editor-graphics-final.xml`
+(2/2); новый map capture — `model-assets-map-final.xml` (1/1). Просмотрены
+`build/msvc-debug/tests/vulkan-mesh-captures/native-cylinder-hardware_srgb.bmp`
+и `build/msvc-debug/tests/power-captures/sandbox-native-model.bmp`.
+ZIP `build/playtest/RelayCore-playtest-20261002-224440-223.zip`, SHA256
+`319B72526F5435F5492581E4DB4B4C8A2735ADC51E627190A6FAEE1C5EBF458E`.
+Это локальный technical candidate с manifest uncommitted state, version 1.3.4;
+публикации и human playthrough не было. Проверен RTX 4060 Ti, driver 32.0.15.9649;
+нового FPS comparison/полного ASan suite/другого GPU/remote CI не было.
+
+### E-004 — команды и артефакты
+
+Configure `msvc-debug`, `msvc-relwithdebinfo`, `msvc-asan` прошёл в VS developer shell
+с прежним toolchain/VCPKG_ROOT. Изменение build dependency graph потребовало
+перегенерации CMake; baseline/version/настройки renderer не менялись.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_model_assets relaycore_demo_assets relaycore_tests relaycore_content_validation relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics -j 2
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics -j 2
+cmake --build --preset tests-asan --target relaycore_tests -j 2
+ctest --preset test-debug --output-on-failure --output-junit e004-unit.xml
+ctest --preset validation-debug --output-on-failure --output-junit e004-content.xml
+ctest --preset test-debug -R '^relaycore.tooling.model_assets$' --output-on-failure --output-junit e004-model-assets-final.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --output-junit e004-graphics-debug.xml
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --output-junit e004-graphics-optimized.xml
+ctest --preset test-asan -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body|tooling.model_assets)' --output-on-failure --output-junit e004-asan.xml
+pwsh -NoProfile -File scripts/package-playtest.ps1 -PassThru
+pwsh -NoProfile -File build/e004-standalone-check.ps1
+git diff --check
+```
+
+Logs `build/e004-*.log`, JUnit в соответствующих build directories: failures/errors/skip
+нет. Финальный tooling test повторён после добавления проверки второго declared model.
+Native bytes совпадают с E-003: SHA256
+`2F3D9990A4E939671B4ABD8FF2267C1B4FD68D0696E7D732E2C2FCBFC9C52CF4`.
+Просмотрен `build/msvc-debug/tests/power-captures/sandbox-native-model.bmp`.
+ZIP `build/playtest/RelayCore-playtest-20261002-230246-770.zip`, SHA256
+`AA333A33DCAA3C3A9B61B4F49BF2F355D2EC46B13EEFB221A12BC7F517E1250F`.
+Распакован вне checkout; actual standalone без asset override создал Vulkan device
+и завершился по WM_CLOSE с exit 0. Optimized lifecycle/episode на внешних assets и
+Debug Sandbox также exit 0. GLB/receipts/compiler отсутствуют в payload. Это локальный
+кандидат 1.3.4; публикации, human playthrough, нового GPU и FPS comparison не было.

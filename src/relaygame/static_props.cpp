@@ -41,9 +41,16 @@ namespace RelayGame
             };
             StaticProp prop;
             prop.model = RelayCore::core::asset_path(required("model"));
-            prop.texture = RelayCore::core::asset_path(required("texture"));
-            if (prop.model.extension() != ".obj" || prop.texture.extension() != ".bmp")
-                throw std::runtime_error(label + ": expected a triangulated .obj model and a .bmp diffuse texture");
+            if (prop.model.extension() == ".rcmodel")
+            {
+                if (entity.properties.contains("texture"))
+                    throw std::runtime_error(label + ": .rcmodel owns its materials; remove texture");
+            } else
+            {
+                prop.texture = RelayCore::core::asset_path(required("texture"));
+                if (prop.model.extension() != ".obj" || prop.texture.extension() != ".bmp")
+                    throw std::runtime_error(label + ": expected .rcmodel or triangulated .obj with .bmp texture");
+            }
             const auto scale = entity.properties.contains("scale") ? vector("scale") : glm::vec3{1};
             if (glm::any(glm::lessThanEqual(scale, glm::vec3{0})))
                 throw std::runtime_error(label + ": scale must be positive");

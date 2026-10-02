@@ -10,6 +10,7 @@
 #include "relaycore/render/blockout_texture_atlas.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/game_hud.h"
+#include "relaycore/render/irradiance_probes.h"
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_mesh_renderer.h"
@@ -1021,14 +1022,753 @@ namespace
         }
     }
 
+    void check_model_products(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        for (const auto mode : {ColorPipelineMode::legacy_gamma, ColorPipelineMode::hardware_srgb})
+        {
+            const auto encoding =
+                mode == ColorPipelineMode::hardware_srgb ? TextureEncoding::srgb : TextureEncoding::linear;
+            VulkanMeshRenderer
+                renderer{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, encoding, RendererConfig{}, mode};
+            RelayCore::test::ScopedTempDirectory temporary;
+            const auto path = temporary.path() / "cylinder.rcmodel";
+            auto data = read_model_asset(RelayCore::core::asset_path("models/service_cylinder.rcmodel"));
+            write_model_asset(path, data);
+            StaticModelCache cache;
+            auto model = cache.load(path, encoding);
+            require(model->parts.size() == 2 && model->materials.size() == 2, "Native model lost parts/materials");
+            require(cache.load(path, encoding) == model, "Native model cache did not share CPU resources");
+            PerspectiveCamera camera{{.position = {0, .85F, 3}, .target = {0, .85F, 0}}};
+            camera.set_viewport(width, height);
+            RenderQueue queue;
+            const auto prepare = [&] {
+                queue.clear();
+                for (const auto& part : model->parts)
+                    queue.push(
+                        model->meshes[part.mesh],
+                        part.transform,
+                        RenderPass::Opaque,
+                        &model->materials[part.material].base_color
+                    );
+            };
+            prepare();
+            const auto before = renderer.render_image(queue.items(), camera, width, height);
+            const auto allocations = allocation_count(device);
+            require(
+                renderer.render_image(queue.items(), camera, width, height).pixels == before.pixels,
+                "Cached native model changed its output"
+            );
+            require(
+                allocation_count(device) == allocations,
+                "Settled native model rendering allocated new GPU resources"
+            );
+            save(before, captures / (std::string("native-cylinder-") + color_pipeline_mode_name(mode) + ".bmp"));
+            std::ofstream(path) << "broken";
+            expect_failure(
+                [&] {
+                    static_cast<void>(cache.load(path, encoding));
+                },
+                "cylinder.rcmodel"
+            );
+            require(
+                renderer.render_image(queue.items(), camera, width, height).pixels == before.pixels,
+                "Failed native model reload changed the working image"
+            );
+            for (std::size_t i = 0; i < data.materials[1].base_color.pixels.size(); i += 4)
+            {
+                data.materials[1].base_color.pixels[i] = 255;
+                data.materials[1].base_color.pixels[i + 1] = 30;
+                data.materials[1].base_color.pixels[i + 2] = 20;
+            }
+            data.parts.push_back(data.parts[0]);
+            write_model_asset(path, data);
+            model = cache.load(path, encoding);
+            prepare();
+            require(
+                renderer.render_image(queue.items(), camera, width, height).pixels != before.pixels,
+                "Native model material replacement was not rendered"
+            );
+            require(allocation_count(device) == allocations, "Native model reload retained obsolete GPU allocations");
+        }
+    }
+
+    void check_normal_maps(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        for (const auto mode : {ColorPipelineMode::legacy_gamma, ColorPipelineMode::hardware_srgb})
+        {
+            const auto encoding =
+                mode == ColorPipelineMode::hardware_srgb ? TextureEncoding::srgb : TextureEncoding::linear;
+            RendererConfig config{};
+            config.shadow_enabled = false;
+            VulkanMeshRenderer
+                renderer{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, encoding, config, mode};
+            PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+            camera.set_viewport(width, height);
+            CpuColorMeshData quad{
+                {{{-.5F, -.5F, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}, {1, 0, 0, 1}},
+                 {{.5F, -.5F, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}, {1, 0, 0, 1}},
+                 {{.5F, .5F, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}, {1, 0, 0, 1}},
+                 {{-.5F, .5F, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}, {1, 0, 0, 1}}},
+                {0, 1, 2, 0, 2, 3}
+            };
+            StaticColorMesh mesh;
+            mesh.initialize(quad);
+            Texture2D color, normal, other_normal, invalid_normal;
+            color.initialize_rgba(1, 1, std::array<std::uint8_t, 4>{90, 120, 140, 255}, encoding);
+            const std::array<std::uint8_t, 4> normal_bytes{180, 200, 230, 255};
+            normal.initialize_rgba(1, 1, normal_bytes, TextureEncoding::linear);
+            other_normal.initialize_rgba(1, 1, std::array<std::uint8_t, 4>{128, 60, 240, 255}, TextureEncoding::linear);
+            invalid_normal.initialize_rgba(1, 1, normal_bytes, TextureEncoding::srgb);
+            RenderQueue queue;
+            const auto mapped_image = [&](const glm::mat4& transform, const Texture2D& map, const float strength) {
+                queue.clear();
+                queue.push(mesh, transform, RenderPass::Overlay, &color, false, &map, strength);
+                return renderer.render_image(queue.items(), camera, width, height);
+            };
+            for (const float mirror : {1.0F, -1.0F})
+            {
+                const auto transform =
+                    glm::rotate(glm::mat4{1}, .3F, {0, 0, 1}) * glm::scale(glm::mat4{1}, {1.7F * mirror, .7F, 1.2F});
+                const auto image = mapped_image(transform, normal, .6F);
+                auto reference = quad;
+                const auto n = glm::normalize(glm::transpose(glm::inverse(glm::mat3{transform})) * glm::vec3{0, 0, 1});
+                auto t = glm::mat3{transform} * glm::vec3{1, 0, 0};
+                t = glm::normalize(t - n * glm::dot(n, t));
+                const auto b = glm::cross(n, t) * mirror;
+                auto decoded = glm::vec3{180, 200, 230} / 127.5F - 1.0F;
+                decoded.x *= .6F;
+                decoded.y *= .6F;
+                for (auto& vertex : reference.vertices)
+                {
+                    vertex.position = glm::vec3{transform * glm::vec4{vertex.position, 1}};
+                    vertex.normal = glm::normalize(t * decoded.x + b * decoded.y + n * decoded.z);
+                }
+                StaticColorMesh expected_mesh;
+                expected_mesh.initialize(reference);
+                RenderQueue expected_queue;
+                expected_queue.push(expected_mesh, glm::mat4{1}, RenderPass::Overlay, &color, false);
+                const auto expected = renderer.render_image(expected_queue.items(), camera, width, height);
+                std::size_t different = 0;
+                for (std::size_t i = 0; i < image.pixels.size(); ++i)
+                    different += std::abs(int(image.pixels[i]) - int(expected.pixels[i])) > 2;
+                require(
+                    different < 100,
+                    "Normal map differs from explicit world-normal reference (encoding/transform/handedness)"
+                );
+                require(mapped_image(transform, normal, 0).pixels != image.pixels, "Normal scale was ignored");
+                require(
+                    mapped_image(transform, other_normal, .6F).pixels != image.pixels,
+                    "Material cache confused two normal maps sharing one color"
+                );
+                const auto restored = mapped_image(transform, normal, .6F);
+                const auto allocations = allocation_count(device);
+                require(
+                    mapped_image(transform, normal, .6F).pixels == restored.pixels,
+                    "Normal material cache changed its image"
+                );
+                require(allocation_count(device) == allocations, "Settled normal material allocated GPU resources");
+            }
+            expect_failure(
+                [&] {
+                    static_cast<void>(mapped_image(glm::mat4{1}, invalid_normal, 1));
+                },
+                "linear texture"
+            );
+
+            StaticModelCache cache;
+            const auto cabinet = cache.load(RelayCore::core::asset_path("models/power_cabinet.rcmodel"), encoding);
+            PerspectiveCamera cabinet_camera{{.position = {1.5F, 1.5F, 3}, .target = {0, 1.15F, 0}}};
+            cabinet_camera.set_viewport(width, height);
+            RenderQueue cabinet_queue;
+            for (const auto& part : cabinet->parts)
+            {
+                const auto& surface = cabinet->materials[part.material];
+                cabinet_queue.push(
+                    cabinet->meshes[part.mesh],
+                    part.transform,
+                    RenderPass::Opaque,
+                    &surface.base_color,
+                    true,
+                    surface.normal.cpu_data() ? &surface.normal : nullptr,
+                    surface.normal_scale,
+                    surface.metallic_roughness
+                );
+            }
+            const auto mapped = renderer.render_image(cabinet_queue.items(), cabinet_camera, width, height);
+            save(mapped, captures / (std::string("native-cabinet-normal-") + color_pipeline_mode_name(mode) + ".bmp"));
+            RenderQueue flat_queue;
+            for (const auto& part : cabinet->parts)
+                flat_queue.push(
+                    cabinet->meshes[part.mesh],
+                    part.transform,
+                    RenderPass::Opaque,
+                    &cabinet->materials[part.material].base_color,
+                    true,
+                    nullptr,
+                    1,
+                    cabinet->materials[part.material].metallic_roughness
+                );
+            const auto flat = renderer.render_image(flat_queue.items(), cabinet_camera, width, height);
+            save(flat, captures / (std::string("native-cabinet-flat-") + color_pipeline_mode_name(mode) + ".bmp"));
+            require(mapped.pixels != flat.pixels, "Cabinet authored normal map did not affect rendering");
+        }
+    }
+
+    void check_metallic_roughness(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        auto unlit_ambient = authoring;
+        unlit_ambient.lighting.ambient_floor = 0;
+        unlit_ambient.lighting.ambient_zenith = 0;
+        RendererConfig config{};
+        config.shadow_enabled = false;
+        config.fog_enabled = false;
+        config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        config.postfx_contrast = config.postfx_saturation = 1;
+        config.shadow_light_direction = {0, 0, -1};
+        config.shadow_light_color = {.5F, .5F, .5F};
+        config.shadow_light_intensity = 1;
+        auto quad = make_color_double_sided_quad_mesh_data();
+        for (auto& v : quad.vertices)
+            v.color = {1, 1, 1};
+        StaticColorMesh mesh;
+        mesh.initialize(quad);
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(width, height);
+        std::vector<std::uint8_t> previous;
+        for (const auto mode : {ColorPipelineMode::legacy_gamma, ColorPipelineMode::hardware_srgb})
+        {
+            const auto encoding =
+                mode == ColorPipelineMode::hardware_srgb ? TextureEncoding::srgb : TextureEncoding::linear;
+            VulkanMeshRenderer
+                renderer{device, RELAYCORE_TEST_SPIRV_DIRECTORY, unlit_ambient, atlas, encoding, config, mode};
+            Texture2D color;
+            const std::array<std::uint8_t, 4> bytes{180, 110, 70, 255};
+            color.initialize_rgba(1, 1, bytes, encoding);
+            RenderQueue queue;
+            const auto render = [&](MetallicRoughness factors) {
+                queue.clear();
+                queue.push(mesh, glm::mat4{1}, RenderPass::Opaque, &color, false, nullptr, 1, factors);
+                return renderer.render_image(queue.items(), camera, width, height);
+            };
+            const auto center = (height / 2 * width + width / 2) * 4;
+            for (float metallic : {0.0F, 1.0F})
+            {
+                const auto image = render({.5F, metallic});
+                // Normal incidence: D=16/pi, visibility=1/4, Fresnel=F0; include the fixed dark-side RGB grade.
+                for (int c = 0; c < 3; ++c)
+                {
+                    const auto base = srgb_channel_to_linear(bytes[c] / 255.0F);
+                    const float f0 = metallic == 0 ? .04F : base;
+                    const auto linear = ((1 - f0) * (1 - metallic) * base + 4 * f0) / 3.14159265F
+                                        * srgb_channel_to_linear(.5F)
+                                        * (c == 0   ? .97F
+                                           : c == 1 ? .99F
+                                                    : 1.01F);
+                    const auto visual =
+                        linear <= .0031308F ? linear * 12.92F : 1.055F * std::pow(linear, 1.0F / 2.4F) - .055F;
+                    if (std::abs(int(image.pixels[center + c]) - int(std::lround(visual * 255))) > 2)
+                        throw std::runtime_error(
+                            std::string("Metallic/roughness reference failed: mode=") + color_pipeline_mode_name(mode)
+                            + " metallic=" + std::to_string(metallic) + " channel=" + std::to_string(c)
+                            + " actual=" + std::to_string(image.pixels[center + c])
+                            + " expected=" + std::to_string(std::lround(visual * 255))
+                        );
+                }
+                const auto smooth = render({.25F, metallic});
+                const auto rough = render({.8F, metallic});
+                require(
+                    smooth.pixels[center] > rough.pixels[center] + 10,
+                    "Roughness did not broaden/lower the highlight"
+                );
+                const auto restored = render({.5F, metallic});
+                const auto allocations = allocation_count(device);
+                require(restored.pixels == image.pixels, "Material cache confused roughness/metalness factors");
+                require(
+                    render({.5F, metallic}).pixels == image.pixels && allocation_count(device) == allocations,
+                    "Settled metallic/roughness draw changed/allocated GPU resources"
+                );
+                save(
+                    image,
+                    captures
+                        / (std::string("mr-") + (metallic == 0 ? "paint-" : "metal-") + color_pipeline_mode_name(mode)
+                           + ".bmp")
+                );
+                if (metallic == 0)
+                {
+                    if (!previous.empty())
+                        for (std::size_t i = 0; i < image.pixels.size(); ++i)
+                            require(
+                                std::abs(int(previous[i]) - int(image.pixels[i])) <= 1,
+                                "Metallic/roughness color conversion differs between modes"
+                            );
+                    previous = image.pixels;
+                }
+            }
+            require(render({0, 0}).pixels[center] > 0, "Zero roughness produced invalid output");
+            require(render({1, 1}).pixels[center] > 0, "Fully rough metal produced invalid output");
+            expect_failure(
+                [&] {
+                    static_cast<void>(render({-1, 0}));
+                },
+                "factors"
+            );
+            config.shadow_light_intensity = 0;
+            renderer.set_config(config);
+            const std::array local{LocalLight{{0, 0, 2}, {.5F, .5F, .5F}, 4}};
+            renderer.set_local_lights(local);
+            require(render({.5F, 0}).pixels[center] > 0, "Local light did not illuminate metallic/roughness material");
+            renderer.set_local_lights({});
+            config.shadow_enabled = true;
+            renderer.set_config(config);
+            renderer.set_spot_light({{0, 0, 2}, {0, 0, -1}, {.5F, .5F, .5F}, 4, true});
+            require(render({.5F, 0}).pixels[center] > 0, "Spot light did not illuminate metallic/roughness material");
+            config.shadow_light_intensity = 1;
+        }
+    }
+
+    void check_irradiance(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        auto lighting = authoring;
+        lighting.lighting.ambient_floor = lighting.lighting.ambient_zenith = lighting.lighting.ambient_min = 0;
+        lighting.lighting.cool_ambient_color = lighting.lighting.warm_bounce_color = {};
+        lighting.lighting.bounce_floor = lighting.lighting.bounce_underside = lighting.lighting.bounce_darkness = 0;
+        RendererConfig config;
+        config.hdr_enabled = true;
+        config.shadow_enabled = config.fog_enabled = false;
+        config.shadow_light_intensity = 0;
+        config.indirect_bounce_strength = 0;
+        config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        config.postfx_contrast = config.postfx_saturation = 1;
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            lighting,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        IrradianceProbeVolume volume{{{-1, -1, -1}, {1, 1, 1}, {2, 2, 2}, 64}, 0, {}};
+        volume.probes.resize(8);
+        for (std::size_t i = 0; i < 8; ++i)
+        {
+            volume.probes[i][0] = glm::vec3{.25F + static_cast<float>(i) * .2F, .3F, .1F} / .282094792F;
+            volume.probes[i][2] = {.35F, .1F, 0};
+        }
+        auto probes = std::make_shared<const IrradianceProbeVolume>(volume);
+        const std::array<std::uint8_t, 4> white{255, 255, 255, 255};
+        Texture2D texture;
+        texture.initialize_rgba(1, 1, white, TextureEncoding::srgb);
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(width, height);
+        const auto render =
+            [&](glm::vec3 normal, std::optional<MetallicRoughness> mr, RenderPass pass, bool viewmodel = false) {
+                auto quad = make_color_double_sided_quad_mesh_data();
+                for (auto& vertex : quad.vertices)
+                {
+                    vertex.material_kind = 0;
+                    vertex.color = {1, 1, 1};
+                    vertex.normal = normal;
+                }
+                StaticColorMesh mesh;
+                mesh.initialize(quad);
+                RenderQueue queue;
+                queue.push(mesh, glm::mat4{1}, pass, &texture, false, nullptr, 1, mr);
+                return viewmodel ? renderer.render_image({}, camera, width, height, queue.items())
+                                 : renderer.render_image(queue.items(), camera, width, height);
+            };
+        for (const auto normal : {glm::vec3{0, 0, 1}, glm::vec3{0, 0, -1}})
+            for (const int material : {0, 1, 2})
+            {
+                const auto mr = material == 0 ? std::optional<MetallicRoughness>{}
+                                              : std::optional{MetallicRoughness{.7F, material == 2 ? 1.F : 0.F}};
+                renderer.set_irradiance_probes(probes);
+                const auto actual = render(normal, mr, RenderPass::Opaque);
+                auto expected = sample_irradiance_probes(volume, {}, normal);
+                if (mr)
+                    expected *= .96F * (1 - mr->metallic);
+                auto reference_quad = make_color_double_sided_quad_mesh_data();
+                for (auto& vertex : reference_quad.vertices)
+                {
+                    vertex.material_kind = 40;
+                    vertex.color = expected;
+                }
+                StaticColorMesh reference_mesh;
+                reference_mesh.initialize(reference_quad);
+                RenderQueue reference_queue;
+                reference_queue.push(reference_mesh, glm::mat4{1});
+                renderer.set_irradiance_probes({});
+                const auto reference = renderer.render_image(reference_queue.items(), camera, width, height);
+                const auto center = (height / 2 * width + width / 2) * 4;
+                for (int c = 0; c < 3; ++c)
+                    require(
+                        std::abs(int(actual.pixels[center + c]) - int(reference.pixels[center + c])) <= 2,
+                        "GPU probe interpolation/normal/material differs from CPU irradiance reference"
+                    );
+                save(
+                    actual,
+                    captures
+                        / ("irradiance-material-" + std::to_string(material)
+                           + (normal.z > 0 ? "-front.bmp" : "-back.bmp"))
+                );
+            }
+        renderer.set_irradiance_probes(probes);
+        const auto overlay = render({0, 0, 1}, {}, RenderPass::Overlay);
+        renderer.set_irradiance_probes({});
+        require(
+            overlay.pixels == render({0, 0, 1}, {}, RenderPass::Overlay).pixels,
+            "Baked world probes affected overlay shading"
+        );
+        renderer.set_irradiance_probes(probes);
+        const auto weapon = render({0, 0, 1}, {}, RenderPass::Opaque, true);
+        renderer.set_irradiance_probes({});
+        require(
+            weapon.pixels == render({0, 0, 1}, {}, RenderPass::Opaque, true).pixels,
+            "Baked world probes affected viewmodel shading"
+        );
+
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/native_lab.toml"));
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        require(bool(prepared.irradiance), "Native scene did not load its baked product");
+        StaticModelCache models;
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(prepared, models);
+        PerspectiveCamera native_camera{{.position = {0, 1.65F, -3.4F}, .target = {1.5F, 1.45F, 3.9F}}};
+        native_camera.set_viewport(width, height);
+        VulkanMeshRenderer native{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        scene.prepare_render_queue(native_camera, 0, {}, {}, {}, -1, {}, false);
+        native.set_local_lights(scene.local_lights());
+        const auto before = native.render_image(scene.render_items(), native_camera, width, height);
+        native.set_irradiance_probes(scene.irradiance());
+        const auto after = native.render_image(scene.render_items(), native_camera, width, height);
+        std::uint64_t difference = 0;
+        for (std::size_t i = 0; i < before.pixels.size(); ++i)
+            difference += std::uint64_t(std::abs(int(before.pixels[i]) - int(after.pixels[i])));
+        require(difference > 1000, "Native baked diffuse contribution was not visible");
+        save(before, captures / "irradiance-native-before.bmp");
+        save(after, captures / "irradiance-native-after.bmp");
+        std::cout << "irradiance_native_difference=" << difference << '\n';
+        native.set_irradiance_probes({});
+        require(
+            before.pixels == native.render_image(scene.render_items(), native_camera, width, height).pixels,
+            "Probe removal left stale GPU lighting"
+        );
+    }
+
+    void check_hdr(
+        const VulkanDevice& device,
+        const RelayCore::Window& window,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        RendererConfig config{};
+        config.hdr_enabled = true;
+        config.shadow_enabled = config.fog_enabled = false;
+        config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        config.postfx_contrast = config.postfx_saturation = 1;
+        expect_failure(
+            [&] {
+                VulkanMeshRenderer
+                    invalid{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::linear, config};
+            },
+            "hardware_srgb"
+        );
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        const glm::vec3 radiance{.25F, 1, 4};
+        auto quad = make_color_double_sided_quad_mesh_data();
+        for (auto& vertex : quad.vertices)
+        {
+            vertex.color = radiance;
+            vertex.material_kind = 40;
+        }
+        StaticColorMesh mesh;
+        mesh.initialize(quad);
+        RenderQueue queue;
+        queue.push(mesh, glm::mat4{1});
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(width, height);
+        const auto expected = [](glm::vec3 source, float ev, float contrast = 1) {
+            const auto exposed = source * std::exp2(ev);
+            auto mapped = exposed / (1.0F + exposed);
+            for (int c = 0; c < 3; ++c)
+                mapped[c] =
+                    mapped[c] <= .0031308F ? mapped[c] * 12.92F : 1.055F * std::pow(mapped[c], 1.0F / 2.4F) - .055F;
+            const float luminance = glm::dot(mapped, glm::vec3{.2126F, .7152F, .0722F});
+            const float t = glm::clamp((luminance - .18F) / .6F, 0.0F, 1.0F);
+            mapped = (mapped - .5F) * contrast + .5F;
+            mapped *= glm::mix(glm::vec3{.97F, .99F, 1.01F}, glm::vec3{1.01F, 1, .98F}, t * t * (3 - 2 * t));
+            return glm::clamp(mapped, glm::vec3{0}, glm::vec3{1});
+        };
+        const auto check_center = [&](const CpuRgbaTextureData& image, glm::vec3 reference) {
+            const auto center = (image.height / 2 * image.width + image.width / 2) * 4;
+            for (int c = 0; c < 3; ++c)
+                if (std::abs(int(image.pixels[center + c]) - int(std::lround(reference[c] * 255))) > 2)
+                    throw std::runtime_error(
+                        "HDR reference: channel=" + std::to_string(c)
+                        + " actual=" + std::to_string(image.pixels[center + c])
+                        + " expected=" + std::to_string(std::lround(reference[c] * 255))
+                    );
+        };
+        for (const float ev : {-1.0F, 0.0F, 1.0F})
+        {
+            config.exposure_ev = ev;
+            renderer.set_config(config);
+            const auto image = renderer.render_image(queue.items(), camera, width, height);
+            check_center(image, expected(radiance, ev));
+            save(image, captures / ("hdr-exposure-" + std::to_string(int(ev)) + ".bmp"));
+        }
+        config.exposure_ev = 0;
+        renderer.set_config(config);
+        {
+            auto dark_data = quad;
+            const glm::vec3 dark{.002F, .004F, .008F};
+            for (auto& vertex : dark_data.vertices)
+                vertex.color = dark;
+            StaticColorMesh dark_mesh;
+            dark_mesh.initialize(dark_data);
+            RenderQueue dark_queue;
+            dark_queue.push(dark_mesh, glm::mat4{1});
+            config.postfx_contrast = 1.01F;
+            renderer.set_config(config);
+            check_center(renderer.render_image(dark_queue.items(), camera, width, height), expected(dark, 0, 1.01F));
+            config.postfx_contrast = 1;
+            renderer.set_config(config);
+
+            auto hemisphere = authoring;
+            auto ambient_config = config;
+            ambient_config.shadow_light_intensity = 0;
+            hemisphere.lighting.ambient_floor = hemisphere.lighting.ambient_zenith = .5F;
+            hemisphere.lighting.cool_ambient_color = hemisphere.lighting.warm_bounce_color = {};
+            hemisphere.lighting.bounce_floor = hemisphere.lighting.bounce_underside =
+                hemisphere.lighting.bounce_darkness = 0;
+            hemisphere.materials[0].ambient_bias = 1;
+            VulkanMeshRenderer ambient_renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                hemisphere,
+                atlas,
+                TextureEncoding::srgb,
+                ambient_config,
+                ColorPipelineMode::hardware_srgb
+            };
+            for (auto& vertex : dark_data.vertices)
+            {
+                vertex.color = {.1F, .1F, .1F};
+                vertex.material_kind = 0;
+            }
+            StaticColorMesh ambient_mesh;
+            ambient_mesh.initialize(dark_data);
+            Texture2D white_diffuse;
+            white_diffuse.initialize_rgba(1, 1, std::array<std::uint8_t, 4>{255, 255, 255, 255}, TextureEncoding::srgb);
+            RenderQueue ambient_queue;
+            ambient_queue.push(ambient_mesh, glm::mat4{1}, RenderPass::Opaque, &white_diffuse);
+            check_center(
+                ambient_renderer.render_image(ambient_queue.items(), camera, width, height),
+                expected(glm::vec3{.05F}, 0)
+            );
+            RenderQueue mr_ambient;
+            mr_ambient.push(
+                ambient_mesh,
+                glm::mat4{1},
+                RenderPass::Opaque,
+                &white_diffuse,
+                false,
+                nullptr,
+                1,
+                MetallicRoughness{1, 0}
+            );
+            check_center(
+                ambient_renderer.render_image(mr_ambient.items(), camera, width, height),
+                expected(glm::vec3{.048F}, 0)
+            );
+        }
+        check_center(
+            renderer.render_image({}, camera, width, height),
+            expected(
+                visual_rgb_for_pipeline(
+                    {config.clear_r, config.clear_g, config.clear_b},
+                    ColorPipelineMode::hardware_srgb
+                ),
+                0
+            )
+        );
+        const auto original = renderer.render_image(queue.items(), camera, width, height);
+        const auto allocations = allocation_count(device);
+        require(
+            renderer.render_image(queue.items(), camera, width, height).pixels == original.pixels
+                && allocation_count(device) == allocations,
+            "Settled HDR frame changed or allocated"
+        );
+        check_center(renderer.render_image(queue.items(), camera, width / 2, height / 2), expected(radiance, 0));
+        check_center(renderer.render_image(queue.items(), camera, width, height), expected(radiance, 0));
+        RelayCore::test::ScopedTempDirectory broken;
+        for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+            if (file.path().extension() == ".spv" && file.path().filename() != "tone_mapping.frag.spv")
+                std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
+        expect_failure(
+            [&] {
+                renderer.reload_shaders(broken.path());
+            },
+            "tone_mapping.frag.spv"
+        );
+        require(
+            renderer.render_image(queue.items(), camera, width, height).pixels == original.pixels,
+            "Failed HDR shader reload replaced the working pipelines"
+        );
+        renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+        require(
+            renderer.render_image(queue.items(), camera, width, height).pixels == original.pixels,
+            "HDR shader reload changed the image"
+        );
+        auto steam_data = quad;
+        steam_data.indices.resize(6);
+        for (auto& v : steam_data.vertices)
+        {
+            v.material_kind = float(RelayCore::surface_material_count()) + 1;
+            v.color = {4, 1, .25F};
+        }
+        StaticColorMesh steam;
+        steam.initialize(steam_data);
+        RenderQueue blended;
+        blended.push(mesh, glm::mat4{1});
+        blended.push(steam, glm::translate(glm::mat4{1}, {0, 0, .1F}), RenderPass::Overlay);
+        const auto transparent = renderer.render_image(blended.items(), camera, width, height);
+        check_center(transparent, expected(radiance * .84F + glm::vec3{4, 1, .25F} * .16F, 0));
+        const auto center = (height / 2 * width + width / 2) * 4;
+        require(
+            std::abs(int(transparent.pixels[center + 3]) - int(std::lround((.16F * .16F + .84F) * 255))) <= 1,
+            "HDR composition changed scene alpha"
+        );
+        VulkanSwapchain swapchain{device, window, false};
+        RelayCore::debug::ImGuiOverlay overlay{{.log_fps_to_console = false}};
+        overlay.initialize(window, device);
+        ImGui::GetIO().IniFilename = nullptr;
+        overlay.begin_frame();
+        ImGui::GetForegroundDrawList()
+            ->AddRectFilled({0, 0}, {float(width), float(height)}, IM_COL32(128, 64, 32, 255));
+        ImGui::GetForegroundDrawList()->AddRectFilled({0, 0}, {80, 80}, IM_COL32(64, 128, 192, 128));
+        auto* ui = overlay.finish_frame();
+        const auto check_ui = [&](const CpuRgbaTextureData& image) {
+            for (int c = 0; c < 3; ++c)
+                require(
+                    std::abs(
+                        int(image.pixels[center + c])
+                        - (c == 0   ? 128
+                           : c == 1 ? 64
+                                    : 32)
+                    ) <= 1,
+                    "HDR exposure/tone mapping/sRGB conversion affected display-space UI"
+                );
+            const auto pixel = (10 * image.width + 10) * 4;
+            for (int c = 0; c < 3; ++c)
+            {
+                const float front = c == 0 ? 64.0F : c == 1 ? 128.0F : 192.0F;
+                const float back = c == 0 ? 128.0F : c == 1 ? 64.0F : 32.0F;
+                const auto blended = std::lround(front * (128.0F / 255) + back * (127.0F / 255));
+                require(
+                    std::abs(int(image.pixels[pixel + c]) - int(blended)) <= 1,
+                    "HDR changed display-space UI alpha blending"
+                );
+            }
+        };
+        check_ui(renderer.render_image(queue.items(), camera, width, height, {}, ui));
+        config.exposure_ev = 2;
+        renderer.set_config(config);
+        renderer.prepare_frame(queue.items(), {}, camera, width, height);
+        renderer.append_ui(ui);
+        check_ui(renderer.capture_prepared_image());
+        require(swapchain.present_prepared_scene(renderer), "HDR prepared UI did not present");
+        overlay.shutdown();
+        auto metal_data = quad;
+        for (auto& vertex : metal_data.vertices)
+        {
+            vertex.color = {1, 1, 1};
+            vertex.material_kind = float(RelayCore::SurfaceMaterial::Metal);
+        }
+        StaticColorMesh metal;
+        metal.initialize(metal_data);
+        Texture2D white;
+        white.initialize_rgba(1, 1, std::array<std::uint8_t, 4>{255, 255, 255, 255}, TextureEncoding::srgb);
+        RenderQueue specular;
+        specular.push(metal, glm::mat4{1}, RenderPass::Opaque, &white, false, nullptr, 1, MetallicRoughness{.5F, 1});
+        config.exposure_ev = 0;
+        config.shadow_light_color = {1, 1, 1};
+        config.shadow_light_intensity = 4;
+        config.shadow_light_direction = {0, 0, -1};
+        renderer.set_config(config);
+        check_center(
+            renderer.render_image(specular.items(), camera, width, height),
+            expected(glm::vec3{16 / 3.14159265F}, 0)
+        );
+        config.hdr_enabled = false;
+        expect_failure(
+            [&] {
+                renderer.set_config(config);
+            },
+            "reload"
+        );
+        config.hdr_enabled = true;
+        config.exposure_ev = std::numeric_limits<float>::quiet_NaN();
+        expect_failure(
+            [&] {
+                renderer.set_config(config);
+            },
+            "Exposure"
+        );
+    }
+
     void profile_views(
         const VulkanDevice& device,
         const RelayCore::Window& window,
         const RenderAuthoringConfig& authoring,
-        const CpuRgbaTextureData& atlas
+        const CpuRgbaTextureData& atlas,
+        const bool native_view = false,
+        const bool hdr_view = false
     )
     {
         RendererConfig config{};
+        if (hdr_view)
+            config =
+                RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/native_lab_hdr.toml")).renderer;
         const auto mode = ColorPipelineMode::hardware_srgb;
         VulkanMeshRenderer
             renderer{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::srgb, config, mode};
@@ -1037,21 +1777,25 @@ namespace
         RelayCore::debug::ImGuiOverlay overlay{{.log_fps_to_console = false}};
         overlay.initialize(window, device);
         ImGui::GetIO().IniFilename = nullptr;
-        for (const auto* name : {"power_restoration", "pressure_transfer"})
+        for (const auto* name : native_view ? std::vector<const char*>{"native_lab"}
+                                            : std::vector<const char*>{"power_restoration", "pressure_transfer"})
         {
             const auto level =
                 RelayCore::load_blockout_level(RelayCore::core::asset_path(std::string("levels/") + name + ".toml"));
             RelayGame::WorldSceneRenderer scene;
             scene.initialize(RelayGame::build_prepared_world_scene_data(level, authoring, mode), models);
             PerspectiveCamera camera{{.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}}};
+            if (native_view)
+                camera = PerspectiveCamera{{.position = {1.5F, 1.45F, 1.7F}, .target = {1.5F, 1.45F, 4}}};
             camera.set_viewport(width, height);
-            for (int frame = 0; frame < 240; ++frame)
+            for (int frame = 0; frame < (native_view ? 120 : 240); ++frame)
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan profile view");
                 SDL_PumpEvents();
                 const float time = frame / 60.0F;
                 scene.prepare_render_queue(camera, time, {}, {}, {}, -1, {}, false);
                 renderer.set_local_lights(scene.local_lights());
+                renderer.set_irradiance_probes(scene.irradiance());
                 renderer.set_scene_time(time);
                 renderer.set_spot_light({camera.position(), camera.forward(), {1, .94F, .84F}, 18, true});
                 const auto weapon = scene.prepare_shotgun_viewmodel(camera, time);
@@ -1067,7 +1811,10 @@ namespace
             }
         }
         overlay.shutdown();
-        std::cout << "vulkan_profile_views=passed (480 frames, two maps, shadows, viewmodel, UI, presentation)\n";
+        std::cout
+            << (native_view
+                    ? "vulkan_profile_native=passed (120 frames, normal map, shadows, UI, presentation)\n"
+                    : "vulkan_profile_views=passed (480 frames, two maps, shadows, viewmodel, UI, presentation)\n");
     }
 
     void check_ui(
@@ -1324,7 +2071,13 @@ int main(int argc, char** argv)
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
     const bool color_baseline = argc == 2 && std::string_view{argv[1]} == "--color-baseline";
     const bool profiling = argc == 2 && std::string_view{argv[1]} == "--profile-views";
-    if (argc > 1 && !shadows_only && !color_baseline && !profiling)
+    const bool native_view = argc == 2 && std::string_view{argv[1]} == "--profile-native";
+    const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
+    const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
+    const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
+    const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
+    if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
+        && !native_hdr && !probes_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -1345,8 +2098,18 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (profiling)
+        if (native_hdr)
+            profile_views(device, vk_window, authoring, atlas, true, true);
+        else if (native_view)
+            profile_views(device, vk_window, authoring, atlas, true);
+        else if (profiling)
             profile_views(device, vk_window, authoring, atlas);
+        else if (mr_only)
+            check_metallic_roughness(device, authoring, atlas, captures);
+        else if (hdr_only)
+            check_hdr(device, vk_window, authoring, atlas, captures);
+        else if (probes_only)
+            check_irradiance(device, authoring, atlas, captures);
         else if (color_baseline)
             check_color_baseline(device, vk_window, authoring, atlas, captures);
         else
@@ -1398,6 +2161,9 @@ int main(int argc, char** argv)
                 check_light_selection(device, authoring, atlas, captures);
                 check_color_post(device, authoring, atlas, captures);
                 check_color_world(device, authoring, atlas, captures);
+                check_model_products(device, authoring, atlas, captures);
+                check_normal_maps(device, authoring, atlas, captures);
+                check_metallic_roughness(device, authoring, atlas, captures);
             }
             check_shadows(device, vk_window, authoring, atlas, captures);
         }

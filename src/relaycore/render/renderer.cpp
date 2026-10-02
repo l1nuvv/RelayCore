@@ -111,9 +111,19 @@ namespace RelayCore
         const render::RenderAuthoringConfig& authoring_config
     ) -> PreparedLiveContentReload
     {
+        return prepare_live_content_reload(config, authoring_config, color_pipeline_mode_);
+    }
+
+    auto Renderer::prepare_live_content_reload(
+        const render::RendererConfig& config,
+        const render::RenderAuthoringConfig& authoring_config,
+        const render::ColorPipelineMode color_pipeline_mode
+    ) -> PreparedLiveContentReload
+    {
         PreparedLiveContentReload staged_reload{};
         staged_reload.config = config;
         staged_reload.authoring_config = authoring_config;
+        staged_reload.color_pipeline_mode = color_pipeline_mode;
         const std::filesystem::path atlas_path = core::asset_path("textures/blockout_atlas.bmp");
         render::CpuRgbaTextureData atlas{};
         if (const auto loaded_atlas = render::load_blockout_texture_atlas(atlas_path); loaded_atlas.has_value())
@@ -131,10 +141,10 @@ namespace RelayCore
             core::asset_path("shaders/vulkan"),
             authoring_config,
             atlas,
-            color_pipeline_mode_ == render::ColorPipelineMode::hardware_srgb ? render::TextureEncoding::srgb
-                                                                             : render::TextureEncoding::linear,
+            color_pipeline_mode == render::ColorPipelineMode::hardware_srgb ? render::TextureEncoding::srgb
+                                                                            : render::TextureEncoding::linear,
             config,
-            color_pipeline_mode_
+            color_pipeline_mode
         );
         return staged_reload;
     }
@@ -148,6 +158,7 @@ namespace RelayCore
         camera_.apply_projection_config(staged_reload.config.camera);
         state_->backend = std::move(staged_reload.backend);
         config_ = std::move(staged_reload.config);
+        color_pipeline_mode_ = staged_reload.color_pipeline_mode;
         authoring_config_ = std::move(staged_reload.authoring_config);
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.apply_config(config_.imgui);
@@ -169,6 +180,7 @@ namespace RelayCore
 
     void Renderer::begin_frame()
     {
+        irradiance_probes_.reset();
         state_->frame_backend.reset();
         state_->items.clear();
         state_->shadow_casters.clear();
@@ -196,6 +208,7 @@ namespace RelayCore
             return;
         state_->backend->set_config(config_);
         state_->backend->set_local_lights(local_lights_);
+        state_->backend->set_irradiance_probes(irradiance_probes_);
         state_->backend->set_spot_light(spot_light_);
         state_->backend->set_scene_time(scene_time_seconds_);
         state_->backend->prepare_frame(
@@ -281,6 +294,11 @@ namespace RelayCore
     void Renderer::set_scene_time(const float seconds) noexcept
     {
         scene_time_seconds_ = seconds;
+    }
+
+    void Renderer::set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes)
+    {
+        irradiance_probes_ = std::move(probes);
     }
 
     void Renderer::set_spot_light(const render::SpotLight& light) noexcept

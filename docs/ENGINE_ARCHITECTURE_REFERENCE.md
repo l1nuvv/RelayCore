@@ -100,9 +100,9 @@ Approved additions, introduced only at their owning milestone:
 
 Do **not** add Assimp, Bullet/PhysX, OpenAL Soft, GLFW, EnTT, Catch2, generic task libraries or another renderer framework merely because they are common. Reconsider only when a current problem is not well served by the chosen foundations.
 
-## 3. Current baseline: preserve before replacing
+## 3. Pre-migration baseline: preserve behavior before replacing
 
-Recheck the checkout before acting; this table describes the supplied `1.3.4` dev snapshot.
+This table records the supplied 2026-09-30 `1.3.4` snapshot before cutover. It is historical evidence, not current GL ownership. After VK-013/014, `Window` owns the SDL Vulkan window; `Renderer` owns device/swapchain/backend and ImGui, and CPU assets remain API-neutral. Current ownership and frame flow are in `ARCHITECTURE.md`.
 
 | Area | Current state | Consequence |
 | --- | --- | --- |
@@ -472,6 +472,10 @@ Execute `docs/VULKAN_MIGRATION_PLAN.md`: bootstrap/toolchain → device/swapchai
 **Gate:** Vulkan is the sole supported runtime renderer, current levels/gameplay preserve accepted behavior, graphics validation is clean for tested paths, and OpenGL/glad are removed only after parity evidence exists.
 
 ### C — Native production assets
+
+Current scheduling decision (2026-10-02): the owner deferred blind playtesting/another GPU and explicitly authorized E-003, the first static MeshAsset/ModelAsset slice. GLB is compiler input; `.rcmodel` is the versioned native runtime product with opaque base-color materials. Further asset/rendering scope remains tied to demonstrated content needs and measurements; this slice does not authorize the rest of this program.
+
+The owner's continuation starts E-004: declared GLB sources compile into per-configuration build products before runtime staging, with SHA256 receipts checked during packaging. This uses CMake file dependencies, without introducing an asset cache, changing the model format, or expanding the renderer's material capabilities.
 
 Add production mesh/model data, texture products, material representation, resource references/dependencies as actually needed, and a richer native level/instance path that coexists with `BlockoutLevel`.
 

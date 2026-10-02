@@ -1,0 +1,40 @@
+cmake_minimum_required(VERSION 4.0)
+
+foreach(required IN ITEMS RELAYCORE_MODEL_SOURCE RELAYCORE_MODEL_PRODUCT RELAYCORE_MODEL_RECEIPT
+    RELAYCORE_MODEL_IMPORTER RELAYCORE_MODEL_DECLARATION RELAYCORE_PROJECT_ROOT)
+    if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
+        message(FATAL_ERROR "${required} is required")
+    endif()
+endforeach()
+
+file(SHA256 "${RELAYCORE_MODEL_SOURCE}" source_hash)
+file(SHA256 "${RELAYCORE_MODEL_IMPORTER}" importer_hash)
+file(SHA256 "${RELAYCORE_MODEL_DECLARATION}" declaration_hash)
+file(SHA256 "${CMAKE_CURRENT_LIST_FILE}" compiler_hash)
+get_filename_component(product_directory "${RELAYCORE_MODEL_PRODUCT}" DIRECTORY)
+get_filename_component(receipt_directory "${RELAYCORE_MODEL_RECEIPT}" DIRECTORY)
+file(MAKE_DIRECTORY "${product_directory}" "${receipt_directory}")
+set(material_options)
+if(RELAYCORE_MODEL_METALLIC_ROUGHNESS)
+    list(APPEND material_options --metallic-roughness)
+endif()
+execute_process(COMMAND "${RELAYCORE_MODEL_IMPORTER}" "${RELAYCORE_MODEL_SOURCE}" "${RELAYCORE_MODEL_PRODUCT}" ${material_options}
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+if(NOT result STREQUAL "0")
+    message(FATAL_ERROR "Model compilation failed: ${RELAYCORE_MODEL_SOURCE}\n${output}${error}")
+endif()
+file(SHA256 "${RELAYCORE_MODEL_SOURCE}" source_after)
+file(SHA256 "${RELAYCORE_MODEL_IMPORTER}" importer_after)
+if(NOT source_hash STREQUAL source_after OR NOT importer_hash STREQUAL importer_after)
+    message(FATAL_ERROR "Model source/importer changed during compilation; rebuild: ${RELAYCORE_MODEL_SOURCE}")
+endif()
+file(SHA256 "${RELAYCORE_MODEL_PRODUCT}" product_hash)
+file(RELATIVE_PATH source_path "${RELAYCORE_PROJECT_ROOT}" "${RELAYCORE_MODEL_SOURCE}")
+string(REPLACE "\\" "\\\\" source_path "${source_path}")
+string(REPLACE "\"" "\\\"" source_path "${source_path}")
+file(WRITE "${RELAYCORE_MODEL_RECEIPT}.tmp"
+    "{\n  \"version\": 1,\n  \"source\": \"${source_path}\",\n  \"source_sha256\": \"${source_hash}\",\n"
+    "  \"importer_sha256\": \"${importer_hash}\",\n  \"compiler_sha256\": \"${compiler_hash}\",\n"
+    "  \"declaration_sha256\": \"${declaration_hash}\",\n  \"product_sha256\": \"${product_hash}\"\n}\n")
+file(RENAME "${RELAYCORE_MODEL_RECEIPT}.tmp" "${RELAYCORE_MODEL_RECEIPT}")
+message(STATUS "${output}")

@@ -23,7 +23,7 @@ Rules:
 
 Version numbers below are a **2026-09-30 research snapshot**, not permanent pins. The checked-in vcpkg baseline is authoritative after each accepted dependency update.
 
-Current repository snapshot: RelayCore `1.3.4`, vcpkg manifest baseline `a42757564758c60651ebc616d9b000b7b91249ef`, verified during VK-D00 on 2026-10-01 for the existing OpenGL Debug and RelWithDebInfo builds. Verification evidence is recorded in `VULKAN_MIGRATION_PLAN.md`. Recheck both before changing dependencies.
+Current repository snapshot: RelayCore `1.3.4`, vcpkg manifest baseline `a42757564758c60651ebc616d9b000b7b91249ef`. Vulkan is the sole runtime backend after VK-013; VK-014 review is complete. The VK-D00 OpenGL builds below are historical dependency-refresh evidence. Current Vulkan build/runtime verification is recorded in `VULKAN_MIGRATION_PLAN.md`, sections 27–28. Recheck the manifest and current source before changing dependencies.
 
 ## 2. Keep the current foundations
 
@@ -31,7 +31,7 @@ These libraries already fit RelayCore. Do not replace them merely for perceived 
 
 | Responsibility | Choice | Boundary / reason |
 | --- | --- | --- |
-| platform, window, events, input, controllers, Vulkan surface | **SDL3** | Keep. It is the platform layer, not the renderer. During Vulkan migration enable the vcpkg `vulkan` feature. |
+| platform, window, events, input, controllers, Vulkan surface | **SDL3** | Keep. It is the platform layer, not the renderer. The manifest enables its `vulkan` feature. |
 | audio device, playback, mixing/resource plumbing | **miniaudio** | Keep. `AudioSystem` owns it; gameplay/world audio semantics stay RelayCore data. |
 | math | **GLM** | Keep. Vulkan does not make GLM obsolete; define and test RelayCore coordinate/clip-space conventions explicitly. |
 | logging | **spdlog** | Keep. No demonstrated reason to migrate logging. |
@@ -52,7 +52,7 @@ The ordered migration and loader policy remain in `VULKAN_MIGRATION_PLAN.md`.
 | instance/device/queue/swapchain bootstrap | **vk-bootstrap** | initialization only; do not turn it into renderer architecture |
 | Vulkan memory allocation | **Vulkan Memory Allocator (VMA)** | GPU allocation/suballocation/mapping/budget only |
 | shader language/compiler | **Slang → SPIR-V** | build/offline tool first; runtime compiler optional dev tooling later |
-| UI backend | ImGui SDL3 + Vulkan | debug/editor only |
+| UI backend | ImGui SDL3 + Vulkan | renderer-owned HUD/menu/debug/editor presentation |
 | validation | Khronos Validation Layers | development verification |
 | frame debugging | RenderDoc | external developer tool |
 
@@ -124,6 +124,10 @@ Rules:
 - glTF 2.0 is the accepted interchange baseline until a task proves a need for 2.1 or a specific extension.
 
 Research snapshot: public vcpkg `fastgltf 0.9.0`.
+
+E-003 (2026-10-02) starts the static GLB importer. The unchanged manifest baseline resolves fastgltf `0.9.0` and its simdjson `5.0.1` dependency. They link privately to `relaycore_model_importer` and its CLI/tests, not the runtime engine/game. Embedded PNG/JPEG are decoded by Windows Imaging Component in the tool; the game reads native RGBA/model products. Meshoptimizer/KTX/BLAKE3 are not added by this first slice.
+
+E-004 attaches this importer to CMake's ordinary file dependencies and runtime staging. SHA256 build receipts extend the existing packaging integrity checks; they are not a content-addressed asset cache or logical asset identity. No new dependency or baseline change is needed for this build step.
 
 ## 6. Mesh processing — meshoptimizer
 

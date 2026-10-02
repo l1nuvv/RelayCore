@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 #include <memory>
 #include <vector>
 
@@ -14,6 +15,8 @@ namespace RelayCore::render
         glm::vec3 normal{};
         float material_kind = 0.0F;
         glm::vec2 uv{};
+        // glTF tangent basis: B = cross(N, tangent.xyz) * tangent.w.
+        glm::vec4 tangent{0, 0, 0, 1};
     };
 
     struct CpuColorMeshData {

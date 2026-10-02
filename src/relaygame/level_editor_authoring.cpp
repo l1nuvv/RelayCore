@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <queue>
 #include <sstream>
 #include <stdexcept>
@@ -27,6 +28,23 @@ namespace RelayGame
     {
         if (model_bounds_.contains(path))
             return;
+        if (std::filesystem::path{path}.extension() == ".rcmodel")
+        {
+            const auto model = RelayCore::render::read_model_asset(RelayCore::core::asset_path(path));
+            RelayCore::physics::Aabb box{
+                glm::vec3{std::numeric_limits<float>::max()},
+                glm::vec3{-std::numeric_limits<float>::max()}
+            };
+            for (const auto& part : model.parts)
+                for (const auto& vertex : model.meshes[part.mesh].geometry.vertices)
+                {
+                    const auto position = glm::vec3{part.transform * glm::vec4{vertex.position, 1}};
+                    box.mins = glm::min(box.mins, position);
+                    box.maxs = glm::max(box.maxs, position);
+                }
+            model_bounds_.emplace(path, box);
+            return;
+        }
         const auto mesh = RelayCore::render::load_obj_mesh(RelayCore::core::asset_path(path));
         RelayCore::physics::Aabb box{mesh.vertices.front().position, mesh.vertices.front().position};
         for (const auto& vertex : mesh.vertices)
@@ -40,13 +58,16 @@ namespace RelayGame
     void LevelEditorDocument::add_model(glm::vec3 position, const std::string& model, const std::string& texture)
     {
         cache_model(model);
-        if (!std::filesystem::is_regular_file(RelayCore::core::asset_path(texture)))
+        const bool native = std::filesystem::path{model}.extension() == ".rcmodel";
+        if (!native && !std::filesystem::is_regular_file(RelayCore::core::asset_path(texture)))
             throw std::runtime_error("Текстура не найдена: " + texture);
         checkpoint();
         RelayCore::EntitySpawnData entity;
         entity.classname = "prop_static";
         entity.origin = position;
-        entity.properties = {{"model", model}, {"texture", texture}, {"scale", "1 1 1"}};
+        entity.properties = {{"model", model}, {"scale", "1 1 1"}};
+        if (!native)
+            entity.properties["texture"] = texture;
         level_.entities.push_back(std::move(entity));
         selection_ = EditorSelection{true, level_.entities.size() - 1};
         changed();

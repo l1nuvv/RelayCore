@@ -23,6 +23,8 @@ namespace RelayGame
         settings_.sensitivity = services.config().input.mouse_sensitivity_radians;
         settings_.fov = glm::degrees(services.config().renderer.camera.vertical_fov_radians);
         settings_.vsync = services.window().vsync_enabled();
+        settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+        sdr_color_pipeline_ = services.renderer().color_pipeline_mode();
         if (user_data_directory_.empty())
         {
             const std::unique_ptr<char, decltype(&SDL_free)> directory{
@@ -42,11 +44,55 @@ namespace RelayGame
             settings_message_ = error.what();
             RelayCore::log::warn("Player settings: {}", error.what());
         }
-        apply_player_settings(services);
+        try
+        {
+            apply_player_settings(services);
+        } catch (const std::exception& error)
+        {
+            settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+            settings_message_ = error.what();
+            RelayCore::log::warn("Player settings: {}", error.what());
+        }
     }
 
     void DemoGame::apply_player_settings(RelayCore::EngineServices& services)
     {
+        auto& renderer = services.renderer();
+        if (settings_.hdr_enabled != renderer.config().hdr_enabled)
+        {
+            auto config = services.config();
+            config.renderer = renderer.config();
+            config.renderer.hdr_enabled = settings_.hdr_enabled;
+            const auto pipeline =
+                settings_.hdr_enabled ? RelayCore::render::ColorPipelineMode::hardware_srgb : sdr_color_pipeline_;
+            auto backend = renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config(), pipeline);
+            std::optional<WorldSceneRenderer> world, editor_scene, return_scene;
+            if (pipeline != renderer.color_pipeline_mode())
+            {
+                const auto prepare_scene = [&](const GameWorldRuntime& runtime) {
+                    WorldSceneRenderer scene;
+                    scene.initialize(
+                        build_prepared_world_scene_data(runtime.level(), renderer.authoring_config(), pipeline),
+                        renderer.static_models()
+                    );
+                    return scene;
+                };
+                if (!runtime_.level_path().empty())
+                    world.emplace(prepare_scene(runtime_));
+                if (editor_.active())
+                    editor_scene.emplace(editor_.prepare_color_pipeline(pipeline, services));
+                if (editor_return_)
+                    return_scene.emplace(prepare_scene(editor_return_->session.runtime));
+            }
+            renderer.commit_live_content_reload(std::move(backend));
+            if (world)
+                world_scene_ = std::move(*world);
+            if (editor_scene)
+                editor_.commit_color_pipeline(std::move(*editor_scene));
+            if (return_scene)
+                editor_return_->session.world_scene = std::move(*return_scene);
+            services.commit_live_reload_config(std::move(config));
+        }
         runtime_.apply_player_settings(settings_.sensitivity, settings_.camera_motion);
         services.audio_system().set_master_volume(settings_.volume);
         services.renderer().set_field_of_view(settings_.fov);
@@ -85,7 +131,7 @@ namespace RelayGame
     void DemoGame::draw_pause_menu(RelayCore::EngineServices& services)
     {
         const auto* viewport = ImGui::GetMainViewport();
-        const float height = show_settings_                ? 660.0F
+        const float height = show_settings_                ? 700.0F
                              : confirm_new_game_           ? 550.0F
                              : screen_ == Screen::Complete ? 350.0F
                              : screen_ == Screen::MainMenu ? 550.0F
@@ -244,19 +290,31 @@ namespace RelayGame
             }
             changed |= ImGui::SliderFloat("Поле зрения", &settings_.fov, 50, 100, "%.0f");
             changed |= ImGui::SliderFloat("Движение камеры", &settings_.camera_motion, 0, 1, "%.2f");
+            ImGui::TextWrapped("Ноль отключает покачивание и проседание камеры при приземлении.");
             changed |= ImGui::Checkbox("Вертикальная синхронизация", &settings_.vsync);
+            int color_range = settings_.hdr_enabled ? 1 : 0;
+            ImGui::SetNextItemWidth(
+                ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Режим изображения").x
+                - ImGui::GetStyle().ItemInnerSpacing.x
+            );
+            if (ImGui::Combo("Режим изображения", &color_range, "SDR\0HDR\0"))
+            {
+                settings_.hdr_enabled = color_range == 1;
+                changed = true;
+            }
             if (changed)
             {
                 settings_dirty_ = true;
                 try
                 {
                     apply_player_settings(services);
+                    settings_message_.clear();
                 } catch (const std::exception& error)
                 {
+                    settings_.hdr_enabled = services.renderer().config().hdr_enabled;
                     settings_message_ = error.what();
                 }
             }
-            ImGui::TextWrapped("Ноль отключает покачивание и проседание камеры при приземлении.");
             if (ImGui::Button("Сохранить настройки", {-1, 34}))
             {
                 try

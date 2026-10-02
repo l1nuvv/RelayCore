@@ -16,6 +16,7 @@
 #include "relaygame/game_version.h"
 #include "relaygame/level_editor.h"
 #include "relaygame/usable_interaction.h"
+#include "relaygame/world_irradiance.h"
 #include "relaygame/world_scene_renderer.h"
 
 #include <SDL3/SDL.h>
@@ -84,6 +85,7 @@ namespace
 int main(int argc, char** argv)
 {
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
+    const bool hdr = argc > 1 && std::string_view{argv[1]} == "--hdr";
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -96,7 +98,17 @@ int main(int argc, char** argv)
     });
     try
     {
-        auto config = RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml"));
+        RelayCore::test::ScopedTempDirectory hdr_data;
+        auto config_path = RelayCore::core::asset_path("config/engine.toml");
+        if (hdr)
+        {
+            std::ifstream source(config_path);
+            std::string contents{std::istreambuf_iterator<char>{source}, {}};
+            contents.insert(contents.find("[render]") + 8, "\nhdr_enabled = true\nexposure_ev = 0\n");
+            config_path = hdr_data.path() / "hdr-engine.toml";
+            std::ofstream(config_path) << contents;
+        }
+        auto config = RelayCore::core::load_engine_config(config_path);
         config.window.width = width;
         config.window.height = height;
         config.window.high_dpi = false;
@@ -106,7 +118,11 @@ int main(int argc, char** argv)
             config.renderer.shadow_enabled = false;
         RelayCore::Window window{config.window};
         SDL_HideWindow(window.handle());
-        RelayCore::Renderer renderer{config.renderer};
+        RelayCore::Renderer renderer{
+            config.renderer,
+            hdr ? RelayCore::render::ColorPipelineMode::hardware_srgb
+                : RelayCore::render::ColorPipelineMode::legacy_gamma
+        };
         renderer.initialize(window);
         renderer.on_resize(width, height);
         if (config.renderer.shadow_enabled)
@@ -320,7 +336,7 @@ int main(int argc, char** argv)
             caster_scene.shutdown();
 
             RelayGame::WorldSceneRenderer dynamic_scene;
-            dynamic_scene.initialize({}, renderer.static_models());
+            dynamic_scene.initialize({.color_pipeline_mode = renderer.color_pipeline_mode()}, renderer.static_models());
             const auto render_dynamic = [&](std::span<const RelayCore::gameplay::RuntimeDoor> doors = {},
                                             std::span<const RelayCore::gameplay::RuntimeTurret> turrets = {},
                                             std::span<const RelayCore::gameplay::RuntimeUsable> usables = {}) {
@@ -410,7 +426,10 @@ int main(int argc, char** argv)
                 renderer.static_models()
             );
             RelayGame::WorldSceneRenderer side_steam_scene;
-            side_steam_scene.initialize({}, renderer.static_models());
+            side_steam_scene.initialize(
+                {.color_pipeline_mode = renderer.color_pipeline_mode()},
+                renderer.static_models()
+            );
             steam.origin = {3.5F, 1.0F, 3.5F};
             const std::array side_effects{steam};
             renderer.camera().set_position({0.0F, 1.5F, 0.0F});
@@ -1198,13 +1217,150 @@ int main(int argc, char** argv)
             view("sandbox-shotgun-pickup.bmp", {.4F, 1.65F, -2.5F}, {.7F, 1.105F, -4});
             view("sandbox-movement.bmp", {-10, 1.65F, 0}, {-25, 1, -2});
             view("sandbox-devices.bmp", {10, 1.65F, 0}, {23, 1.4F, -2});
+            view("sandbox-native-model.bmp", {28, .85F, 5}, {29, .85F, 2.5F});
             view("sandbox-range.bmp", {-20, 1.65F, 10}, {-20, 1.25F, 23});
             view("sandbox-arena.bmp", {5, 1.65F, 10}, {17, 1, 19});
             view("sandbox-rover.bmp", {11, 1.7F, 18}, {11, .75F, 20});
             view("sandbox-mixed.bmp", {28, 1.7F, 19}, {28, 1.5F, 25});
             view("sandbox-mixed-cover.bmp", {22, 1.65F, 20}, {28, 1.5F, 25});
             sandbox_scene.shutdown();
-            std::cout << "sandbox_flow=passed; own map, separate progress, editor preview, nine views\n";
+            std::cout
+                << "sandbox_flow=passed; own map, separate progress, editor preview, native model and authored views\n";
+        }
+        {
+            const auto lab_path = RelayCore::core::asset_path("levels/native_lab.toml");
+            const auto lab_data = player_data.path() / "native-lab";
+            std::filesystem::create_directories(lab_data);
+            RelayGame::LevelEditor native_editor;
+            native_editor.enter(level, services);
+            native_editor.open_map(lab_path, services);
+            const auto editor_saved = lab_data / "editor-roundtrip.toml";
+            native_editor.save_map(editor_saved, services);
+            native_editor.leave(services);
+            const auto bench_path = lab_data / "lab_bench.rcmodel";
+            std::filesystem::copy_file(RelayCore::core::asset_path("models/lab_bench.rcmodel"), bench_path);
+            auto lab_level = RelayCore::load_blockout_level(editor_saved);
+            const auto probe_path = lab_data / "native_lab.rcprobe";
+            std::filesystem::copy_file(RelayCore::core::asset_path("lighting/native_lab.rcprobe"), probe_path);
+            for (auto& entity : lab_level.entities)
+            {
+                if (entity.classname == "prop_static" && entity.properties.at("model") == "models/lab_bench.rcmodel")
+                    entity.properties["model"] = bench_path.generic_string();
+                if (entity.classname == "irradiance_volume")
+                    entity.properties["product"] = probe_path.generic_string();
+            }
+            RelayGame::LevelEditorDocument lab_document;
+            lab_document.reset(std::move(lab_level));
+            const auto preview_path = lab_data / "native_lab.toml";
+            lab_document.save(preview_path);
+            auto lab_config = config;
+            lab_config.gameplay.level_path = preview_path.string();
+            RelayCore::EngineServices lab_services{lab_config, window, renderer, audio, running};
+            RelayGame::DemoGame lab_game{lab_data / "player"};
+            renderer.set_diagnostics_visible(true);
+            lab_game.on_startup(lab_services);
+            lab_game.begin_episode(false, lab_services);
+            lab_game.on_update(game_frame, lab_services);
+            const auto lab_view = [&](const char* name, bool editor_view = false) {
+                renderer.camera().set_position({0, 1.65F, -3.4F});
+                renderer.camera().set_target({0, 1.35F, 3.8F});
+                renderer.begin_frame();
+                lab_game.on_render(game_frame, lab_services);
+                if (editor_view && renderer.begin_ui(game_frame, audio, true))
+                {
+                    lab_game.on_ui(lab_services);
+                    renderer.end_ui();
+                }
+                return capture(renderer, std::filesystem::path{"power-captures"} / name);
+            };
+            const auto require_lab = [&] {
+                if (renderer.runtime_diagnostics().level_path != preview_path.string())
+                    throw std::runtime_error("Native lab session was not activated");
+            };
+            require_lab();
+            (void) lab_view("native-lab.bmp");
+            lab_game.enter_editor(lab_services);
+            (void) lab_view("native-lab-editor.bmp", true);
+            lab_game.begin_editor_preview(lab_services);
+            lab_game.on_update(game_frame, lab_services);
+            if (lab_game.has_custom_ui())
+                throw std::runtime_error("Native lab editor preview did not enter gameplay");
+            (void) lab_view("native-lab-preview.bmp");
+            lab_game.return_from_editor(lab_services);
+            (void) lab_view("native-lab.bmp");
+            const auto lab_before = read_rgb(renderer);
+            auto bench = RelayCore::render::read_model_asset(bench_path);
+            for (auto& material : bench.materials)
+                for (std::size_t i = 0; i < material.base_color.pixels.size(); i += 4)
+                {
+                    material.base_color.pixels[i] = 50;
+                    material.base_color.pixels[i + 1] = 90;
+                    material.base_color.pixels[i + 2] = 180;
+                }
+            RelayCore::render::write_model_asset(bench_path, bench);
+            const auto reload_lab = [&] {
+                SDL_Event event{};
+                event.type = SDL_EVENT_KEY_DOWN;
+                event.key.scancode = SDL_SCANCODE_F7;
+                lab_game.on_event(event, lab_services);
+                lab_game.on_update(game_frame, lab_services);
+            };
+            reload_lab();
+            if (renderer.iteration_diagnostics().last_reload_succeeded)
+                throw std::runtime_error("Native lab accepted stale irradiance after material edit");
+            require_lab();
+            (void) lab_view("native-lab-stale-probe-rollback.bmp");
+            const auto same_channel = [](unsigned char a, unsigned char b) {
+                return std::abs(static_cast<int>(a) - static_cast<int>(b)) <= 1;
+            };
+            if (!std::ranges::equal(lab_before, read_rgb(renderer), same_channel))
+                throw std::runtime_error("Stale irradiance reload changed the working scene");
+            auto bake_level = RelayCore::load_blockout_level(preview_path);
+            for (auto& entity : bake_level.entities)
+                if (entity.classname == "irradiance_volume")
+                    entity.properties["rays"] = "64";
+            const auto bake_source = RelayGame::world_irradiance_source(bake_level);
+            RelayGame::LevelEditorDocument bake_document;
+            bake_document.reset(bake_level);
+            bake_document.save(preview_path);
+            std::erase_if(bake_level.entities, [](const auto& e) {
+                return e.classname == "irradiance_volume";
+            });
+            const auto bake_scene = RelayGame::build_prepared_world_scene_data(
+                bake_level,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::hardware_srgb
+            );
+            RelayCore::render::write_irradiance_probes(
+                probe_path,
+                RelayCore::render::bake_irradiance_probes(
+                    RelayGame::build_world_irradiance_scene(bake_scene, renderer.authoring_config()),
+                    bake_source->settings
+                )
+            );
+            reload_lab();
+            if (!renderer.iteration_diagnostics().last_reload_succeeded)
+                throw std::runtime_error("Native lab F7 did not reload the changed model");
+            (void) lab_view("native-lab-reloaded.bmp");
+            const auto reloaded = read_rgb(renderer);
+            if (std::ranges::equal(lab_before, reloaded, same_channel))
+                throw std::runtime_error("Native lab material update did not reach the rendered frame");
+            std::ofstream(bench_path, std::ios::binary) << "broken native model";
+            reload_lab();
+            if (renderer.iteration_diagnostics().last_reload_succeeded)
+                throw std::runtime_error("Native lab accepted a broken product during F7");
+            require_lab();
+            (void) lab_view("native-lab-rollback.bmp");
+            if (!std::ranges::equal(read_rgb(renderer), reloaded, same_channel))
+                throw std::runtime_error("Failed native lab reload changed the working scene");
+            RelayCore::render::write_model_asset(bench_path, bench);
+            reload_lab();
+            if (!renderer.iteration_diagnostics().last_reload_succeeded)
+                throw std::runtime_error("Native lab could not recover after a repaired product");
+            lab_game.on_shutdown(lab_services);
+            renderer.set_diagnostics_visible(false);
+            std::cout << "native_lab=passed; models, editor/preview, stale-probe rollback, rebake/F7, failed model "
+                         "rollback, recovery\n";
         }
         {
             const auto transfer_path = RelayCore::core::asset_path("levels/pressure_transfer.toml");

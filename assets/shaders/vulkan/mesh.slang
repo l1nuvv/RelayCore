@@ -4,7 +4,7 @@ struct DrawData
     float4 modelRow0;
     float4 modelRow1;
     float4 modelRow2;
-    // Model texture, transparent alpha and overlay behavior occupy bits 0, 1 and 2.
+    // Bits 0..5: model color, transparent alpha, overlay, normal map, metallic/roughness, viewmodel.
     uint flags;
     float cameraX;
     float cameraY;
@@ -22,6 +22,42 @@ struct MaterialData
 };
 [[vk::binding(0, 0)]] ConstantBuffer<MaterialData> materials;
 [[vk::binding(1, 0)]] Sampler2D diffuse;
+[[vk::binding(9, 0)]] Sampler2D normalMap;
+struct SurfaceData { float4 parameters; };
+[[vk::binding(10, 0)]] ConstantBuffer<SurfaceData> surfaceData;
+struct IrradianceData
+{
+    float4 mins, maxs;
+    uint4 dimensions;
+    float4 coefficients[576];
+};
+[[vk::binding(11, 0)]] ConstantBuffer<IrradianceData> irradiance;
+
+// Matches the positive real basis used by the CPU baker; coefficients already contain cosine / pi.
+float3 probe_indirect(float3 position, float3 normal)
+{
+    if (irradiance.dimensions.w == 0 || (draw.flags & 36) != 0
+        || any(position < irradiance.mins.xyz) || any(position > irradiance.maxs.xyz)) return 0;
+    float3 grid = saturate((position-irradiance.mins.xyz-.15)
+        / (irradiance.maxs.xyz-irradiance.mins.xyz-.3)) * float3(irradiance.dimensions.xyz-1);
+    uint3 cell = min(uint3(grid), irradiance.dimensions.xyz-2);
+    float3 fraction = grid-float3(cell);
+    float basis[9] = { .282094792, .488602512*normal.y, .488602512*normal.z, .488602512*normal.x,
+        1.092548431*normal.x*normal.y, 1.092548431*normal.y*normal.z,
+        .315391565*(3*normal.z*normal.z-1), 1.092548431*normal.x*normal.z,
+        .546274215*(normal.x*normal.x-normal.y*normal.y) };
+    float3 result = 0;
+    for (uint corner=0; corner<8; ++corner)
+    {
+        uint3 offset = uint3(corner&1, (corner>>1)&1, (corner>>2)&1);
+        uint3 q = cell+offset;
+        float3 weight = lerp(1-fraction, fraction, float3(offset));
+        uint index = (q.x+irradiance.dimensions.x*(q.y+irradiance.dimensions.y*q.z))*9;
+        for (uint sh=0; sh<9; ++sh)
+            result += irradiance.coefficients[index+sh].rgb * (basis[sh]*weight.x*weight.y*weight.z);
+    }
+    return max(result, 0);
+}
 struct LightData { float4 positionRadius[8]; float4 color[8]; int4 count; };
 [[vk::binding(2, 0)]] ConstantBuffer<LightData> lights;
 struct FrameData { float4 viewportTimeDebug; };
@@ -47,6 +83,7 @@ struct Vertex
     [[vk::location(2)]] float3 normal;
     [[vk::location(3)]] float material;
     [[vk::location(4)]] float2 uv;
+    [[vk::location(5)]] float4 tangent;
 };
 struct Varying
 {
@@ -54,6 +91,7 @@ struct Varying
     float3 color;
     float3 worldPosition;
     float3 worldNormal;
+    float4 worldTangent;
     float3 objectPosition;
     float3 objectNormal;
     float2 uv;
@@ -77,6 +115,8 @@ Varying vertex_main(Vertex input)
     float determinant = dot(a, cross(b, c));
     output.worldNormal = normalize((cross(b, c) * input.normal.x + cross(c, a) * input.normal.y
                                   + cross(a, b) * input.normal.z) / determinant);
+    output.worldTangent = float4(a * input.tangent.x + b * input.tangent.y + c * input.tangent.z,
+                                 input.tangent.w * sign(determinant));
     output.objectPosition = input.position;
     output.objectNormal = input.normal;
     output.uv = input.uv;
@@ -101,12 +141,7 @@ float panel_seam_mask(float2 uv, float scale, float width)
     return 1 - smoothstep(width, width + feather, edge);
 }
 
-float hash12(float2 p)
-{
-    float3 p3=frac(float3(p.x,p.y,p.x)*0.1031);
-    p3+=dot(p3,p3.yzx+33.33);
-    return frac((p3.x+p3.y)*p3.z);
-}
+#include "scene_postfx.slang"
 float2 rotate_vec2(float2 p,float angle)
 {
     float c=cos(angle),s=sin(angle);
@@ -185,12 +220,13 @@ float local_visibility(int index,float3 lightVector,float distanceToLight,float 
     }
     return visibility;
 }
-float3 spot_contribution(float3 color,float3 normal,float3 position)
+float3 spot_radiance(float3 position,float3 geometricNormal,out float3 ray, bool linearColor = false)
 {
+    ray = float3(0,0,-1);
     if (shadows.flags.z==0) return 0;
     float3 delta=position-shadows.spotPositionRange.xyz;
     float distanceToSpot=length(delta);
-    float3 ray=delta/max(distanceToSpot,0.001);
+    ray=delta/max(distanceToSpot,0.001);
     float cone=smoothstep(0.899,0.951,dot(ray,shadows.spotDirection.xyz));
     float falloff=pow(saturate(1-distanceToSpot/shadows.spotPositionRange.w),1.5);
     float4 clip=mul(shadows.viewProjection[2],float4(position,1));
@@ -200,11 +236,20 @@ float3 spot_contribution(float3 color,float3 normal,float3 position)
     {
         uint width,height; shadowSpot.GetDimensions(width,height);
         float2 texel=1.0/float2(width,height);
-        float bias=max(0.00005,0.0003*(1-max(dot(normal,-ray),0.0)));
+        float bias=max(0.00005,0.0003*(1-max(dot(geometricNormal,-ray),0.0)));
         for (int y=-1;y<=1;++y) for (int x=-1;x<=1;++x)
             visibility+=coord.z-bias<=shadowSpot.Sample(coord.xy+float2(x,y)*texel).r ? 1.0/9 : 0;
     }
-    return color*shadows.spotColor.rgb*cone*falloff*visibility*max(dot(normal,-ray),0.0)*2.4;
+    float3 color = shadows.spotColor.rgb;
+    if (linearColor && surfaceData.parameters.w == 0)
+        color = select(color <= 0.04045, color / 12.92, pow((color + 0.055) / 1.055, 2.4));
+    return color*cone*falloff*visibility*2.4;
+}
+float3 spot_contribution(float3 color,float3 normal,float3 position,float3 geometricNormal)
+{
+    float3 ray;
+    float3 radiance = spot_radiance(position,geometricNormal,ray);
+    return color*radiance*max(dot(normal,-ray),0.0);
 }
 
 float3 safe_normalize_vec3(float3 value, float3 fallback)
@@ -219,25 +264,8 @@ float soft_panel_volume(float2 uv, float scale)
     return 1 - smoothstep(0.28, 0.92, max(cell.x, cell.y) * 2);
 }
 #include "scene_materials.slang"
-float3 scene_postfx(float3 color, float2 fragCoord, bool overlay)
-{
-    if (overlay) return saturate(color + 0.05);
-    float luminance = dot(color, float3(0.2126, 0.7152, 0.0722));
-    float2 viewport = max(frame.viewportTimeDebug.xy, 1.0);
-    float2 screenUV = fragCoord / viewport;
-    float time = frame.viewportTimeDebug.z;
-    float vignette = 1 - smoothstep(0.28, 0.84, distance(screenUV, float2(0.5))) * materials.postfx.x;
-    float grain = (hash12(floor(fragCoord * 0.5) + floor(time * 24)) - 0.5)
-                * materials.postfx.y * (0.08 + (1 - luminance) * 0.16);
-    float wave = sin(screenUV.y * viewport.y * 0.92 + time * 10) * 0.5 + 0.5;
-    float scanline = 1 - (0.04 + wave * 0.08) * materials.postfx.z;
-    color = lerp(float3(luminance), color, materials.grading.x);
-    color = (color - 0.5) * materials.postfx.w + 0.5;
-    color *= lerp(float3(0.97, 0.99, 1.01), float3(1.01, 1.00, 0.98), smoothstep(0.18, 0.78, luminance));
-    return saturate(color * vignette * scanline + grain);
-}
 
-float3 lit_color(float3 color, float3 normal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance)
+float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance)
 {
     float skyAmbient = saturate(normal.y * 0.5 + 0.5);
     float underside = saturate(-normal.y);
@@ -255,8 +283,12 @@ float3 lit_color(float3 color, float3 normal, float2 uv, float3 position, uint i
     float3 bounce = bounceTint * (materials.bounce.w + underside * materials.sky.z
                                  + (1 - skyAmbient) * materials.sky.w) * materials.local.w;
     float3 result = color * ambient + color * (cool + warm) * 1.04 + bounce;
+    float3 indirect = probe_indirect(position, normal);
+    if (surfaceData.parameters.w == 0)
+        indirect = select(indirect <= 0.0031308, indirect * 12.92, 1.055 * pow(indirect, 1.0/2.4) - .055);
+    result += color * indirect;
     float directional = saturate(dot(normal, normalize(-materials.direction.xyz)));
-    float visibility=directional_visibility(normal,position,fogDistance);
+    float visibility=directional_visibility(geometricNormal,position,fogDistance);
     result*=1-(1-visibility)*directional*saturate(normal.y)*shadows.strengths.z;
     result += color * materials.directionalColor.rgb * directional * visibility * materials.direction.w;
     for (int i = 0; i < lights.count.x; ++i)
@@ -267,9 +299,66 @@ float3 lit_color(float3 color, float3 normal, float2 uv, float3 position, uint i
         float attenuation = saturate(1 - distanceToLight / max(lights.positionRadius[i].w, 0.001));
         attenuation = attenuation * attenuation * (3 - 2 * attenuation);
         float wrapped = saturate(dot(normal, direction) * materials.local.x + materials.local.y);
-        result += color * lights.color[i].rgb * attenuation * wrapped * materials.local.z * local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),normal,direction,attenuation);
+        result += color * lights.color[i].rgb * attenuation * wrapped * materials.local.z * local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,direction,attenuation);
     }
-    result+=spot_contribution(color,normal,position);
+    result+=spot_contribution(color,normal,position,geometricNormal);
+    return result;
+}
+
+float3 mr_linear(float3 color)
+{
+    if (surfaceData.parameters.w != 0) return color;
+    return select(color <= 0.04045, color / 12.92, pow((color + 0.055) / 1.055, 2.4));
+}
+float3 mr_visual(float3 color)
+{
+    if (surfaceData.parameters.w != 0) return color;
+    return select(color <= 0.0031308, color * 12.92, 1.055 * pow(color, 1.0 / 2.4) - 0.055);
+}
+
+// glTF Appendix B: GGX, separable Smith visibility, Schlick, Lambert diffuse.
+float3 metallic_roughness_brdf(float3 base, float3 normal, float3 view, float3 light)
+{
+    float nl = saturate(dot(normal, light)), nv = saturate(dot(normal, view));
+    if (nl <= 0 || nv <= 0) return 0;
+    float3 halfVector = safe_normalize_vec3(view + light, normal);
+    float nh = saturate(dot(normal, halfVector)), vh = saturate(dot(view, halfVector));
+    // The valid roughness=0 singularity uses a documented finite lobe (roughness >= 0.05).
+    float alpha = max(surfaceData.parameters.y * surfaceData.parameters.y, 0.0025);
+    float a2 = alpha * alpha;
+    float denominator = (1 - nh * nh) + a2 * nh * nh;
+    float distribution = a2 / (3.14159265 * denominator * denominator);
+    float visibility = 1 / ((nl + sqrt(a2 + (1-a2)*nl*nl)) * (nv + sqrt(a2 + (1-a2)*nv*nv)));
+    float metallic = surfaceData.parameters.z;
+    float3 f0 = lerp(float3(0.04), base, metallic);
+    float3 fresnel = f0 + (1-f0) * pow(1-vh, 5);
+    return ((1-fresnel) * (1-metallic) * base / 3.14159265 + fresnel * distribution * visibility) * nl;
+}
+float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 position, float fogDistance)
+{
+    float3 base = mr_linear(color);
+    float3 view = safe_normalize_vec3(float3(draw.cameraX,draw.cameraY,draw.cameraZ)-position,normal);
+    // Retain the accepted ambient baseline; probes add only baked diffuse, without environment specular.
+    float ambient = lerp(materials.ambient.x,materials.ambient.y,saturate(normal.y*.5+.5));
+    float3 result = base * (1-surfaceData.parameters.z) * 0.96 * ambient;
+    result += base * (1-surfaceData.parameters.z) * .96 * probe_indirect(position,normal);
+    float3 direction = normalize(-materials.direction.xyz);
+    result += metallic_roughness_brdf(base,normal,view,direction) * mr_linear(materials.directionalColor.rgb)
+              * materials.direction.w * directional_visibility(geometricNormal,position,fogDistance);
+    for (int i=0;i<lights.count.x;++i)
+    {
+        float3 delta = lights.positionRadius[i].xyz-position;
+        float distanceToLight = length(delta);
+        float3 lightDirection = distanceToLight > 0.0001 ? delta/distanceToLight : float3(0,1,0);
+        float attenuation = saturate(1-distanceToLight/max(lights.positionRadius[i].w,0.001));
+        attenuation = attenuation*attenuation*(3-2*attenuation);
+        float visibility = local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,lightDirection,attenuation);
+        result += metallic_roughness_brdf(base,normal,view,lightDirection) * mr_linear(lights.color[i].rgb)
+                  * attenuation * materials.local.z * visibility;
+    }
+    float3 ray;
+    float3 spot = spot_radiance(position,geometricNormal,ray,true);
+    result += metallic_roughness_brdf(base,normal,view,-ray) * spot;
     return result;
 }
 
@@ -313,19 +402,41 @@ float4 fragment_main(Varying input) : SV_Target
         float3 sample = diffuse.SampleGrad(atlasUV, ddx(uv) * gradient, ddy(uv) * gradient).rgb;
         color = lerp(input.color, input.color * sample, materials.atlas[id].y);
     }
+    float3 geometricNormal = normalize(input.worldNormal);
+    float3 shadingNormal = geometricNormal;
+    if ((draw.flags & 8) != 0)
+    {
+        float3 tangent = normalize(input.worldTangent.xyz - geometricNormal * dot(geometricNormal, input.worldTangent.xyz));
+        float3 bitangent = cross(geometricNormal, tangent) * input.worldTangent.w;
+        float3 sampled = normalMap.Sample(input.uv).rgb * 2 - 1;
+        sampled.xy *= surfaceData.parameters.x;
+        // Keep finite glTF strengths from overflowing the normalization length.
+        sampled /= max(max(abs(sampled.x), abs(sampled.y)), abs(sampled.z));
+        shadingNormal = normalize(tangent * sampled.x + bitangent * sampled.y + geometricNormal * sampled.z);
+    }
     float3 emissive;
     float3 materialColor = apply_material_surface(color, uv, normalize(input.worldNormal), input.worldPosition, int(id), emissive);
     if (clothing || model) { materialColor = color; emissive = 0; }
     emissive *= overlay ? 1.18 : 1.0;
-    color = lerp(saturate(lit_color(materialColor, normalize(input.worldNormal), uv, input.worldPosition,
-                                  id, clothing, model, input.fogDistance) + emissive), materials.fog.rgb, fogAmount);
+    bool metallicRoughness = (draw.flags & 16) != 0;
+    float3 lighting = metallicRoughness
+        ? metallic_roughness_color(materialColor, shadingNormal, geometricNormal, input.worldPosition, input.fogDistance)
+        : lit_color(materialColor, shadingNormal, geometricNormal, uv, input.worldPosition,
+                    id, clothing, model, input.fogDistance);
+    float3 fogColor = metallicRoughness ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
+    bool hdr = materials.grading.y != 0;
+    color = lerp(hdr ? max(lighting + emissive, 0) : saturate(lighting + emissive), fogColor, fogAmount);
     if (frame.viewportTimeDebug.w != 0)
     {
         float blend = max(shadows.cascade.y, 0.0001);
         float cascadeMix = smoothstep(shadows.cascade.x - blend * 0.5, shadows.cascade.x + blend * 0.5, input.fogDistance);
-        color = lerp(color, color * lerp(materials.cascadeNearTint.rgb, materials.cascadeFarTint.rgb, cascadeMix), 0.38);
+        float3 nearTint = metallicRoughness ? mr_linear(materials.cascadeNearTint.rgb) : materials.cascadeNearTint.rgb;
+        float3 farTint = metallicRoughness ? mr_linear(materials.cascadeFarTint.rgb) : materials.cascadeFarTint.rgb;
+        color = lerp(color, color * lerp(nearTint, farTint, cascadeMix), 0.38);
     }
+    if (hdr) return float4(color, alpha);
     // GL postfx use bottom-left pixel coordinates; Vulkan fragment positions are top-down.
     float2 fragCoord = float2(input.position.x, frame.viewportTimeDebug.y - input.position.y);
-    return float4(scene_postfx(color, fragCoord, overlay), alpha);
+    float3 post = scene_postfx(color, fragCoord, frame.viewportTimeDebug, materials.postfx, materials.grading.x, overlay);
+    return float4(metallicRoughness ? mr_visual(post) : post, alpha);
 }

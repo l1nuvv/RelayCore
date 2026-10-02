@@ -39,6 +39,8 @@ set(RELAYCORE_ENGINE_SOURCES
     render/vma_impl.cpp
     render/mesh.cpp
     render/static_model.cpp
+    render/model_asset.cpp
+    render/irradiance_probes.cpp
     render/render_authoring_config.cpp
     render/pipeline_authoring_overlay.cpp
 
@@ -97,6 +99,9 @@ set(RELAYCORE_ENGINE_HEADERS
     render/vulkan_uploads.h
     render/vulkan_mesh_renderer.h
     render/mesh.h
+    render/irradiance_probes.h
+    render/static_model.h
+    render/model_asset.h
     render/render_authoring_config.h
     render/pipeline_authoring_overlay.h
 

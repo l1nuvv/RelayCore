@@ -59,15 +59,19 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.camera_motion = 0;
     settings.volume = 0.25F;
     settings.vsync = false;
+    settings.hdr_enabled = true;
     RelayGame::save_player_settings(path, settings);
     auto loaded = RelayGame::load_player_settings(path, {});
     CHECK(loaded.fov == 85);
     CHECK(loaded.camera_motion == 0);
     CHECK(loaded.volume == 0.25F);
     CHECK_FALSE(loaded.vsync);
+    CHECK(loaded.hdr_enabled);
     settings.fov = 63;
+    settings.hdr_enabled = false;
     RelayGame::save_player_settings(path, settings);
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
+    CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
     settings.volume = std::numeric_limits<float>::quiet_NaN();
     CHECK_THROWS(RelayGame::save_player_settings(path, settings));
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
@@ -81,6 +85,22 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
         output << "vsync = 'yes'\n";
     }
     CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+    {
+        std::ofstream output{path};
+        output << "hdr_enabled = 'HDR'\n";
+    }
+    CHECK_THROWS_WITH(
+        static_cast<void>(RelayGame::load_player_settings(path, {})),
+        "player_settings.hdr_enabled must be a boolean"
+    );
+    {
+        std::ofstream output{path};
+        output << "vsync = true\n";
+    }
+    settings.hdr_enabled = true;
+    settings.volume = 0.25F;
+    CHECK(RelayGame::load_player_settings(path, settings).hdr_enabled);
+    CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
 }
 
 TEST_CASE("interaction respects occlusion while allowing a panel on a wall face")

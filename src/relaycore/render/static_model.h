@@ -1,6 +1,7 @@
 #pragma once
 
 #include "relaycore/render/mesh.h"
+#include "relaycore/render/model_asset.h"
 #include "relaycore/render/texture2d.h"
 
 #include <filesystem>
@@ -26,6 +27,9 @@ namespace RelayCore::render
         load(const std::filesystem::path& mesh, const std::filesystem::path& texture, TextureEncoding encoding)
             -> std::shared_ptr<const StaticModel>;
 
+        [[nodiscard]] auto load(const std::filesystem::path& product, TextureEncoding encoding)
+            -> std::shared_ptr<const ModelAsset>;
+
     private:
         struct Entry {
             std::filesystem::file_time_type mesh_time{}, texture_time{};
@@ -33,5 +37,11 @@ namespace RelayCore::render
             std::shared_ptr<const StaticModel> resource;
         };
         std::unordered_map<std::string, Entry> entries_;
+        struct ProductEntry {
+            std::filesystem::file_time_type time;
+            std::uintmax_t size;
+            std::shared_ptr<const ModelAsset> resource;
+        };
+        std::unordered_map<std::string, ProductEntry> products_;
     };
 } // namespace RelayCore::render

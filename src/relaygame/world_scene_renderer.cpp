@@ -8,6 +8,7 @@
 #include "relaycore/render/camera.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/world_irradiance.h"
 #include "relaygame/world_scene_light_order.h"
 
 #include <algorithm>
@@ -346,6 +347,7 @@ namespace RelayGame
             });
         }
 
+        scene_data.irradiance = load_world_irradiance(level, scene_data, authoring_config);
         return scene_data;
     }
 
@@ -414,6 +416,15 @@ namespace RelayGame
             shotgun_encoding
         );
         for (const auto& prop : scene_data.props)
+        {
+            const auto encoding = scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
+                                      ? RelayCore::render::TextureEncoding::srgb
+                                      : RelayCore::render::TextureEncoding::linear;
+            if (prop.model.extension() == ".rcmodel")
+            {
+                props_.push_back({{}, prop.transform, models.load(prop.model, encoding)});
+                continue;
+            }
             props_.push_back(
                 {models.load(
                      prop.model,
@@ -424,6 +435,7 @@ namespace RelayGame
                  ),
                  prop.transform}
             );
+        }
         RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData pickup_mesh_data = RelayCore::render::make_color_box_mesh_data();
         RelayCore::render::CpuColorMeshData pickup_highlight_mesh_data = RelayCore::render::make_color_box_mesh_data();
@@ -470,6 +482,7 @@ namespace RelayGame
         render_chunks_.clear();
         render_chunks_.reserve(scene_data.blockout.chunks.size());
         local_lights_ = scene_data.local_lights;
+        irradiance_ = scene_data.irradiance;
         authoring_warnings_ = scene_data.authoring_warnings;
 
         for (const auto& chunk_data : scene_data.blockout.chunks)
@@ -547,6 +560,7 @@ namespace RelayGame
         turret_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         turret_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         local_lights_.clear();
+        irradiance_.reset();
         environment_.clear();
         environment_puffs_.clear();
         fan_frame_mesh_ = {};
@@ -597,6 +611,7 @@ namespace RelayGame
             pellet_traces
         );
         renderer.set_local_lights(active_local_lights_);
+        renderer.set_irradiance_probes(irradiance_);
         renderer.draw_render_queue(render_queue_.items(), shadow_casters_.items());
     }
 
@@ -651,6 +666,29 @@ namespace RelayGame
         );
         for (const auto& prop : props_)
         {
+            if (prop.asset)
+            {
+                for (const auto& part : prop.asset->parts)
+                {
+                    const auto& mesh = prop.asset->meshes[part.mesh];
+                    const auto& surface = prop.asset->materials[part.material];
+                    render_queue_.push(
+                        mesh,
+                        prop.transform * part.transform,
+                        RelayCore::render::RenderPass::Opaque,
+                        &surface.base_color,
+                        true,
+                        surface.normal.cpu_data() ? &surface.normal : nullptr,
+                        surface.normal_scale,
+                        surface.metallic_roughness
+                    );
+                    record_render_draw(
+                        RelayCore::render::RenderPass::Opaque,
+                        static_cast<std::uint32_t>(mesh.index_count() / 3)
+                    );
+                }
+                continue;
+            }
             render_queue_
                 .push(prop.model->mesh, prop.transform, RelayCore::render::RenderPass::Opaque, &prop.model->texture);
             record_render_draw(

@@ -1,6 +1,6 @@
 # Архитектура RelayCore
 
-Этот документ описывает актуальный runtime contract snapshot по состоянию на 2026-09-30. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md); здесь описаны владельцы и границы текущего кода.
+Этот документ описывает актуальный runtime contract по состоянию на 2026-10-02, после VK-013/014. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md); здесь описаны владельцы и границы текущего кода.
 
 ## Bootstrap
 
@@ -20,8 +20,8 @@ main
 | Владелец | Ресурсы |
 | --- | --- |
 | `Application` | `AppDelegate`, SDL lifetime, config, `Window`, `Renderer`, `AudioSystem` |
-| `Window` | SDL window и OpenGL context |
-| `Renderer` | ImGui overlay, shaders, textures, shadow resources и другие GPU resources |
+| `Window` | SDL Vulkan window; surface создаёт и освобождает `VulkanDevice` |
+| `Renderer` | `VulkanDevice`, `VulkanSwapchain`, scene backend, ImGui overlay и кэш CPU-моделей; backend владеет GPU mesh/texture/shadow resources |
 | `AudioSystem` | miniaudio backend |
 | `DemoGame` | экран, текущая игровая сессия и её сцена, сохранение игрока, настройки, `LevelEditor`; на время редактора — приостановленная исходная сессия |
 | `GameWorldRuntime` | gameplay/world runtime state |
@@ -34,7 +34,7 @@ main
 
 `prepare_level_session` загружает и проверяет уровень, применяет сохранение и готовит сцену до замены живой сессии. До установки `prepare_level_session_activation` проверяет применение камеры и подготавливает захват ввода. `replace_level_session` завершает предыдущую сессию, очищает локальный снимок встречи и диагностику, активирует подготовленную. Выход в меню освобождает игровые объекты и останавливает звуки.
 
-`Renderer` уничтожается до `Window`, поэтому его OpenGL-ресурсы освобождаются, пока GL context ещё существует. ImGui overlay принадлежит `Renderer`; shadow resources также являются его RAII-ресурсами.
+`Renderer` уничтожается до `Window`. При shutdown сначала завершается presentation и освобождается swapchain, затем scene backend и его preview descriptors, затем ImGui. Vulkan device и SDL window остаются живы до освобождения этих ресурсов. CPU mesh/texture data общие и неизменяемые; backend хранит weak references к источникам и удаляет устаревшие GPU cache entries после завершения scene fence.
 
 ## Сохранение и локальный повтор встречи
 
@@ -52,23 +52,27 @@ F9 создаёт `EncounterSnapshot`: полный `SavedGame` текущей �
 SDL events
 → update
 → renderer begin
-→ game/world render
-→ ImGui/UI
-→ buffer swap
+→ game/world queue и viewmodel
+→ Vulkan scene submit / fence wait
+→ ImGui/UI submit / fence wait, если есть UI
+→ acquire / image blit / present / copy fence wait
 ```
 
 `GameWorldRuntime` ведёт fixed simulation: шаг `1/120` секунды, не более 8 fixed steps за frame. Gameplay и ImGui имеют явную input ownership policy: захваченное ImGui устройство не передаёт соответствующий gameplay input.
+
+Scene backend повторно использует один command pool, fence и render target; два swapchain frame slots относятся к presentation, а не к двум scene frames in flight. В обычном кадре нет `vkDeviceWaitIdle`; текущие ожидания защищают UBO/command/image reuse и замену игровых ресурсов из UI. Первое обращение к mesh/texture выполняет GPU upload с ожиданием; его влияние на заметные пики требует отдельного измерения. `frame_backend` удерживает подготовленное изображение до presentation даже при live reload из UI.
 
 `WorldSceneRenderer` получает подготовленные данные и состояния объектов от игры. Player-facing HUD пока читает `PlayerDiagnostics` и `InteractionDiagnostics`: они публикуются даже при скрытой F2-панели. Обычный HUD показывает здоровье, действие, цель, предметы и актуальное предупреждение; счётчики боя остаются в diagnostics. Сообщения задач не перекрашивают весь кадр; попадание и урон имеют отдельные краткие сигналы. Более тяжёлые runtime/audio/inspector diagnostics зависят от видимости соответствующих инструментов. Это текущая связь UI с diagnostics, а не отдельная gameplay-система внутри renderer.
 
 ## Live reload
 
-F7 перечитывает engine/render authoring config и текущую карту по её runtime path, подготавливает renderer resources, level runtime, world scene и камеру во временном состоянии. Изменение `game.level_path` в конфиге не переключает текущую карту при F7. После подготовки выполняются renderer commit, замена сессии и commit применённого config. Сессия начинает карту заново, локальный снимок и время сбрасываются. При ошибке подготовки прежняя сессия сохраняется, ошибка публикуется в diagnostics. Этот порядок не означает полной транзакционности для всех ошибок после commit; параметры создания окна/context остаются startup-only.
+F7 перечитывает engine/render authoring config и текущую карту по её runtime path, подготавливает renderer resources, level runtime, world scene и камеру во временном состоянии. Изменение `game.level_path` в конфиге не переключает текущую карту при F7. После подготовки выполняются renderer commit, замена сессии и commit применённого config. Сессия начинает карту заново, локальный снимок и время сбрасываются. При ошибке подготовки прежняя сессия сохраняется, ошибка публикуется в diagnostics. Этот порядок не означает полной транзакционности для всех ошибок после commit; параметры создания окна/device остаются startup-only.
 
 ## Runtime paths
 
 - По умолчанию assets: `<exe-directory>/assets`.
 - `RELAYCORE_ASSET_ROOT` — только абсолютный override asset root.
+- Runtime root содержит скопированные authored assets и собранные `shaders/vulkan/*.spv`; исходный `assets/` сам по себе недостаточен для запуска renderer.
 - Основной конфиг: `assets/config/engine.toml`.
 - Прогресс и настройки: SDL preference directory `RelayCore/RelayCore` (`%APPDATA%/RelayCore/RelayCore` на Windows), файлы `progress.toml` и `player_settings.toml`.
 - Логи: SDL preference directory `l1nuvv/RelayCore`, подкаталог `logs`.
@@ -77,13 +81,14 @@ F7 перечитывает engine/render authoring config и текущую к�
 ## Failure policies
 
 - Ошибка инициализации аудио оставляет приложение работающим без звука и записывает warning.
-- Ошибка инициализации ImGui backend отключает overlay с rollback его частичной инициализации.
+- Ошибка SDL3 ImGui binding отключает overlay; ошибка Vulkan ImGui binding освобождает частично созданные ресурсы и передаёт исключение вызывающему коду.
+- Неподдерживаемый Vulkan device/presentation contract останавливает startup с диагностикой; fallback backend отсутствует.
 - Неверный TOML type или нарушенный обязательный invariant в `engine.toml` вызывает явную ошибку с dotted key.
 
 ## Graphics backend direction
 
-Текущий repository snapshot всё ещё работает на OpenGL 4.6; существующие GL ownership/lifetime rules выше остаются фактом, пока соответствующие этапы миграции реально не применены.
+Direct Vulkan 1.3 — единственный runtime backend после VK-013. VK-014 завершил ревью ownership/error paths и снял локальный Tracy/RenderDoc baseline. Loader API 1.3 недостаточно: startup проверяет dynamic rendering, synchronization2, timeline semaphore, SDL graphics/present queues, `VK_KHR_swapchain`, `VK_KHR_swapchain_maintenance1` / `swapchainMaintenance1`, `VK_KHR_surface_maintenance1` и `VK_KHR_get_surface_capabilities2`. Tracy-сборка дополнительно требует host query reset и timestamp queries на graphics queue. Эти требования осознанно ограничивают совместимость; её подтверждает реальный запуск, не toolchain probe.
 
-Direct Vulkan — утверждённый целевой graphics backend. Миграция parity-first: сначала переносится и проверяется текущее поведение renderer-а, затем отдельной программой развиваются production materials, HDR, lightmaps, probes, scalable lighting и другие Source 2-class capabilities. Не считать запланированные Vulkan-компоненты уже существующими по одному наличию этого раздела.
+E-003 вводит первый native MeshAsset/ModelAsset product: GLB компилируется отдельным инструментом в `.rcmodel`, engine читает CPU geometry, opaque RGBA материалы и transforms частей. `StaticModelCache` разделяет неизменяемые ресурсы; game передаёт части в существующую очередь, backend владеет GPU uploads. OBJ/BMP остаются действующим путём прежних моделей. Production material/HDR/lightmap/probe capabilities остаются отдельными будущими этапами.
 
 Долгосрочные engine/world/render constraints находятся в `ENGINE_ARCHITECTURE_REFERENCE.md`, порядок перехода — в `VULKAN_MIGRATION_PLAN.md`, approved third-party foundations и staged vcpkg policy — в `DEPENDENCY_STACK.md`. Эти документы задают направление и границы, но не означают, что Jolt, Recast, fastgltf, KTX, Steam Audio или другие будущие зависимости уже интегрированы.

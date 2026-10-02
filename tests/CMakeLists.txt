@@ -31,6 +31,9 @@ if(WIN32)
     add_test(NAME relaycore.tooling.level_check
         COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/level_check_tests.ps1"
             -Executable $<TARGET_FILE:relaycore_level_check>)
+    add_test(NAME relaycore.tooling.model_assets
+        COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/model_assets_tests.ps1"
+            -Importer $<TARGET_FILE:relaycore_model_import> -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
 endif()
 add_executable(relaycore_content_validation)
 add_executable(relaycore_audio_lifetime audio_lifetime_tests.cpp)
@@ -77,6 +80,9 @@ target_sources(
     PRIVATE
         world_environment_tests.cpp
         static_model_tests.cpp
+        model_asset_tests.cpp
+        irradiance_probe_tests.cpp
+        model_import_tests.cpp
         enemy_runtime_tests.cpp
         save_game_tests.cpp
         level_editor_tests.cpp
@@ -121,6 +127,7 @@ target_sources(
         content_validation_main.cpp
         shipped_content_validation_tests.cpp
         development_sandbox_tests.cpp
+        native_lab_tests.cpp
         pressure_transfer_tests.cpp
 )
 
@@ -146,6 +153,8 @@ target_link_libraries(
 )
 
 find_package(doctest CONFIG REQUIRED)
+target_link_libraries(relaycore_tests PRIVATE relaycore_model_importer)
+target_compile_definitions(relaycore_tests PRIVATE RELAYCORE_MODEL_SOURCE="${PROJECT_SOURCE_DIR}/content/models/service_cylinder.glb")
 include(doctest)
 
 target_link_libraries(relaycore_window_lifetime_tests PRIVATE RelayCore::engine)
@@ -201,10 +210,11 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_audio_lifetime>"
-    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 
-foreach(runtime_graphics_target IN ITEMS relaycore_window_lifetime_tests relaycore_game_lifecycle
+foreach(runtime_graphics_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_audio_lifetime
+    relaycore_vulkan_mesh_tests relaycore_window_lifetime_tests relaycore_game_lifecycle
     relaycore_power_restoration_graphics relaycore_episode_profile)
     add_dependencies(${runtime_graphics_target} relaycore_demo_assets)
 endforeach()
@@ -216,13 +226,15 @@ add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation
 add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
 add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
 add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
-set_tests_properties(graphics.vulkan_mesh graphics.vulkan_color_baseline PROPERTIES
+add_test(NAME graphics.hdr_pipeline COMMAND relaycore_vulkan_mesh_tests --hdr)
+add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --irradiance)
+set_tests_properties(graphics.vulkan_mesh graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
     TIMEOUT 180
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_mesh_tests>"
-    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 set_tests_properties(graphics.vulkan_upload PROPERTIES
     LABELS "integration;graphics"
@@ -270,6 +282,7 @@ set_tests_properties(graphics.vulkan_window PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_window_tests>"
 )
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
+add_test(NAME graphics.hdr_settings COMMAND relaycore_game_lifecycle --hdr-settings)
 if(WIN32)
     foreach(mode IN ITEMS ui no-ui failed-ui failed-no-ui)
         add_test(NAME graphics.update_readiness.${mode} COMMAND relaycore_game_lifecycle --update-readiness ${mode})
@@ -281,7 +294,7 @@ if(WIN32)
             ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
     endforeach()
 endif()
-set_tests_properties(graphics.game_lifecycle PROPERTIES
+set_tests_properties(graphics.game_lifecycle graphics.hdr_settings PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -289,7 +302,8 @@ set_tests_properties(graphics.game_lifecycle PROPERTIES
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 add_test(NAME graphics.power_restoration COMMAND relaycore_power_restoration_graphics)
-set_tests_properties(graphics.power_restoration PROPERTIES
+add_test(NAME graphics.hdr_episode COMMAND relaycore_power_restoration_graphics --hdr)
+set_tests_properties(graphics.power_restoration graphics.hdr_episode PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -307,19 +321,19 @@ set_tests_properties(
 )
 
 
-set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.power_restoration PROPERTIES
+set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.hdr_settings graphics.power_restoration graphics.hdr_episode PROPERTIES
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 
 doctest_discover_tests(
     relaycore_tests
     TEST_PREFIX "relaycore."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_tests>"
-    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 
 doctest_discover_tests(
     relaycore_content_validation
     TEST_PREFIX "validation."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
-    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
