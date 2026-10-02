@@ -5,7 +5,7 @@ description: Create, modify, or review RelayCore visual/content assets such as t
 
 # RelayCore asset authoring
 
-Create assets for a restrained GoldSource-inspired industrial/technical FPS, not generic AI sci-fi.
+Create assets for a grounded 1990s scientific-industrial FPS with engineered occult technology. Read `docs/ART_DIRECTION.md` for the authoritative visual direction; use `relaycore-art-direction` when the task requires art decisions or visual review. This skill owns asset authoring and pipeline validation.
 
 Read only the reference relevant to the task:
 

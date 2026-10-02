@@ -155,8 +155,8 @@ namespace RelayCore::render
             resource->mins = glm::min(resource->mins, vertex.position);
             resource->maxs = glm::max(resource->maxs, vertex.position);
         }
-        resource->mesh.initialize(data, upload_);
-        resource->texture.initialize_rgba(rgba->w, rgba->h, pixels, encoding, upload_);
+        resource->mesh.initialize(data);
+        resource->texture.initialize_rgba(rgba->w, rgba->h, pixels, encoding);
         staged.resource = resource;
         entries_.insert_or_assign(key, std::move(staged));
         return resource;

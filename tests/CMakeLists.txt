@@ -16,6 +16,21 @@ if(WIN32)
     add_custom_target(relaycore_updater_tests DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe)
     add_dependencies(relaycore_tests relaycore_updater_tests)
     add_test(NAME relaycore.updater COMMAND ${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe)
+    find_program(RELAYCORE_PWSH_EXECUTABLE NAMES pwsh REQUIRED)
+    add_dependencies(relaycore_tests relaycore_level_check)
+    foreach(script IN ITEMS pre_commit release_scripts release_workflow)
+        add_test(NAME relaycore.tooling.${script}
+            COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/${script}_tests.ps1")
+    endforeach()
+    if(NOT CLANG_FORMAT_EXE)
+        message(FATAL_ERROR "clang-format is required for the pre-commit regression test")
+    endif()
+    get_filename_component(clang_format_directory "${CLANG_FORMAT_EXE}" DIRECTORY)
+    set_tests_properties(relaycore.tooling.pre_commit PROPERTIES
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${clang_format_directory}")
+    add_test(NAME relaycore.tooling.level_check
+        COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/level_check_tests.ps1"
+            -Executable $<TARGET_FILE:relaycore_level_check>)
 endif()
 add_executable(relaycore_content_validation)
 add_executable(relaycore_audio_lifetime audio_lifetime_tests.cpp)
@@ -28,7 +43,6 @@ target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayC
 add_executable(relaycore_episode_profile EXCLUDE_FROM_ALL episode_profile.cpp)
 target_link_libraries(relaycore_episode_profile PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
 set_target_properties(relaycore_episode_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
-add_executable(relaycore_graphics_baseline)
 add_executable(relaycore_window_lifetime_tests window_lifetime_tests.cpp)
 add_executable(relaycore_vulkan_window_tests vulkan_window_tests.cpp)
 add_executable(relaycore_vulkan_device_tests vulkan_device_tests.cpp)
@@ -38,7 +52,8 @@ add_executable(relaycore_vulkan_mesh_tests vulkan_mesh_tests.cpp)
 target_link_libraries(relaycore_vulkan_mesh_tests PRIVATE
     RelayGame::runtime RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator ${RELAYCORE_IMGUI_TARGET})
 target_compile_definitions(relaycore_vulkan_mesh_tests PRIVATE
-    RELAYCORE_TEST_SPIRV_DIRECTORY="${RELAYCORE_SPIRV_DIRECTORY}")
+    RELAYCORE_TEST_SPIRV_DIRECTORY="${RELAYCORE_SPIRV_DIRECTORY}"
+    RELAYCORE_TEST_BASELINE_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/graphics-baselines")
 add_dependencies(relaycore_vulkan_mesh_tests relaycore_vulkan_shaders)
 set_target_properties(relaycore_vulkan_mesh_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_power_restoration_graphics
@@ -51,7 +66,6 @@ set_target_properties(relaycore_power_restoration_graphics PROPERTIES FOLDER "te
 target_include_directories(relaycore_power_restoration_graphics PRIVATE ${PROJECT_BINARY_DIR}/src/relaygame/generated)
 set_target_properties(relaycore_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_content_validation PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
-set_target_properties(relaycore_graphics_baseline PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_window_lifetime_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_vulkan_window_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 set_target_properties(relaycore_vulkan_device_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
@@ -93,7 +107,6 @@ target_sources(
         runtime_model_tests.cpp
         combat_runtime_tests.cpp
         engine_config_tests.cpp
-        shader_source_loader_tests.cpp
         player_controller_tests.cpp
         window_presentation_tests.cpp
         world_audio_zones_tests.cpp
@@ -101,11 +114,6 @@ target_sources(
         interaction_runtime_tests.cpp
 )
 
-target_sources(
-    relaycore_graphics_baseline
-    PRIVATE
-        color_pipeline_baseline.cpp
-)
 
 target_sources(
     relaycore_content_validation
@@ -126,13 +134,6 @@ target_link_libraries(
         RelayCore::doctest_headers
 )
 
-target_link_libraries(
-    relaycore_graphics_baseline
-    PRIVATE
-        RelayCore::engine
-        RelayCore::project_options
-        RelayCore::warnings
-)
 
 target_link_libraries(
     relaycore_content_validation
@@ -158,21 +159,19 @@ target_link_libraries(relaycore_vulkan_presentation_tests PRIVATE
     RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
 target_link_libraries(relaycore_vulkan_upload_tests PRIVATE
     RelayCore::engine Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator)
+if(RELAYCORE_ENABLE_TRACY)
+    target_link_libraries(relaycore_vulkan_mesh_tests PRIVATE Tracy::TracyClient)
+    target_compile_definitions(relaycore_vulkan_mesh_tests PRIVATE TRACY_ENABLE)
+endif()
 if(WIN32)
     target_link_libraries(relaycore_vulkan_presentation_tests PRIVATE gdi32 user32)
 endif()
 
-add_executable(relaycore_default_framebuffer_probe default_framebuffer_srgb_probe.cpp)
-target_link_libraries(relaycore_default_framebuffer_probe PRIVATE
-    RelayCore::engine RelayCore::project_options RelayCore::warnings
-)
-set_target_properties(relaycore_default_framebuffer_probe PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 
 foreach(test_target IN ITEMS
     relaycore_tests
     relaycore_audio_lifetime
     relaycore_content_validation
-    relaycore_graphics_baseline
     relaycore_window_lifetime_tests
     relaycore_vulkan_window_tests
     relaycore_vulkan_device_tests
@@ -182,7 +181,6 @@ foreach(test_target IN ITEMS
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
     relaycore_episode_profile
-    relaycore_default_framebuffer_probe
 )
     relaycore_apply_standard_target_settings(${test_target})
 
@@ -206,13 +204,19 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )
 
+foreach(runtime_graphics_target IN ITEMS relaycore_window_lifetime_tests relaycore_game_lifecycle
+    relaycore_power_restoration_graphics relaycore_episode_profile)
+    add_dependencies(${runtime_graphics_target} relaycore_demo_assets)
+endforeach()
+
 add_test(NAME graphics.window_lifetime COMMAND relaycore_window_lifetime_tests)
 add_test(NAME graphics.vulkan_window COMMAND relaycore_vulkan_window_tests)
 add_test(NAME graphics.vulkan_device COMMAND relaycore_vulkan_device_tests)
 add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation_tests)
 add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
 add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
-set_tests_properties(graphics.vulkan_mesh PROPERTIES
+add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
+set_tests_properties(graphics.vulkan_mesh graphics.vulkan_color_baseline PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -266,12 +270,23 @@ set_tests_properties(graphics.vulkan_window PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_window_tests>"
 )
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
+if(WIN32)
+    foreach(mode IN ITEMS ui no-ui failed-ui failed-no-ui)
+        add_test(NAME graphics.update_readiness.${mode} COMMAND relaycore_game_lifecycle --update-readiness ${mode})
+        set_tests_properties(graphics.update_readiness.${mode} PROPERTIES
+            LABELS "integration;graphics"
+            RUN_SERIAL TRUE
+            SKIP_RETURN_CODE 77
+            WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_game_lifecycle>"
+            ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
+    endforeach()
+endif()
 set_tests_properties(graphics.game_lifecycle PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_game_lifecycle>"
-    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 add_test(NAME graphics.power_restoration COMMAND relaycore_power_restoration_graphics)
 set_tests_properties(graphics.power_restoration PROPERTIES
@@ -279,7 +294,7 @@ set_tests_properties(graphics.power_restoration PROPERTIES
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
-    ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 set_tests_properties(
     graphics.window_lifetime
@@ -288,22 +303,12 @@ set_tests_properties(
         RUN_SERIAL TRUE
         SKIP_RETURN_CODE 77
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_window_lifetime_tests>"
-        ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+        ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
 )
 
-add_test(
-    NAME graphics.color_pipeline_baseline
-    COMMAND relaycore_graphics_baseline
-)
-set_tests_properties(
-    graphics.color_pipeline_baseline
-    PROPERTIES
-        LABELS "integration;graphics"
-        RUN_SERIAL TRUE
-        SKIP_RETURN_CODE 77
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_graphics_baseline>"
-        ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
-)
+
+set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.power_restoration PROPERTIES
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 
 doctest_discover_tests(
     relaycore_tests
@@ -317,18 +322,4 @@ doctest_discover_tests(
     TEST_PREFIX "validation."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
     PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
-)
-
-add_test(
-    NAME graphics.default_framebuffer_srgb_probe
-    COMMAND relaycore_default_framebuffer_probe
-)
-
-set_tests_properties(
-    graphics.default_framebuffer_srgb_probe
-    PROPERTIES
-        LABELS "integration;graphics"
-        RUN_SERIAL TRUE
-        SKIP_RETURN_CODE 77
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_default_framebuffer_probe>"
 )

@@ -5,7 +5,7 @@
 - RelayCore is a custom C++20 engine and GoldSource-inspired indoor FPS product, not a historical recreation or a general-purpose framework. Keep it understandable, debuggable, profileable, and shippable under one-developer direction even when implementation is agent-assisted.
 - Optimize for a codebase one developer can understand, debug, profile, and keep shipping.
 - Prefer a small working vertical slice over framework-building, speculative generality, or architecture for hypothetical future features.
-- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime uses SDL3/OpenGL 4.6; direct Vulkan is the approved target backend and OpenGL is the temporary migration reference. Tests use doctest; performance work uses Tracy.
+- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime uses SDL3 and direct Vulkan 1.3; OpenGL was removed at VK-013. Tests use doctest; performance work uses Tracy.
 
 ## Design and engineering knowledge
 
@@ -21,6 +21,7 @@
 - Establish routes, sightlines, cover, landmarks, encounter pacing, and learning opportunities during blockout. Validate spatial readability and combat behavior before adding visual detail.
 - Use explicit ownership, update order, coordinate conventions, units, and numerical assumptions in technical work. Choose architecture and patterns to solve demonstrated problems at the project's current scale.
 - When a principle materially affects a decision, briefly explain the concrete benefit and tradeoff. Validate with the appropriate code checks, runtime observation, playtests, or measurements. Do not invent quotations, page references, or edition-specific claims; verify exact attribution when needed.
+- When design principles conflict, prefer the option that reduces demonstrated change cost in this codebase. Explain the concrete benefit and tradeoff.
 
 ## Gameplay types and interfaces
 
@@ -31,7 +32,7 @@
 
 ## Evidence and scope
 
-- For work on gameplay development, project direction, or the next milestone, read `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical RC/RF/status documents are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
+- For work on gameplay development, project direction, or the next milestone, read `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical audits and plans retained in Git are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
 - For engine/world architecture, asset pipeline, rendering/physics world capabilities, or Source/Source 2 compatibility work, read `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. It is the long-term architecture/capability reference, not an automatic task queue.
 - For Vulkan/backend migration work, also read `docs/VULKAN_MIGRATION_PLAN.md` and operate only within the requested phase/gate. Do not mix parity migration with new renderer architecture unless the phase explicitly requires it.
 - For dependency selection, replacement, addition/removal, version/baseline changes, or third-party subsystem foundations, read `docs/DEPENDENCY_STACK.md`. It records approved responsibilities and staged integration; it is not permission to add future dependencies before their owning milestone.
@@ -48,6 +49,7 @@
 
 - Make the smallest patch that fully solves the requested problem.
 - Do not mix feature/fix work with unrelated cleanup, renames, reformatting, dependency changes, or speculative refactors.
+- Refactor only when the requested change exposes a concrete structural obstacle. Keep it local and preserve existing behavior; verify it separately where practical.
 - Preserve current module boundaries. Engine code must not depend on game-specific code; rendering consumes prepared data and must not own gameplay rules; debug/UI code must not become required runtime architecture.
 - Prefer explicit ownership, RAII, typed runtime data, direct calls, clear update order, local state changes, and visible failure modes.
 - Do not add a new dependency, ECS, render graph, editor framework, scripting runtime, networking layer, job system, or generalized abstraction unless the task demonstrates a concrete need. Dependencies assigned a responsibility by `docs/DEPENDENCY_STACK.md`, `docs/ENGINE_ARCHITECTURE_REFERENCE.md`, or `docs/VULKAN_MIGRATION_PLAN.md` are approved only when their owning milestone begins; do not add them early or replace a working foundation merely to make the stack look more modern.
@@ -60,6 +62,7 @@
 ## Anti-slop rules
 
 - Do not add abstractions merely to make the patch look designed. A helper/type/layer must remove real duplication, encode an invariant, clarify ownership, or isolate a changing concern.
+- DRY applies to authoritative knowledge and invariants, not merely similar code. Keep similar code separate when it represents independently changing behavior.
 - Avoid vague buckets such as `Utils`, `Helpers`, `Manager`, `Service`, `Context`, or generic factories unless that role already exists and is the correct owner.
 - Do not create configuration knobs, extension points, callbacks, interfaces, templates, or indirection for a single known use case without evidence they reduce current complexity.
 - Do not add comments, docblocks, TODOs, markdown, logging, tests, or error handling just to increase apparent completeness.
@@ -77,7 +80,8 @@
 
 ## Authored content and assets
 
-- Preserve the project direction: restrained retro-industrial sci-fi, technical/liminal indoor spaces, strong spatial readability, functional materials, and atmosphere over visual noise.
+- For visual/art decisions, read `docs/ART_DIRECTION.md` and use `.agents/skills/relaycore-art-direction/SKILL.md`. The document is a visual reference, not an implementation queue; proposed scenes do not authorize content or pipeline work.
+- Preserve the project direction: a grounded late-1980s/1990s scientific-industrial facility with a restrained, engineered occult layer, strong spatial readability, functional materials, and atmosphere over visual noise.
 - Match nearby assets and authored data before inventing a new visual or schema convention.
 - Avoid generic AI sci-fi slop: random neon, excessive greebles, meaningless fake labels, uniform edge wear, over-grunge, over-glossy surfaces, unnecessary micro-detail, and decoration that weakens gameplay readability.
 - Do not bake lighting, shadows, AO, text, or perspective into an asset unless the current pipeline or task explicitly requires it.

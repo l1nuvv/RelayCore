@@ -18,9 +18,11 @@ Success means:
 - validation is clean on covered paths;
 - the renderer is ready to host later production material/HDR/lightmap/probe/instance work without another backend migration.
 
-## 2. Current repository facts
+## 2. Original repository facts
 
-Recheck before implementation. In the supplied snapshot:
+The original GL snapshot below is historical. After VK-013, Window owns an SDL Vulkan window; Renderer owns Vulkan device, swapchain, scene pipelines and ImGui Vulkan integration. GL/glad/GLSL owners and the ImGui OpenGL binding are removed. Recheck current source and the VK-013 evidence before future work.
+
+In the supplied snapshot:
 
 - platform: SDL3;
 - graphics: OpenGL 4.6 Core;
@@ -484,6 +486,8 @@ Gate: targeted graphics scenes match accepted ordering/depth/blend behavior.
 
 ### VK-009 — Lighting parity
 
+Status: **done** on 2026-10-01; execution evidence is recorded in section 14.
+
 Scope:
 
 - existing directional/local light data;
@@ -495,11 +499,13 @@ Gate: current lit scenes match accepted OpenGL intent and validation stays clean
 
 ### VK-010 — Shadow parity
 
+Status: **done** on 2026-10-01; execution evidence is recorded in section 14.
+
 Scope:
 
 - directional cascades;
 - spot shadow path;
-- point-light cube shadow images/views;
+- point-light cube-face shadow storage/views (2D-array parity adapter; rationale in section 14);
 - shadow culling and bias semantics;
 - explicit image transitions/synchronization.
 
@@ -551,6 +557,8 @@ Update README/runtime requirements only here, when Vulkan is factually the suppo
 Gate: clean configure/build/test from a fresh build tree with no OpenGL/glad dependency.
 
 ### VK-014 — Post-migration architecture review
+
+Status: done, 2026-10-02. Read-only review, focused native checks and fresh Tracy/RenderDoc baselines are recorded in section 28. No blocking correction was confirmed; the small diagnostics follow-up is scheduled there.
 
 Read-only first:
 
@@ -996,3 +1004,220 @@ Results on the local NVIDIA GeForce RTX 4060 Ti:
 - Full unit/content suites, other GPUs/OS, API-1.3-only hardware, remote CI, continuous playtests, performance measurements and RenderDoc/Tracy GPU captures were not run. Existing unrelated save/debug-command compiler warnings remain. These gates establish UI and ordering/depth/blend parity, not complete final game appearance.
 
 Evidence: `build/msvc-debug/vk-007-008-{final,mesh-final}.xml`, optimized/ASan `vk-007-008-{final,mesh-final}.xml`, the failing regression `build/msvc-debug/vk-008-smooth-regression.xml`, and each build's `tests/vulkan-mesh-captures/` paired/UI BMPs. The VK-007 and VK-008 gates are satisfied for the tested paths.
+
+### Infrastructure review — 2026-10-01
+
+Reviewed the external `RELAYCORE_PROPOSED_CHANGES.md` against current source and the preceding repository cleanup. This work does not start VK-009 or change the parity/cutover order.
+
+| Proposal | Decision |
+| --- | --- |
+| Graphics CI count | Removed the fixed count. A successful nonempty JUnit report must contain no failures/errors/skips. |
+| Updater readiness | Moved the signal from `on_ui` to the end of successful `DemoGame::on_render`; an unloaded/failed session cannot signal readiness. |
+| Vulkan CI environment | Hosted Debug builds all graphics targets. GPU execution is a separate opt-in Windows self-hosted job with explicit runner labels, validation=ON and the existing loader/layer probe. Local runtime passed; remote Actions and runner registration remain unverified. |
+| STATUS.md | Already removed by cleanup; the short engineering/gameplay status is in README rather than a new status file. |
+| Build requirements | README now distinguishes manifest-provided build dependencies, OpenGL runtime, Vulkan graphics validation and developer tools. |
+| PowerShell tests | All four regression scripts are registered in Windows CTest under `relaycore.tooling.*`; the optional CLion Java interpreter check remains manual. |
+| Header inventory | Deferred to work in the owning modules. The omissions do not prevent compilation; no new install/export requirement is introduced here. |
+| ImGui separation / renderer review | Remain post-cutover work under VK-014. |
+| Async update-check shutdown | Source still owns a `std::async` future and waits for subprocess output. A slow-network shutdown stall was not reproduced; no cancellation/ownership patch is claimed. |
+
+Verification in the cache-matching VS developer environment:
+
+- `cmake --preset msvc-debug` and `cmake --build --preset graphics-debug` passed.
+- `cmake --build --preset tests-debug` passed after a sequential retry. The first attempt overlapped graphics execution and failed while copying locked DLLs; no cache deletion or code workaround was used.
+- `cmake --build --preset demo-debug --target relaycore_demo relaycore_content_validation relaycore_vulkan_toolchain_check` passed.
+- `ctest --preset test-debug --no-tests=error --output-on-failure --output-junit proposals-unit.xml`: 254/254 passed, including four tooling scripts.
+- `ctest --preset validation-debug --no-tests=error --output-on-failure --output-junit proposals-content.xml`: 31/31 passed.
+- `ctest --preset graphics-debug --no-tests=error --output-on-failure --output-junit proposals-graphics.xml`: 16/16 passed with zero skips/failures. Four readiness cases cover UI enabled/disabled and failed startup in both modes, without invoking `on_ui`. A separate ImGui backend initialization failure was not injected.
+- `build/msvc-debug/relaycore_vulkan_toolchain_check.exe`: loader/header 1.4.357, Khronos validation and debug-utils available, development checks enabled. GPU tests used NVIDIA GeForce RTX 4060 Ti, API 1.4.329, with validation enabled. Optional `C:/VulkanSDK/Bin/vulkaninfo.exe --summary` could not run because that executable is absent; CI uses the project probe instead.
+- Final workflow YAML and 19 substituted PowerShell steps parsed; seven JUnit gate fixtures verified variable counts, empty reports, skips, failures and CTest errors. C++ formatting, 58 local Markdown links and `git diff --check` passed.
+
+Reports/logs are under `build/proposals-*` and `build/msvc-debug/proposals-*.xml`. No remote CI, self-hosted runner setup, ASan/optimized rerun, network updater installation or human playtest is claimed.
+
+
+### VK-009 — 2026-10-01
+
+Status: done for ambient/bounce, directional and nearest-eight local-light parity. The main game remains on OpenGL until cutover. Shadows/flashlight visibility are VK-010; procedural material surfaces/emissive, full fog/postfx and presentation encoding remain the later appearance gates.
+
+`VulkanMeshRenderer` now consumes authored ambient ranges, cool/warm ambient, material-tinted indirect bounce, cavity terms, per-material ambient/bounce response, directional color/intensity and the ordered prepared local-light list. `WorldSceneRenderer::local_lights()` exposes the existing selection without duplicating target/environment/nearest-light policy in the backend. The light UBO is rewritten only after the existing frame fence completes; descriptor ranges/layout offsets are explicit. Authored color constants use the existing legacy or linear conversion; prepared local lights are already converted and are not decoded twice. Linear-mode comparisons use linear UNORM readback, not a claim of completed swapchain sRGB parity.
+
+The GL lighting body and GL authoring-contract generator were extracted without behavior changes into `scene_lighting.glsl` and `scene_shader_contract.{h,cpp}`. The migration GL reference uses these production formulas on the same atlas/model base colors, with procedural material/shadow/postfx branches excluded. This avoids validating against an independently invented lighting model.
+
+Verification on the local RTX 4060 Ti:
+
+- Debug demo, unit/content and affected graphics targets build. All 16 graphics checks, 36 selected camera/authored/light/loader checks and all 31 content checks pass, without skips or validation warnings/errors.
+- 74 paired GL/Vulkan images, including 46 focused lighting cases, have identical coverage masks; no pixel differs by more than eight RGB byte values. Maximum mean RGB-byte error is 0.004807/255. Cases cover both maps and shotgun/OBJ paths, three authored/config combinations in both color modes, 0/1/8 lights, first-eight truncation, small-radius falloff, underside normals, reload/clearing, gated sources, environment lamp strength and camera selection changes. Pressure-transfer GL/Vulkan views were visually inspected.
+- RelWithDebInfo demo/mesh builds with Tracy; the mesh comparison passes. ASan mesh build and its focused comparison pass, with no sanitizer diagnostics or validation warnings/errors.
+
+Commands: `cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests`; `cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_demo relaycore_tests relaycore_content_validation`; `ctest --preset graphics-debug --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-009-graphics.xml`; `ctest --preset test-debug -R 'local light|render authoring|shader source|authored|camera' --output-on-failure --no-tests=error --output-junit vk-009-unit.xml`; `ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit vk-009-content.xml`; `cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_vulkan_mesh_tests`; `ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-009-lighting.xml`; `cmake --build --preset demo-asan --target relaycore_vulkan_mesh_tests`; `ctest --test-dir build/msvc-asan -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-009-lighting.xml`.
+
+Logs: `build/vk-009-*.log`; JUnit: `build/msvc-debug/vk-009-{graphics,unit,content}.xml`, optimized/ASan `vk-009-lighting.xml`. Captures: each build's `tests/vulkan-mesh-captures/`. Full unit/ASan suites, other GPUs/OS, remote CI, a human playthrough, performance measurements and RenderDoc captures were not run for VK-009. Existing unrelated compiler warnings remain.
+
+### VK-010 — 2026-10-01
+
+Status: done for current directional, spot and point-shadow behavior. This phase followed VK-009 under the owner's explicit instruction. The main game remains on OpenGL until cutover; full material/color/fog/post parity is the next appearance gate.
+
+`VulkanMeshRenderer` owns D24 depth images, sampled/per-layer views, samplers and three shadow pipelines. It renders texel-snapped near/far directional cascades, the 1024² spot map and six 256² faces per selected point light, retaining the current eight-light budget, radial point depth, caster flags, culling, bias, normal offset, PCF and interpolated-distance cascade blend. Spot lighting still works with directional/point shadows disabled. GL and Vulkan share the existing projection/frustum/caster math through `shadow_math.{h,cpp}`; the GL reference samples the production `scene_lighting.glsl` and `scene_shadows.glsl` formulas. No light-selection policy or main-game backend switch changed.
+
+Point depth uses a 48-layer 2D array, with explicit cube-face selection/coordinates in Slang. The GL reference uses non-seamless cube-array filtering; Vulkan's native cube filtering would change face-edge behavior. The adapter preserves independent face clamping and avoids requiring the optional cube-array feature or non-seamless extension. D24 attachment, sampled-image, linear-filter and transfer-clear support are checked with an actionable failure rather than a silent format change.
+
+Every map transitions from discarded contents through transfer clear and depth attachment to depth read-only, with synchronization2 dependencies covering clear, early/late depth writes and fragment sampling. Disabled/ineligible sources have cleared storage and reset flags. Six scene/shadow replacement pipelines are staged together; a failed final point-fragment reload retains the complete working set. Shadow SPIR-V is compiled offline by the existing Slang target.
+
+Verification on the local RTX 4060 Ti:
+
+- Debug demo/affected graphics/unit/content targets build. All 16 graphics, 254 unit/audio/tooling and 31 content checks pass with zero skips. RelWithDebInfo/Tracy demo builds; mesh, presentation and game lifecycle pass (3). ASan mesh build/test passes. Debug/ASan core/synchronization validation and ASan report no warning/error on the exercised paths, including reload and teardown; optimized runs use the preset's validation-disabled mode.
+- 122 paired GL/Vulkan images include 48 focused shadow cases in both color modes: directional caster exclusion and cascade movement, point occlusion versus disabled shadows, six face views, eight lights, changed masks, cleared sources, spot/thin-wall behavior and reload. Coverage masks agree exactly. Maximum mean RGB-byte difference is 0.020096/255; at most six of 230,400 pixels exceed eight byte values, with maximum channel difference 15. Alpha stays within two bytes. Directional/spot and paired eight-point captures were visually inspected. Linear-mode images compare linear UNORM readback; complete presentation encoding is still VK-011.
+- RenderDoc 1.46 captures frames 1/3/5 of `--shadows-only` and replays all three successfully. They confirm D24, 512² near/far fixture maps, 1024² spot and 256² × 48 point storage, depth-target writes followed by fragment reads, positive shadow viewport heights and non-clear depth on all six active point faces. Structured command data confirms `UNDEFINED → TRANSFER_DST_OPTIMAL → DEPTH_ATTACHMENT_OPTIMAL → DEPTH_READ_ONLY_OPTIMAL` and the corresponding access/stage masks across all 48 layers.
+- Changed C++ files pass clang-format; all six mesh/shadow SPIR-V modules pass `spirv-val --target-env vulkan1.3` in Debug, RelWithDebInfo and ASan. Packaged demo modules match generated products; `git diff --check` passes.
+
+Commands in the existing VS developer environment (`VCPKG_ROOT` matches each cache; `VULKAN_SDK=C:/VulkanSDK`, synchronization validation enabled):
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_graphics_baseline relaycore_demo relaycore_tests relaycore_content_validation --parallel 4
+ctest --preset graphics-debug --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-010-graphics.xml
+ctest --preset test-debug --output-on-failure --no-tests=error --output-junit vk-010-unit.xml
+ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit vk-010-content.xml
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_game_lifecycle --parallel 4
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_presentation|game_lifecycle)$' --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-010-graphics.xml
+cmake --build --preset demo-asan --target relaycore_vulkan_mesh_tests --parallel 4
+ctest --test-dir build/msvc-asan -R '^graphics\.vulkan_mesh$' --output-on-failure --no-tests=error --test-output-size-passed 65536 --output-junit vk-010-shadows.xml
+```
+
+Reports/logs: `build/vk-010-*.log`, Debug `vk-010-{graphics,unit,content}.xml`, optimized `vk-010-graphics.xml`, ASan `vk-010-shadows.xml`. After final source/build synchronization, Debug mesh, GL game lifecycle, power-restoration graphics and color baseline passed again (4); report: `vk-010-final.xml`. Image pairs live under each build's `tests/vulkan-mesh-captures/`. RenderDoc evidence: `build/vk-010-shadow_frame{1,3,5}.rdc`, `build/vk-010-renderdoc-{capture,analysis,barriers}.json` and the local capture/replay helper scripts. Existing unrelated compiler warnings remain. Other GPUs/OS, API-1.3-only hardware, remote CI, full ASan suites, human playthroughs and performance measurements were not run. The VK-010 gate is satisfied for the tested paths; VK-011 is not started.
+
+
+## 25. VK-011 evidence — 2026-10-01–02
+
+Status: done for the exercised color/fog/post parity gates. Main gameplay remains on OpenGL; no HDR pipeline or VK-013 cutover is included.
+
+`mesh.slang` now uses the current material profiles, animated emissive, fog, cascade debug tint and postfx formulas. `scene_materials.slang` ports the production GLSL material formulas; frame uniforms carry viewport/time/debug state. The GL comparison compiles the production shared fragment body instead of maintaining an independent approximation. World, model, overlay and transparent contracts retain their existing ownership/order.
+
+Hardware sRGB renders into an SRGB attachment view over mutable RGBA8 UNORM storage; blending and encoding occur in that view. ImGui loads the same image through a UNORM view, matching the current encoded UI semantics. Readback/presentation blit uses UNORM storage and the explicit UNORM + SRGB nonlinear swapchain selected in VK-003, avoiding another conversion. Legacy uses UNORM throughout. Clear color now follows `RendererConfig`. A native `graphics.vulkan_color_baseline` checks UNORM/sRGB encoding, linear/sRGB texture decode and interpolation, clear, UI, presentation and UI teardown without creating a GL context.
+
+Full hardware-mode world preparation exposed an existing panel-indicator bug: visual color `0.98 * 1.25` reached the strict sRGB decoder. Indicator intensity now multiplies the decoded color; the legacy output is preserved. Both shipped maps initialize/render in both modes. No clamp or decoder fallback was added.
+
+Verification:
+
+- 158 GL/Vulkan image pairs pass, including 32 material/fog/post/time/pass cases and four full-world cases. Maximum mean RGB-byte difference across saved pairs is `0.088833912/255` (hardware pressure-transfer world). The independent RGB/alpha gates remain; coverage ignores only differences of at most three bytes at black, where sRGB quantization made the former binary nonzero test report false placement differences. The revised mask gate still detects larger differences. Both hardware-world captures and representative paired material/shadow images were inspected; this is rendering parity, not a human gameplay/appearance acceptance.
+- Debug native baseline, complete mesh regression and both current GL graphics baselines pass. ASan mesh/native baseline pass (2); RelWithDebInfo mesh/native baseline/current GL lifecycle pass (3). Core/synchronization validation is clean on these exercised paths.
+- RenderDoc 1.46 captures/replays `--color-baseline` frames 1/2/4/5. Frame 4 contains SRGB scene and UNORM UI views over the same RGBA8 UNORM image; frame 5 returns to SRGB after UI shutdown. All four end in RGBA8 UNORM → BGRA8 UNORM blits. UI pixels remain `[128,64,32,255]`; gray legacy is `[127,46,1,255]` (within one-byte tolerance), hardware `[188,118,10,255]`. Replay debug messages are empty. Captures include offscreen readbacks between presents; frame numbers refer to RenderDoc's capture intervals.
+- All seven generated SPIR-V modules pass `spirv-val --target-env vulkan1.3`; all six runtime modules match the copied demo assets. Formatting and `git diff --check` pass.
+
+Evidence: `build/vk-011-renderdoc-{capture,analysis}.json`, `build/vk-011-color_frame{1,2,4,5}.rdc`, each build's `tests/vulkan-mesh-captures/`, and the VK-012 reports below. The VK-011 gate is satisfied for tested paths. GL-only default-framebuffer checks remain reference checks until cutover; Vulkan color verification does not depend on them.
+
+## 26. VK-012 evidence — 2026-10-02
+
+Status: done. The two blocked desktop checks passed on 2026-10-02 (2/2), and Tracy presentation passed (1/1), before VK-013 implementation began. Reports: `build/msvc-debug/vk-012-desktop-final.xml` and `build/vk-012-validation-profile/vk-012-tracy-presentation-final.xml`. Standard validation, GPU-AV, GPU capture and native graphics baseline evidence follows. The earlier screensaver failure remains recorded below as environmental evidence.
+
+Added renderer-local `VulkanGpuProfiler` using the approved Tracy client `0.14.1`. Scene and presentation owners hold separate contexts/query pools, drain their submissions before teardown and collect/reset completed queries after fence waits. GPU zones cover scene frame, shadows/depth draws, world passes, viewmodel, ImGui and presentation copy/clear. Tracy builds require `hostQueryReset` and timestamp support on the graphics queue. Tracy-disabled builds allocate no profiler query pool. Startup calibration uses Tracy's queue waits; frame collection adds no device/queue idle. No speedup is claimed.
+
+`--profile-views` exercises two maps for 480 paced Vulkan-only frames with hardware sRGB, shadows/flashlight, viewmodel, ImGui and swapchain presentation. Matching official Tracy 0.14.1 capture/export tools successfully record and read `build/vk-012-profile.tracy`: 482 frame marks (480 workload frames plus boundaries), 22,709 GPU events, 480 positive timestamp durations for each top-level zone and 19,829 shadow-depth events. CSV and assertions: `build/vk-012-gpu.csv`, `build/vk-012-profile-analysis.json`. This verifies profiling, not integrated game update/lifecycle or a throughput benchmark.
+
+Verification:
+
+- Debug demo/graphics/unit/content targets build. Graphics: 15/17 pass, zero skips; `graphics.vulkan_presentation` and `graphics.vulkan_recreation_failure` fail only their desktop pixel observation (`GetPixel == CLR_INVALID`). The independent Win32 input-desktop probe reports `Screen-saver`; the same presentation failure reproduces with Tracy disabled. Do not weaken these assertions or claim desktop presentation acceptance from offscreen images.
+- Unit/audio/tooling: 254/254; content: 31/31. RelWithDebInfo/Tracy selected mesh/native baseline/current GL lifecycle: 3/3. ASan mesh/native baseline: 2/2 with no sanitizer or core/synchronization-validation report. Existing unrelated compiler warnings remain.
+- A separate Debug + Tracy directory configured from the existing preset passes device, mesh and native color baseline (3/3), with no core/synchronization validation warnings/errors, including timestamp-query reset/lifetime and teardown. Its earlier presentation pixel check was also blocked by the active screensaver. Debug/ASan exercise the normal validation policy; optimized runs retain validation disabled.
+- Focused GPU-AV color and complete mesh executables return zero. Settings disable core checks for this diagnostic run and unused ray/mesh validation; synchronization validation remains active. Instrumentation and descriptor/buffer checks run, including shader reload, both color modes, world, shadow, UI and presentation paths. The layer's internal SPIR-V validation is enabled; 387 `dump_*_after.spv` files confirm instrumentation. Logs contain only the expected `WARNING-Setting-Limit-Adjusted` announcing GPU-AV's instrumentation device features, with no VUID, shader-access or other warning/error. The strict CTest warning gate is unchanged; GPU-AV runs are inspected directly rather than marking its expected setting notice as a clean CTest result. Settings remain local to the process. The initial combined core/GPU-AV attempt was rejected by CTest for settings warnings, then replaced with this focused workflow.
+- RenderDoc color captures/replay above and the existing VK-010 shadow evidence cover attachment views, transfer/present, depth storage and transitions. `DEVELOPMENT.md` records tested Tracy/core/sync/GPU-AV workflows and the RenderDoc checklist. Main game and its lifecycle are still GL; the Vulkan workload consumes prepared world data without claiming Vulkan Application/DemoGame integration.
+
+Representative commands actually run (Visual Studio developer shell, valid per-process `VCPKG_ROOT` and `VULKAN_SDK`):
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_demo relaycore_tests relaycore_audio_lifetime relaycore_content_validation relaycore_graphics_baseline relaycore_default_framebuffer_probe relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_window_lifetime_tests relaycore_vulkan_window_tests relaycore_vulkan_device_tests relaycore_vulkan_presentation_tests relaycore_vulkan_upload_tests relaycore_vulkan_mesh_tests --parallel 4
+ctest --preset graphics-debug --output-on-failure --test-output-size-passed 100000 --output-junit vk-012-graphics.xml
+ctest --preset test-debug --output-on-failure --output-junit vk-012-unit.xml
+ctest --preset validation-debug --output-on-failure --output-junit vk-012-content.xml
+cmake --preset msvc-debug -B build/vk-012-validation-profile -DRELAYCORE_ENABLE_TRACY=ON
+cmake --build build/vk-012-validation-profile --target relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_vulkan_device_tests --parallel 4
+ctest --test-dir build/vk-012-validation-profile -R '^graphics\.(vulkan_device|vulkan_mesh|vulkan_color_baseline)$' --output-on-failure --test-output-size-passed 100000 --output-junit vk-012-tracy-validation-final.xml
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests --parallel 4
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle)$' --output-on-failure --output-junit vk-012-relwithdebinfo.xml
+cmake --build --preset demo-asan --target relaycore_vulkan_mesh_tests --parallel 4
+ctest --test-dir build/msvc-asan -R '^graphics\.(vulkan_mesh|vulkan_color_baseline)$' --output-on-failure --output-junit vk-012-asan.xml
+```
+
+Configure/build initially hit missing package headers during vcpkg reinstalls of unchanged manifest versions; configuration and completed rebuilds resolved them. No dependency baseline, version, global settings or user preset was changed. One capture attempt lacked `RELAYCORE_ASSET_ROOT`; the corrected run above succeeds. Other GPUs/OS, remote CI, full ASan suites, human playthroughs and performance comparisons were not run.
+
+Reports/logs: `build/vk-012-*.log`, Debug `vk-012-{graphics,unit,content}.xml`, optimized `vk-012-relwithdebinfo.xml`, ASan `vk-012-asan.xml`, separate Debug/Tracy `vk-012-tracy-validation-final.xml`; aggregate/image evidence: `build/vk-012-verification-summary.json`. The pending desktop checks were rerun successfully as recorded above; VK-012 is closed.
+
+## 27. VK-013 evidence — 2026-10-02
+
+Status: done. The main Application/DemoGame now uses Vulkan exclusively. A fresh Debug configure/build and all 299 registered tests pass with no skips (297 non-desktop checks, then 2 desktop presentation/recreation checks). VK-014 is the next read-only architecture review; it was not started here.
+
+`Window` owns only the SDL Vulkan window. `Renderer` owns the device, swapchain and concrete scene renderer; ImGui uses its SDL/Vulkan bindings. CPU mesh/texture data remains immutable and shared, with GPU uploads owned inside the renderer. GL context/loader/debug/timers, glad, GL shader programs and GLSL sources, GL-only probes and the ImGui OpenGL feature are removed. Dependency versions/baseline and gameplay contracts are unchanged.
+
+Frame queues copy prepared world/caster/viewmodel items and reuse their capacity. Scene submission completes before UI; a retained frame backend keeps its image/resources alive through a UI-triggered atomic reload and presentation. Reload staging remains move-only. Explicit off-camera shadow casters, shutdown after normal/failed startup/update, requested VSync, resize and top-down color/depth readback are exercised by native tests. Rendering retains the accepted SRGB scene / UNORM UI composition and transfer behavior. No backend interface or new renderer capability framework was added.
+
+The former GL comparison is replaced by 158 fixed RCG1 baselines under `tests/graphics-baselines/`. These retain exact channel sums per 8x8 tile and the independent geometry, clipping, lighting, shadow, UI, reload and resource-lifetime assertions. Tile averaging is lossy and does not replace the full-pixel VK-011/012 parity evidence. Tests never regenerate the baseline files. Current Vulkan corridor, HUD and shotgun captures were visually inspected; this does not claim a human playthrough.
+
+Verification on the local RTX 4060 Ti:
+
+- Fresh Debug configure and demo/unit/audio/content/native graphics/profile/toolchain builds succeed. `vk-013-clean-final.xml`: 297/297 pass, including 253 unit/audio/tooling, 31 content and 13 graphics checks. `vk-013-clean-desktop.xml`: presentation/recreation 2/2 pass after the input desktop returned to `Default`. Earlier `Screen-saver` failures were `GetPixel == CLR_INVALID`; assertions were not weakened. Total: 299/299, zero skips.
+- Strengthened final shutdown ownership and UI-reload/presentation checks pass in fresh Debug (`vk-013-clean-lifetime-final.xml`, `vk-013-clean-present.xml`). The latter presents the previous completed image after swapping backends inside UI, then verifies the next frame uses the replacement.
+- RelWithDebInfo/Tracy mesh/native baseline/lifecycle: 3/3 (`vk-013-relwithdebinfo-final.xml`). ASan lifetime/mesh/native baseline/lifecycle: 4/4 (`vk-013-asan-final.xml`). After the final reload contract and presentation regression changes, lifecycle passes again in both configurations (`vk-013-relwithdebinfo-present.xml`, `vk-013-asan-present.xml`). No sanitizer or Debug/ASan core/synchronization validation findings occur on these paths; optimized validation policy is unchanged.
+- Fresh build metadata has no GL/glad/OpenGL binding dependency. The toolchain probe succeeds; `dumpbin /dependents` confirms the game imports `vulkan-1.dll` and no `OPENGL32.dll`. Evidence: `build/vk-013-toolchain.log`, `build/vk-013-runtime-imports.log`.
+- Playtest packaging verifies all 93 payload files and the six runtime SPIR-V hashes against the generated shader list. A changed staged `mesh.frag.spv` is rejected with an actionable diagnostic; its original bytes were restored. Evidence: `build/vk-013-package.log`, `build/vk-013-package-rejection.log`. The generated shader list is derived from CMake's authoritative runtime shader outputs.
+- Changed C++ files pass clang-format checks and `git diff --check` passes. Existing unrelated compiler warnings remain.
+
+Representative commands actually run in a Visual Studio developer shell with valid `VCPKG_ROOT` and `VULKAN_SDK`:
+
+```powershell
+cmake --preset msvc-debug -B build/vk-013-clean
+ctest --test-dir build/vk-013-clean --output-on-failure --no-tests=error -E '^graphics\.(vulkan_presentation|vulkan_recreation_failure)$' --output-junit vk-013-clean-final.xml
+ctest --test-dir build/vk-013-clean -R '^graphics\.(vulkan_presentation|vulkan_recreation_failure)$' --output-on-failure --output-junit vk-013-clean-desktop.xml
+cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_game_lifecycle --parallel 1
+cmake --build --preset demo-asan --target relaycore_game_lifecycle --parallel 1
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.game_lifecycle$' --output-on-failure --output-junit vk-013-relwithdebinfo-present.xml
+ctest --test-dir build/msvc-asan -R '^graphics\.game_lifecycle$' --output-on-failure --output-junit vk-013-asan-present.xml
+pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo
+git diff --check
+```
+
+Logs: `build/vk-013-*.log`; test reports live in their corresponding build directories. Parallel DLL staging briefly collided with test discovery; serial relinking resolved it without changing unrelated build behavior. No fresh Tracy/RenderDoc capture, performance comparison, full ASan suite, other GPU/OS, remote CI or human playthrough was run for this phase. The fresh-tree/no-GL gate is satisfied for the verified local environment.
+
+## 28. VK-014 evidence — 2026-10-02
+
+Status: done. The owner confirmed that the runtime works after VK-013 and asked to continue the plan. This phase reviewed current code without changing runtime, shaders, dependencies or tests. No blocking ownership, synchronization or boundary defect was confirmed on the exercised paths.
+
+Ownership and failure-path findings:
+
+- `Application` destroys its delegate/audio, then renderer, then SDL window/system. `Renderer` drains and destroys presentation before releasing the retained scene backend, shadow-preview descriptors and ImGui; the device remains alive until those owners are gone. The scene completes before UI can rebuild game meshes. `frame_backend` retains the old image through a UI-triggered content reload and presentation. These are current invariants, not permission to remove waits independently.
+- Mesh/texture caches hold weak CPU-source references and remove expired entries after the scene fence completes. Existing native regression checks verify stable VMA allocation counts across mesh/texture replacement. Staging/failed shader reload retains the working pipelines; upload ownership is reserved before submission. Swapchain failure stops presentation and an explicit recreation retries with valid ownership. Ten native checks below exercise these paths without validation/shutdown diagnostics or skips; injected device loss and every allocation-failure point were not tested.
+- Targeted searches found no `Vk*` types or Vulkan includes in game, gameplay, level data or public CPU mesh/texture/model/queue contracts. `Renderer::PreparedLiveContentReload` exposes a concrete backend pointer, but it is a renderer-owned staging contract used immediately by current callers, not authored/world/save data. Its device lifetime must continue to bound staged objects. There is no remaining dual GL/Vulkan runtime adapter. Rendering with disabled ImGui is exercised; Vulkan backend code still deliberately records optional ImGui draw data and owns its preview descriptors. No backend interface or UI framework split is justified by current callers.
+- Normal frames use no blanket queue/device idle. A single scene command pool/fence/target is reused; scene, optional UI and presentation-copy submissions complete in sequence. The swapchain has two presentation frame slots, not two independent scene frames in flight. Geometry, material descriptor pools/sets and target images are cached; new content and resize allocate, settled rendering reuses them. Per-frame queue vectors retain capacity. This is not a claim of zero CPU allocations: diagnostics strings remain below, and a global allocation trace was not taken.
+
+Fresh representative baseline: local RTX 4060 Ti, RelWithDebInfo/Tracy, validation off, 1280×720, VSync off, assembled runtime assets. The final run had no concurrent GPU test workload. All 11 `episode_profile` states passed; 30,501 scene submissions were captured over 43.49 seconds. Settled entrance frame p50/p95 was 1.5409/1.9504 ms; editor was 1.7100/2.0739 ms. The GPU `Scene frame` median/p95 was 0.276480/0.452608 ms, `Shadows` 0.091136/0.124928 ms, optional `ImGui` 0.009216/0.016384 ms and presentation copy 0.011264/0.011264 ms. Nested zones must not be added as independent costs.
+
+CPU inclusive averages across the whole capture, including stage setup, were `render_world` 0.933866 ms, `render_ui` 0.170371 ms and `present` 0.206819 ms. Swapchain frame-fence waits averaged 0.002708 ms; this zone does not include scene/UI completion or the source-image copy wait. Existing instrumentation does not isolate those waits, so their removable cost is not established. Upload waits occurred 5,240 times across repeated stage/content preparation, not a claim that every settled frame uploads. This baseline supplies no before/after speedup, other-GPU result or continuous human playthrough, and does not close G-011/H-008.
+
+Artifacts: `build/vk-014-baseline.tracy`, `build/vk-014-baseline-episode.log`, CPU/GPU CSVs and `build/vk-014-baseline-summary.json`. An earlier episode run overlapped presentation checks and was excluded from this baseline. Two preliminary profile launches used an incorrect asset root and failed before gameplay; the final run uses the assembled assets containing SPIR-V.
+
+RenderDoc captured Debug `--profile-views` frames 8 and 248, covering `power_restoration` and `pressure_transfer`. The captures contain 1,967 and 525 draws; seven selected draw states per frame plus the presentation transfer were replayed. Both confirm SRGB scene views, UNORM final UI views/storage, D24 directional cascades (1536²), spot depth (1024²) and the 48-layer point resource (256²). The UI swatch arrives in the UNORM swapchain unchanged at RGBA 128/64/32/255. Debug-message lists are empty. Both capture thumbnails were inspected. Source review and the native baseline tests establish the pass/barrier contract; this focused replay is not a new exhaustive barrier or point-face audit. Captures: `build/vk-014-views_frame{8,248}.rdc`; analysis: `build/vk-014-renderdoc.json`; previews: `build/vk-014-{power,pressure}.png`. The first full-draw analysis exceeded the helper timeout; focused analysis reused the same captures successfully.
+
+Scheduled correction, separate from this read-only phase:
+
+| ID | Priority / status | Evidence and narrow scope | Verification |
+| --- | --- | --- | --- |
+| VK-F01 | P3 / ready | `vulkan_mesh_renderer.cpp::require_mesh_vk` accepts `const std::string&`; literal diagnostics in normal command begin/submit/fence paths construct temporary strings even on success. Use a borrowed string view and build the exception message only on error, preserving diagnostic text. The call structure is confirmed; allocator counts and timing impact are unmeasured. | Existing invalid-SPIR-V/failed-reload assertions plus mesh/lifecycle checks; no speedup claim without a comparable capture. |
+
+Keep synchronous scene/UI ownership for now. Removing its waits requires measured benefit and a complete replacement for command/UBO/image lifetime, UI reload and game-mesh replacement; do not schedule a render graph, async streaming or multi-frame scene architecture from this baseline alone. After the migration review, production MeshAsset/ModelAsset is the next capability block in section 8 and architecture roadmap C, under its own scope/dependency gate. HDR/PBR/lightmaps were not started.
+
+Commands actually completed in a Visual Studio developer shell with valid `VCPKG_ROOT`/`VULKAN_SDK` (the two CTest invocations passed 8/8 and 2/2, respectively):
+
+```powershell
+cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile relaycore_vulkan_mesh_tests --parallel 1
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_vulkan_upload_tests relaycore_vulkan_presentation_tests relaycore_game_lifecycle --parallel 1
+ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|vulkan_upload|game_lifecycle|update_readiness\..*)$' --output-on-failure --no-tests=error --output-junit vk-014-review.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_presentation|vulkan_recreation_failure)$' --output-on-failure --no-tests=error --output-junit vk-014-desktop.xml
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-relwithdebinfo/src/relaygame/assets).Path
+# tracy-capture runs concurrently with this workload, without other GPU checks.
+build/profiling/tracy-0.14.1/tracy-capture.exe -o build/vk-014-baseline.tracy -s 55
+build/msvc-relwithdebinfo/tests/relaycore_episode_profile.exe
+build/profiling/tracy-0.14.1/tracy-csvexport.exe -s ';' build/vk-014-baseline.tracy
+build/profiling/tracy-0.14.1/tracy-csvexport.exe -g -s ';' build/vk-014-baseline.tracy
+pwsh -NoProfile -File build/vk-010-renderdoc-run.ps1 -ScriptPath E:/Code/C++/RelayCore/build/vk-014-renderdoc-analysis.py
+git diff --check
+```
+
+Build/check logs: `build/vk-014-{build-optimized,build-debug,tests,desktop}.log`; JUnit reports: `build/msvc-debug/vk-014-{review,desktop}.xml`. No new full Debug/ASan/release suite, remote CI, other machine or subjective playtest was claimed. Documentation records the completed phase and the owner's runtime acceptance; all existing working-tree implementation changes were preserved.

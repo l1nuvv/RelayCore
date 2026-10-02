@@ -12,16 +12,29 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <glad/gl.h>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "scoped_temp_directory.h"
 
 namespace
 {
+    auto read_rgb(RelayCore::Renderer& renderer) -> std::vector<unsigned char>
+    {
+        const auto image = renderer.capture_frame();
+        std::vector<unsigned char> rgb(size_t(image.width) * image.height * 3);
+        for (size_t i = 0; i < rgb.size() / 3; ++i)
+            std::copy_n(image.pixels.data() + i * 4, 3, rgb.data() + i * 3);
+        return rgb;
+    }
+
     void require(bool condition, const char* message)
     {
         if (!condition)
@@ -35,29 +48,100 @@ namespace
         return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     }
 
-    void capture_frame(const char* filename)
+    void capture_frame(RelayCore::Renderer& renderer, const char* filename)
     {
-        std::vector<unsigned char> pixels(640 * 480 * 3);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-        require(glGetError() == GL_NO_ERROR, "Frame capture failed");
-        for (int y = 0; y < 240; ++y)
-            std::swap_ranges(
-                pixels.begin() + y * 640 * 3,
-                pixels.begin() + (y + 1) * 640 * 3,
-                pixels.begin() + (479 - y) * 640 * 3
-            );
+        auto pixels = read_rgb(renderer);
         SDL_Surface* surface = SDL_CreateSurfaceFrom(640, 480, SDL_PIXELFORMAT_RGB24, pixels.data(), 640 * 3);
         require(surface != nullptr, "Capture surface failed");
         const bool written = SDL_SaveBMP(surface, filename);
         SDL_DestroySurface(surface);
         require(written, "Capture save failed");
     }
+#ifdef _WIN32
+    auto test_update_readiness(const std::string_view mode) -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            const bool failed = mode == "failed-ui" || mode == "failed-no-ui";
+            const bool ui_enabled = mode == "ui" || mode == "failed-ui";
+            require(failed || mode == "ui" || mode == "no-ui", "Unknown readiness test mode");
+            const std::string event_name = "Local\\RelayCore-update-test-" + std::to_string(GetCurrentProcessId());
+            const std::unique_ptr<void, decltype(&CloseHandle)> ready{
+                CreateEventA(nullptr, TRUE, FALSE, event_name.c_str()),
+                CloseHandle
+            };
+            require(ready != nullptr, "Cannot create readiness event");
+            require(
+                SDL_SetEnvironmentVariable(
+                    SDL_GetEnvironment(),
+                    "RELAYCORE_UPDATE_READY_EVENT",
+                    event_name.c_str(),
+                    true
+                ),
+                "Cannot set readiness event name"
+            );
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 640;
+            config.window.height = 480;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = ui_enabled;
+            config.audio.enabled = false;
+            config.gameplay.level_path = failed ? "levels/missing-update-test.toml" : "levels/test_room.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(640, 480);
+            require(renderer.ui_available() == ui_enabled, "Readiness test UI availability differs from its mode");
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            RelayGame::DemoGame game{directory.path() / "player"};
+            bool startup_threw = false;
+            try
+            {
+                game.on_startup(services);
+            } catch (const std::exception&)
+            {
+                startup_threw = true;
+            }
+            require(startup_threw == (failed && !ui_enabled), "Unexpected startup failure handling");
+            require(WaitForSingleObject(ready.get(), 0) == WAIT_TIMEOUT, "Readiness sent before a runtime frame");
+            if (!startup_threw)
+            {
+                renderer.begin_frame();
+                game.on_render({.delta_seconds = 1.0 / 60.0}, services);
+            }
+            const DWORD expected = failed ? WAIT_TIMEOUT : WAIT_OBJECT_0;
+            require(
+                WaitForSingleObject(ready.get(), 0) == expected,
+                "Runtime readiness does not match startup success"
+            );
+            game.on_shutdown(services);
+            std::cout << "Update readiness " << mode << " passed without on_ui\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
+    }
+#endif
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+#ifdef _WIN32
+    if (argc == 3 && std::string_view{argv[1]} == "--update-readiness")
+        return test_update_readiness(argv[2]);
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -83,6 +167,44 @@ int main()
         RelayGame::DemoGame game{directory.path() / "player"};
         const auto progress_path = directory.path() / "player/progress.toml";
         const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+        {
+            renderer.begin_frame();
+            const auto before_reload = renderer.capture_frame();
+            require(renderer.begin_ui(frame, audio, true), "Vulkan UI was not initialized");
+            auto changed = config.renderer;
+            changed.clear_r = 0.8F;
+            renderer.commit_live_content_reload(
+                renderer.prepare_live_content_reload(changed, renderer.authoring_config())
+            );
+            renderer.end_ui();
+            require(
+                renderer.capture_frame().pixels == before_reload.pixels,
+                "UI reload replaced the GPU target still owned by the current frame"
+            );
+            require(
+                SDL_ShowWindow(window.handle()) && SDL_SyncWindow(window.handle()),
+                "Could not show Vulkan surface"
+            );
+            bool presented = false;
+            for (int retry = 0; retry < 8 && !presented; ++retry)
+            {
+                SDL_PumpEvents();
+                presented = renderer.present();
+            }
+            require(
+                presented && renderer.capture_frame().pixels == before_reload.pixels,
+                "Presentation lost the scene target retained across UI reload"
+            );
+            require(SDL_HideWindow(window.handle()), "Could not hide lifecycle window");
+            renderer.begin_frame();
+            require(
+                renderer.capture_frame().pixels != before_reload.pixels,
+                "Committed Vulkan reload did not take effect on the next frame"
+            );
+            renderer.commit_live_content_reload(
+                renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config())
+            );
+        }
         {
             RelayGame::GameWorldRuntime encounter;
             encounter.load_level_session(
@@ -252,17 +374,7 @@ int main()
                 renderer.camera().set_target({-4, .9F, -3.15F});
                 renderer.begin_frame();
                 scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false);
-                std::vector<unsigned char> pixels(640 * 480 * 3);
-                glPixelStorei(GL_PACK_ALIGNMENT, 1);
-                glReadBuffer(GL_BACK);
-                glReadPixels(0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-                require(glGetError() == GL_NO_ERROR, "Static-model frame produced GL error");
-                for (int y = 0; y < 240; ++y)
-                    std::swap_ranges(
-                        pixels.begin() + y * 640 * 3,
-                        pixels.begin() + (y + 1) * 640 * 3,
-                        pixels.begin() + (479 - y) * 640 * 3
-                    );
+                auto pixels = read_rgb(renderer);
                 SDL_Surface* surface = SDL_CreateSurfaceFrom(640, 480, SDL_PIXELFORMAT_RGB24, pixels.data(), 640 * 3);
                 require(surface != nullptr, "Cannot create model screenshot");
                 const bool saved = SDL_SaveBMP(surface, (std::string("model_") + map + ".bmp").c_str());
@@ -289,7 +401,7 @@ int main()
                 renderer.camera().set_target(enemy + glm::vec3{0, .5F, 0});
                 renderer.begin_frame();
                 scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false, {}, {}, {}, level.enemies);
-                capture_frame((std::string("rover_") + map + ".bmp").c_str());
+                capture_frame(renderer, (std::string("rover_") + map + ".bmp").c_str());
             }
             const auto copied = directory.path() / "reload.obj";
             std::filesystem::copy_file(mesh, copied);
@@ -567,7 +679,7 @@ int main()
             require(window.relative_mouse_mode(), "Level transition lost mouse capture");
             renderer.begin_frame();
             campaign.on_render(frame, services);
-            capture_frame("campaign_pump.bmp");
+            capture_frame(renderer, "campaign_pump.bmp");
             auto pump_session = RelayGame::LevelSessionBuilder{config.gameplay}.build(b);
             auto carried_inventory = pump.world.inventory_item_ids;
             std::vector<std::string> activated, signaled;
@@ -608,7 +720,7 @@ int main()
             campaign.on_update(frame, services);
             renderer.begin_frame();
             campaign.on_render(frame, services);
-            capture_frame("campaign_intake.bmp");
+            capture_frame(renderer, "campaign_intake.bmp");
             require(
                 std::filesystem::path(RelayGame::load_saved_game(campaign_path).world.level_path) == a,
                 "Return entry immediately bounced into another transition"
@@ -714,8 +826,8 @@ int main()
                 editor.draw_ui(services);
                 renderer.end_ui();
             }
-            require(glGetError() == GL_NO_ERROR, "Editor UI/render produced GL error");
-            capture_frame("editor_workshop.bmp");
+
+            capture_frame(renderer, "editor_workshop.bmp");
             editor.shutdown();
             std::cout << "0.8/0.9: editor map roundtrip and campaign A -> B -> restart -> A passed\n";
         }

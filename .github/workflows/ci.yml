@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_graphics:
+        description: Run GPU tests on the configured relaycore-graphics Windows runner
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -79,6 +84,14 @@ jobs:
           ninja --version
           cl
 
+      - name: Add clang-format for tooling tests
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $clangFormat = & $vswhere -latest -products * -find **\Llvm\x64\bin\clang-format.exe | Select-Object -First 1
+          if (-not $clangFormat) { $clangFormat = (Get-Command clang-format -ErrorAction Stop).Source }
+          (Split-Path $clangFormat) >> $env:GITHUB_PATH
+
       - name: Cache vcpkg
         uses: actions/cache@v4
         with:
@@ -94,20 +107,65 @@ jobs:
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
           cmake --workflow --preset debug-discipline-workflow
 
-      - name: Run graphics lifecycle tests
+      - name: Build graphics tests
         shell: pwsh
         run: |
           $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
           cmake --build --preset graphics-debug
           if ($LASTEXITCODE -ne 0) { throw 'Graphics test build failed' }
+
+  graphics:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_graphics
+    runs-on: [self-hosted, Windows, X64, relaycore-graphics]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+      - name: Set up vcpkg
+        id: runvcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          doNotCache: false
+      - name: Set up MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Configure and build graphics tests
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ steps.runvcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}"
+          cmake --preset msvc-debug -DRELAYCORE_ENABLE_VULKAN_VALIDATION=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics configure failed' }
+          cmake --build --preset graphics-debug
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics test build failed' }
+          cmake --build --preset graphics-debug --target relaycore_vulkan_toolchain_check
+          if ($LASTEXITCODE -ne 0) { throw 'Vulkan environment probe build failed' }
+      - name: Verify graphics environment
+        shell: pwsh
+        run: |
+          & .\build\msvc-debug\relaycore_vulkan_toolchain_check.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Vulkan loader/validation layer probe failed' }
+      - name: Run graphics tests
+        shell: pwsh
+        run: |
           ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml
           if ($LASTEXITCODE -ne 0) { throw 'Graphics tests failed' }
           [xml]$results = Get-Content build/msvc-debug/graphics-results.xml -Raw
           $cases = @($results.SelectNodes('//testcase'))
           $skipped = @($results.SelectNodes('//testcase/skipped'))
-          if ($cases.Count -ne 5 -or $skipped.Count -ne 0) {
-            throw "Expected 5 completed graphics tests; found $($cases.Count) tests and $($skipped.Count) skipped"
+          $failed = @($results.SelectNodes('//testcase/failure | //testcase/error'))
+          if ($cases.Count -eq 0 -or $skipped.Count -ne 0 -or $failed.Count -ne 0) {
+            throw "Graphics report: $($cases.Count) tests, $($skipped.Count) skipped, $($failed.Count) failed"
           }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: graphics-results
+          path: build/msvc-debug/graphics-results.xml
 
   msvc-relwithdebinfo:
     runs-on: windows-2022
@@ -147,6 +205,14 @@ jobs:
           key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Add clang-format for tooling tests
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $clangFormat = & $vswhere -latest -products * -find **\Llvm\x64\bin\clang-format.exe | Select-Object -First 1
+          if (-not $clangFormat) { $clangFormat = (Get-Command clang-format -ErrorAction Stop).Source }
+          (Split-Path $clangFormat) >> $env:GITHUB_PATH
 
       - name: Run RelWithDebInfo discipline workflow
         shell: pwsh
@@ -192,6 +258,14 @@ jobs:
           key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakePresets.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
+
+      - name: Add clang-format for tooling tests
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $clangFormat = & $vswhere -latest -products * -find **\Llvm\x64\bin\clang-format.exe | Select-Object -First 1
+          if (-not $clangFormat) { $clangFormat = (Get-Command clang-format -ErrorAction Stop).Source }
+          (Split-Path $clangFormat) >> $env:GITHUB_PATH
 
       - name: Run ASan discipline workflow
         shell: pwsh

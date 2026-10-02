@@ -102,6 +102,11 @@ namespace RelayGame
             return render_queue_.items();
         }
 
+        [[nodiscard]] auto local_lights() const noexcept -> std::span<const RelayCore::render::LocalLight>
+        {
+            return active_local_lights_;
+        }
+
         [[nodiscard]] auto
         prepare_shotgun_viewmodel(const RelayCore::render::PerspectiveCamera& camera, float cycle_remaining_seconds)
             -> std::array<RelayCore::render::RenderItem, 2>;
@@ -169,7 +174,6 @@ namespace RelayGame
             bool casts_directional_shadow = true;
         };
 
-        RelayCore::render::ResourceUpload upload_ = RelayCore::render::ResourceUpload::opengl;
         std::array<glm::vec4, 6> frustum_planes_{};
         RelayCore::render::StaticColorMesh door_mesh_{};
         RelayCore::render::StaticColorMesh panel_mesh_{};

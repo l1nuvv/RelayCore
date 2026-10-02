@@ -9,6 +9,7 @@
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
+#include "relaycore/render/shadow_math.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaygame/demo_game.h"
 #include "relaygame/enemy_runtime.h"
@@ -24,7 +25,6 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <glad/gl.h>
 #include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
 #include <iostream>
@@ -38,30 +38,30 @@
 
 namespace
 {
+    auto read_rgb(RelayCore::Renderer& renderer) -> std::vector<unsigned char>
+    {
+        const auto image = renderer.capture_frame();
+        std::vector<unsigned char> rgb(size_t(image.width) * image.height * 3);
+        for (size_t i = 0; i < rgb.size() / 3; ++i)
+            std::copy_n(image.pixels.data() + i * 4, 3, rgb.data() + i * 3);
+        return rgb;
+    }
+
     constexpr int width = 1280;
     constexpr int height = 720;
 
-    auto capture(const std::filesystem::path& path, const int capture_width = width, const int capture_height = height)
-        -> double
+    auto capture(
+        RelayCore::Renderer& renderer,
+        const std::filesystem::path& path,
+        const int capture_width = width,
+        const int capture_height = height
+    ) -> double
     {
-        std::vector<unsigned char> pixels(capture_width * capture_height * 3);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, capture_width, capture_height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-        if (glGetError() != GL_NO_ERROR)
-        {
-            throw std::runtime_error("Power restoration framebuffer read failed");
-        }
+        auto pixels = read_rgb(renderer);
         double sum = 0.0;
         for (const auto value : pixels)
         {
             sum += value;
-        }
-        for (int y = 0; y < capture_height / 2; ++y)
-        {
-            const auto top = pixels.begin() + y * capture_width * 3;
-            const auto bottom = pixels.begin() + (capture_height - 1 - y) * capture_width * 3;
-            std::swap_ranges(top, top + capture_width * 3, bottom);
         }
         const std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> surface{
             SDL_CreateSurfaceFrom(
@@ -139,11 +139,8 @@ int main(int argc, char** argv)
             const auto floor_brightness = [&](const std::span<const RelayCore::render::RenderItem> casters) {
                 renderer.begin_frame();
                 renderer.draw_render_queue(floor_only, casters);
-                std::array<unsigned char, 3> pixel{};
-                glReadBuffer(GL_BACK);
-                glReadPixels(pixel_x, pixel_y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel.data());
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Local shadow pixel read failed");
+                const auto image = renderer.capture_frame();
+                const auto* pixel = image.pixels.data() + (size_t(height - 1 - pixel_y) * width + pixel_x) * 4;
                 return static_cast<int>(pixel[0]) + pixel[1] + pixel[2];
             };
             const int lit = floor_brightness(floor_only);
@@ -218,7 +215,7 @@ int main(int argc, char** argv)
             if (profile_views && std::ranges::find(profile_names, name) != profile_names.end())
             {
                 std::vector<double> submit_ms, completed_ms;
-                glFinish();
+                renderer.finish_scene();
                 for (int frame = 0; frame < 200; ++frame)
                 {
                     RELAYCORE_PROFILE_ZONE_N("Playtest::view_frame");
@@ -244,7 +241,7 @@ int main(int argc, char** argv)
                         player_combat
                     );
                     const auto submitted = std::chrono::steady_clock::now();
-                    glFinish();
+                    renderer.finish_scene();
                     const auto completed = std::chrono::steady_clock::now();
                     const double cpu = std::chrono::duration<double, std::milli>(submitted - start).count();
                     const double full = std::chrono::duration<double, std::milli>(completed - start).count();
@@ -285,7 +282,7 @@ int main(int argc, char** argv)
                     player_combat
                 );
             }
-            return capture(std::filesystem::path{"power-captures"} / name);
+            return capture(renderer, std::filesystem::path{"power-captures"} / name);
         };
         if (config.renderer.shadow_enabled && config.renderer.shadow_light_intensity > 0.0F)
         {
@@ -313,15 +310,9 @@ int main(int argc, char** argv)
             if (caster_scene.diagnostics().culled_chunks != 1
                 || caster_scene.diagnostics().transparent_visible_chunks != 1)
                 throw std::runtime_error("Off-camera shadow fixture has unexpected camera visibility");
-            const auto shadow_texture = static_cast<GLuint>(renderer.world_diagnostics().shadow_preview_texture_id);
-            const int shadow_size = config.renderer.shadow_map_resolution;
-            std::vector<float> shadow_depth(static_cast<std::size_t>(shadow_size * shadow_size));
+            std::vector<float> shadow_depth;
             const auto nearest_shadow_depth = [&] {
-                glBindTexture(GL_TEXTURE_2D, shadow_texture);
-                glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, shadow_depth.data());
-                glBindTexture(GL_TEXTURE_2D, 0);
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Could not read shadow map");
+                shadow_depth = renderer.capture_shadow_depth(0);
                 return std::ranges::min(shadow_depth);
             };
             if (nearest_shadow_depth() >= 1.0F)
@@ -401,7 +392,7 @@ int main(int argc, char** argv)
                 glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, effects);
                 if (glass_scene.diagnostics().transparent_draw_calls != 13)
                     throw std::runtime_error("Glass and steam did not enter the transparent pass together");
-                (void) capture(std::filesystem::path{"power-captures"} / name);
+                (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
             };
             render_glass_and_steam("glass-steam-back.bmp", {0.0F, 1.5F, 0.0F}, {0.0F, 1.5F, 7.0F});
             render_glass_and_steam("glass-steam-front.bmp", {0.0F, 1.5F, 10.0F}, {0.0F, 1.5F, 3.0F});
@@ -425,12 +416,7 @@ int main(int argc, char** argv)
             renderer.camera().set_position({0.0F, 1.5F, 0.0F});
             renderer.camera().set_target({0.0F, 1.5F, 7.0F});
             const auto pixels = [&] {
-                std::vector<unsigned char> result(width * height * 3);
-                glPixelStorei(GL_PACK_ALIGNMENT, 1);
-                glReadBuffer(GL_BACK);
-                glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, result.data());
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Could not read side-view transparency fixture");
+                auto result = read_rgb(renderer);
                 return result;
             };
             const auto render_side_glass = [&] {
@@ -445,7 +431,7 @@ int main(int argc, char** argv)
             if (side_glass_scene.diagnostics().transparent_draw_calls != 13)
                 throw std::runtime_error("Side-view glass and steam did not enter the transparent pass together");
             const auto sorted_pixels = pixels();
-            (void) capture("power-captures/glass-steam-side.bmp");
+            (void) capture(renderer, "power-captures/glass-steam-side.bmp");
 
             renderer.begin_frame();
             render_side_glass();
@@ -474,12 +460,14 @@ int main(int argc, char** argv)
         if (config.renderer.shadow_enabled)
         {
             const auto shadow_projection = [&] {
-                GLint program = 0;
-                glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-                std::array<float, 16> matrix{};
-                glGetUniformfv(static_cast<GLuint>(program), 41, matrix.data());
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Could not read switch-room shadow projection");
+                const auto& rc = config.renderer;
+                const auto matrix = RelayCore::render::shadow_light_view_projection(
+                    renderer.camera(),
+                    rc,
+                    rc.shadow_focus_distance,
+                    rc.shadow_projection_radius,
+                    rc.shadow_projection_depth
+                );
                 return matrix;
             };
             // These two viewpoints stay within one shadow texel with the shipped cascade settings.
@@ -489,7 +477,7 @@ int main(int argc, char** argv)
             const auto after_move = shadow_projection();
             for (int column = 0; column < 4; ++column)
                 for (int row = 0; row < 2; ++row)
-                    if (std::abs(before_move[column * 4 + row] - after_move[column * 4 + row]) > 0.000001F)
+                    if (std::abs(before_move[column][row] - after_move[column][row]) > 0.000001F)
                         throw std::runtime_error("Switch-room shadows move under sub-texel camera translation");
         }
         (void) render("switch-room-close-left.bmp", {12.0F, 1.65F, 19.0F}, {14.3F, 1.5F, 22.0F});
@@ -693,7 +681,7 @@ int main(int argc, char** argv)
         if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
             throw std::runtime_error("Combat feedback HUD unavailable");
         renderer.end_ui();
-        (void) capture("power-captures/combat-feedback.bmp");
+        (void) capture(renderer, "power-captures/combat-feedback.bmp");
         const auto capture_status = [&](const char* name) {
             renderer.begin_frame();
             scene.render(renderer, renderer.camera(), 0.0F, doors, combat.turrets, usables, -1, {}, false);
@@ -701,7 +689,7 @@ int main(int argc, char** argv)
             if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
                 throw std::runtime_error("Player status HUD unavailable");
             renderer.end_ui();
-            (void) capture(std::filesystem::path{"power-captures"} / name);
+            (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
         };
         feedback.hit_confirmation_strength = 0;
         feedback.hurt_flash_strength = 0;
@@ -748,7 +736,7 @@ int main(int argc, char** argv)
         editor_frame();
         if (object_count() != original_count + 1)
         {
-            (void) capture("power-captures/editor.bmp");
+            (void) capture(renderer, "power-captures/editor.bmp");
             throw std::runtime_error(
                 "Editor duplicate shortcut failed; selected entity="
                 + std::to_string(editor.document().selection()->entity)
@@ -790,7 +778,7 @@ int main(int argc, char** argv)
         if (std::abs(moved.mins.x - bounds.mins.x - 0.5F) > 0.001F || std::abs(moved.mins.y - bounds.mins.y) > 0.001F
             || std::abs(moved.mins.z - bounds.mins.z) > 0.001F)
             throw std::runtime_error("Editor axis drag did not move the selection by two grid cells");
-        (void) capture("power-captures/editor.bmp");
+        (void) capture(renderer, "power-captures/editor.bmp");
         editor.leave(services);
         editor.enter(level, services);
         if (!editor.document().dirty() || editor.document().bounds(selected).mins != moved.mins)
@@ -820,13 +808,14 @@ int main(int argc, char** argv)
             renderer.set_spot_light(light);
             renderer.begin_frame();
             light_scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false, {});
-            std::array<unsigned char, 27> pixels{};
-            glReadPixels(width / 2 - 1, height / 2 - 1, 3, 3, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+            const auto image = renderer.capture_frame();
             double mean = 0;
-            for (auto value : pixels)
-                mean += value;
-            (void) capture(std::filesystem::path{"power-captures"} / name);
-            return mean / pixels.size();
+            for (int y = height / 2 - 1; y <= height / 2 + 1; ++y)
+                for (int x = width / 2 - 1; x <= width / 2 + 1; ++x)
+                    for (size_t c = 0; c < 3; ++c)
+                        mean += image.pixels[(size_t(y) * width + x) * 4 + c];
+            (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
+            return mean / 27;
         };
         const auto unlit = light_frame("flashlight-off.bmp");
         light.enabled = true;
@@ -872,7 +861,7 @@ int main(int argc, char** argv)
                 renderer.end_ui();
             }
             const auto extent = window.pixel_extent();
-            return capture(std::filesystem::path{"power-captures"} / name, extent.width, extent.height);
+            return capture(renderer, std::filesystem::path{"power-captures"} / name, extent.width, extent.height);
         };
         (void) draw_game("main-menu.bmp");
         if (!game.has_custom_ui() || window.relative_mouse_mode())
@@ -1203,9 +1192,7 @@ int main(int argc, char** argv)
                     sandbox_session.environment,
                     sandbox_session.enemies
                 );
-                (void) capture(std::filesystem::path{"power-captures"} / name);
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Sandbox rendering produced a GL error");
+                (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
             };
             view("sandbox-hub.bmp", {0, 1.65F, -1}, {0, 1.65F, 6});
             view("sandbox-shotgun-pickup.bmp", {.4F, 1.65F, -2.5F}, {.7F, 1.105F, -4});
@@ -1250,9 +1237,7 @@ int main(int argc, char** argv)
                     transfer_session.environment,
                     transfer_session.enemies
                 );
-                (void) capture(std::filesystem::path{"power-captures"} / name);
-                if (glGetError() != GL_NO_ERROR)
-                    throw std::runtime_error("Pressure transfer rendering produced a GL error");
+                (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
             };
             transfer_view("transfer-equipment.bmp", {4, 1.65F, 2}, {2, 1.1F, 4});
             transfer_view("transfer-rover.bmp", {4, 1.65F, 13}, {4, .45F, 19});

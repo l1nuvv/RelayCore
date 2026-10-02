@@ -294,6 +294,8 @@ namespace RelayGame
                 runtime_.shotgun_cycle_remaining_seconds()
             );
         services.renderer().set_world_diagnostics(world_scene_.diagnostics());
+        services.renderer().finish_scene();
+        signal_update_ready();
     }
 
     void DemoGame::on_ui(RelayCore::EngineServices& services)
@@ -304,7 +306,6 @@ namespace RelayGame
             editor_.draw_ui(services);
         else if (screen_ != Screen::Playing)
             draw_pause_menu(services);
-        signal_update_ready();
     }
 
     void DemoGame::on_shutdown(RelayCore::EngineServices& services) noexcept

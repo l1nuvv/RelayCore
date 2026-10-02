@@ -1,5 +1,6 @@
 #pragma once
 
+#include "relaycore/render/color_pipeline_mode.h"
 #include "relaycore/render/render_queue.h"
 #include "relaycore/render/texture2d.h"
 
@@ -18,7 +19,6 @@ namespace RelayCore::render
 
     class VulkanMeshRenderer {
     public:
-        // Isolated migration path: render queue and optional UI parity, before lighting migration.
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
         VulkanMeshRenderer(
             const VulkanDevice& device,
@@ -26,7 +26,8 @@ namespace RelayCore::render
             const RenderAuthoringConfig& authoring,
             const CpuRgbaTextureData& atlas,
             TextureEncoding encoding,
-            const RendererConfig& config
+            const RendererConfig& config,
+            ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma
         );
         ~VulkanMeshRenderer() noexcept;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
@@ -41,8 +42,26 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel = {},
             ImDrawData* ui = nullptr
         ) -> CpuRgbaTextureData;
-        // Stages both shader modules/pipeline; failed reload retains the previous working pipeline.
+        // Scene submission completes before UI can replace game-owned mesh data or reload this backend.
+        void prepare_frame(
+            std::span<const RenderItem> items,
+            std::span<const RenderItem> shadow_casters,
+            const PerspectiveCamera& camera,
+            int width,
+            int height,
+            std::span<const RenderItem> viewmodel = {}
+        );
+        void append_ui(ImDrawData* ui);
+        [[nodiscard]] auto capture_prepared_image() -> CpuRgbaTextureData;
+        [[nodiscard]] auto shadow_preview(size_t cascade) -> uintptr_t;
+        [[nodiscard]] auto capture_shadow_depth(size_t cascade) -> std::vector<float>;
+        void set_config(const RendererConfig& config);
+        // Stages mesh and shadow pipelines; failed reload retains the working set.
         void reload_shaders(const std::filesystem::path& shader_directory);
+        // Prepared world lights already carry the selected color-pipeline encoding; preserve their order/budget.
+        void set_local_lights(std::span<const LocalLight> lights);
+        void set_spot_light(const SpotLight& light) noexcept;
+        void set_scene_time(float seconds) noexcept;
 
     private:
         friend class VulkanSwapchain;
@@ -54,6 +73,8 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel,
             ImDrawData* ui
         ) -> VkImage;
+        [[nodiscard]] auto prepared_image(VkDevice device) const -> VkImage;
+        [[nodiscard]] auto prepared_extent() const -> VkExtent2D;
         struct State;
         std::unique_ptr<State> state_;
     };

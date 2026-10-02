@@ -122,7 +122,7 @@
       "name": "graphics-baseline-debug",
       "displayName": "Build Graphics Baseline (Debug)",
       "configurePreset": "msvc-debug",
-      "targets": ["relaycore_graphics_baseline"]
+      "targets": ["relaycore_vulkan_mesh_tests"]
     },
     {
       "name": "graphics-debug",
@@ -136,9 +136,7 @@
         "relaycore_vulkan_upload_tests",
         "relaycore_vulkan_mesh_tests",
         "relaycore_game_lifecycle",
-        "relaycore_power_restoration_graphics",
-        "relaycore_graphics_baseline",
-        "relaycore_default_framebuffer_probe"
+        "relaycore_power_restoration_graphics"
       ]
     },
     {

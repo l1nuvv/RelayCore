@@ -3,6 +3,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/vulkan_device.h"
+#include "relaycore/render/vulkan_gpu_profiler.h"
 #include "relaycore/render/vulkan_mesh_renderer.h"
 
 #include <VkBootstrap.h>
@@ -65,6 +66,7 @@ namespace RelayCore::render
 
     struct VulkanSwapchain::State {
         const VulkanDevice& device;
+        VulkanGpuProfiler profiler;
         const Window& window;
         bool vsync;
         VkAllocationCallbacks* host_allocator;
@@ -83,7 +85,9 @@ namespace RelayCore::render
             const Window& window_in,
             const bool vsync_in,
             VkAllocationCallbacks* allocator_in
-        ) : device(device_in), window(window_in), vsync(vsync_in), host_allocator(allocator_in)
+        ) :
+            device(device_in), profiler(device_in, "RelayCore Vulkan presentation"), window(window_in), vsync(vsync_in),
+            host_allocator(allocator_in)
         {}
 
         void wait_fence(const VkFence fence, bool& pending)
@@ -104,6 +108,7 @@ namespace RelayCore::render
             wait_fence(frame.render_fence, frame.render_pending);
             // A submission fence alone does not protect presentation's semaphore references.
             wait_fence(frame.present_fence, frame.present_pending);
+            profiler.collect();
         }
 
         void drain()
@@ -253,8 +258,13 @@ namespace RelayCore::render
             stopped = false;
         }
 
-        void
-        record(Frame& frame, const uint32_t image_index, const std::array<float, 4>& color, const VkImage scene_image)
+        void record(
+            Frame& frame,
+            const uint32_t image_index,
+            const std::array<float, 4>& color,
+            const VkImage scene_image,
+            const VkExtent2D source_extent
+        )
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan record clear");
             require_vk(vkResetCommandPool(device.handle(), frame.pool, 0), "Failed to reset Vulkan frame commands");
@@ -263,89 +273,97 @@ namespace RelayCore::render
                 .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
             };
             require_vk(vkBeginCommandBuffer(frame.commands, &begin_info), "Failed to begin Vulkan frame commands");
-            if (begin_label != nullptr)
             {
-                const VkDebugUtilsLabelEXT label{
-                    .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-                    .pLabelName = "RelayCore swapchain clear",
-                    .color = {0.2F, 0.6F, 0.9F, 1.0F},
+                RELAYCORE_PROFILE_VK_ZONE(profiler, frame.commands, "Presentation copy/clear");
+                if (begin_label != nullptr)
+                {
+                    const VkDebugUtilsLabelEXT label{
+                        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+                        .pLabelName = "RelayCore swapchain clear",
+                        .color = {0.2F, 0.6F, 0.9F, 1.0F},
+                    };
+                    begin_label(frame.commands, &label);
+                }
+                const auto stage = scene_image ? VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
+                                               : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                const auto access =
+                    scene_image ? VK_ACCESS_2_TRANSFER_WRITE_BIT : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                const auto image_layout =
+                    scene_image ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                VkImageMemoryBarrier2 barrier{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    // Chain the acquire semaphore wait into the layout transition, even when discarding contents.
+                    .srcStageMask = stage,
+                    .dstStageMask = stage,
+                    .dstAccessMask = access,
+                    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .newLayout = image_layout,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = active->images[image_index],
+                    .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
                 };
-                begin_label(frame.commands, &label);
+                const VkDependencyInfo dependency{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .imageMemoryBarrierCount = 1,
+                    .pImageMemoryBarriers = &barrier,
+                };
+                vkCmdPipelineBarrier2(frame.commands, &dependency);
+                const VkRenderingAttachmentInfo attachment{
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = active->views[image_index],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {.color = {{color[0], color[1], color[2], color[3]}}},
+                };
+                const VkRenderingInfo rendering{
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = {{0, 0}, active->swapchain.extent},
+                    .layerCount = 1,
+                    .colorAttachmentCount = 1,
+                    .pColorAttachments = &attachment,
+                };
+                if (scene_image)
+                {
+                    const auto size = active->swapchain.extent;
+                    const VkImageBlit2 region{
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+                        .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                        .srcOffsets =
+                            {{0, 0, 0},
+                             {static_cast<int32_t>(source_extent.width), static_cast<int32_t>(source_extent.height), 1}
+                            },
+                        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                        .dstOffsets =
+                            {{0, 0, 0}, {static_cast<int32_t>(size.width), static_cast<int32_t>(size.height), 1}}
+                    };
+                    const VkBlitImageInfo2 blit{
+                        .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+                        .srcImage = scene_image,
+                        .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        .dstImage = active->images[image_index],
+                        .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        .regionCount = 1,
+                        .pRegions = &region,
+                        .filter = VK_FILTER_NEAREST
+                    };
+                    vkCmdBlitImage2(frame.commands, &blit);
+                } else
+                {
+                    vkCmdBeginRendering(frame.commands, &rendering);
+                    vkCmdEndRendering(frame.commands);
+                }
+                barrier.srcStageMask = stage;
+                barrier.srcAccessMask = access;
+                barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+                barrier.dstAccessMask = VK_ACCESS_2_NONE;
+                barrier.oldLayout = image_layout;
+                barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                vkCmdPipelineBarrier2(frame.commands, &dependency);
+                if (end_label != nullptr)
+                    end_label(frame.commands);
             }
-            const auto stage =
-                scene_image ? VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-            const auto access = scene_image ? VK_ACCESS_2_TRANSFER_WRITE_BIT : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-            const auto image_layout =
-                scene_image ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            VkImageMemoryBarrier2 barrier{
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                // Chain the acquire semaphore wait into the layout transition, even when discarding contents.
-                .srcStageMask = stage,
-                .dstStageMask = stage,
-                .dstAccessMask = access,
-                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .newLayout = image_layout,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = active->images[image_index],
-                .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
-            };
-            const VkDependencyInfo dependency{
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .imageMemoryBarrierCount = 1,
-                .pImageMemoryBarriers = &barrier,
-            };
-            vkCmdPipelineBarrier2(frame.commands, &dependency);
-            const VkRenderingAttachmentInfo attachment{
-                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = active->views[image_index],
-                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = {.color = {{color[0], color[1], color[2], color[3]}}},
-            };
-            const VkRenderingInfo rendering{
-                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {{0, 0}, active->swapchain.extent},
-                .layerCount = 1,
-                .colorAttachmentCount = 1,
-                .pColorAttachments = &attachment,
-            };
-            if (scene_image)
-            {
-                const auto size = active->swapchain.extent;
-                const VkImageBlit2 region{
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
-                    .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                    .srcOffsets = {{0, 0, 0}, {static_cast<int32_t>(size.width), static_cast<int32_t>(size.height), 1}},
-                    .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                    .dstOffsets = {{0, 0, 0}, {static_cast<int32_t>(size.width), static_cast<int32_t>(size.height), 1}}
-                };
-                const VkBlitImageInfo2 blit{
-                    .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
-                    .srcImage = scene_image,
-                    .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    .dstImage = active->images[image_index],
-                    .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    .regionCount = 1,
-                    .pRegions = &region,
-                    .filter = VK_FILTER_NEAREST
-                };
-                vkCmdBlitImage2(frame.commands, &blit);
-            } else
-            {
-                vkCmdBeginRendering(frame.commands, &rendering);
-                vkCmdEndRendering(frame.commands);
-            }
-            barrier.srcStageMask = stage;
-            barrier.srcAccessMask = access;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
-            barrier.dstAccessMask = VK_ACCESS_2_NONE;
-            barrier.oldLayout = image_layout;
-            barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            vkCmdPipelineBarrier2(frame.commands, &dependency);
-            if (end_label != nullptr)
-                end_label(frame.commands);
             require_vk(vkEndCommandBuffer(frame.commands), "Failed to end Vulkan frame commands");
         }
 
@@ -355,7 +373,8 @@ namespace RelayCore::render
             const std::span<const RenderItem> items = {},
             const PerspectiveCamera* camera = nullptr,
             const std::span<const RenderItem> viewmodel = {},
-            ImDrawData* ui = nullptr
+            ImDrawData* ui = nullptr,
+            bool prepared = false
         ) -> bool
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan frame");
@@ -368,11 +387,17 @@ namespace RelayCore::render
                 recreate();
             if (!active)
                 return false;
-            const auto scene_image =
-                renderer
-                    ? renderer
-                          ->render_color_image(device.handle(), items, *camera, active->swapchain.extent, viewmodel, ui)
-                    : VK_NULL_HANDLE;
+            const auto scene_image = renderer ? (prepared ? renderer->prepared_image(device.handle())
+                                                          : renderer->render_color_image(
+                                                                device.handle(),
+                                                                items,
+                                                                *camera,
+                                                                active->swapchain.extent,
+                                                                viewmodel,
+                                                                ui
+                                                            ))
+                                              : VK_NULL_HANDLE;
+            const auto source_extent = renderer ? renderer->prepared_extent() : VkExtent2D{};
             auto& frame = frames[frame_index];
             wait_frame(frame);
             require_vk(vkResetFences(device.handle(), 1, &frame.acquire_fence), "Failed to reset Vulkan acquire fence");
@@ -397,7 +422,7 @@ namespace RelayCore::render
             if (acquisition != VK_SUCCESS && acquisition != VK_SUBOPTIMAL_KHR)
                 require_vk(acquisition, "Failed to acquire Vulkan swapchain image");
             frame.acquire_pending = true;
-            record(frame, image_index, color, scene_image);
+            record(frame, image_index, color, scene_image, source_extent);
             require_vk(vkResetFences(device.handle(), 1, &frame.render_fence), "Failed to reset Vulkan render fence");
             const VkSemaphoreSubmitInfo wait{
                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -526,6 +551,29 @@ namespace RelayCore::render
             // A failed present can follow a successful submit referencing the renderer's source image.
             state_->drain();
             throw;
+        }
+    }
+
+    auto VulkanSwapchain::present_prepared_scene(VulkanMeshRenderer& renderer) -> bool
+    {
+        try
+        {
+            return state_->draw_clear({0, 0, 0, 1}, &renderer, {}, nullptr, {}, nullptr, true);
+        } catch (...)
+        {
+            state_->stopped = true;
+            state_->reset_frames = true;
+            state_->drain();
+            throw;
+        }
+    }
+
+    void VulkanSwapchain::set_vsync(bool enabled)
+    {
+        if (state_->vsync != enabled)
+        {
+            state_->vsync = enabled;
+            state_->needs_recreation = true;
         }
     }
 

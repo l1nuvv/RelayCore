@@ -98,12 +98,45 @@ foreach(stage IN ITEMS vert frag)
         COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
-        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang" "${SLANGC_EXECUTABLE}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang" "${SLANGC_EXECUTABLE}"
         COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(shadow IN ITEMS shadow point_shadow)
+    if(shadow STREQUAL "point_shadow")
+        set(point_shadow 1)
+    else()
+        set(point_shadow 0)
+    endif()
+    foreach(stage IN ITEMS vert frag)
+        if(stage STREQUAL "vert")
+            set(entry vertex_main)
+            set(shader_stage vertex)
+        else()
+            set(entry fragment_main)
+            set(shader_stage fragment)
+        endif()
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/${shadow}.${stage}.spv")
+        add_custom_command(OUTPUT "${output}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+            COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
+                -DPOINT_SHADOW=${point_shadow} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+                -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang" "${SLANGC_EXECUTABLE}"
+            COMMENT "Compiling shadow.slang (${shadow}, ${entry}) to SPIR-V" VERBATIM)
+        list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+    endforeach()
+endforeach()
 add_custom_target(relaycore_vulkan_shaders ALL
     DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})
+set(runtime_shader_names)
+foreach(shader IN LISTS RELAYCORE_MESH_SPIRV)
+    get_filename_component(shader_name "${shader}" NAME)
+    list(APPEND runtime_shader_names "${shader_name}")
+endforeach()
+list(JOIN runtime_shader_names "\n" runtime_shader_manifest)
+file(GENERATE OUTPUT "${RELAYCORE_SPIRV_DIRECTORY}/runtime-shaders.txt" CONTENT "${runtime_shader_manifest}\n")
 set_target_properties(relaycore_vulkan_shaders PROPERTIES FOLDER "render")
 
 add_executable(relaycore_vulkan_toolchain_check EXCLUDE_FROM_ALL tools/vulkan_toolchain_check.cpp)

@@ -45,7 +45,7 @@ A Source 2 map port is therefore an integration test of RelayCore's own systems.
 
 ### 2.1 Graphics direction
 
-Direct Vulkan is the target graphics API. OpenGL 4.6 is the current compatibility/reference implementation during migration, not the long-term backend.
+Direct Vulkan 1.3 is the runtime graphics API after VK-013 cutover. The original OpenGL implementation supplied parity evidence and has been removed.
 
 The migration must preserve visible behavior before adding the next generation of renderer features. In particular, do not combine backend parity work with an HDR/material/lightmap/probe redesign unless a small prerequisite is unavoidable.
 

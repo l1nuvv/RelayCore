@@ -14,8 +14,8 @@ namespace
     {
         int count = 0;
         const std::unique_ptr<SDL_Window*, decltype(&SDL_free)> windows{SDL_GetWindows(&count), SDL_free};
-        if (!windows || count != 0 || SDL_GL_GetCurrentContext() != nullptr)
-            throw std::runtime_error("Vulkan window lifetime retained SDL/GL resources");
+        if (!windows || count != 0)
+            throw std::runtime_error("Vulkan window lifetime retained SDL resources");
     }
 } // namespace
 
@@ -31,8 +31,6 @@ int main()
     try
     {
         const RelayCore::WindowConfig config{.width = 320, .height = 240, .vsync = false};
-        constexpr auto mode = RelayCore::render::ColorPipelineMode::legacy_gamma;
-        constexpr auto api = RelayCore::WindowGraphicsApi::vulkan;
         const RelayCore::test::ScopedTempDirectory temp;
         const auto missing_loader = (temp.path() / "missing-vulkan-loader.dll").string();
         if (!SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, missing_loader.c_str()))
@@ -40,7 +38,7 @@ int main()
         bool loader_failure = false;
         try
         {
-            RelayCore::Window window{config, mode, api};
+            RelayCore::Window window{config};
         } catch (const std::runtime_error& error)
         {
             loader_failure = std::string_view{error.what()}.starts_with("Failed to create SDL window:");
@@ -54,11 +52,10 @@ int main()
         for (int cycle = 0; cycle < 3; ++cycle)
         {
             {
-                RelayCore::Window window{config, mode, api};
+                RelayCore::Window window{config};
                 const auto flags = SDL_GetWindowFlags(window.handle());
-                if (!(flags & SDL_WINDOW_VULKAN) || (flags & SDL_WINDOW_OPENGL) || window.gl_context() != nullptr
-                    || SDL_GL_GetCurrentContext() != nullptr)
-                    throw std::runtime_error("Vulkan window unexpectedly owns or activates an OpenGL context");
+                if (!(flags & SDL_WINDOW_VULKAN) || (flags & SDL_WINDOW_OPENGL))
+                    throw std::runtime_error("Window did not select Vulkan presentation");
 
                 const auto extensions = window.vulkan_instance_extensions();
                 bool surface_extension = false;
@@ -80,16 +77,8 @@ int main()
                     || RelayCore::can_present(window.presentation_state()))
                     throw std::runtime_error("Hidden Vulkan window remains presentable");
 
-                bool rejected_gl_swap = false;
-                try
-                {
-                    window.swap_buffers();
-                } catch (const std::logic_error&)
-                {
-                    rejected_gl_swap = true;
-                }
-                if (!rejected_gl_swap)
-                    throw std::runtime_error("Vulkan window allowed OpenGL buffer swapping");
+                if (window.vsync_enabled() || !window.toggle_vsync() || !window.vsync_enabled())
+                    throw std::runtime_error("Window did not retain the requested presentation synchronization");
             }
             require_no_windows();
         }

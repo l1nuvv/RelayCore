@@ -1,4 +1,4 @@
-# Разработка RelayCore 1.0
+# Разработка RelayCore
 
 ## Испытательный полигон
 
@@ -83,7 +83,7 @@ cmake --build --preset demo-debug
 
 ### Узкие проверки
 
-Проверки коммита и автоматизации выпуска запускаются отдельно от C++-сборки:
+Проверки коммита и автоматизации выпуска входят в CTest; для узкой диагностики их можно запускать непосредственно:
 
 ```powershell
 pwsh -NoProfile -File tests/pre_commit_tests.ps1
@@ -97,13 +97,25 @@ cmake --build --preset demo-debug --target relaycore_demo relaycore_tests relayc
 ctest --test-dir build/msvc-debug -R '^(relaycore\.|validation\.|graphics\.game_lifecycle$)' --output-on-failure
 ```
 
-Для графического теста нужен рабочий OpenGL. Дополнительные пресеты и полный
+Для графического теста нужны Vulkan 1.3 и поддерживаемые device contract возможности. Дополнительные пресеты и полный
 порядок проверок перечислены в корневом README; их не требуется запускать после
 каждого редактирования карты.
 
+### Контракт автоматических проверок
+
+На Windows `tests-debug` собирает unit/audio targets и CLI-проверку карт. `test-debug` запускает также `relaycore.tooling.pre_commit`, `relaycore.tooling.release_scripts`, `relaycore.tooling.release_workflow` и `relaycore.tooling.level_check`. Нужны PowerShell 7 и `clang-format`; CMake добавляет найденный formatter в PATH pre-commit теста. Release-тесты используют изолированные fixtures и имитацию публикации. Дополнительная Java-проверка интерпретатора CLion остаётся ручной: `pwsh -NoProfile -File tests/release_workflow_tests.ps1 -Java <java.exe>`.
+
+В `.github/workflows/ci.yml` обычные GitHub-hosted jobs проверяют сборку, unit/content/tooling и компиляцию graphics targets. Это не подтверждает работу GPU. Полное выполнение `graphics.*` запускается через `workflow_dispatch` с `run_graphics=true` на заранее настроенном runner с метками `self-hosted`, `Windows`, `X64`, `relaycore-graphics`. На нём нужны рабочий интерактивный Windows desktop, драйвер Vulkan, Vulkan SDK с validation layers и build tools. Метки не создают runner: зарегистрируйте подходящую машину перед запуском job.
+
+Graphics job выполняет configure/build с validation=ON, проверяет loader/layers через существующий `relaycore_vulkan_toolchain_check`, затем результат CTest/JUnit: report должен содержать хотя бы один test case, без failure/error/skipped. Количество тестов не фиксировано. Доступность features, создание instance/device, presentation, uploads и validation проверяются самими Vulkan-тестами. Локальный эквивалент: `cmake --build --preset graphics-debug`, затем `ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml`; после CTest нужно проверить отсутствие skip в report. Удалённый graphics gate не считается пройденным по локальной сборке.
+
 ### Профилирование
 
-Профиль `msvc-relwithdebinfo` включает Tracy. Для сравнимого захвата:
+Профиль `msvc-relwithdebinfo` включает Tracy.
+
+Для обычной игры в CLion выбирайте **RelayCore — Play**: эта конфигурация собирает `relaycore_demo` с `msvc-relwithdebinfo` и использует runtime assets рядом с executable. Debug/ASan оставлены для отладки и Vulkan core/synchronization validation; их FPS не характеризует игровую сборку. Локальное сравнение после VK-013, RTX 4060 Ti, 1280×720, VSync off, один scripted entrance: Debug p50 42,79 мс / p95 44,16 мс, RelWithDebInfo p50 1,63 мс / p95 2,57 мс. Captures: `build/vk-013-regression-{debug-before,before}.tracy`; полный workload — `build/vk-013-regression-episode-{debug-before,before}.log`. Это сравнение конфигураций, не ускорение renderer патчем.
+
+Для сравнимого захвата:
 
 ```powershell
 cmake --preset msvc-relwithdebinfo
@@ -111,7 +123,7 @@ cmake --build --preset demo-relwithdebinfo
 ```
 
 Запустите собранный `build/msvc-relwithdebinfo/src/relaygame/RelayCore.exe` и
-подключите [Tracy 0.13.1](https://github.com/wolfpld/tracy/releases/tag/v0.13.1).
+подключите [Tracy 0.14.1](https://github.com/wolfpld/tracy/releases/tag/v0.14.1), соответствующий текущему manifest client.
 Для текущего slice запишите маршрут «Восстановление питания»: вход, три встречи,
 включение питания и охлаждения, возврат и финал. Меню/редактор выделяйте отдельно.
 Сравнивайте CPU/GPU зоны на одном разрешении, одном маршруте и одинаковых настройках;
@@ -122,8 +134,9 @@ cmake --build --preset demo-relwithdebinfo
 `cmake --build --preset demo-relwithdebinfo --target relaycore_power_restoration_graphics`
 и запустить этот test executable с `--profile-views`, указав абсолютный `RELAYCORE_ASSET_ROOT`
 на ресурсы кандидата. Это 1280×720, VSync off, 20 кадров прогрева и 180 измеряемых кадров
-на вид. `view_submit_ms` измеряет CPU submission, `view_completed_ms` включает `glFinish`;
-оба показателя исключают swap и gameplay update. Условия, результаты и ограничения —
+на вид. `view_submit_ms` измеряет CPU-подготовку очереди; после VK-013
+`view_completed_ms` дополнительно включает Vulkan scene submission и ожидание GPU.
+Оба показателя исключают color readback, presentation и gameplay update. Исторические GL-измерения и ограничения —
 в [протоколе G-006/H-002](playtests/G-006-H-002-2026-09-28.md).
 
 Для интегрированного scripted workload используйте отдельный target
@@ -133,9 +146,9 @@ cmake --build --preset demo-relwithdebinfo
 `DemoGame`, 1280×720, VSync off, и подготавливает в отдельных временных сохранениях
 вход, три встречи, питание, охлаждение, смерть/respawn, паузу, финал и редактор.
 Начальные 0,5 с каждого состояния исключены из сводных значений. Tracy-показатели
-`cpu_work_ms` и `present_ms` разделяют работу приложения и swap; GL timer query в
-выводе измеряет только `DemoGame::on_render`, без UI. Этот сценарий не заменяет
-ручной непрерывный проход; результаты — в [протоколе H-002](playtests/H-002-2026-09-28.md).
+`cpu_work_ms` и `present_ms` разделяют работу приложения и presentation; GPU-зоны
+пишутся в Tracy через Vulkan. Этот сценарий не заменяет ручной непрерывный проход;
+исторические результаты — в [протоколе H-002](playtests/H-002-2026-09-28.md).
 
 Исторически для 1.0 снят воспроизводимый захват на графическом сценарии
 `graphics.game_lifecycle` в RelWithDebInfo, 640×480, Tracy 0.13.1. Он проходит
@@ -155,6 +168,101 @@ cmake --build --preset demo-relwithdebinfo
 новые кэши. Для решения о производительности долгой игровой сессии нужен отдельный
 захват живого прохождения и проверка повторяемости результата.
 
+### Vulkan: capture и validation
+
+Основной `RelayCore.exe` использует Vulkan. Отдельный Vulkan workload
+отрисовывает `power_restoration` и `pressure_transfer`, тени, viewmodel и ImGui,
+480 кадров в 640×360 с hardware sRGB. Он проверяет profiling/presentation,
+а не gameplay lifecycle или скорость: задержка 16 мс намеренно задаёт темп захвата.
+
+```powershell
+cmake --build --preset demo-relwithdebinfo --target relaycore_vulkan_mesh_tests
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path assets).Path
+build/msvc-relwithdebinfo/tests/relaycore_vulkan_mesh_tests.exe --profile-views
+```
+
+Перед запуском подключите Tracy 0.14.1 либо запустите его `tracy-capture.exe`
+с `-o build/vulkan.tracy -s 15`. `tracy-csvexport.exe -g build/vulkan.tracy`
+проверяет GPU events. Контексты сцены и presentation имеют отдельные query pools;
+коллекция выполняется после fence waits. `hostQueryReset` и timestamp queries
+graphics queue требуются только при `RELAYCORE_ENABLE_TRACY=ON`. При выключенном
+Tracy query pools не создаются. В кадре profiling не добавляет queue/device idle;
+startup calibration Tracy использует queue waits.
+
+Обычный Debug/Asan уже включает core и synchronization validation. Все Vulkan
+CTest checks отклоняют неожиданные validation warnings/errors. Для screen-pixel
+presentation/recreation checks нужен обычный Windows desktop без заставки.
+
+```powershell
+cmake --build --preset graphics-debug
+ctest --preset graphics-debug --output-on-failure
+```
+
+Проверить Tracy вместе с validation можно в отдельной директории без изменения
+основного preset/cache:
+
+```powershell
+cmake --preset msvc-debug -B build/vk-012-validation-profile -DRELAYCORE_ENABLE_TRACY=ON
+cmake --build build/vk-012-validation-profile --target relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_vulkan_device_tests
+ctest --test-dir build/vk-012-validation-profile -R '^graphics\.(vulkan_device|vulkan_mesh|vulkan_color_baseline)$' --output-on-failure
+```
+
+Для focused GPU-assisted прогона сначала добейтесь чистой обычной validation.
+Создайте локальный `build/vk-012-gpuav/vk_layer_settings.txt`:
+
+```ini
+khronos_validation.validate_core = false
+khronos_validation.gpuav_enable = true
+khronos_validation.gpuav_shader_instrumentation = true
+khronos_validation.gpuav_descriptor_checks = true
+khronos_validation.gpuav_force_on_robustness = false
+khronos_validation.gpuav_validate_trace_ray = false
+khronos_validation.gpuav_mesh_shading = false
+khronos_validation.gpuav_debug_validate_instrumented_shaders = true
+khronos_validation.gpuav_debug_dump_instrumented_shaders = true
+```
+
+Применяйте настройки только к диагностическому процессу и восстанавливайте прежнее
+значение переменной. Пример из корня проекта; `RELAYCORE_ASSET_ROOT` уже задан выше:
+
+```powershell
+$previousLayerSettings = $env:VK_LAYER_SETTINGS_PATH
+try {
+    $env:VK_LAYER_SETTINGS_PATH = (Resolve-Path build/vk-012-gpuav).Path
+    Push-Location build/vk-012-validation-profile/tests
+    try {
+        ./relaycore_vulkan_mesh_tests.exe --color-baseline
+        if ($LASTEXITCODE -ne 0) { throw 'Vulkan color baseline failed' }
+        ./relaycore_vulkan_mesh_tests.exe
+        if ($LASTEXITCODE -ne 0) { throw 'Vulkan mesh regression failed' }
+    } finally { Pop-Location }
+} finally { $env:VK_LAYER_SETTINGS_PATH = $previousLayerSettings }
+```
+
+Сверяйте имена настроек с установленным SDK: GPU-AV меняется между версиями.
+Просмотрите весь validation output: в проверенном SDK GPU-AV сообщает
+`WARNING-Setting-Limit-Adjusted` при включении своих instrumentation features.
+Это ожидаемое сообщение настроек, а не разрешение игнорировать другие warnings,
+VUID или shader-access errors. Такие запуски выполняются напрямую: строгий CTest
+warning gate намеренно не ослаблен. `dump_*_after.spv` подтверждают instrumentation;
+после диагностики dump options можно выключить. Не измеряйте производительность
+с GPU-AV. Настройки не применяются глобально и не включаются в обычный runtime.
+
+Для RenderDoc запускайте этот же executable с `--profile-views` либо
+`--color-baseline`; engine API integration не нужна. Проверяйте в capture:
+
+- SDR swapchain `B8G8R8A8_UNORM`/`R8G8B8A8_UNORM` и `SRGB_NONLINEAR`;
+- scene attachment view: UNORM для legacy, SRGB для hardware; UI view всегда UNORM
+  над тем же image. Blit читает UNORM storage и не кодирует готовые bytes повторно;
+- порядок world/overlay/transparent → viewmodel с очисткой depth → ImGui →
+  transfer/present, attachment reuse barriers и переходы layout/access/stage;
+- D24 shadow writes → fragment reads, directional/spot/point layers и отсутствие
+  validation messages. Сверяйте scene/UI и swapchain pixels, а не только успешный present.
+
+`graphics.vulkan_color_baseline` не создаёт GL context и не использует GL
+framebuffer assertions. Он проверяет transfer function, texture decode/filtering,
+clear, UI и presentation/teardown. GL comparison tests пока остаются migration reference.
+
 ## Где объекты во время игры
 
 Файл карты TOML читается в `BlockoutLevel`: `solids` и `entities` — отдельные
@@ -172,3 +280,5 @@ cmake --build --preset demo-relwithdebinfo
 карты новая сессия сначала собирается целиком, затем заменяет старую. Для уже
 посещённых карт сохранение содержит снимки изменяемого состояния дверей,
 предметов, заданий и других игровых объектов; геометрия остаётся в файлах карт.
+
+Graphics lifecycle и episode profile используют runtime assets с собранными SPIR-V; при ручном запуске задайте `RELAYCORE_ASSET_ROOT` на `build/<preset>/src/relaygame/assets`. CTest делает это автоматически. Изолированный mesh workload использует свой build-time SPIR-V path и допускает исходный `assets` для content fixtures.

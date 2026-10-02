@@ -1,9 +1,6 @@
 #pragma once
 
-#include "relaycore/render/resource_upload.h"
-
 #include <cstdint>
-#include <glad/gl.h>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <memory>
@@ -42,17 +39,15 @@ namespace RelayCore::render
 
         auto operator=(StaticColorMesh&& other) noexcept -> StaticColorMesh&;
 
-        void initialize(const CpuColorMeshData& mesh_data, ResourceUpload upload = ResourceUpload::opengl);
+        void initialize(const CpuColorMeshData& mesh_data);
 
-        // CPU-mode resources retain immutable data; replacing it changes the renderer cache identity.
+        // Resources retain immutable data; replacing it changes the renderer cache identity.
         [[nodiscard]] auto cpu_data() const noexcept -> const std::shared_ptr<const CpuColorMeshData>&
         {
             return cpu_data_;
         }
 
-        void draw() const;
-
-        [[nodiscard]] auto index_count() const noexcept -> GLsizei;
+        [[nodiscard]] auto index_count() const noexcept -> std::int32_t;
 
         [[nodiscard]] auto bounds_min() const noexcept -> glm::vec3
         {
@@ -66,10 +61,7 @@ namespace RelayCore::render
     private:
         void reset() noexcept;
 
-        unsigned int vertex_array_id_ = 0;
-        unsigned int vertex_buffer_id_ = 0;
-        unsigned int index_buffer_id_ = 0;
-        GLsizei index_count_ = 0;
+        std::int32_t index_count_ = 0;
         glm::vec3 bounds_min_{};
         glm::vec3 bounds_max_{};
         std::shared_ptr<const CpuColorMeshData> cpu_data_;

@@ -25,9 +25,20 @@ if ($builtVersion -ne (Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION
 
 $authoredRoot = Join-Path $projectRoot 'assets'
 $authoredAssets = @(Get-ChildItem -LiteralPath $authoredRoot -Recurse -File)
+$shaderRoot = Join-Path $projectRoot "build/$Preset/generated/shaders"
+$runtimeShaders = @(Get-Content -LiteralPath (Join-Path $shaderRoot 'runtime-shaders.txt'))
 $stagedAssets = @(Get-ChildItem -LiteralPath (Join-Path $source 'assets') -Recurse -File)
-if ($authoredAssets.Count -ne $stagedAssets.Count) {
+if ($runtimeShaders.Count -eq 0 -or $authoredAssets.Count + $runtimeShaders.Count -ne $stagedAssets.Count) {
     throw "Staged assets are stale. Build with: cmake --build --preset $buildPreset"
+}
+foreach ($shader in $runtimeShaders) {
+    $compiled = Join-Path $shaderRoot $shader
+    $staged = Join-Path $source "assets/shaders/vulkan/$shader"
+    if (-not (Test-Path -LiteralPath $compiled -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $staged -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $compiled).Hash -ne (Get-FileHash -LiteralPath $staged).Hash) {
+        throw "Staged shader differs: $shader. Build with: cmake --build --preset $buildPreset"
+    }
 }
 foreach ($file in $authoredAssets) {
     $relative = $file.FullName.Substring($authoredRoot.Length + 1)

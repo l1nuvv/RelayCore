@@ -43,6 +43,8 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel = {},
             ImDrawData* ui = nullptr
         ) -> bool;
+        [[nodiscard]] auto present_prepared_scene(VulkanMeshRenderer& renderer) -> bool;
+        void set_vsync(bool enabled);
         // Explicit recovery after a failed recreation; never acquires from a retired swapchain.
         void recreate();
         [[nodiscard]] auto extent() const noexcept -> VkExtent2D;

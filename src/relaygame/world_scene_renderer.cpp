@@ -354,7 +354,6 @@ namespace RelayGame
         RelayCore::render::StaticModelCache& models
     )
     {
-        upload_ = models.upload_mode();
         RELAYCORE_PROFILE_FUNCTION();
         props_.clear();
         enemy_model_.reset();
@@ -452,17 +451,17 @@ namespace RelayGame
         tint(pellet_mesh_data, {1.6F, 1.5F, 1.3F}, 0.10F);
         tint(turret_shot_mesh_data, {2.5F, 0.75F, 0.35F}, 0.10F);
 
-        door_mesh_.initialize(door_mesh_data, upload_);
-        pickup_mesh_.initialize(pickup_mesh_data, upload_);
-        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data, upload_);
-        inspector_usable_mesh_.initialize(inspector_usable_mesh_data, upload_);
-        inspector_door_mesh_.initialize(inspector_door_mesh_data, upload_);
-        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data, upload_);
-        inspector_solid_mesh_.initialize(inspector_solid_mesh_data, upload_);
-        inspector_hit_mesh_.initialize(inspector_hit_mesh_data, upload_);
-        player_shot_mesh_.initialize(player_shot_mesh_data, upload_);
-        pellet_mesh_.initialize(pellet_mesh_data, upload_);
-        turret_shot_mesh_.initialize(turret_shot_mesh_data, upload_);
+        door_mesh_.initialize(door_mesh_data);
+        pickup_mesh_.initialize(pickup_mesh_data);
+        pickup_highlight_mesh_.initialize(pickup_highlight_mesh_data);
+        inspector_usable_mesh_.initialize(inspector_usable_mesh_data);
+        inspector_door_mesh_.initialize(inspector_door_mesh_data);
+        inspector_trigger_mesh_.initialize(inspector_trigger_mesh_data);
+        inspector_solid_mesh_.initialize(inspector_solid_mesh_data);
+        inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
+        player_shot_mesh_.initialize(player_shot_mesh_data);
+        pellet_mesh_.initialize(pellet_mesh_data);
+        turret_shot_mesh_.initialize(turret_shot_mesh_data);
         initialize_prop_meshes(scene_data.color_pipeline_mode);
         initialize_environment_meshes(scene_data.color_pipeline_mode);
         environment_ = scene_data.environment;
@@ -476,7 +475,7 @@ namespace RelayGame
         for (const auto& chunk_data : scene_data.blockout.chunks)
         {
             RenderChunk chunk{};
-            chunk.mesh.initialize(chunk_data.mesh, upload_);
+            chunk.mesh.initialize(chunk_data.mesh);
             chunk.mins = chunk_data.mins;
             chunk.maxs = chunk_data.maxs;
             chunk.triangle_count = chunk_data.triangle_count;

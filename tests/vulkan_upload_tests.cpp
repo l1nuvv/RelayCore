@@ -303,11 +303,7 @@ int main()
     {
         const RelayCore::test::ScopedTempDirectory temp;
         RelayCore::log::init({.logs_directory = temp.path().string(), .enable_timestamped_log = false});
-        RelayCore::Window window{
-            {.width = 64, .height = 64},
-            ColorPipelineMode::legacy_gamma,
-            RelayCore::WindowGraphicsApi::vulkan
-        };
+        RelayCore::Window window{{.width = 64, .height = 64}};
         VulkanDevice device{window};
         check_uploads(device);
         std::cout << "vulkan_upload=passed: mesh bytes, linear/sRGB mips, reload, mapped offsets, deferred retirement, "

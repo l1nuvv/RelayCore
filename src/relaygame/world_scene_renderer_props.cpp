@@ -141,7 +141,7 @@ namespace RelayGame
             {
                 vertex.color = RelayCore::render::visual_rgb_for_pipeline(vertex.color, pipeline);
             }
-            mesh.initialize(data, upload_);
+            mesh.initialize(data);
         };
         CpuColorMeshData housing;
         box(housing, {0, 0, -0.025F}, {1, 1, 0.10F}, {0.23F, 0.26F, 0.24F});
@@ -161,12 +161,17 @@ namespace RelayGame
         const auto actuator = [&](RelayCore::render::StaticColorMesh& mesh, glm::vec3 color, bool pressed = false) {
             CpuColorMeshData data;
             disk(data, {0, -0.11F, pressed ? 0.069F : 0.086F}, 0.22F, 0.033F, color);
-            box(data, {0, 0.30F, 0.066F}, {0.32F, 0.055F, 0.009F}, color * 1.25F);
-            for (auto& vertex : data.vertices)
+            const auto indicator_first = data.vertices.size();
+            box(data, {0, 0.30F, 0.066F}, {0.32F, 0.055F, 0.009F}, color);
+            for (std::size_t i = 0; i < data.vertices.size(); ++i)
             {
+                auto& vertex = data.vertices[i];
                 vertex.material_kind = static_cast<float>(RelayCore::SurfaceMaterial::Matte);
+                vertex.color = RelayCore::render::visual_rgb_for_pipeline(vertex.color, pipeline);
+                if (i >= indicator_first)
+                    vertex.color *= 1.25F;
             }
-            upload(mesh, std::move(data));
+            mesh.initialize(data);
         };
         actuator(panel_mesh_, {0.78F, 0.49F, 0.13F});
         actuator(panel_blocked_mesh_, {0.46F, 0.14F, 0.09F});

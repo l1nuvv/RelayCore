@@ -39,22 +39,6 @@ macro(relaycore_find_dependencies)
 endmacro()
 
 macro(relaycore_create_dependency_targets)
-    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/glad/include/glad/gl.h")
-        message(FATAL_ERROR "Vendored glad headers were not found in extern/glad/include")
-    endif()
-
-    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/glad/src/gl.c")
-        message(FATAL_ERROR "Vendored glad source was not found in extern/glad/src/gl.c")
-    endif()
-
-    add_library(relaycore_glad STATIC)
-    add_library(RelayCore::glad ALIAS relaycore_glad)
-    target_sources(relaycore_glad PRIVATE "${PROJECT_SOURCE_DIR}/extern/glad/src/gl.c")
-    target_include_directories(relaycore_glad SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/extern/glad/include")
-    target_link_libraries(relaycore_glad PUBLIC RelayCore::project_options RelayCore::warnings)
-    set_target_properties(relaycore_glad PROPERTIES UNITY_BUILD OFF FOLDER "third_party")
-    relaycore_apply_standard_target_settings(relaycore_glad)
-
     add_library(relaycore_toml_headers INTERFACE)
     add_library(RelayCore::toml_headers ALIAS relaycore_toml_headers)
     target_include_directories(relaycore_toml_headers SYSTEM INTERFACE ${RELAYCORE_TOMLPLUSPLUS_INCLUDE_DIR})

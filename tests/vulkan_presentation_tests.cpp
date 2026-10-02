@@ -123,9 +123,7 @@ namespace
         for (int cycle = 0; cycle < 2; ++cycle)
         {
             RelayCore::Window window{
-                {.title = "RelayCore Vulkan presentation check", .width = 320, .height = 240, .vsync = false},
-                RelayCore::render::ColorPipelineMode::legacy_gamma,
-                RelayCore::WindowGraphicsApi::vulkan
+                {.title = "RelayCore Vulkan presentation check", .width = 320, .height = 240, .vsync = false}
             };
             RelayCore::core::require_sdl(SDL_RaiseWindow(window.handle()), "Failed to raise Vulkan check window");
             RelayCore::core::require_sdl(

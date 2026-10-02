@@ -194,6 +194,8 @@ E-001 ускоряет настройку, но его задержка не з�
 
 Три трека: G — непосредственно gameplay; E — необходимые runtime/tooling capabilities; H — correctness, проверяемость, performance evidence, build и документация.
 
+Отдельный инженерный трек: VK-013 done — runtime использует только Vulkan; свежие configure/build и 299 тестов прошли без пропусков. Следующий gate — read-only review VK-014 по `VULKAN_MIGRATION_PLAN.md`. Это не меняет игровую приёмку G-011.
+
 | Порядок | ID | Название | Трек | Priority | Статус |
 | --- | --- | --- | --- | --- | --- |
 | 1 | H-001 | Актуальный test baseline | Engine Health | P1 | done |
@@ -218,6 +220,7 @@ E-001 ускоряет настройку, но его задержка не з�
 | 20 | G-011 | Следующий короткий игровой эпизод | Gameplay/authoring | P2 | awaiting_playtest |
 | 21 | H-008 | Профиль нового игрового маршрута | Engine Health | P2 | pending |
 | 22 | H-009 | Проверяемый кандидат следующего эпизода | Engine Health/delivery | P2 | pending |
+| 23 | VK-014 | Ревью архитектуры после Vulkan cutover | Engine Health/rendering | P2 | done |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
 
@@ -481,13 +484,13 @@ E-001 ускоряет настройку, но его задержка не з�
 **Действия:**
 
 1. Обновить README: текущий маршрут, save format, запуск и private playtest.
-2. Обновить STATUS: убрать старую maintenance-очередь из роли действующего направления, сослаться на этот roadmap.
+2. Хранить актуальные статусы и verification evidence в этом roadmap без отдельной maintenance-очереди.
 3. Уточнить ARCHITECTURE: текущие owner/state/save/reload contracts и связь UI с diagnostics.
-4. Пометить FOUNDATION/MASTER_REFACTOR/старый ROADMAP как исторические либо завершённые в соответствующих частях. Не переписывать историю проверок как новую проверку.
-5. Сохранить полезные наблюдения `EPISODE_DEVELOPMENT_PLAN.md`, но убрать конкурирующий порядок задач при согласовании документов.
+4. Убирать дублирующие и устаревшие планы из рабочего дерева; исторические документы доступны в Git. Не переписывать историю проверок как новую проверку.
+5. Сохранять полезные наблюдения эпизода в соответствующих ticket и playtest-протоколах без конкурирующего порядка задач.
 6. Обновить player guide по принятому поведению, а не по задуманным функциям.
 
-**Вероятные файлы:** `README.md`, `STATUS.md`, `docs/ARCHITECTURE.md`, `docs/FOUNDATION_ROADMAP.md`, `docs/MASTER_REFACTOR_PLAN.md`, `docs/EPISODE_DEVELOPMENT_PLAN.md`, `docs/PLAYTEST_GUIDE.txt`.
+**Вероятные файлы:** `README.md`, `docs/ARCHITECTURE.md`, `docs/PLAYABLE_SLICE_ROADMAP.md`, `docs/PLAYTEST_GUIDE.txt`.
 
 **Проверки:** соответствие текущему source/CMake, работоспособность ссылок, `git diff --check`. Пересборка для документации не нужна.
 
@@ -723,7 +726,7 @@ Vulkan migration и production asset/physics/navigation foundations больше
 
 ## 12. Документы и инженерная ценность
 
-Этот roadmap задаёт новую очередь развития. `docs/EPISODE_DEVELOPMENT_PLAN.md` содержит полезные наблюдения текущего эпизода; `docs/DEVELOPMENT.md` и `docs/EDITOR_AND_CAMPAIGN.md` — практические инструкции. `STATUS.md`, `FOUNDATION_ROADMAP.md`, `MASTER_REFACTOR_PLAN.md`, старый `ROADMAP.md` и аудиты читать как датированные свидетельства и перепроверять. Не продолжать старые RC/RF задачи по одному статусу документа.
+Этот roadmap содержит действующую очередь, статусы и verification evidence; `docs/playtests/` — протоколы проверок и наблюдений. `docs/DEVELOPMENT.md` и `docs/EDITOR_AND_CAMPAIGN.md` — практические инструкции. Арт-направление задано в `docs/ART_DIRECTION.md`; отдельные architecture, dependency и Vulkan references задают границы соответствующих работ. Дублирующие исторические планы, аудиты и `STATUS.md` удалены из рабочего дерева при cleanup 2026-10-01 и доступны в Git. Старые RC/RF-предложения требуют перепроверки и не являются поручением.
 
 Известный drift исходного анализа: текущий save format 4; CI уже содержит graphics stage; private packaging script существует; основной маршрут имеет девять этапов; ряд RF-исправлений уже присутствует в source. Полное согласование документов — H-003.
 
@@ -774,5 +777,20 @@ Vulkan migration и production asset/physics/navigation foundations больше
 | 2026-09-29 | G-009 / PROJECT_PLAN M1 | done — автор принял внешний вид/feedback, звук, отдачу, помпу, переключение и боевые роли. | 3/7/12 м, rover и смешанный бой пройдены; 3 м — два выстрела, 7/12 м — пять. Детали цели/прицеливания не уточнены; параметры не менялись. M1 human acceptance явно passed; [отзыв](playtests/G-009-2026-09-28.md). |
 | 2026-09-29 | G-010 / PROJECT_PLAN M2 | deferred — существующие угрозы уже дают разные роли двух оружий; недостающее поведение не подтверждено. | Нового AI нет. Вернуться, если новый эпизод выявит недостающее решение по позиции/оружию, которое нельзя дать существующими угрозами и геометрией. M2 done записанным решением. |
 | 2026-09-29 | G-011 / PROJECT_PLAN M3–M4 | awaiting_playtest — M3 done, M4 ждёт первого прохождения новым игроком. | Новая карта: семь задач, две турели/два rover, pickup, перепуск, выход/финал; меню и captions. Debug unit/audio 250/250, content 31/31, graphics/lifecycle 2/2, CLI valid/0 warnings, formatting/diff-check. Три scripted прохода, editor fingerprint, saves/retry и SDL E; кадры просмотрены. Длительность и игровая приёмка открыты; [протокол](playtests/G-011-2026-09-29.md). M5/M6 не начаты. |
+
+| 2026-10-01 | Repository cleanup / H-003 | done — удалены семь исторических планов/аудитов и дублирующий status, два устаревших локальных patch-файла; README сокращён, навигация документов и redundant ignore entries согласованы. | 57 локальных Markdown-ссылок без ошибок; все собственные C/C++ translation units названы в CMake; Python AST, JSON и 12 PowerShell-скриптов разобраны; `cmake --list-presets` и `git diff --check` успешны. Runtime, build/CI и генераторы ассетов не менялись; сборка и runtime-тесты не запускались. `new.patch` оставлен: полная применённость не подтверждена. |
+
+| 2026-10-01 | CI / updater readiness review | Исправлены подтверждённые CI/lifecycle проблемы; PowerShell-регрессии включены в CTest, README и testing contract актуализированы. | Debug unit/audio/tooling 254/254, content 31/31, graphics 16/16 без skip; loader/layers probe, YAML/shell/JUnit gate checks, formatting/links/diff-check прошли. Remote graphics job и runner ещё не проверены; VK-009 не начинался. Решения по всем предложениям и точные команды — в `VULKAN_MIGRATION_PLAN.md`, Infrastructure review. |
+| 2026-10-01 | VK-009 | done — Vulkan ambient/bounce, directional и текущие nearest-eight local lights, с прежней подготовкой world data. | Debug graphics 16/16, selected checks 36/36, content 31/31; 74 GL/Vulkan пары без различий coverage и без RGB delta >8. Optimized mesh прошёл; ASan результат и границы — в `VULKAN_MIGRATION_PLAN.md`, VK-009. Основная игра остаётся на GL; автор поручил сразу продолжить VK-010. |
+| 2026-10-01 | VK-010 | done — directional cascades, spot и point shadows с текущими culling/bias/PCF и явной синхронизацией Vulkan. | Debug graphics 16/16, unit/audio/tooling 254/254, content 31/31; optimized mesh/presentation/lifecycle 3/3, ASan mesh 1/1. 122 GL/Vulkan пары, включая 48 shadow cases; validation чистая. RenderDoc подтвердил D24 storage, depth writes/reads, transitions и шесть активных point faces. Точные допуски/evidence/границы — в `VULKAN_MIGRATION_PLAN.md`, VK-010. Следующий gate — VK-011; основной runtime пока GL. |
+| 2026-10-02 | VK-011 | done — color pipeline, fog/post, material/emissive parity; native Vulkan color baseline. | 158 GL/Vulkan пары, обе карты/цветовые modes; texture decode/filtering, clear и UI без повторного encoding. RenderDoc подтвердил SRGB scene / UNORM UI views и raw UNORM blit. Исправлен порядок декодирования/интенсивности индикатора панели; legacy сохранён. Evidence — `VULKAN_MIGRATION_PLAN.md`, VK-011. |
+| 2026-10-02 | VK-012 | done — после восстановления desktop две presentation/recreation проверки прошли 2/2, Tracy presentation 1/1. | Debug graphics 15/17 (две остановились на `GetPixel == CLR_INVALID`), unit/audio/tooling 254/254, content 31/31; optimized 3/3, ASan 2/2, Debug+Tracy validation 3/3. GPU-AV не нашёл shader-access ошибок; Tracy capture: 480 рабочих кадров, 22 709 GPU events. Workflows и RenderDoc checklist добавлены в `DEVELOPMENT.md`; границы и итоговые проверки — в `VULKAN_MIGRATION_PLAN.md`, VK-012. Исходный GL runtime заменяется в VK-013. |
+
+| 2026-10-02 | VK-013 | done — основной runtime, ImGui, reload, readback и presentation переведены на Vulkan; GL/glad/GLSL и OpenGL binding удалены. | Свежие configure/build, 297/297 основных проверок и desktop presentation/recreation 2/2; optimized 3/3, ASan 4/4, финальный reload/presentation lifecycle в обеих конфигурациях 1/1. 158 замороженных графических эталонов, чистая validation, package/SPIR-V hash checks и отказ при повреждённом shader. Точные команды, evidence и ограничения — `VULKAN_MIGRATION_PLAN.md`, VK-013. |
+
+| 2026-10-02 | VK-013 — runtime feedback | Разобраны ~25 FPS и постоянное шипение: добавлен оптимизированный CLion запуск `RelayCore — Play`, loop пара сделан тише и менее высокочастотным. | Одинаковый scripted entrance 1280×720/VSync off: Debug p50 42,79 мс, RelWithDebInfo 1,63 мс; оба полных episode workloads прошли, Tracy GPU scene median около 0,28 мс. Это сравнение сборок, не ускорение renderer. Автор подтвердил источник шипения `steam.wav`; PCM16/mono/44100 Hz/6,4 с и бесшовность сохранены, RMS −9,38 дБ, другие loops идентичны. Native audio 1/1, обе demo-сборки и runtime asset hashes, Python/XML и diff-check прошли. Оценка нового звука на слух автором ещё не получена. |
+
+| 2026-10-02 | VK-013 — авторская приёмка runtime | done — автор сообщил «все ок работает» и поручил продолжить план после исправления запуска и звука пара. | Принят текущий runtime; новых измерений или независимого прохода этим отзывом не заявлено. G-011/H-008 остаются в прежнем состоянии. |
+| 2026-10-02 | VK-014 | done — read-only ревью ownership/error paths, границ API, кэшей и frame waits; обязательных архитектурных исправлений не подтверждено. | Целевые Debug graphics/lifecycle/failure checks 10/10 без skip/validation; optimized workload 11/11, свежая Tracy baseline без concurrent GPU tests, RenderDoc обеих карт и thumbnails. Entrance p50/p95 1,5409/1,9504 мс; GPU Scene median 0,276480 мс. Запланирована отдельная P3 VK-F01 по диагностическим строкам; runtime не менялся. Команды, артефакты и ограничения — `VULKAN_MIGRATION_PLAN.md`, раздел 28. |
 
 После каждой выполненной задачи добавлять короткую запись и обновлять единую таблицу статусов в разделе 6. Не копировать сюда полные логи. Для `awaiting_playtest` явно написать, какой человек/сценарий/ПК ещё нужен; для `done` перечислить реально выполненные проверки.

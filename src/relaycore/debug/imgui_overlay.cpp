@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <cmath>
 #include <imgui.h>
-#include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 #include <span>
@@ -32,47 +31,6 @@ namespace RelayCore::debug
     ImGuiOverlay::~ImGuiOverlay() noexcept
     {
         shutdown();
-    }
-
-    void ImGuiOverlay::initialize(const Window& window)
-    {
-        if (initialized_ || !config_.enabled)
-        {
-            return;
-        }
-
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-
-        ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        configure_imgui_font(io);
-
-        ImGui::StyleColorsDark();
-
-        if (!ImGui_ImplSDL3_InitForOpenGL(window.handle(), window.gl_context()))
-        {
-            log::warn("ImGui overlay disabled: SDL3 backend initialization failed");
-            ImGui::DestroyContext();
-            return;
-        }
-
-        if (!ImGui_ImplOpenGL3_Init("#version 460 core"))
-        {
-            log::warn("ImGui overlay disabled: OpenGL3 backend initialization failed");
-            ImGui_ImplSDL3_Shutdown();
-            ImGui::DestroyContext();
-            return;
-        }
-
-        window_ = &window;
-        fps_log_accumulator_ = 0.0F;
-        frame_time_sample_count_ = 0;
-        frame_time_sample_cursor_ = 0;
-        frame_time_samples_.fill(0.0F);
-        initialized_ = true;
-
-        log::info("ImGui overlay initialized");
     }
 
     void ImGuiOverlay::initialize(const Window& window, const render::VulkanDevice& device)
@@ -127,7 +85,6 @@ namespace RelayCore::debug
         }
         window_ = &window;
         initialized_ = true;
-        vulkan_ = true;
         log::info("ImGui Vulkan overlay initialized");
     }
 
@@ -138,10 +95,7 @@ namespace RelayCore::debug
             return;
         }
 
-        if (vulkan_)
-            ImGui_ImplVulkan_Shutdown();
-        else
-            ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
 
@@ -151,7 +105,6 @@ namespace RelayCore::debug
         frame_time_sample_cursor_ = 0;
         frame_time_samples_.fill(0.0F);
         initialized_ = false;
-        vulkan_ = false;
     }
 
     void ImGuiOverlay::apply_config(const ImGuiOverlayConfig& config) noexcept
@@ -180,10 +133,7 @@ namespace RelayCore::debug
             return;
         }
 
-        if (vulkan_)
-            ImGui_ImplVulkan_NewFrame();
-        else
-            ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
     }
@@ -215,19 +165,6 @@ namespace RelayCore::debug
         return sum / static_cast<float>(frame_time_sample_count_);
     }
 
-    auto ImGuiOverlay::vsync_label(const int swap_interval) -> const char*
-    {
-        switch (swap_interval)
-        {
-            case -1:
-                return "adaptive";
-            case 1:
-                return "on";
-            default:
-                return "off";
-        }
-    }
-
     void ImGuiOverlay::draw_diagnostics(
         const FrameInfo& frame,
         const render::PerspectiveCamera& camera,
@@ -251,7 +188,6 @@ namespace RelayCore::debug
         }
 
         const float refresh_rate_hz = window_ != nullptr ? window_->refresh_rate_hz() : 0.0F;
-        const int swap_interval = window_ != nullptr && !vulkan_ ? window_->swap_interval() : 0;
         const float target_frame_ms = refresh_rate_hz > 0.0F ? 1000.0F / refresh_rate_hz : 16.667F;
 
         std::array<float, kFrameTimeSampleCount> ordered_frame_times{};
@@ -284,7 +220,7 @@ namespace RelayCore::debug
             .target_frame_ms = target_frame_ms,
             .refresh_rate_hz = refresh_rate_hz,
             .frame_plot_max = frame_plot_max,
-            .vsync_label = vulkan_ ? "swapchain" : vsync_label(swap_interval),
+            .vsync_label = window_ != nullptr && window_->vsync_enabled() ? "on" : "off",
             .ordered_frame_times = std::span<const float>{ordered_frame_times.data(), frame_time_sample_count_},
         };
         draw_summary_diagnostics_section(summary_frame_stats, runtime, player, interaction, audio, iteration);
@@ -335,21 +271,6 @@ namespace RelayCore::debug
         if (config_.show_demo_window)
         {
             ImGui::ShowDemoWindow(&config_.show_demo_window);
-        }
-    }
-
-    void ImGuiOverlay::render() const
-    {
-        if (!initialized_)
-        {
-            return;
-        }
-        if (vulkan_)
-            throw std::logic_error("Vulkan UI requires finish_frame and renderer submission");
-        auto* draw = finish_frame();
-        {
-            RELAYCORE_PROFILE_ZONE_N("ImGui_ImplOpenGL3_RenderDrawData");
-            ImGui_ImplOpenGL3_RenderDrawData(draw);
         }
     }
 

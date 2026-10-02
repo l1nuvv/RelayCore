@@ -38,7 +38,7 @@ These libraries already fit RelayCore. Do not replace them merely for perceived 
 | authored TOML/config parsing | **toml++** | Keep for human-authored data/config; do not turn TOML into the compiled product-asset format. |
 | tests | **doctest** | Keep the existing test investment. |
 | debug/editor UI | **Dear ImGui** | Keep as optional tooling/UI; it must not become required gameplay architecture. |
-| profiling | **Tracy** | Keep and migrate GPU instrumentation from OpenGL to Vulkan. |
+| profiling | **Tracy** | Keep Vulkan GPU instrumentation and frame/CPU timings. |
 
 The verified VK-D00 manifest resolves SDL3 `3.4.16#1`, miniaudio `0.11.25`, GLM `1.0.3`, spdlog `1.17.0#1`, toml++ `3.4.0#1`, doctest `2.5.3`, ImGui `1.92.9`, and Tracy `0.14.1#1`. Do not hard-code these versions individually unless a dedicated version constraint is required.
 
@@ -63,6 +63,8 @@ VK-000 enabled `sdl3[vulkan]` and `imgui[vulkan-binding]` alongside the existing
 VK-003 uses vk-bootstrap for swapchain configuration and adds the clear/presentation lifecycle with explicit synchronization. Presentation fences require checked/enabled swapchain-maintenance extensions and feature support; the runtime API minimum remains 1.3. Debug synchronization validation, RelWithDebInfo/Tracy and focused ASan presentation checks pass. No dependency versions changed in this phase; the game retains the OpenGL reference path.
 
 VK-004 integrates VMA-backed GPU buffers/images, mapped staging/readback, mip upload and completion-based retirement. Native image views/samplers and graphics-queue submissions remain renderer-owned. Debug synchronization validation and focused RelWithDebInfo/ASan readback/reload/lifetime checks pass; dependency versions remain unchanged. Slang rendering is the VK-005 gate.
+
+VK-013 removes the ImGui OpenGL binding and vendored glad. The runtime uses SDL Vulkan windows, vk-bootstrap presentation/device ownership, VMA uploads and Slang-generated SPIR-V. Dependency versions and baseline are unchanged.
 
 ## 4. Physics — Jolt Physics
 
@@ -302,7 +304,7 @@ Conceptually add/enable:
 
 ```text
 sdl3[vulkan]
-imgui[sdl3-binding, opengl3-binding, vulkan-binding]  # OpenGL binding only during parity period
+imgui[sdl3-binding, vulkan-binding]
 shader-slang (host build tool)
 vk-bootstrap
 vulkan-memory-allocator

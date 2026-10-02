@@ -2,7 +2,7 @@
 
 ## Target
 
-GoldSource/Half-Life-era spatial readability and industrial atmosphere, implemented as an original modern project rather than a copy of specific shipped assets.
+Read `docs/ART_DIRECTION.md` for the authoritative visual direction and its linked style board. Preserve GoldSource/Half-Life-era spatial readability and industrial atmosphere with a restrained, engineered occult layer. Named games and the board inform original RelayCore work rather than copies of shipped assets.
 
 Favor:
 

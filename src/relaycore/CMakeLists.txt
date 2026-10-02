@@ -25,16 +25,12 @@ set(RELAYCORE_ENGINE_SOURCES
     physics/collision.cpp
     physics/player_motion.cpp
     platform/sdl_system.cpp
-    platform/open_gl_context.cpp
     platform/window.cpp
     render/blockout_mesh_builder.cpp
     render/blockout_texture_atlas.cpp
     render/authored_color.cpp
-    render/default_framebuffer_srgb_verifier.cpp
     render/camera.cpp
     render/game_hud.cpp
-    render/gl_debug.cpp
-    render/gl_loader.cpp
     render/vulkan_device.cpp
     render/vulkan_swapchain.cpp
     render/vulkan_resources.cpp
@@ -48,8 +44,8 @@ set(RELAYCORE_ENGINE_SOURCES
 
 
     render/renderer.cpp
-    render/shader_program.cpp
-    render/shader_source_loader.cpp
+    render/shadow_math.cpp
+    render/vulkan_gpu_profiler.cpp
     render/texture2d.cpp
     world/blockout_loader.cpp
     world/blockout_loader_parse.cpp
@@ -89,22 +85,17 @@ set(RELAYCORE_ENGINE_HEADERS
     physics/collision.h
     physics/player_motion.h
     platform/sdl_system.h
-    platform/open_gl_context.h
     platform/window.h
     render/blockout_mesh_builder.h
     render/blockout_texture_atlas.h
     render/authored_color.h
-    render/default_framebuffer_srgb_verifier.h
     render/camera.h
     render/game_hud.h
-    render/gl_debug.h
-    render/gl_loader.h
     render/vulkan_device.h
     render/vulkan_swapchain.h
     render/vulkan_resources.h
     render/vulkan_uploads.h
     render/vulkan_mesh_renderer.h
-    render/resource_upload.h
     render/mesh.h
     render/render_authoring_config.h
     render/pipeline_authoring_overlay.h
@@ -113,8 +104,8 @@ set(RELAYCORE_ENGINE_HEADERS
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h
-    render/shader_program.h
-    render/shader_source_loader.h
+    render/shadow_math.h
+    render/vulkan_gpu_profiler.h
     render/texture2d.h
     world/blockout_level.h
     world/blockout_loader.h
@@ -143,7 +134,6 @@ target_include_directories(
     relaycore_engine
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/extern/glad/include>
         $<INSTALL_INTERFACE:include>
 )
 
@@ -156,7 +146,6 @@ target_link_libraries(
         SDL3::SDL3
         spdlog::spdlog
         glm::glm
-        RelayCore::glad
     PRIVATE
         RelayCore::miniaudio_headers
         ${RELAYCORE_IMGUI_TARGET}

@@ -19,14 +19,9 @@ namespace RelayCore::render
         glm::vec3 maxs{};
     };
 
-    // Scenes retain shared immutable resources. OpenGL mode requires a live context; CPU mode does not.
+    // Scenes retain immutable CPU resources; the renderer owns their GPU uploads.
     class StaticModelCache {
     public:
-        explicit StaticModelCache(ResourceUpload upload = ResourceUpload::opengl) : upload_(upload) {}
-        [[nodiscard]] auto upload_mode() const noexcept -> ResourceUpload
-        {
-            return upload_;
-        }
         [[nodiscard]] auto
         load(const std::filesystem::path& mesh, const std::filesystem::path& texture, TextureEncoding encoding)
             -> std::shared_ptr<const StaticModel>;
@@ -38,6 +33,5 @@ namespace RelayCore::render
             std::shared_ptr<const StaticModel> resource;
         };
         std::unordered_map<std::string, Entry> entries_;
-        ResourceUpload upload_;
     };
 } // namespace RelayCore::render

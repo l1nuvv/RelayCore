@@ -6,7 +6,6 @@
 
 #include <SDL3/SDL.h>
 #include <exception>
-#include <glad/gl.h>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -20,9 +19,9 @@ namespace
     struct DelegateLifetimeState {
         int shutdown_calls = 0;
         int destructor_calls = 0;
-        bool shutdown_has_context = false;
-        bool destructor_has_context = false;
-        bool gpu_resource_released = false;
+        bool shutdown_has_renderer = false;
+        bool destructor_has_renderer = false;
+        bool mesh_source_released = false;
     };
 
     class LifetimeDelegate final : public RelayCore::AppDelegate {
@@ -34,20 +33,27 @@ namespace
         ~LifetimeDelegate() override
         {
             ++state_.destructor_calls;
-            state_.destructor_has_context = SDL_GL_GetCurrentContext() != nullptr;
-            if (state_.destructor_has_context && buffer_ != 0)
+            try
             {
-                glDeleteBuffers(1, &buffer_);
-                state_.gpu_resource_released = glGetError() == GL_NO_ERROR;
+                state_.destructor_has_renderer = renderer_ && !renderer_->capture_frame().pixels.empty();
+                mesh_ = {};
+                state_.mesh_source_released = mesh_source_.expired();
+            } catch (...)
+            {
+                state_.destructor_has_renderer = false;
             }
         }
 
         void on_startup(RelayCore::EngineServices& services) override
         {
             SDL_HideWindow(services.window().handle());
-            glCreateBuffers(1, &buffer_);
-            if (buffer_ == 0 || glGetError() != GL_NO_ERROR)
-                throw std::runtime_error("Could not create delegate GPU resource");
+            renderer_ = &services.renderer();
+            mesh_.initialize(RelayCore::render::make_color_box_mesh_data());
+            mesh_source_ = mesh_.cpu_data();
+            const std::array items{RelayCore::render::RenderItem{.mesh = &mesh_}};
+            renderer_->begin_frame();
+            renderer_->draw_render_queue(items, items);
+            renderer_->finish_scene();
             if (throw_on_startup_)
                 throw std::runtime_error("startup failure");
         }
@@ -62,14 +68,22 @@ namespace
         void on_shutdown(RelayCore::EngineServices&) noexcept override
         {
             ++state_.shutdown_calls;
-            state_.shutdown_has_context = SDL_GL_GetCurrentContext() != nullptr;
+            try
+            {
+                state_.shutdown_has_renderer = renderer_ && !renderer_->capture_frame().pixels.empty();
+            } catch (...)
+            {
+                state_.shutdown_has_renderer = false;
+            }
         }
 
     private:
         DelegateLifetimeState& state_;
         bool throw_on_startup_;
         bool throw_on_update_;
-        GLuint buffer_ = 0;
+        RelayCore::Renderer* renderer_ = nullptr;
+        RelayCore::render::StaticColorMesh mesh_;
+        std::weak_ptr<const RelayCore::render::CpuColorMeshData> mesh_source_;
     };
 } // namespace
 
@@ -82,39 +96,6 @@ int main()
     }
 
     int result = 0;
-    for (const auto mode :
-         {RelayCore::render::ColorPipelineMode::legacy_gamma, RelayCore::render::ColorPipelineMode::hardware_srgb})
-    {
-        try
-        {
-            // Logging is deliberately uninitialized: this fails after the GL context is created.
-            RelayCore::Window window{RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false}, mode};
-            std::cerr << "Window construction unexpectedly succeeded without a logger\n";
-            result = 1;
-        } catch (const std::exception& error)
-        {
-            if (std::string_view{error.what()} != "RelayCore logger is not initialized")
-            {
-                std::cerr << "window_lifetime=skipped: " << error.what() << '\n';
-                result = 77;
-                break;
-            }
-
-            int window_count = 0;
-            const std::unique_ptr<SDL_Window*, decltype(&SDL_free)> windows{SDL_GetWindows(&window_count), SDL_free};
-            if (!windows || window_count != 0 || SDL_GL_GetCurrentContext() != nullptr)
-            {
-                std::cerr << "Failed constructor retained SDL/GL resources: windows=" << window_count
-                          << ", current_context=" << SDL_GL_GetCurrentContext() << '\n';
-                result = 1;
-            }
-        }
-        if (result != 0)
-        {
-            break;
-        }
-    }
-
     SDL_Quit();
     if (result == 0)
     {
@@ -153,26 +134,12 @@ int main()
                 throw std::runtime_error("Window that fits the display did not retain its requested size");
 
             {
-                RelayCore::Window vulkan{
-                    RelayCore::WindowConfig{.width = 64, .height = 64},
-                    RelayCore::render::ColorPipelineMode::legacy_gamma,
-                    RelayCore::WindowGraphicsApi::vulkan
-                };
-                if (vulkan.gl_context() != nullptr || SDL_GL_GetCurrentContext() != small.gl_context())
-                    throw std::runtime_error("Vulkan window changed the current OpenGL context");
-                bool rejected_gl_query = false;
-                try
-                {
-                    static_cast<void>(vulkan.swap_interval());
-                } catch (const std::logic_error&)
-                {
-                    rejected_gl_query = true;
-                }
-                if (!rejected_gl_query)
-                    throw std::runtime_error("Vulkan window queried another window's OpenGL swap interval");
+                RelayCore::Window second{RelayCore::WindowConfig{.width = 64, .height = 64}};
+                if ((SDL_GetWindowFlags(second.handle()) & SDL_WINDOW_VULKAN) == 0)
+                    throw std::runtime_error("Second window has no Vulkan surface");
             }
-            if (SDL_GL_GetCurrentContext() != small.gl_context() || !SDL_GL_SwapWindow(small.handle()))
-                throw std::runtime_error("OpenGL presentation did not survive Vulkan window destruction");
+            if ((SDL_GetWindowFlags(small.handle()) & SDL_WINDOW_VULKAN) == 0)
+                throw std::runtime_error("Vulkan window ownership changed after another window was destroyed");
         } catch (const std::exception& error)
         {
             std::cerr << "Window display fit failed: " << error.what() << '\n';
@@ -201,8 +168,8 @@ int main()
                     result = 1;
                 }
             }
-            if (state.shutdown_calls != 1 || state.destructor_calls != 1 || !state.shutdown_has_context
-                || !state.destructor_has_context || !state.gpu_resource_released)
+            if (state.shutdown_calls != 1 || state.destructor_calls != 1 || !state.shutdown_has_renderer
+                || !state.destructor_has_renderer || !state.mesh_source_released)
             {
                 std::cerr << "Delegate outlived engine resources or missed shutdown\n";
                 result = 1;

@@ -127,6 +127,9 @@ namespace RelayCore::render
 
         VkPhysicalDeviceVulkan12Features features12{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         features12.timelineSemaphore = VK_TRUE;
+#if defined(TRACY_ENABLE)
+        features12.hostQueryReset = VK_TRUE;
+#endif
         VkPhysicalDeviceVulkan13Features features13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
         features13.dynamicRendering = VK_TRUE;
         features13.synchronization2 = VK_TRUE;

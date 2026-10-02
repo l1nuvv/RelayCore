@@ -84,11 +84,7 @@ namespace
 
     void run_checks(const bool expect_missing_validation)
     {
-        RelayCore::Window window{
-            RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false},
-            RelayCore::render::ColorPipelineMode::legacy_gamma,
-            RelayCore::WindowGraphicsApi::vulkan
-        };
+        RelayCore::Window window{RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false}};
         if (expect_missing_validation)
         {
             try
