@@ -8,6 +8,7 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -28,10 +29,18 @@ TEST_CASE("rover detects pursues and attacks at a bounded cadence")
     auto level = room();
     auto enemies = RelayGame::build_enemies(level);
     RelayCore::gameplay::PlayerCombatState player;
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto actor = RelayCore::physics::make_player_aabb({0, .01F, 0}, .3F, 1.8F);
     for (int i = 0; i < 360; ++i)
-        RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, 1.F / 120, scratch);
+        RelayGame::update_enemies(
+            RelayCore::test::WorldQueryFixture{level, {}},
+            actor,
+            {0, 1.6F, 0},
+            player,
+            enemies,
+            1.F / 120,
+            scratch
+        );
     CHECK(enemies[0].state.position.z < 1.2F);
     CHECK(enemies[0].state.position.z >= .7F);
     CHECK(player.health == doctest::Approx(86));
@@ -49,8 +58,7 @@ TEST_CASE("shotgun has a close range advantage and counts one discharge")
         auto precise_enemies = shotgun_enemies;
         RelayCore::gameplay::PlayerCombatState shotgun, precise;
         const auto shot = RelayGame::fire_player_weapon(
-            level,
-            {},
+            RelayCore::test::WorldQueryFixture{level, {}},
             {0, .45F, 0},
             {0, 0, 1},
             shotgun,
@@ -72,9 +80,14 @@ TEST_CASE("shotgun has a close range advantage and counts one discharge")
         CHECK(shotgun.shots_hit == 1);
         CHECK(shotgun.weapon_cooldown_remaining_seconds == doctest::Approx(.85F));
         CHECK(shotgun.weapon_damage == precise.weapon_damage);
-        static_cast<void>(
-            RelayGame::fire_player_weapon(level, {}, {0, .45F, 0}, {0, 0, 1}, precise, {}, precise_enemies)
-        );
+        static_cast<void>(RelayGame::fire_player_weapon(
+            RelayCore::test::WorldQueryFixture{level, {}},
+            {0, .45F, 0},
+            {0, 0, 1},
+            precise,
+            {},
+            precise_enemies
+        ));
         if (distance == 3)
         {
             CHECK(shot.killed_enemy);
@@ -87,9 +100,15 @@ TEST_CASE("shotgun has a close range advantage and counts one discharge")
             CHECK(shotgun.damage_dealt < precise.damage_dealt);
             CHECK(shotgun.kills == 0);
         }
-        CHECK_FALSE(
-            RelayGame::fire_player_weapon(level, {}, {0, .45F, 0}, {0, 0, 1}, shotgun, {}, shotgun_enemies).combat.fired
-        );
+        CHECK_FALSE(RelayGame::fire_player_weapon(
+                        RelayCore::test::WorldQueryFixture{level, {}},
+                        {0, .45F, 0},
+                        {0, 0, 1},
+                        shotgun,
+                        {},
+                        shotgun_enemies
+        )
+                        .combat.fired);
     }
 }
 
@@ -123,8 +142,7 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
         turrets.push_back(behind);
     }
     const auto shot = RelayGame::fire_player_weapon(
-        level,
-        doors,
+        RelayCore::test::WorldQueryFixture{level, doors},
         {0, .45F, 0},
         {0, 0, 1},
         player,
@@ -164,8 +182,7 @@ TEST_CASE("shotgun can destroy multiple turrets with one event per target")
     }
     RelayCore::gameplay::PlayerCombatState player;
     const auto result = RelayGame::fire_player_weapon(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         {0, .6F, 0},
         {0, 0, 1},
         player,
@@ -193,15 +210,27 @@ TEST_CASE("shotgun handles vertical aim and does not fire an invalid direction")
 {
     auto level = room();
     RelayCore::gameplay::PlayerCombatState player;
-    CHECK_FALSE(
-        RelayGame::fire_player_weapon(level, {}, {0, 1, 0}, {}, player, {}, {}, RelayGame::PlayerWeapon::Shotgun)
-            .combat.fired
-    );
+    CHECK_FALSE(RelayGame::fire_player_weapon(
+                    RelayCore::test::WorldQueryFixture{level, {}},
+                    {0, 1, 0},
+                    {},
+                    player,
+                    {},
+                    {},
+                    RelayGame::PlayerWeapon::Shotgun
+    )
+                    .combat.fired);
     CHECK(player.shots_fired == 0);
-    CHECK(
-        RelayGame::fire_player_weapon(level, {}, {0, 1, 0}, {0, 1, 0}, player, {}, {}, RelayGame::PlayerWeapon::Shotgun)
-            .combat.fired
-    );
+    CHECK(RelayGame::fire_player_weapon(
+              RelayCore::test::WorldQueryFixture{level, {}},
+              {0, 1, 0},
+              {0, 1, 0},
+              player,
+              {},
+              {},
+              RelayGame::PlayerWeapon::Shotgun
+    )
+              .combat.fired);
     CHECK(player.shots_fired == 1);
     CHECK(player.shots_hit == 0);
 }
@@ -212,23 +241,63 @@ TEST_CASE("rover signals windup once and a dodged strike does not damage the pla
     auto enemies = RelayGame::build_enemies(level);
     enemies[0].state.position = {0, .01F, .9F};
     RelayCore::gameplay::PlayerCombatState player;
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto actor = RelayCore::physics::make_player_aabb({0, .01F, 0}, .3F, 1.8F);
-    const auto start = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .01F, scratch);
+    const auto start = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .01F,
+        scratch
+    );
     CHECK(start.windups == 1);
     CHECK(start.strikes == 0);
-    const auto paused = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, 0, scratch);
+    const auto paused = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        0,
+        scratch
+    );
     CHECK(paused.windups == 0);
     CHECK(paused.strikes == 0);
-    const auto waiting = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .1F, scratch);
+    const auto waiting = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .1F,
+        scratch
+    );
     CHECK(waiting.windups == 0);
     CHECK(waiting.strikes == 0);
     const auto escaped = RelayCore::physics::make_player_aabb({0, .01F, -2}, .3F, 1.8F);
-    const auto strike = RelayGame::update_enemies(level, {}, escaped, {0, 1.6F, -2}, player, enemies, .4F, scratch);
+    const auto strike = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        escaped,
+        {0, 1.6F, -2},
+        player,
+        enemies,
+        .4F,
+        scratch
+    );
     CHECK(strike.windups == 0);
     CHECK(strike.strikes == 1);
     CHECK(player.health == 100);
-    const auto recovery = RelayGame::update_enemies(level, {}, escaped, {0, 1.6F, -2}, player, enemies, .1F, scratch);
+    const auto recovery = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        escaped,
+        {0, 1.6F, -2},
+        player,
+        enemies,
+        .1F,
+        scratch
+    );
     CHECK(recovery.strikes == 0);
 }
 
@@ -238,19 +307,57 @@ TEST_CASE("nonlethal hits do not restart rover windup or bypass its recovery")
     auto enemies = RelayGame::build_enemies(level);
     enemies[0].state.position = {0, .01F, .9F};
     RelayCore::gameplay::PlayerCombatState player;
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto actor = RelayCore::physics::make_player_aabb({0, .01F, 0}, .3F, 1.8F);
-    RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .01F, scratch);
-    RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .20F, scratch);
-    const auto hit = RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies);
+    RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .01F,
+        scratch
+    );
+    RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .20F,
+        scratch
+    );
+    const auto hit = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .6F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies
+    );
     REQUIRE(hit.enemy_index == 0);
     CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Windup);
     CHECK(enemies[0].state.timer == doctest::Approx(.25F));
-    const auto strike = RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .26F, scratch);
+    const auto strike = RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .26F,
+        scratch
+    );
     CHECK(strike.strikes == 1);
     CHECK(player.health == 86);
     player.weapon_cooldown_remaining_seconds = 0;
-    static_cast<void>(RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies));
+    static_cast<void>(RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .6F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies
+    ));
     CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Recovery);
     CHECK(enemies[0].state.timer == doctest::Approx(.95F));
 }
@@ -261,16 +368,39 @@ TEST_CASE("rover cannot see shoot or walk through walls")
     level.solids.push_back({{-4, 0, 1.4F}, {4, 3, 1.6F}, RelayCore::SurfaceMaterial::Wall});
     auto enemies = RelayGame::build_enemies(level);
     RelayCore::gameplay::PlayerCombatState player;
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto actor = RelayCore::physics::make_player_aabb({0, 0, 0}, .3F, 1.8F);
-    RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, .1F, scratch);
+    RelayGame::update_enemies(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        actor,
+        {0, 1.6F, 0},
+        player,
+        enemies,
+        .1F,
+        scratch
+    );
     CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Idle);
-    auto shot = RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies);
+    auto shot = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .6F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies
+    );
     CHECK(shot.enemy_index == -1);
     enemies[0].state.mode = RelayGame::EnemyMode::Chasing;
     enemies[0].state.last_seen = {0, 0, 0};
     for (int i = 0; i < 360; ++i)
-        RelayGame::update_enemies(level, {}, actor, {0, 1.6F, 0}, player, enemies, 1.F / 120, scratch);
+        RelayGame::update_enemies(
+            RelayCore::test::WorldQueryFixture{level, {}},
+            actor,
+            {0, 1.6F, 0},
+            player,
+            enemies,
+            1.F / 120,
+            scratch
+        );
     CHECK(enemies[0].state.position.z >= 2.019F);
     CHECK(player.health == 100);
 }
@@ -283,7 +413,14 @@ TEST_CASE("rover dies from player fire and no longer attacks")
     for (int i = 0; i < 3; ++i)
     {
         player.weapon_cooldown_remaining_seconds = 0;
-        const auto hit = RelayGame::fire_player_weapon(level, {}, {0, .6F, 0}, {0, 0, 1}, player, {}, enemies);
+        const auto hit = RelayGame::fire_player_weapon(
+            RelayCore::test::WorldQueryFixture{level, {}},
+            {0, .6F, 0},
+            {0, 0, 1},
+            player,
+            {},
+            enemies
+        );
         CHECK(hit.enemy_index == 0);
         CHECK(hit.killed_enemy == (i == 2));
     }
@@ -291,10 +428,9 @@ TEST_CASE("rover dies from player fire and no longer attacks")
     CHECK(player.shots_hit == 3);
     CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
     CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Dead);
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     RelayGame::update_enemies(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         {{-.3F, 0, 2}, {.3F, 1.8F, 2.6F}},
         {0, 1.6F, 2.3F},
         player,

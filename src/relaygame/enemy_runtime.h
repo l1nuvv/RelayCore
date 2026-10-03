@@ -41,14 +41,13 @@ namespace RelayGame
     };
 
     auto update_enemies(
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const RelayCore::physics::WorldQuery world,
         const RelayCore::physics::Aabb& player_bounds,
         const glm::vec3& player_eye,
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RuntimeEnemy> enemies,
         float dt,
-        std::vector<RelayCore::physics::Aabb>& blockers
+        std::vector<RelayCore::physics::WorldCollider>& blockers
     ) -> EnemyThreatResult;
 
     struct PlayerAttackResult {
@@ -60,8 +59,7 @@ namespace RelayGame
         std::size_t ray_count = 0;
     };
     [[nodiscard]] auto fire_player_weapon(
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const RelayCore::physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         RelayCore::gameplay::PlayerCombatState& player,

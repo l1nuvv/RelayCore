@@ -13,6 +13,7 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -37,7 +38,15 @@ namespace
         -> glm::vec3
     {
         for (int i = 0; i < ticks; ++i)
-            position = RelayCore::physics::move_and_collide(world, position, velocity, 1.0F / 120, {}, true).position;
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{world},
+                           position,
+                           velocity,
+                           1.0F / 120,
+                           {},
+                           true
+            )
+                           .position;
         return position;
     }
 } // namespace
@@ -66,7 +75,7 @@ TEST_CASE("sandbox entries are grounded and the safe hub isolates combat bays")
         const auto at_entry = builder.build_at_entry(sandbox_path(), entry);
         CAPTURE(entry);
         const auto world = blockers(at_entry);
-        CHECK(RelayCore::physics::probe_ground(world, at_entry.spawn_position, {}));
+        CHECK(RelayCore::physics::probe_ground(RelayCore::test::WorldQueryFixture{world}, at_entry.spawn_position, {}));
     }
     const auto world = blockers(session);
     CHECK(walk(world, {-4, 0.01F, 0}, {0, -0.1F, 3}, 480).z < 5.6F);
@@ -75,13 +84,12 @@ TEST_CASE("sandbox entries are grounded and the safe hub isolates combat bays")
     CHECK(walk(world, {0, 0.01F, 0}, {3, -0.1F, 0}, 600).x < 7.6F);
     CHECK(walk(world, {-10, 0.01F, -3}, {-3, -0.1F, 0}, 360).y > 0.99F);
     auto player = RelayCore::gameplay::PlayerCombatState{};
-    std::vector<RelayCore::physics::Aabb> enemy_blockers;
+    std::vector<RelayCore::physics::WorldCollider> enemy_blockers;
     for (int i = 0; i < 240; ++i)
     {
         const auto bounds = RelayCore::physics::make_player_aabb(session.spawn_position, .3F, 1.8F);
         const auto threats = RelayCore::gameplay::update_combat_threats(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             bounds,
             session.spawn_position + glm::vec3{0, 1.65F, 0},
             player,
@@ -91,8 +99,7 @@ TEST_CASE("sandbox entries are grounded and the safe hub isolates combat bays")
         );
         CHECK(threats.turret_shots == 0);
         const auto enemies = RelayGame::update_enemies(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             bounds,
             session.spawn_position + glm::vec3{0, 1.65F, 0},
             player,
@@ -112,15 +119,14 @@ TEST_CASE("sandbox isolated rover lane lets the player dodge an authored windup"
     const RelayCore::core::GameplayConfig config;
     auto session = RelayGame::LevelSessionBuilder{config}.build_at_entry(sandbox_path(), "rover");
     auto player = RelayCore::gameplay::PlayerCombatState{};
-    std::vector<RelayCore::physics::Aabb> scratch;
+    std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto step = [&](glm::vec3 position) {
         const auto bounds = RelayCore::physics::make_player_aabb(position, .3F, 1.8F);
         const auto eye = position + glm::vec3{0, 1.65F, 0};
         RelayCore::gameplay::tick_combat_state(1.0F / 120, player, session.combat.turrets);
         CHECK(
             RelayCore::gameplay::update_combat_threats(
-                session.level,
-                session.doors,
+                RelayCore::test::WorldQueryFixture{session.level, session.doors},
                 bounds,
                 eye,
                 player,
@@ -132,8 +138,7 @@ TEST_CASE("sandbox isolated rover lane lets the player dodge an authored windup"
             == 0
         );
         return RelayGame::update_enemies(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             bounds,
             eye,
             player,
@@ -173,7 +178,7 @@ TEST_CASE("sandbox mixed lane combines mobile pressure with a turret and standin
         auto session = builder.build_at_entry(sandbox_path(), "mixed");
         const auto position = behind_cover ? glm::vec3{22, .02F, 20} : session.spawn_position;
         auto player = RelayCore::gameplay::PlayerCombatState{};
-        std::vector<RelayCore::physics::Aabb> scratch;
+        std::vector<RelayCore::physics::WorldCollider> scratch;
         unsigned shots = 0, windups = 0, strikes = 0;
         const auto rover = std::ranges::find_if(session.enemies, [](const auto& enemy) {
             return enemy.state.position.x > 20;
@@ -187,8 +192,7 @@ TEST_CASE("sandbox mixed lane combines mobile pressure with a turret and standin
             {
                 RelayCore::gameplay::tick_combat_state(1.0F / 120, player, session.combat.turrets);
                 shots += RelayCore::gameplay::update_combat_threats(
-                             session.level,
-                             session.doors,
+                             RelayCore::test::WorldQueryFixture{session.level, session.doors},
                              bounds,
                              eye,
                              player,
@@ -198,8 +202,7 @@ TEST_CASE("sandbox mixed lane combines mobile pressure with a turret and standin
                 )
                              .turret_shots;
                 const auto enemies = RelayGame::update_enemies(
-                    session.level,
-                    session.doors,
+                    RelayCore::test::WorldQueryFixture{session.level, session.doors},
                     bounds,
                     eye,
                     player,
@@ -465,8 +468,7 @@ TEST_CASE("sandbox firing stations hit their targets and cover blocks turret fir
         });
         REQUIRE(found != session.combat.turrets.end());
         const auto shot = RelayCore::gameplay::apply_player_fire(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             station,
             glm::normalize(found->origin - station),
             player,
@@ -482,8 +484,7 @@ TEST_CASE("sandbox firing stations hit their targets and cover blocks turret fir
     {
         RelayCore::gameplay::tick_combat_state(1.0F / 60, player, test_turrets);
         (void) RelayCore::gameplay::update_combat_threats(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             RelayCore::physics::make_player_aabb({-4, .01F, 13.8F}, .3F, 1.8F),
             {-4, 1.65F, 13.8F},
             player,
@@ -497,8 +498,7 @@ TEST_CASE("sandbox firing stations hit their targets and cover blocks turret fir
     {
         RelayCore::gameplay::tick_combat_state(1.0F / 60, player, test_turrets);
         (void) RelayCore::gameplay::update_combat_threats(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             RelayCore::physics::make_player_aabb({-2, .01F, 17}, .3F, 1.8F),
             {-2, 1.65F, 17},
             player,

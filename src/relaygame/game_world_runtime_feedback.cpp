@@ -193,8 +193,7 @@ namespace RelayGame
         }
 
         const auto attack = fire_player_weapon(
-            level_,
-            doors_,
+            world_query(),
             player_controller_.eye_position_world(),
             player_controller_.view_forward(),
             combat_state_.player,

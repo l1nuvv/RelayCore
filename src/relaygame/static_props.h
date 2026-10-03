@@ -12,6 +12,7 @@ namespace RelayGame
         std::filesystem::path model, texture;
         glm::mat4 transform{1};
         std::optional<RelayCore::BlockoutSolid> collider;
+        int authored_entity_index = -1;
     };
 
     [[nodiscard]] auto build_static_props(const RelayCore::BlockoutLevel& level) -> std::vector<StaticProp>;

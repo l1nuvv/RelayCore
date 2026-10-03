@@ -36,6 +36,10 @@ if(WIN32)
             -Importer $<TARGET_FILE:relaycore_model_import> -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
 endif()
 add_executable(relaycore_content_validation)
+add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp)
+target_link_libraries(relaycore_physics_tests PRIVATE RelayGame::runtime RelayCore::doctest_headers)
+set_target_properties(relaycore_physics_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+add_dependencies(relaycore_tests relaycore_physics_tests)
 add_executable(relaycore_audio_lifetime audio_lifetime_tests.cpp)
 target_link_libraries(relaycore_audio_lifetime PRIVATE
     RelayCore::engine RelayCore::project_options RelayCore::warnings
@@ -102,6 +106,7 @@ target_sources(
         log_tests.cpp
         mission_runtime_tests.cpp
         player_motion_tests.cpp
+        world_query_tests.cpp
         player_experience_tests.cpp
         render_authoring_config_tests.cpp
         pipeline_authoring_overlay_tests.cpp
@@ -181,6 +186,7 @@ foreach(test_target IN ITEMS
     relaycore_tests
     relaycore_audio_lifetime
     relaycore_content_validation
+    relaycore_physics_tests
     relaycore_window_lifetime_tests
     relaycore_vulkan_window_tests
     relaycore_vulkan_device_tests
@@ -336,4 +342,11 @@ doctest_discover_tests(
     TEST_PREFIX "validation."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_content_validation>"
     PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+)
+
+doctest_discover_tests(
+    relaycore_physics_tests
+    TEST_PREFIX "relaycore.physics."
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_physics_tests>"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
 )

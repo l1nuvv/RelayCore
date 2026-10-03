@@ -1,25 +1,15 @@
 #include "relaycore/physics/collision.h"
 
 #include "relaycore/core/profiling.h"
+#include "relaycore/physics/world_query.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace RelayCore::physics
 {
     namespace
     {
-        [[nodiscard]] constexpr auto make_min_offsets(const CollisionConfig& config) -> std::array<float, 3>
-        {
-            return {-config.radius, 0.0F, -config.radius};
-        }
-
-        [[nodiscard]] constexpr auto make_max_offsets(const CollisionConfig& config) -> std::array<float, 3>
-        {
-            return {config.radius, config.height, config.radius};
-        }
-
         [[nodiscard]] auto planar_distance_sq(const glm::vec3& a, const glm::vec3& b) -> float
         {
             RELAYCORE_PROFILE_FUNCTION();
@@ -29,7 +19,7 @@ namespace RelayCore::physics
         }
 
         [[nodiscard]] auto move_horizontal(
-            CollisionWorld world,
+            WorldQuery world,
             const glm::vec3& start_position,
             const CollisionConfig& config,
             const glm::vec3& desired_delta_xz,
@@ -50,11 +40,11 @@ namespace RelayCore::physics
 
             for (int step_index = 0; step_index < step_count; ++step_index)
             {
-                const AxisMoveResult x_result = move_axis(world, position, config, 0, step_delta_xz.x);
+                const AxisMoveResult x_result = world.move_axis(position, config, 0, step_delta_xz.x);
                 hit_x = hit_x || x_result.hit;
                 position.x = x_result.position_axis;
 
-                const AxisMoveResult z_result = move_axis(world, position, config, 2, step_delta_xz.z);
+                const AxisMoveResult z_result = world.move_axis(position, config, 2, step_delta_xz.z);
                 hit_z = hit_z || z_result.hit;
                 position.z = z_result.position_axis;
             }
@@ -72,7 +62,7 @@ namespace RelayCore::physics
         }
 
         [[nodiscard]] auto move_vertical(
-            const CollisionWorld world,
+            const WorldQuery world,
             const glm::vec3& start_position,
             const CollisionConfig& config,
             const float desired_delta_y,
@@ -90,7 +80,7 @@ namespace RelayCore::physics
 
             for (int step_index = 0; step_index < step_count; ++step_index)
             {
-                const AxisMoveResult result = move_axis(world, position, config, 1, step_delta_y);
+                const AxisMoveResult result = world.move_axis(position, config, 1, step_delta_y);
                 position.y = result.position_axis;
                 if (result.hit)
                 {
@@ -124,17 +114,15 @@ namespace RelayCore::physics
                && a.mins.y < (b.maxs.y - epsilon) && a.maxs.z > (b.mins.z + epsilon) && a.mins.z < (b.maxs.z - epsilon);
     }
 
-    auto ray_intersection_distance(
-        const glm::vec3& origin,
-        const glm::vec3& direction,
-        const Aabb& bounds,
-        const float max_distance
-    ) -> std::optional<float>
+    auto
+    ray_intersection(const glm::vec3& origin, const glm::vec3& direction, const Aabb& bounds, const float max_distance)
+        -> std::optional<RayIntersection>
     {
         RELAYCORE_PROFILE_FUNCTION();
         constexpr float kDirectionEpsilon = 0.0001F;
 
         float t_min = 0.0F;
+        glm::vec3 normal{};
         float t_max = std::max(max_distance, 0.0F);
 
         for (int axis = 0; axis < 3; ++axis)
@@ -161,6 +149,11 @@ namespace RelayCore::physics
                 std::swap(axis_t0, axis_t1);
             }
 
+            if (axis_t0 > t_min)
+            {
+                normal = {};
+                normal[axis] = axis_direction > 0 ? -1.0F : 1.0F;
+            }
             t_min = std::max(t_min, axis_t0);
             t_max = std::min(t_max, axis_t1);
             if (t_min > t_max)
@@ -169,54 +162,24 @@ namespace RelayCore::physics
             }
         }
 
-        return t_min <= max_distance ? std::optional<float>{t_min} : std::nullopt;
+        return t_min <= max_distance ? std::optional<RayIntersection>{{t_min, normal}} : std::nullopt;
     }
 
-    auto move_axis(
-        CollisionWorld world,
-        const glm::vec3& start_position,
-        const CollisionConfig& config,
-        const int axis,
-        const float delta
-    ) -> AxisMoveResult
+    auto ray_intersection_distance(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        const Aabb& bounds,
+        const float max_distance
+    ) -> std::optional<float>
     {
-        RELAYCORE_PROFILE_FUNCTION();
-        glm::vec3 position = start_position;
-        position[axis] += delta;
-
-        const auto min_offsets = make_min_offsets(config);
-        const auto max_offsets = make_max_offsets(config);
-
-        bool hit = false;
-
-        for (const Aabb& solid : world)
-        {
-            const Aabb player = make_player_aabb(position, config.radius, config.height);
-            if (!overlaps(player, solid, config.epsilon))
-            {
-                continue;
-            }
-
-            hit = true;
-            if (delta > 0.0F)
-            {
-                position[axis] = std::min(position[axis], solid.mins[axis] - max_offsets[axis] - config.epsilon);
-            } else if (delta < 0.0F)
-            {
-                position[axis] = std::max(position[axis], solid.maxs[axis] - min_offsets[axis] + config.epsilon);
-            }
-        }
-
-        return {
-            .position_axis = position[axis],
-            .hit = hit,
-        };
+        const auto hit = ray_intersection(origin, direction, bounds, max_distance);
+        return hit ? std::optional<float>{hit->distance} : std::nullopt;
     }
 
-    auto probe_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config) -> bool
+    auto probe_ground(WorldQuery world, const glm::vec3& position, const CollisionConfig& config) -> bool
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const AxisMoveResult result = move_axis(world, position, config, 1, -config.ground_probe_distance);
+        const AxisMoveResult result = world.move_axis(position, config, 1, -config.ground_probe_distance);
         if (!result.hit)
         {
             return false;
@@ -226,10 +189,10 @@ namespace RelayCore::physics
         return gap >= -config.epsilon && gap <= (config.ground_probe_distance + config.epsilon);
     }
 
-    auto snap_to_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config) -> glm::vec3
+    auto snap_to_ground(WorldQuery world, const glm::vec3& position, const CollisionConfig& config) -> glm::vec3
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const AxisMoveResult result = move_axis(world, position, config, 1, -config.max_ground_snap_distance);
+        const AxisMoveResult result = world.move_axis(position, config, 1, -config.max_ground_snap_distance);
 
         glm::vec3 snapped = position;
         if (!result.hit)
@@ -246,7 +209,7 @@ namespace RelayCore::physics
     }
 
     auto try_step_move(
-        CollisionWorld world,
+        WorldQuery world,
         const glm::vec3& start_position,
         const glm::vec3& desired_delta_xz,
         const CollisionConfig& config
@@ -258,7 +221,7 @@ namespace RelayCore::physics
             return std::nullopt;
         }
 
-        const AxisMoveResult raise = move_axis(world, start_position, config, 1, config.step_height);
+        const AxisMoveResult raise = world.move_axis(start_position, config, 1, config.step_height);
         if (raise.hit)
         {
             return std::nullopt;
@@ -289,7 +252,7 @@ namespace RelayCore::physics
     }
 
     auto move_and_collide(
-        CollisionWorld world,
+        WorldQuery world,
         const glm::vec3& start_position,
         const glm::vec3& velocity,
         const float dt,

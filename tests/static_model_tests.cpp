@@ -89,6 +89,12 @@ TEST_CASE("Static props keep transformed collision separate from visible geometr
     const auto session = RelayGame::LevelSessionBuilder{RelayCore::core::GameplayConfig{}}.build(level, "props.toml");
     CHECK(session.level.solids.empty());
     REQUIRE(session.level.prop_colliders.size() == 1);
+    REQUIRE(session.world_colliders.size() == 1);
+    const auto hit = RelayCore::physics::WorldQuery{session.world_colliders}.raycast({3, 1, 0}, {0, 0, 1}, 10);
+    REQUIRE(hit);
+    CHECK(hit->surface == RelayCore::SurfaceMaterial::Metal);
+    CHECK(hit->object.kind == RelayCore::physics::WorldObjectKind::PropCollider);
+    CHECK(hit->object.authored_entity_index == 0);
     const auto& bounds = session.level.prop_colliders.front();
     CHECK(bounds.mins.x == doctest::Approx(2.5));
     CHECK(bounds.maxs.z == doctest::Approx(7));

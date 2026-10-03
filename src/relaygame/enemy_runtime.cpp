@@ -16,29 +16,13 @@ namespace RelayGame
 {
     namespace
     {
-        auto blocked(
-            const RelayCore::BlockoutLevel& level,
-            std::span<const RelayCore::gameplay::RuntimeDoor> doors,
-            glm::vec3 origin,
-            glm::vec3 target
-        ) -> bool
+        auto blocked(const RelayCore::physics::WorldQuery world, glm::vec3 origin, glm::vec3 target) -> bool
         {
             const auto delta = target - origin;
             const auto distance = glm::length(delta);
             if (distance < .001F)
                 return false;
-            const auto hit = [&](const RelayCore::physics::Aabb& box) {
-                return RelayCore::physics::ray_intersection_distance(origin, delta / distance, box, distance)
-                    .has_value();
-            };
-            for (const auto* solids : {&level.solids, &level.prop_colliders})
-                for (const auto& solid : *solids)
-                    if (hit({solid.mins, solid.maxs}))
-                        return true;
-            for (const auto& door : doors)
-                if (RelayCore::gameplay::is_door_blocking(door) && hit(RelayCore::gameplay::current_door_bounds(door)))
-                    return true;
-            return false;
+            return world.raycast(origin, delta / distance, distance).has_value();
         }
     } // namespace
 
@@ -82,27 +66,20 @@ namespace RelayGame
     }
 
     auto update_enemies(
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const RelayCore::physics::WorldQuery world,
         const RelayCore::physics::Aabb& player_bounds,
         const glm::vec3& player_eye,
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RuntimeEnemy> enemies,
         float dt,
-        std::vector<RelayCore::physics::Aabb>& blockers
+        std::vector<RelayCore::physics::WorldCollider>& blockers
     ) -> EnemyThreatResult
     {
         EnemyThreatResult result{};
         if (!player.alive || dt <= 0 || enemies.empty())
             return result;
         blockers.clear();
-        for (const auto* solids : {&level.solids, &level.prop_colliders})
-            for (const auto& solid : *solids)
-                blockers.push_back({solid.mins, solid.maxs});
-        for (const auto& door : doors)
-            if (RelayCore::gameplay::is_door_blocking(door))
-                blockers.push_back(RelayCore::gameplay::current_door_bounds(door));
-        blockers.push_back(player_bounds);
+        blockers.push_back({.bounds = player_bounds, .object = {RelayCore::physics::WorldObjectKind::Player}});
         const auto static_count = blockers.size();
         for (auto& enemy : enemies)
         {
@@ -112,10 +89,16 @@ namespace RelayGame
             blockers.resize(static_count);
             for (const auto& other : enemies)
                 if (&other != &enemy && other.state.mode != EnemyMode::Dead)
-                    blockers.push_back(enemy_bounds(other.state));
+                    blockers.push_back(
+                        {.bounds = enemy_bounds(other.state),
+                         .object =
+                             {RelayCore::physics::WorldObjectKind::Enemy,
+                              static_cast<std::size_t>(&other - enemies.data()),
+                              other.state.entity_index}}
+                    );
             const auto eye = state.position + glm::vec3{0, .75F, 0};
             const bool sees =
-                glm::distance(eye, player_eye) <= enemy.detection_range && !blocked(level, doors, eye, player_eye);
+                glm::distance(eye, player_eye) <= enemy.detection_range && !blocked(world, eye, player_eye);
             if (sees)
                 state.last_seen = {player_eye.x, player_bounds.mins.y, player_eye.z};
             state.timer = std::max(0.0F, state.timer - dt);
@@ -156,8 +139,14 @@ namespace RelayGame
             state.vertical_speed = std::max(-20.0F, state.vertical_speed - 18.0F * dt);
             velocity.y = state.vertical_speed;
             const RelayCore::physics::CollisionConfig collision{.radius = .42F, .height = .95F, .step_height = .15F};
-            const auto moved =
-                RelayCore::physics::move_and_collide(blockers, state.position, velocity, dt, collision, true);
+            const auto moved = RelayCore::physics::move_and_collide(
+                world.with_actors(blockers),
+                state.position,
+                velocity,
+                dt,
+                collision,
+                true
+            );
             state.position = moved.position;
             if (moved.grounded || moved.hit_y)
                 state.vertical_speed = 0;
@@ -166,8 +155,7 @@ namespace RelayGame
     }
 
     static auto fire_player_ray(
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const RelayCore::physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         RelayCore::gameplay::PlayerCombatState& player,
@@ -189,13 +177,13 @@ namespace RelayGame
                 continue;
             const auto hit =
                 RelayCore::physics::ray_intersection_distance(origin, ray, enemy_bounds(enemies[i].state), distance);
-            if (hit && !blocked(level, doors, origin, origin + ray * *hit))
+            if (hit && !blocked(world, origin, origin + ray * *hit))
             {
                 distance = *hit;
                 index = static_cast<int>(i);
             }
         }
-        result.combat = RelayCore::gameplay::apply_player_fire(level, doors, origin, ray, player, turrets, distance);
+        result.combat = RelayCore::gameplay::apply_player_fire(world, origin, ray, player, turrets, distance);
         if (index >= 0 && result.combat.fired && !result.combat.hit_turret)
         {
             result.enemy_index = index;
@@ -221,8 +209,7 @@ namespace RelayGame
     }
 
     auto fire_player_weapon(
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::gameplay::RuntimeDoor> doors,
+        const RelayCore::physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         RelayCore::gameplay::PlayerCombatState& player,
@@ -233,7 +220,7 @@ namespace RelayGame
     {
         if (weapon == PlayerWeapon::Precise)
         {
-            auto result = fire_player_ray(level, doors, origin, direction, player, turrets, enemies);
+            auto result = fire_player_ray(world, origin, direction, player, turrets, enemies);
             if (result.combat.fired)
             {
                 result.rays[0] = result.combat;
@@ -273,7 +260,7 @@ namespace RelayGame
                         distance
                     ))
                     distance = *hit;
-            auto ray = fire_player_ray(level, doors, origin, pellet_direction, shot, turrets, enemies, distance);
+            auto ray = fire_player_ray(world, origin, pellet_direction, shot, turrets, enemies, distance);
             // Every pellet belongs to the same discharge: an early kill cannot expose a target behind it.
             if (ray.killed_enemy)
                 killed_bounds[killed_count++] = enemy_bounds(enemies[static_cast<std::size_t>(ray.enemy_index)].state);

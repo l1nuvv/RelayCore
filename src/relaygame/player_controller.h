@@ -20,7 +20,6 @@ namespace RelayCore
 {
     class EngineServices;
     class Window;
-    struct BlockoutLevel;
 } // namespace RelayCore
 
 namespace RelayCore::render
@@ -121,7 +120,7 @@ namespace RelayGame
         void
         initialize(const glm::vec3& spawn_position, std::optional<glm::vec2> spawn_view_angles = std::nullopt) noexcept;
 
-        void set_static_collision_world(const RelayCore::BlockoutLevel& level);
+        void set_static_collision_world(std::span<const RelayCore::physics::WorldCollider> colliders);
 
         void set_session_capture(RelayCore::Window& window, bool capture) const;
 
@@ -141,8 +140,7 @@ namespace RelayGame
 
         void update(
             const RelayCore::FrameInfo& frame,
-            const RelayCore::BlockoutLevel& level,
-            std::span<const RelayCore::physics::Aabb> dynamic_blockers = {}
+            std::span<const RelayCore::physics::WorldCollider> dynamic_blockers = {}
         );
 
         void apply_camera(RelayCore::render::PerspectiveCamera& camera) const;
@@ -198,15 +196,14 @@ namespace RelayGame
 
         void update_grounded(
             const RelayCore::FrameInfo& frame,
-            const RelayCore::BlockoutLevel& level,
-            std::span<const RelayCore::physics::Aabb> dynamic_blockers
+            std::span<const RelayCore::physics::WorldCollider> dynamic_blockers
         );
 
         void update_noclip(const RelayCore::FrameInfo& frame);
 
         [[nodiscard]] auto poll_move_input() const -> RelayCore::physics::MoveInput;
 
-        void refresh_collision_world(std::span<const RelayCore::physics::Aabb> dynamic_blockers);
+        void refresh_collision_world(std::span<const RelayCore::physics::WorldCollider> dynamic_blockers);
 
         [[nodiscard]] auto build_motion_config() const -> RelayCore::physics::PlayerMotionConfig;
 
@@ -236,8 +233,8 @@ namespace RelayGame
         bool restore_runtime_snapshot_pressed_ = false;
         bool keyboard_input_blocked_ = false;
         bool mouse_input_blocked_ = false;
-        std::vector<RelayCore::physics::Aabb> static_collision_world_{};
-        std::vector<RelayCore::physics::Aabb> collision_world_{};
+        std::vector<RelayCore::physics::WorldCollider> static_collision_world_{};
+        std::vector<RelayCore::physics::WorldCollider> collision_world_{};
         RelayCore::core::SpatialIndex2D<std::uint32_t> static_collision_index_{kStaticCollisionCellSize};
         std::vector<std::uint32_t> static_collision_candidates_{};
         RelayCore::physics::GroundedMoveDiagnostics movement_diagnostics_{};

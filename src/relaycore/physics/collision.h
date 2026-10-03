@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <glm/vec3.hpp>
 #include <optional>
-#include <span>
 
 namespace RelayCore::physics
 {
@@ -37,7 +36,16 @@ namespace RelayCore::physics
         float max_ground_snap_distance = 0.10F;
     };
 
-    using CollisionWorld = std::span<const Aabb>;
+    class WorldQuery;
+
+    struct RayIntersection {
+        float distance = 0;
+        glm::vec3 normal{};
+    };
+
+    [[nodiscard]] auto
+    ray_intersection(const glm::vec3& origin, const glm::vec3& direction, const Aabb& bounds, float max_distance)
+        -> std::optional<RayIntersection>;
 
     [[nodiscard]] auto make_player_aabb(const glm::vec3& position, float radius, float height) -> Aabb;
 
@@ -50,29 +58,20 @@ namespace RelayCore::physics
         float max_distance
     ) -> std::optional<float>;
 
-    [[nodiscard]] auto move_axis(
-        CollisionWorld world,
-        const glm::vec3& start_position,
-        const CollisionConfig& config,
-        int axis,
-        float delta
-    ) -> AxisMoveResult;
+    [[nodiscard]] auto probe_ground(WorldQuery world, const glm::vec3& position, const CollisionConfig& config) -> bool;
 
-    [[nodiscard]] auto probe_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config)
-        -> bool;
-
-    [[nodiscard]] auto snap_to_ground(CollisionWorld world, const glm::vec3& position, const CollisionConfig& config)
+    [[nodiscard]] auto snap_to_ground(WorldQuery world, const glm::vec3& position, const CollisionConfig& config)
         -> glm::vec3;
 
     [[nodiscard]] auto try_step_move(
-        CollisionWorld world,
+        WorldQuery world,
         const glm::vec3& start_position,
         const glm::vec3& desired_delta_xz,
         const CollisionConfig& config
     ) -> std::optional<glm::vec3>;
 
     [[nodiscard]] auto move_and_collide(
-        CollisionWorld world,
+        WorldQuery world,
         const glm::vec3& start_position,
         const glm::vec3& velocity,
         float dt,

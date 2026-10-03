@@ -40,6 +40,7 @@ namespace RelayGame
                 return value;
             };
             StaticProp prop;
+            prop.authored_entity_index = static_cast<int>(i);
             prop.model = RelayCore::core::asset_path(required("model"));
             if (prop.model.extension() == ".rcmodel")
             {

@@ -3,6 +3,7 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/physics/physics_world.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaygame/enemy_runtime.h"
@@ -45,6 +46,9 @@ namespace RelayGame
         std::optional<EpisodeEnding> ending;
         std::filesystem::path level_path{};
         RelayCore::BlockoutLevel level{};
+        std::vector<RelayCore::physics::WorldCollider> world_colliders;
+        // Immutable query geometry can be shared by copies of a prepared fixture session.
+        std::shared_ptr<const RelayCore::physics::PhysicsWorld> physics_fixture;
         glm::vec3 spawn_position{0.0F, 0.3F, 0.0F};
         std::optional<glm::vec2> spawn_view_angles{}; // x = yaw radians, y = pitch radians
         std::vector<RelayCore::gameplay::RuntimeDoor> doors{};
@@ -70,6 +74,11 @@ namespace RelayGame
             -> LevelSession;
 
         [[nodiscard]] auto build(RelayCore::BlockoutLevel level, std::filesystem::path path) const -> LevelSession;
+        [[nodiscard]] auto build_physics_fixture(
+            RelayCore::BlockoutLevel level,
+            std::filesystem::path path,
+            std::span<const RelayCore::physics::PhysicsMesh> meshes
+        ) const -> LevelSession;
 
     private:
         const RelayCore::core::GameplayConfig& config_;

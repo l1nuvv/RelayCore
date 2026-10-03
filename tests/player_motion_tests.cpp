@@ -5,15 +5,17 @@
 #include <glm/common.hpp>
 #include <vector>
 
+#include "world_query_fixture.h"
+
 namespace
 {
     using RelayCore::physics::Aabb;
-    using RelayCore::physics::CollisionWorld;
     using RelayCore::physics::GroundedMoveDiagnostics;
     using RelayCore::physics::MoveInput;
     using RelayCore::physics::MoveResult;
     using RelayCore::physics::PlayerMotionConfig;
     using RelayCore::physics::PlayerMotionState;
+    using RelayCore::test::WorldQueryFixture;
 
     [[nodiscard]] auto make_config() -> PlayerMotionConfig
     {
@@ -54,7 +56,7 @@ TEST_CASE("small thresholds are walkable at the 120 Hz game simulation rate")
         glm::vec3 position{0, 0.001F, 0};
         for (int tick = 0; tick < 240; ++tick)
             position = RelayCore::physics::move_and_collide(
-                           world,
+                           RelayCore::test::WorldQueryFixture{world},
                            position,
                            {0, -0.1F, speed},
                            1.0F / 120.0F,
@@ -79,7 +81,7 @@ TEST_CASE("player falls onto floor and becomes grounded")
 
     for (int i = 0; i < 120 && !state.grounded; ++i)
     {
-        RelayCore::physics::update_grounded(state, MoveInput{}, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, MoveInput{}, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
     }
 
     CHECK(state.grounded);
@@ -99,7 +101,7 @@ TEST_CASE("jump gives positive Y velocity and leaves grounded state")
     MoveInput input{};
     input.jump_pressed = true;
 
-    RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+    RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
 
     CHECK_FALSE(state.grounded);
     CHECK(state.velocity.y > 0.0F);
@@ -124,7 +126,7 @@ TEST_CASE("wall collision blocks forward movement")
 
     for (int i = 0; i < 60; ++i)
     {
-        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
     }
 
     CHECK(state.position.x <= doctest::Approx(0.50F).epsilon(0.05));
@@ -149,7 +151,7 @@ TEST_CASE("diagonal move into wall slides along free axis")
 
     for (int i = 0; i < 60; ++i)
     {
-        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
     }
 
     CHECK(state.position.x <= doctest::Approx(0.50F).epsilon(0.05));
@@ -195,7 +197,7 @@ TEST_CASE("step-up climbs small obstacle")
 
     for (int i = 0; i < 30; ++i)
     {
-        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
     }
 
     CHECK(state.position.x > 0.8F);
@@ -212,7 +214,7 @@ TEST_CASE("move_and_collide reports successful step-up queries")
     });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         {0.0F, 0.0F, 0.0F},
         {4.0F, 0.0F, 0.0F},
         0.25F,
@@ -237,7 +239,7 @@ TEST_CASE("move_and_collide reports blocked step queries on tall obstacles")
     });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         {0.0F, 0.0F, 0.0F},
         {4.0F, 0.0F, 0.0F},
         0.25F,
@@ -261,7 +263,7 @@ TEST_CASE("move_and_collide blocks diagonal tunneling through a thin wall")
     });
 
     const MoveResult result = RelayCore::physics::move_and_collide(
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         {0.0F, 0.0F, 0.0F},
         {4.0F, 0.0F, 4.0F},
         0.25F,
@@ -285,7 +287,7 @@ TEST_CASE("move_and_collide blocks vertical tunneling through a thin floor")
     };
 
     const MoveResult result = RelayCore::physics::move_and_collide(
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         {0.0F, 2.0F, 0.0F},
         {0.0F, -20.0F, 0.0F},
         0.25F,
@@ -309,7 +311,7 @@ TEST_CASE("move_and_collide blocks vertical tunneling through a thin ceiling")
     };
 
     const MoveResult result = RelayCore::physics::move_and_collide(
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         {0.0F, 0.0F, 0.0F},
         {0.0F, 20.0F, 0.0F},
         0.25F,
@@ -338,7 +340,7 @@ TEST_CASE("grounded update diagnostics report probe and snap when landing")
         MoveInput{},
         0.0F,
         1.0F / 60.0F,
-        CollisionWorld{world},
+        WorldQueryFixture{world},
         config,
         &diagnostics
     );
@@ -369,7 +371,7 @@ TEST_CASE("obstacle higher than step height blocks movement")
 
     for (int i = 0; i < 120; ++i)
     {
-        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, CollisionWorld{world}, config);
+        RelayCore::physics::update_grounded(state, input, 0.0F, 1.0F / 60.0F, WorldQueryFixture{world}, config);
     }
 
     CHECK(state.position.x < 0.55F);

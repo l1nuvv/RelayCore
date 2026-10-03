@@ -1,7 +1,6 @@
 #pragma once
 
-#include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/physics/collision.h"
+#include "relaycore/physics/world_query.h"
 
 #include <cstdint>
 #include <glm/vec3.hpp>
@@ -120,8 +119,7 @@ namespace RelayCore::gameplay
     void tick_combat_state(float dt, PlayerCombatState& player, std::span<RuntimeTurret> turrets) noexcept;
 
     [[nodiscard]] auto apply_player_fire(
-        const BlockoutLevel& level,
-        std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
@@ -130,8 +128,7 @@ namespace RelayCore::gameplay
     ) -> CombatFireResult;
 
     [[nodiscard]] auto update_combat_threats(
-        const BlockoutLevel& level,
-        std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const physics::Aabb& player_bounds,
         const glm::vec3& player_eye_position,
         PlayerCombatState& player,

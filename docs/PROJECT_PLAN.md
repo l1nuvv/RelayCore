@@ -1,20 +1,32 @@
 # Project plan — RelayCore
 
-Дата исходного анализа: 2026-09-29. Текущее состояние и порядок актуализированы 2026-10-02; исторические проверки ниже сохранены отдельно.
+Дата исходного анализа: 2026-09-29. Текущее состояние и порядок актуализированы 2026-10-04; исторические проверки ниже сохранены отдельно.
 
 Это краткий план следующего цикла и инструкция для Codex. Основная очередь и статусы задач остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md); номера M0–M6 ниже обозначают этапы этого документа. ID G/H сохранены из roadmap. План не запускает реализацию автоматически.
 
 ## План развития после E-004 — 2026-10-02
 
-Этот раздел — актуальная последовательность развития по текущему рабочему дереву. Предыдущий план M0–M6 и журнал ниже сохранены: они описывают игровой цикл и его проверки. Основная очередь и фактические статусы остаются в roadmap; N1 реализован по отдельному поручению автора как E-005, N2 для выбранного native-потребителя завершён как E-006/E-007. N3 начат как E-008; остальные этапы остаются предложением. Запрос на составление плана не запускает реализацию.
+Этот раздел — актуальная последовательность развития по текущему рабочему дереву, пересмотренная 2026-10-04. Предыдущий план M0–M6 и журнал ниже сохранены: они описывают игровой цикл и его проверки. Основная очередь и фактические статусы остаются в roadmap; N1 выполнен как E-005, выбранные N2 и N3 slices завершены как E-006–E-009; по последующему поручению выполнены E-010/N4.1 и E-011/N4.2. Следующая инженерная задача — E-012/N4.3; остальные этапы требуют своих зависимостей и поручения автора. Наличие плана само по себе не запускает реализацию.
 
 ### Цель и основание
 
-Ближайший инженерный результат — небольшая native-комната, которую можно собрать из нескольких Blender/GLB-моделей, открыть в существующем редакторе, запустить и доставить вне checkout обычной сборкой. Следующий продуктовый результат — принятый самостоятельный эпизод с двумя оружиями. Долгосрочный результат — воспроизводимый offline-перенос представительной Source 2/CS2-карты в собственные форматы и подсистемы RelayCore.
+Ближайший инженерный результат — согласованные world queries и независимая статическая mesh-коллизия для native-контента, с сохранением принятого движения. Следующий продуктовый результат — принятый самостоятельный эпизод с двумя оружиями, затем небольшой игровой участок, использующий новые native world capabilities. Проверочная комната N1 уже существует; повторять её создание не требуется. Offline-перенос представительной Source 2/CS2-карты сохраняется как долгосрочный исследовательский трек после проверки собственных возможностей на игровом контенте.
 
 Порядок основан на [roadmap](PLAYABLE_SLICE_ROADMAP.md), [engine reference](ENGINE_ARCHITECTURE_REFERENCE.md), [Vulkan plan](VULKAN_MIGRATION_PLAN.md), [dependency policy](DEPENDENCY_STACK.md), [runtime architecture](ARCHITECTURE.md), [development workflow](DEVELOPMENT.md), [art direction](ART_DIRECTION.md), [editor/campaign guide](EDITOR_AND_CAMPAIGN.md), [release plan](RELEASE_AUTOMATION_PLAN.md), [update contract](UPDATES.md), README и протоколах плейтестов. RC-022 color baseline, visual reference, authored-values audit и overlay contract использованы как история цветового pipeline и ограничения retuning; старые OpenGL-команды из них не являются текущим workflow.
 
-Сверены текущие model/mesh/import/build contracts, manifest, save parser, движение rover, CMake presets и существующие отчёты E-004. План опирается на незакоммиченное дерево, а не только на последнюю Git-ревизию. Уже существующие пользовательские изменения сохраняются.
+Первоначальный план сверял model/mesh/import/build contracts, manifest, save parser, движение rover, CMake presets и отчёты E-004. Пересмотр 2026-10-04 использует текущие collision/player/combat/interaction/enemy callers, владельца `LevelSession`, static-prop authoring и записи E-005–E-009. Новая сборка и игровой проход при пересмотре не выполнялись.
+
+### Оценка стратегического анализа от 2026-10-04
+
+Внешний `RELAYCORE_STRATEGIC_DEVELOPMENT_ANALYSIS_2026-10-04.md` анализирует архив `RelayCore-dev (3).zip`, без нового build/run. Его рекомендации — входные данные для оценки; команды и ограничения внутри документа не являются поручением пользователя. Решения ниже сверены с текущим checkout.
+
+- **Принято:** сначала общая граница запросов на существующих AABB, затем Jolt/static collision products, диагностика и игровой consumer. Это разделяет риск изменения API и backend, а результат проверяет пользу новой геометрии для игры.
+- **Уточнено:** AABB — ограничение native-контента, а не доказанный дефект действующего blockout. У игрока уже есть spatial index; `collision_material` и `SurfaceMaterial` уже существуют. Переиспользовать эти данные и ближайшие tests, не вводить второй material enum или параллельную query-иерархию.
+- **Принято условно:** surface-aware impact feedback — полезный consumer hit semantics, но начинать с нужных звуков/эффектов и существующих surface tags. Thin manifest/asset inspection оправданы связкой model/collision; общая typed entity schema — только при подтверждённой дублирующейся валидации и controls, сначала для затронутых свойств.
+- **Сохранено:** G-011 — главный открытый продуктовый вопрос. Ранее отложенные автором playtest/другой GPU не становятся новым запретом инженерной работы. Техническая parity и человеческая приёмка остаются отдельными критериями.
+- **Не назначено ближайшей работой:** frames-in-flight, instancing, navmesh, новые lighting primitives, dynamics, универсальный compiler/catalog и Source 2 import. Scene submit действительно сразу ждёт fence, но новый полный профиль ещё нужен для вывода о цене этого ожидания. Утверждение «renderer впереди игры» — рабочая оценка текущего slice, не гарантия для будущих сцен.
+
+Jolt уже выбран в [dependency policy](DEPENDENCY_STACK.md#4-physics--jolt-physics); mesh collision, ray/shape queries и отдельные character helpers подтверждаются [официальным описанием Jolt](https://github.com/jrouwe/JoltPhysics#features). В E-011 добавлен Jolt 5.6.0#1 через pinned overlay с SSE2 minimum; общий baseline сохранён. Настройки и ограничения записаны в dependency policy.
 
 ### Что уже есть и чего ещё нет
 
@@ -33,15 +45,17 @@
 ### Порядок и размер итераций
 
 ```text
-N0: зафиксировать исходную базу
-  → N1: native-комната на существующих материалах
-  → N2: необходимые material/texture products
-  → N3: HDR и нужный способ освещения комнаты
-  → N4: произвольная статическая коллизия через Jolt
-  → N5: необходимые world features
-  → N6: общий compiler/catalog для реально появившихся продуктов
-  → N7: Source 2 prop → участок карты
-  → N8: полная карта и приёмка
+Завершённая native-база: N1/E-005 → N2/E-006–007 → N3/E-008–009
+  → N4.1/E-010: общие world queries поверх AABB, без Jolt
+  → N4.2/E-011: Jolt static world на изолированном fixture
+  → N4.3/E-012: native collision product и build/staging
+  → N4.4/E-013: movement/query parity и runtime lifecycle
+  → N4.5/E-014: collision authoring/debug tools
+  → N4.6/G-012: небольшой игровой участок с native collision
+  → профиль этого участка; E-015 impact feedback при нужном consumer
+
+Затем по потребности: N5 world features / N6 compiler/catalog
+Исследовательский трек позже: N7 Source 2 prop/участок → N8 полная карта
 
 Игровой трек: G-011 → H-008 → H-009
 ```
@@ -50,11 +64,11 @@ N0: зафиксировать исходную базу
 
 | Этап | Относительный объём | Основная зависимость |
 | --- | --- | --- |
-| N0 | S | Текущее дерево и отчёты E-004 |
+| N0 | S | Текущее дерево и релевантные существующие reports |
 | N1 | S–M | E-003/E-004 |
 | N2 | M на один material slice | Native fixture N1 и конкретный нужный материал |
 | N3 | M–L | Явные color/data semantics и material path N2 |
-| N4 | L, по небольшим шагам | Native geometry/products; принятые movement contracts |
+| N4 | L, шесть отдельных slices | Завершённая native-база; E-010 перед сменой backend |
 | N5 | M–L на выбранную feature | Контент-потребитель; для навигации/акустики — стабильная world geometry |
 | N6 | M–L | Несколько типов products и явные реальные dependencies |
 | N7 | L | Проверенные native capabilities для выбранного prop/участка |
@@ -62,7 +76,7 @@ N0: зафиксировать исходную базу
 
 ### N0 — проверяемая точка продолжения
 
-Зафиксировать версию 1.3.4, состав source/content/build inputs и выбранный технический ZIP. Сохранить незакоммиченное состояние в source manifest кандидата; коммит не является условием этого плана. Использовать имеющиеся E-004 reports, повторять проверки только при изменениях или сомнениях в соответствии бинарников исходникам.
+Зафиксировать текущую версию, source/content/build inputs и релевантные reports. При проверке кандидата использовать существующий подходящий artifact и его manifest; новый ZIP готовить только по прямому запросу на упаковку/выпуск. Коммит не является условием плана. Повторять проверки только при изменениях или сомнениях в соответствии бинарников исходникам.
 
 Проверить расхождения документации с текущими владельцами при следующей содержательной правке: старый editor guide описывает save format 2 и только OBJ/BMP, update guide содержит старое требование save format 3; текущая запись использует format 4 и читает 1–4. Roadmap называет G-011 ближайшим действием, но более поздние записи явно разрешают E-003/E-004 при отложенной человеческой проверке. Сохранять эту развилку явно. Pipeline overlay из старого аудита не назначать задачей до проверки текущих callers.
 
@@ -75,7 +89,7 @@ N0: зафиксировать исходную базу
 
 Создать небольшую проверочную комнату существующим TOML/editor-процессом: несколько статических GLB-моделей, повторные экземпляры общей модели, разные transforms и несколько поддерживаемых материалов. Один из props должен иметь игровую функцию или помогать ориентированию; остальные проверяют повторное использование и масштаб. AABB коллизия на этом этапе остаётся явно authored.
 
-Проверить цепочку Blender export → список `RelayCoreModelAssets.cmake` → build product → staging → editor → preview/F7 → standalone ZIP. Изменение исходной модели должно доходить до runtime обычной сборкой; повреждённый source не должен заменять рабочий staged product. Изменения importer/editor делать только по препятствию, найденному в этой комнате.
+Проверить цепочку Blender export → список `RelayCoreModelAssets.cmake` → build product → staging → editor → preview/F7. Standalone ZIP проверять при отдельном поручении на упаковку/выпуск; исторический результат N1 ниже сохранён. Изменение исходной модели должно доходить до runtime обычной сборкой; повреждённый source не должен заменять рабочий staged product. Изменения importer/editor делать только по препятствию, найденному в этой комнате.
 
 Визуальная цель: функциональное исследовательское помещение конца 1980-х/1990-х, читаемые крупные формы, существующие индустриальные материалы и практическое освещение. Один связанный с функцией occult-акцент допустим. B-17 остаётся референсом; его полный состав не является обязательным scope N1.
 
@@ -125,13 +139,20 @@ SH9 sampling. Debug build, unit/content/graphics, before/after и RenderDoc пр
 
 ### N4 — произвольная статическая коллизия через Jolt
 
-Сначала определить RelayCore-owned collision product, layers, surface/tag semantics и typed query results. Добавить Jolt только с работающим владельцем `PhysicsWorld`; `JPH::*` остаются внутри реализации. Первый slice: static triangle geometry, raycasts/sweeps, player/world interaction и необходимые triggers. Render и collision products независимы.
+**Порядок:** E-010 → E-011 → E-012 → E-013 → E-014 → G-012. Критерии и единственные фактические статусы — в [roadmap](PLAYABLE_SLICE_ROADMAP.md#e-010--общие-world-queries-поверх-aabb-n41). E-015 — условное продолжение по surface feedback.
 
-До миграции controller зафиксировать текущие walking/acceleration, stepping, grounding, slopes, jump, crouch и door interaction на имеющихся tests/fixtures. Применять только поддерживаемые сейчас действия; новые movement features не вводить попутно. Сравнить поведение на том же маршруте и сохранить принятое game feel. Jolt character helper выбирать по parity, а не только по физической корректности. Dynamic rigid bodies/convex props добавлять позднее при наличии gameplay consumer.
+1. **N4.1 / E-010 (M):** один конкретный RelayCore-owned query contract поверх действующих AABB. Перенести world blockers combat/LOS/interaction и collision inputs игрока/rover, сохранить math и выбор actor targets. Raycast, sweep/overlap вводить под текущие callers; typed hit хранит нужные fraction/distance, normal, surface и identity. Маски отражают существующие различия запросов. Контракт не требует virtual interface или backend registry.
+2. **N4.2 / E-011 (M):** Jolt за этой границей, сначала static boxes/triangle fixture и ray/shape queries. `PhysicsWorld` принадлежит lifetime активного уровня: staged preparation в `LevelSessionBuilder`, передача владельцу игрового мира при activation. `Application` не становится владельцем collision сцены; `JPH::*` не выходят в gameplay/formats. До принятой parity backend остаётся ограничен fixture.
+3. **N4.3 / E-012 (M):** независимый versioned `CollisionAsset`, authored или явно выбранная упрощённая geometry. Render triangles не превращать в collision автоматически. Units/axes, transform/winding, surface mapping и bounds фиксируются в product contract. Детерминированный compile, receipts, invalidation, staging и failed-update rollback развивать в действующей цепочке; связку model/collision объявить явно. Общий catalog не является зависимостью.
+4. **N4.4 / E-013 (M):** подключить mesh-world к gameplay и сохранить acceleration/friction/air control/jump/step/ground probe/snap при fixed 120 Hz. До переключения зафиксировать ожидаемое поведение на текущих fixtures. Проверить thin walls/ceilings, скольжение, двери и актуализацию blocker transforms до запросов, LOS/выстрелы, interaction, trigger entry, reload/teardown, respawn, snapshot/disk continue и preview. `CharacterVirtual` выбирать только при доказанной необходимости и movement parity. Новые crouch, slopes policy и динамические rigid bodies — отдельные задачи по consumer.
+5. **N4.5 / E-014 (S–M):** в существующем editor/inspector показать collision отдельно от render geometry, query hit/normal, surface/layer и authored identity; inspect source/product/receipt и missing/stale ошибки. Базовая диагностика нужна уже на E-011 fixture, этот шаг завершает authoring workflow.
+6. **N4.6 / G-012 (M):** один короткий участок с проёмом или неправильной формой, где единый AABB мешает проходу/линии огня, и существующими боем, interaction, objective/save. Сначала технический fixture, затем игровой маршрут и отдельный blind playtest. Результаты G-011 использовать, когда получены; текущая отсрочка не требует новой кампании или повторного создания `pressure_transfer`.
 
-**Готово:** native mesh-комната проходима без подмены всей геометрии AABB, выстрелы/LOS и движение используют согласованные world queries; двери, hazards/triggers, смерть, restore, disk continue и editor preview не регрессируют.
+**Готово:** игровой участок использует native mesh-коллизию для реального пространственного решения, основные world consumers согласованы, принятое движение и lifecycle сохранены, collision редактируется/диагностируется существующими tools. Техническая готовность G-012 получает `awaiting_playtest`, если человеческих наблюдений ещё нет; N4 не объявляется полностью принятым только по fixture.
 
 ### N5 — world features по наблюдаемой потребности
+
+Первый кандидат — E-015: surface-aware impact sound/эффект на существующих `SurfaceMaterial` из query hit. Выбрать минимум поверхностей/feedback, полезный бою G-012; не назначать decals, particles и новую material систему обязательным комплектом. При отсутствии наблюдаемой потребности задача остаётся deferred.
 
 Выбрать по одной feature с конкретным consumer в игре или acceptance map. Для rover сначала воспроизвести застревание/необходимый обход на требуемой арене: нынешнее движение к `last_seen` само по себе не означает дефект существующих встреч. Если нужна навигация, добавить Recast build и Detour queries за native boundary, затем простое path following с проверкой дверей и восстановления. Оценить актуальность vcpkg port в момент начала; overlay нужен только при подтверждённом недостающем fix.
 
@@ -141,13 +162,15 @@ Decals, particles, ladders/water, animation и richer map logic добавлят
 
 ### N6 — общий asset compiler и catalog
 
-Обобщить уже работающие CLI/CMake/staging receipts ровно под появившиеся mesh/material/texture/collision/light/nav dependencies. Ввести устойчивые logical asset IDs, versioned products, manifests/catalog, диагностику missing/stale dependencies и clean rebuild. Сохранять prepare/validate до замены живой сцены.
+Начать с thin declaration/inspection связки model/collision, если E-012 выявит повторяемую ручную работу или неоднозначные references. Затем обобщить работающие CLI/CMake/staging receipts ровно под реально появившиеся dependencies. Устойчивые logical asset IDs и catalog вводить вместе с нужным rename/reference workflow, не как самостоятельную инфраструктуру. Сохранять prepare/validate до замены живой сцены; весь N6 не блокирует G-012.
 
-BLAKE3 добавить при реализации content fingerprints/cache keys; ключ включает source, settings и importer/compiler semantics. Logical ID не равен content hash. SHA256 receipts E-004 не называют content-addressed cache. Zstd вводить только для выбранных products/bundles после замеров size/I/O; неизменившаяся сборка, rollback и удаления обязаны оставаться проверяемыми.
+BLAKE3 оценивать при конкретной потребности в content fingerprints/cache keys; существующие SHA256 receipts достаточны для первых collision products. Ключ включает source, settings и importer/compiler semantics; logical ID не равен content hash. SHA256 receipts E-004 не называют content-addressed cache. Zstd вводить только для выбранных products/bundles после замеров size/I/O; неизменившаяся сборка, rollback и удаления обязаны оставаться проверяемыми.
 
 **Готово:** чистые native sources воспроизводимо дают все нужные runtime products, повторная сборка и dependency invalidation проверены, package не зависит от compiler/DCC/source paths. Background processor, universal IR и сложный pack/streaming framework не нужны без конкретной цены текущего workflow.
 
 ### N7 — первый Source 2 offline importer
+
+Условие начала — native collision/gameplay участок принят, необходимые собственные semantics устойчивы и автор отдельно выбирает import/research работу. N7/N8 не являются автоматическим продолжением каждого engine slice.
 
 Выбрать локальный prop и небольшой участок карты, определить список обязательных geometry/material/collision/light semantics. `de_dust2` — возможный кандидат, выбор карты остаётся отдельным решением. Начать с prop: model + materials/textures + transform + collision; затем участок с world geometry, repeated instances и светом. Переиспользовать native compiler/runtime products.
 
@@ -164,16 +187,16 @@ Importer остаётся tool-only. Source 2/CS2 classes и parser types не �
 ### Игровой трек и готовность выпуска
 
 1. **G-011:** первый проход нового игрока без подсказок по [протоколу](playtests/G-011-2026-09-29.md); длительности, смерти, выбор оружия, потеря маршрута, три главных затруднения. Исправлять только наблюдаемые проблемы. Если эпизод короче 5–15 минут, явно принять компактный результат или добавить решения/контент; пустые коридоры не решают задачу.
-2. **H-008:** после принятого маршрута снять непрерывный optimized Tracy capture и повторяемые тяжёлые состояния, cold/first-use и повторный проход. Зафиксировать build/ZIP, GPU/driver, resolution, VSync, pipeline, settings; разделить CPU work, GPU и present. Записать p50/p95/p99 и spikes, согласовать целевой FPS и слабый ПК. Например, 60 FPS соответствует 16,67 мс бюджета, но не является уже выбранной целью проекта. Имеющийся entrance baseline не закрывает полный маршрут.
-3. **H-009:** подготовить точный Release candidate действующими scripts, проверить hashes и внешний запуск, полный проход, save/continue и обновление предыдущей standalone версии. На другом согласованном GPU/ПК проверить реальный device/presentation contract, HUD/input/audio; Vulkan loader probe и собственный RTX не заменяют этот тест. Версия/notes относятся к конкретному candidate; публикация — по отдельной команде автора.
+2. **H-008:** после принятого маршрута снять непрерывный optimized Tracy capture и повторяемые тяжёлые состояния, cold/first-use и повторный проход. Зафиксировать точную сборку/inputs или existing candidate, GPU/driver, resolution, VSync, pipeline, settings; разделить CPU work, GPU и present/waits, first-use uploads, draw counts и world-query cost. Записать p50/p95/p99 и spikes, согласовать целевой FPS и слабый ПК. Например, 60 FPS соответствует 16,67 мс бюджета, но не является уже выбранной целью проекта. Entrance baseline не закрывает полный маршрут; профиль G-012 нужен отдельно при изменении геометрии/workload.
+3. **H-009:** по прямому поручению на candidate/выпуск подготовить точный Release candidate действующими scripts или использовать подходящий существующий, проверить hashes и внешний запуск, полный проход, save/continue и обновление предыдущей standalone версии. На другом согласованном GPU/ПК проверить реальный device/presentation contract, HUD/input/audio; Vulkan loader probe и собственный RTX не заменяют этот тест. Версия/notes относятся к конкретному candidate; публикация — по отдельной команде автора.
 
 G-001 остаётся отдельным незавершённым измерением прежнего эпизода и может выполняться независимо. G-010 возвращается только при наблюдаемом недостатке существующих угроз/геометрии. Пока blind playtest и другой GPU отложены, инженерные итерации допускаются; G-011/H-008/H-009 и полную приёмку не закрывать техническими ZIP или авторским подтверждением startup.
 
 ### Ближайшая рекомендуемая итерация
 
-**N4 — статическая mesh-коллизия через Jolt, по отдельному поручению автора.** Выбранный native slice N3 завершён: E-008 HDR/exposure/tone mapping/UI и E-009 one-bounce irradiance probes с offline product/invalidation. Ограничения и проверки — в E-009 roadmap; reflection/lightmap primitives не стали обязательными ради завершения N3. G-011 candidate передаётся новому игроку, когда автор возобновит человеческую проверку. Архивы создавать только по прямой просьбе автора.
+**E-012 / N4.3 — native collision product и build/staging.** E-010 и E-011 завершены: общий AABB query contract используется combat/LOS/focus и движением; проверочные команды и результаты находятся в [карточке E-010](PLAYABLE_SLICE_ROADMAP.md#e-010--общие-world-queries-поверх-aabb-n41). Native slices N1–N3 завершены. Следующий consumer — неправильная статическая форма/проём для G-012, затем surface feedback по потребности. G-011 передаётся новому игроку, когда автор возобновит человеческую проверку; её статус сохраняется. Архивы создавать только по прямой просьбе.
 
-Следующие возможности выбирать по конкретному визуальному недостатку комнаты. Такой порядок даёт реальный consumer для materials/physics/lighting.
+E-011 подтвердил static boxes/triangle queries, lifecycle и units/filters; evidence находится в [карточке E-011](PLAYABLE_SLICE_ROADMAP.md#e-011--jolt-static-world-на-изолированном-fixture-n42). В E-012 нужен отдельный versioned collision product с явным model pairing и receipts/staging; принятый backend текущих игровых карт сохраняется до E-013. Дальнейшие возможности определяют игровые и пространственные ограничения участка и его профиль.
 
 ### Проверка каждой итерации
 
@@ -181,7 +204,11 @@ G-001 остаётся отдельным незавершённым измер�
 
 После implementation просмотреть scoped diff, выполнить `git diff --check`, обновить реальный ticket и evidence в основном roadmap. В proposal не копировать конкурирующую таблицу фактических статусов. Код, assets, dependency baseline, VERSION и release notes этим планированием не менялись.
 
-### Проверки при составлении нового плана
+### Проверка пересмотра 2026-10-04
+
+Сверены `physics/collision.h`, `physics/player_motion.h`, player collision inputs/spatial index, combat/interaction/enemy world blockers и ближайшие tests; `LevelSession`, static-prop authoring/material parsing, manifest и immediate scene submit/wait. Сопоставлены записи N1–N3 и architecture/dependency policy. Это инспекция исходников и прежнего evidence, а не новый build/run или performance measurement. Изменены только этот план и roadmap: 42 локальные Markdown-ссылки/якоря и наличие единственных строк/карточек E-009–E-015/G-012 проверены; `git diff --check` прошёл. Внешний анализ не копируется в репозиторий как ещё один конкурирующий план.
+
+### Исторические проверки исходного плана 2026-10-02
 
 Существующие JUnit E-004 прочитаны: Debug unit/tooling/audio 261/261, content 31/31, graphics Debug/optimized по 4/4, focused ASan 11/11; failures/skip отсутствуют. Это evidence предыдущего выполнения, а не заново запущенные полные suites.
 

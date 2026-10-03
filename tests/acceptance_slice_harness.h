@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "world_query_fixture.h"
+
 namespace AcceptanceHarness
 {
     struct TurretKillSequence {
@@ -220,8 +222,7 @@ namespace AcceptanceHarness
             const glm::vec3 shot_direction = turrets[0].origin - shot_origin;
 
             sequence.first_shot = RelayCore::gameplay::apply_player_fire(
-                session.level,
-                doors,
+                RelayCore::test::WorldQueryFixture{session.level, doors},
                 shot_origin,
                 shot_direction,
                 player_combat,
@@ -231,8 +232,7 @@ namespace AcceptanceHarness
             RelayCore::gameplay::tick_combat_state(0.30F, player_combat, turrets);
 
             sequence.second_shot = RelayCore::gameplay::apply_player_fire(
-                session.level,
-                doors,
+                RelayCore::test::WorldQueryFixture{session.level, doors},
                 shot_origin,
                 shot_direction,
                 player_combat,

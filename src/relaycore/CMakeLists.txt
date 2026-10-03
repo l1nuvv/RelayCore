@@ -24,6 +24,9 @@ set(RELAYCORE_ENGINE_SOURCES
     gameplay/interaction_runtime_queries.cpp
     physics/collision.cpp
     physics/player_motion.cpp
+    physics/world_query.cpp
+    physics/physics_world.cpp
+    world/world_collision.cpp
     platform/sdl_system.cpp
     platform/window.cpp
     render/blockout_mesh_builder.cpp
@@ -85,7 +88,9 @@ set(RELAYCORE_ENGINE_HEADERS
     gameplay/interaction_descriptors.h
     gameplay/interaction_runtime.h
     physics/collision.h
+    physics/physics_world.h
     physics/player_motion.h
+    physics/world_query.h
     platform/sdl_system.h
     platform/window.h
     render/blockout_mesh_builder.h
@@ -118,6 +123,7 @@ set(RELAYCORE_ENGINE_HEADERS
     world/blockout_loader_templates.h
     world/blockout_loader_validation.h
     world/surface_material_utils.h
+    world/world_collision.h
 )
 
 add_library(relaycore_engine STATIC)
@@ -157,6 +163,7 @@ target_link_libraries(
         Vulkan::Vulkan
         vk-bootstrap::vk-bootstrap
         GPUOpen::VulkanMemoryAllocator
+        Jolt::Jolt
 )
 
 target_compile_definitions(relaycore_engine PRIVATE
@@ -164,6 +171,11 @@ target_compile_definitions(relaycore_engine PRIVATE
 set_source_files_properties(render/vma_impl.cpp PROPERTIES
     SKIP_UNITY_BUILD_INCLUSION ON
     COMPILE_DEFINITIONS "VMA_STATIC_VULKAN_FUNCTIONS=0;VMA_DYNAMIC_VULKAN_FUNCTIONS=1")
+set_source_files_properties(
+    physics/world_query.cpp
+    physics/physics_world.cpp
+    world/world_collision.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 
 if (RELAYCORE_ENABLE_TRACY)
     target_link_libraries(relaycore_engine PRIVATE Tracy::TracyClient)

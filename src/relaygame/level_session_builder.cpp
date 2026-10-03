@@ -5,6 +5,7 @@
 #include "relaycore/gameplay/entity_spawn_parsing.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaycore/world/blockout_loader_validation.h"
+#include "relaycore/world/world_collision.h"
 #include "relaygame/level_session_authoring_warnings.h"
 #include "relaygame/static_props.h"
 #include "relaygame/world_audio_zones.h"
@@ -120,6 +121,17 @@ namespace RelayGame
         return session;
     }
 
+    auto LevelSessionBuilder::build_physics_fixture(
+        RelayCore::BlockoutLevel level,
+        std::filesystem::path path,
+        const std::span<const RelayCore::physics::PhysicsMesh> meshes
+    ) const -> LevelSession
+    {
+        auto session = build(std::move(level), std::move(path));
+        session.physics_fixture = std::make_shared<RelayCore::physics::PhysicsWorld>(session.world_colliders, meshes);
+        return session;
+    }
+
     auto LevelSessionBuilder::build(RelayCore::BlockoutLevel level, std::filesystem::path path) const -> LevelSession
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -127,10 +139,16 @@ namespace RelayGame
         session.level_path = std::move(path);
         session.level = std::move(level);
         session.level.prop_colliders.clear();
-        for (const auto& prop : build_static_props(session.level))
+        const auto props = build_static_props(session.level);
+        for (const auto& prop : props)
             if (prop.collider)
                 session.level.prop_colliders.push_back(*prop.collider);
         RelayCore::detail::validate_loaded_blockout_level(session.level);
+        session.world_colliders = RelayCore::build_static_world_colliders(session.level);
+        std::size_t collider_index = session.level.solids.size();
+        for (const auto& prop : props)
+            if (prop.collider)
+                session.world_colliders[collider_index++].object.authored_entity_index = prop.authored_entity_index;
 
         const auto spawn_it = std::find_if(
             session.level.entities.begin(),

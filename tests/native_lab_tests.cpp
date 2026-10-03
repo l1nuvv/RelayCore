@@ -11,6 +11,7 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 TEST_CASE("native lab shares model resources and preserves transformed props through editor save")
 {
@@ -72,15 +73,26 @@ TEST_CASE("native lab cabinet controls lighting and a traversable storage door")
         for (const auto& solid : *solids)
             world.push_back({solid.mins, solid.maxs});
     for (const char* entry : {"entrance", "controls"})
-        CHECK(RelayCore::physics::probe_ground(world, builder.build_at_entry(path, entry).spawn_position, {}));
+        CHECK(RelayCore::physics::probe_ground(
+            RelayCore::test::WorldQueryFixture{world},
+            builder.build_at_entry(path, entry).spawn_position,
+            {}
+        ));
     const auto walk = [&](bool closed) {
         auto blockers = world;
         if (closed)
             blockers.push_back(RelayCore::gameplay::current_door_bounds(session.doors.front()));
         auto position = session.spawn_position;
         for (int tick = 0; tick < 600; ++tick)
-            position =
-                RelayCore::physics::move_and_collide(blockers, position, {0, -.1F, 2}, 1.0F / 120, {}, true).position;
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{blockers},
+                           position,
+                           {0, -.1F, 2},
+                           1.0F / 120,
+                           {},
+                           true
+            )
+                           .position;
         return position;
     };
     CHECK(walk(true).z < 4.6F);

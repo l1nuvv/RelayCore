@@ -4,6 +4,8 @@
 
 #include <doctest/doctest.h>
 
+#include "world_query_fixture.h"
+
 namespace
 {
     using RelayCore::BlockoutLevel;
@@ -128,8 +130,13 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
         },
     };
 
-    const RelayCore::gameplay::CombatFireResult blocked_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult blocked_shot = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(blocked_shot.fired);
     CHECK_FALSE(blocked_shot.hit_turret);
     CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
@@ -140,8 +147,13 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     doors[0].state = RelayCore::gameplay::DoorState::Open;
     RelayCore::gameplay::tick_combat_state(0.30F, player, turrets);
 
-    const RelayCore::gameplay::CombatFireResult first_hit =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult first_hit = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(first_hit.fired);
     CHECK(first_hit.hit_turret);
     CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
@@ -150,8 +162,13 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     CHECK(turrets[0].health == doctest::Approx(25.0F));
 
     RelayCore::gameplay::tick_combat_state(0.30F, player, turrets);
-    const RelayCore::gameplay::CombatFireResult second_hit =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult second_hit = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(second_hit.fired);
     CHECK(second_hit.hit_turret);
     CHECK(second_hit.killed_turret);
@@ -200,8 +217,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     const glm::vec3 player_eye_position{0.0F, 1.6F, 4.0F};
 
     const auto first_tick = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,
@@ -214,8 +230,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     CHECK(first_tick.turret_windups == 1);
     CHECK(turrets[0].shot_trace.remaining_seconds == 0);
     const auto waiting = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,
@@ -233,8 +248,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     RelayCore::gameplay::tick_combat_state(0.10F, player, turrets);
 
     const auto second_tick = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,

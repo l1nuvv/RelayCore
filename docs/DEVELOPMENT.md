@@ -56,6 +56,21 @@ pwsh -NoProfile -File tests/level_check_tests.ps1 -Executable build/msvc-debug/s
 Код 1 — ошибка карты/ресурса/назначения перехода; 2 — неверные аргументы.
 Проверка не заменяет игровой проход и не доказывает достижимость всего контента.
 
+## Изолированный physics fixture
+
+E-011 проверяет static boxes и triangle wall с проёмом без смены backend игровых карт. В Developer PowerShell:
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_physics_tests relaycore_physics_fixture -j 2
+ctest --preset test-debug -R '^relaycore\.physics\.' --output-on-failure --no-tests=error
+build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe build/msvc-debug/physics-fixture.svg
+cmake --preset msvc-asan
+cmake --build --preset tests-asan --target relaycore_physics_tests -j 2
+ctest --preset test-asan -R '^relaycore\.physics\.' --output-on-failure --no-tests=error
+```
+
+CLI выводит hit distance/point/normal/surface/identity и box cast fraction; необязательный SVG показывает геометрию проёма, rays, точки и нормали. Координаты — метры, +Y вверх, right handed; CCW normal triangles сохраняется и при ray hit с обратной стороны. Shape queries двухсторонние. Tests проверяют masks, clearance, malformed data, staged/active lifetime и failed prepare. ASan инструментирует RelayCore boundary; vcpkg Jolt DLL использует обычную Debug-сборку. CPU/ABI options локального overlay описаны в `DEPENDENCY_STACK.md`. Fixture не заменяет human playtest или движение игрока по mesh.
+
 ## Сборка с нуля
 
 Нужны Windows, Visual Studio с C++ workload и Windows SDK, CMake 4+, Ninja,

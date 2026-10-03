@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "scoped_temp_directory.h"
+#include "world_query_fixture.h"
 
 TEST_CASE("footsteps follow traveled ground distance, not airborne or blocked movement")
 {
@@ -109,7 +110,14 @@ TEST_CASE("interaction respects occlusion while allowing a panel on a wall face"
     std::vector<gameplay::RuntimeUsable> usables{{.origin = {0, 1, -2}, .use_radius = 3}};
     std::vector<physics::Aabb> blockers{{{-1, 0, -1.1F}, {1, 2, -1}}};
     const auto query = [&] {
-        return gameplay::find_focused_usable({0, 1, 0}, {0, 0, -1}, usables, 3, 0.75F, blockers);
+        return gameplay::find_focused_usable(
+            {0, 1, 0},
+            {0, 0, -1},
+            usables,
+            3,
+            0.75F,
+            RelayCore::test::WorldQueryFixture{blockers}
+        );
     };
     CHECK(query().usable_index == -1);
     blockers[0] = {{-1, 0, -2.2F}, {1, 2, -2}};

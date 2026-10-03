@@ -1,6 +1,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/gameplay/interaction_runtime_detail.h"
+#include "relaycore/world/blockout_level.h"
 
 #include <glm/common.hpp>
 #include <ranges>
@@ -108,38 +109,52 @@ namespace RelayCore::gameplay
         return detail::aabb_overlaps(current_door_bounds(door), actor_bounds);
     }
 
-    void collect_blocking_doors(const std::vector<RuntimeDoor>& doors, std::vector<physics::Aabb>& out_blockers)
+    namespace
+    {
+        void collect_blocking_doors_impl(
+            const std::span<const RuntimeDoor> doors,
+            const physics::Aabb* actor_bounds,
+            std::vector<physics::WorldCollider>& out_blockers
+        )
+        {
+            out_blockers.clear();
+            out_blockers.reserve(doors.size());
+
+            for (std::size_t index = 0; index < doors.size(); ++index)
+            {
+                const auto& door = doors[index];
+                if (!is_door_blocking(door))
+                {
+                    continue;
+                }
+                if (actor_bounds && door.state == DoorState::Closing && door_overlaps_actor(door, *actor_bounds))
+                {
+                    continue;
+                }
+                out_blockers.push_back({
+                    .bounds = current_door_bounds(door),
+                    .surface = SurfaceMaterial::Metal,
+                    .object = {physics::WorldObjectKind::Door, index, door.authored_entity_index},
+                });
+            }
+        }
+    } // namespace
+
+    void
+    collect_blocking_doors(const std::span<const RuntimeDoor> doors, std::vector<physics::WorldCollider>& out_blockers)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        const physics::Aabb empty_actor_bounds{
-            .mins = {0.0F, 0.0F, 0.0F},
-            .maxs = {0.0F, 0.0F, 0.0F},
-        };
-        collect_blocking_doors(doors, empty_actor_bounds, out_blockers);
+        collect_blocking_doors_impl(doors, nullptr, out_blockers);
     }
 
     void collect_blocking_doors(
-        const std::vector<RuntimeDoor>& doors,
+        const std::span<const RuntimeDoor> doors,
         const physics::Aabb& actor_bounds,
-        std::vector<physics::Aabb>& out_blockers
+        std::vector<physics::WorldCollider>& out_blockers
     )
     {
         RELAYCORE_PROFILE_FUNCTION();
-        out_blockers.clear();
-        out_blockers.reserve(doors.size());
-
-        for (const RuntimeDoor& door : doors)
-        {
-            if (!is_door_blocking(door))
-            {
-                continue;
-            }
-            if (door.state == DoorState::Closing && door_overlaps_actor(door, actor_bounds))
-            {
-                continue;
-            }
-            out_blockers.push_back(current_door_bounds(door));
-        }
+        collect_blocking_doors_impl(doors, &actor_bounds, out_blockers);
     }
 
     auto activate_target(std::string_view target, std::vector<RuntimeDoor>& doors) -> bool

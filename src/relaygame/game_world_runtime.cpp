@@ -57,6 +57,10 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::import_level_session");
         level_ = std::move(session.level);
+        world_colliders_ = std::move(session.world_colliders);
+        physics_fixture_ = std::move(session.physics_fixture);
+        query_doors_.clear();
+        query_doors_.reserve(session.doors.size());
         exits_ = std::move(session.exits);
         runtime_state_ = {};
         runtime_state_.level_path = session.level_path.string();
@@ -70,9 +74,7 @@ namespace RelayGame
         runtime_registry_ = std::move(session.runtime_registry);
         authoring_warnings_ = std::move(session.authoring_warnings);
         enemies_ = std::move(session.enemies);
-        enemy_blockers_.reserve(
-            level_.solids.size() + level_.prop_colliders.size() + doors_.size() + enemies_.size() + 1
-        );
+        enemy_blockers_.reserve(enemies_.size() + 1);
         loaded_level_turrets_ = std::move(session.combat.turrets);
         loaded_level_hazards_ = std::move(session.combat.hazards);
         loaded_mission_definition_ = std::move(session.mission_definition);
@@ -130,13 +132,7 @@ namespace RelayGame
                 RelayCore::core::asset_path("audio/player/land_" + std::string{surfaces[surface]} + ".wav");
         }
         player_sounds_[15] = RelayCore::core::asset_path("audio/player/flashlight_switch.wav");
-        player_controller_.set_static_collision_world(level_);
-        interaction_occluders_.clear();
-        interaction_occluders_.reserve(level_.solids.size() + doors_.size());
-        for (const auto& solid : level_.solids)
-            interaction_occluders_.push_back({solid.mins, solid.maxs});
-        for (const auto& solid : level_.prop_colliders)
-            interaction_occluders_.push_back({solid.mins, solid.maxs});
+        player_controller_.set_static_collision_world(world_colliders_);
         simulation_loop_.reset();
     }
 
@@ -533,8 +529,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         const auto attack = fire_player_weapon(
-            level_,
-            doors_,
+            world_query(),
             origin,
             direction,
             combat_state_.player,
@@ -601,8 +596,7 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_FUNCTION();
         const RelayCore::gameplay::CombatThreatResult combat_result = RelayCore::gameplay::update_combat_threats(
-            level_,
-            doors_,
+            world_query(),
             player_bounds,
             player_eye_position,
             combat_state_.player,
@@ -876,11 +870,17 @@ namespace RelayGame
         RelayCore::gameplay::collect_blocking_doors(doors_, player_controller_.player_bounds(), dynamic_blockers_);
         for (const auto& enemy : enemies_)
             if (enemy.state.mode != EnemyMode::Dead)
-                dynamic_blockers_.push_back(enemy_bounds(enemy.state));
+                dynamic_blockers_.push_back(
+                    {.bounds = enemy_bounds(enemy.state),
+                     .object =
+                         {RelayCore::physics::WorldObjectKind::Enemy,
+                          static_cast<std::size_t>(&enemy - enemies_.data()),
+                          enemy.state.entity_index}}
+                );
         const glm::vec3 previous_position = player_controller_.position();
         const bool was_grounded = player_controller_.grounded();
         const float previous_vertical_speed = player_controller_.velocity().y;
-        player_controller_.update(sim_frame, level_, dynamic_blockers_);
+        player_controller_.update(sim_frame, dynamic_blockers_);
         const glm::vec3 displacement = player_controller_.position() - previous_position;
         const auto feedback = player_feedback_.update(
             sim_delta_seconds,
@@ -935,8 +935,7 @@ namespace RelayGame
 
         const float health_before_enemies = combat_state_.player.health;
         const auto enemy_threats = update_enemies(
-            level_,
-            doors_,
+            world_query(),
             player_controller_.player_bounds(),
             player_controller_.eye_position_world(),
             combat_state_.player,
@@ -951,8 +950,7 @@ namespace RelayGame
         const float player_health_before_threats = combat_state_.player.health;
         const bool hazard_contact_before_threats = combat_state_.hazard_contact_last_step;
         const RelayCore::gameplay::CombatThreatResult combat_result = RelayCore::gameplay::update_combat_threats(
-            level_,
-            doors_,
+            world_query(),
             player_controller_.player_bounds(),
             player_controller_.eye_position_world(),
             combat_state_.player,
@@ -1023,14 +1021,29 @@ namespace RelayGame
         refresh_interaction_focus();
     }
 
+    auto GameWorldRuntime::query_physics_fixture(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        const float max_distance
+    ) const -> std::optional<RelayCore::physics::WorldQueryHit>
+    {
+        if (!physics_fixture_)
+            throw std::logic_error("No isolated physics fixture is active");
+        return physics_fixture_->raycast(origin, direction, max_distance);
+    }
+
+    auto GameWorldRuntime::world_query() -> RelayCore::physics::WorldQuery
+    {
+        RelayCore::gameplay::collect_blocking_doors(doors_, query_doors_);
+        if (physics_fixture_)
+            return {*physics_fixture_, query_doors_};
+        return {world_colliders_, query_doors_};
+    }
+
     void GameWorldRuntime::refresh_interaction_focus()
     {
         RELAYCORE_PROFILE_FUNCTION();
         const float interaction_distance = interaction_query_distance();
-        interaction_occluders_.resize(level_.solids.size() + level_.prop_colliders.size());
-        for (const auto& door : doors_)
-            if (RelayCore::gameplay::is_door_blocking(door))
-                interaction_occluders_.push_back(RelayCore::gameplay::current_door_bounds(door));
         RelayCore::gameplay::query_usable_candidates(
             usable_spatial_index_,
             player_controller_.eye_position_world(),
@@ -1044,7 +1057,7 @@ namespace RelayGame
             usable_candidates_,
             interaction_distance,
             0.75F,
-            interaction_occluders_
+            world_query()
         );
         interaction_state_.focused_usable_index = focus.usable_index;
         interaction_state_.focused_distance = focus.distance;

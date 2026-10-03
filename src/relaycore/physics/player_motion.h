@@ -1,6 +1,6 @@
 #pragma once
 
-#include "relaycore/physics/collision.h"
+#include "relaycore/physics/world_query.h"
 
 #include <glm/vec3.hpp>
 
@@ -55,7 +55,7 @@ namespace RelayCore::physics
         const MoveInput& input,
         float yaw_radians,
         float dt,
-        CollisionWorld world,
+        WorldQuery world,
         const PlayerMotionConfig& config,
         GroundedMoveDiagnostics* diagnostics = nullptr
     );

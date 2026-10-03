@@ -12,6 +12,7 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -37,7 +38,7 @@ namespace
         RelayGame::MissionRuntime mission;
         RelayCore::gameplay::PlayerCombatState player;
         std::vector<std::string> inventory, activated, signaled;
-        std::vector<RelayCore::physics::Aabb> enemy_scratch;
+        std::vector<RelayCore::physics::WorldCollider> enemy_scratch;
         glm::vec3 position;
         unsigned precise_shots = 0, shotgun_shots = 0;
 
@@ -55,8 +56,7 @@ namespace
             RelayCore::gameplay::tick_combat_state(dt, player, session.combat.turrets);
             static_cast<void>(RelayCore::gameplay::update_doors(dt, actor, session.doors));
             static_cast<void>(RelayCore::gameplay::update_combat_threats(
-                session.level,
-                session.doors,
+                RelayCore::test::WorldQueryFixture{session.level, session.doors},
                 actor,
                 eye,
                 player,
@@ -65,8 +65,7 @@ namespace
                 dt
             ));
             static_cast<void>(RelayGame::update_enemies(
-                session.level,
-                session.doors,
+                RelayCore::test::WorldQueryFixture{session.level, session.doors},
                 actor,
                 eye,
                 player,
@@ -103,8 +102,7 @@ namespace
                     const auto weapon = nearest < 4 && !inventory.empty() ? RelayGame::PlayerWeapon::Shotgun
                                                                           : RelayGame::PlayerWeapon::Precise;
                     const auto shot = RelayGame::fire_player_weapon(
-                        session.level,
-                        session.doors,
+                        RelayCore::test::WorldQueryFixture{session.level, session.doors},
                         eye,
                         glm::normalize(target - eye),
                         player,
@@ -131,7 +129,7 @@ namespace
                 session.usables,
                 2.25F,
                 .75F,
-                world
+                RelayCore::test::WorldQueryFixture{world}
             );
             REQUIRE(focus.usable_index == found - session.usables.begin());
             const auto event = RelayGame::apply_usable_interaction(
@@ -160,8 +158,15 @@ namespace
                 auto delta = destination - position;
                 delta.y = 0;
                 const auto velocity = glm::normalize(delta) * 3.0F + glm::vec3{0, -1, 0};
-                position =
-                    RelayCore::physics::move_and_collide(world, position, velocity, 1.0F / 120, {}, true).position;
+                position = RelayCore::physics::move_and_collide(
+                               RelayCore::test::WorldQueryFixture{world},
+                               position,
+                               velocity,
+                               1.0F / 120,
+                               {},
+                               true
+                )
+                               .position;
                 tick();
                 REQUIRE(player.alive);
             }
@@ -170,7 +175,8 @@ namespace
             CAPTURE(position.x);
             CAPTURE(position.z);
             REQUIRE(glm::distance(glm::vec2{position.x, position.z}, glm::vec2{destination.x, destination.z}) < .07F);
-            CHECK(RelayCore::physics::probe_ground(blockers(session), position, {}));
+            CHECK(RelayCore::physics::probe_ground(RelayCore::test::WorldQueryFixture{blockers(session)}, position, {})
+            );
         }
     };
 } // namespace

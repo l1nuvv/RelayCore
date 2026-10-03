@@ -152,6 +152,14 @@ add_custom_command(TARGET relaycore_demo_assets POST_BUILD
 add_dependencies(relaycore_demo relaycore_vulkan_shaders)
 
 add_executable(relaycore_level_check EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/level_check.cpp)
+add_executable(relaycore_physics_fixture EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/physics_fixture.cpp)
+target_link_libraries(relaycore_physics_fixture PRIVATE RelayCore::engine)
+relaycore_apply_standard_target_settings(relaycore_physics_fixture)
+set_target_properties(relaycore_physics_fixture PROPERTIES FOLDER "tools")
+add_custom_command(TARGET relaycore_physics_fixture POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_physics_fixture>"
+        $<TARGET_RUNTIME_DLLS:relaycore_physics_fixture>
+    COMMAND_EXPAND_LISTS)
 target_link_libraries(relaycore_level_check PRIVATE RelayGame::runtime RelayCore::toml_headers
     RelayCore::project_options RelayCore::warnings)
 add_executable(relaycore_sandbox EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/sandbox_main.cpp)

@@ -77,49 +77,6 @@ namespace RelayCore::gameplay
             return extents.x >= kMinHazardDamageSpan && extents.z >= kMinHazardDamageSpan;
         }
 
-        [[nodiscard]] auto ray_hits_world_before_distance(
-            const BlockoutLevel& level,
-            std::span<const RuntimeDoor> doors,
-            const glm::vec3& origin,
-            const glm::vec3& direction,
-            const float max_distance
-        ) -> float
-        {
-            float nearest_distance = max_distance;
-
-            for (const auto* solids : {&level.solids, &level.prop_colliders})
-                for (const BlockoutSolid& solid : *solids)
-                {
-                    const auto hit = physics::ray_intersection_distance(
-                        origin,
-                        direction,
-                        physics::Aabb{.mins = solid.mins, .maxs = solid.maxs},
-                        nearest_distance
-                    );
-                    if (hit.has_value())
-                    {
-                        nearest_distance = *hit;
-                    }
-                }
-
-            for (const RuntimeDoor& door : doors)
-            {
-                if (!is_door_blocking(door))
-                {
-                    continue;
-                }
-
-                const auto hit =
-                    physics::ray_intersection_distance(origin, direction, current_door_bounds(door), nearest_distance);
-                if (hit.has_value())
-                {
-                    nearest_distance = *hit;
-                }
-            }
-
-            return nearest_distance;
-        }
-
     } // namespace
 
     [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source)
@@ -295,8 +252,7 @@ namespace RelayCore::gameplay
     }
 
     auto apply_player_fire(
-        const BlockoutLevel& level,
-        const std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
@@ -315,13 +271,9 @@ namespace RelayCore::gameplay
         ++player.shots_fired;
 
         const glm::vec3 shot_direction = glm::normalize(direction);
-        const float blocker_distance = ray_hits_world_before_distance(
-            level,
-            doors,
-            origin,
-            shot_direction,
-            std::min(player.weapon_range, max_hit_distance)
-        );
+        const float range = std::min(player.weapon_range, max_hit_distance);
+        const auto blocker = world.raycast(origin, shot_direction, range);
+        const float blocker_distance = blocker ? blocker->distance : range;
 
         float best_hit_distance = blocker_distance;
         int best_turret_index = -1;
@@ -367,8 +319,7 @@ namespace RelayCore::gameplay
     }
 
     auto update_combat_threats(
-        const BlockoutLevel& level,
-        const std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const physics::Aabb& player_bounds,
         const glm::vec3& player_eye_position,
         PlayerCombatState& player,
@@ -417,8 +368,8 @@ namespace RelayCore::gameplay
             }
 
             const glm::vec3 aim_direction = to_player / distance;
-            const float blocker_distance =
-                ray_hits_world_before_distance(level, doors, turret_eye_position(turret), aim_direction, distance);
+            const auto blocker = world.raycast(turret_eye_position(turret), aim_direction, distance);
+            const float blocker_distance = blocker ? blocker->distance : distance;
             if (blocker_distance + 0.02F < distance)
             {
                 turret.warming_up = false;

@@ -62,6 +62,9 @@ namespace RelayGame
         void begin_ending();
         void update_ending(float delta_seconds, RelayCore::EngineServices& services);
         void load_level_session(const RelayCore::core::EngineConfig& config, LevelSession session);
+        [[nodiscard]] auto
+        query_physics_fixture(const glm::vec3& origin, const glm::vec3& direction, float max_distance) const
+            -> std::optional<RelayCore::physics::WorldQueryHit>;
 
         void prepare_level_session_activation(
             RelayCore::EngineServices& services,
@@ -392,7 +395,10 @@ namespace RelayGame
         RelayGame::GroundedPlayerController player_controller_{};
         PlayerFeedback player_feedback_{};
         PlayerWeapon selected_weapon_ = PlayerWeapon::Precise;
-        std::vector<RelayCore::physics::Aabb> interaction_occluders_;
+        [[nodiscard]] auto world_query() -> RelayCore::physics::WorldQuery;
+        std::vector<RelayCore::physics::WorldCollider> world_colliders_;
+        std::shared_ptr<const RelayCore::physics::PhysicsWorld> physics_fixture_;
+        std::vector<RelayCore::physics::WorldCollider> query_doors_;
         float camera_motion_ = 0.6F;
         bool paused_ = false;
         std::array<std::filesystem::path, 16> player_sounds_{};
@@ -406,7 +412,7 @@ namespace RelayGame
         RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index_{};
         std::vector<std::uint32_t> trigger_candidates_{};
         std::vector<std::uint32_t> usable_candidates_{};
-        std::vector<RelayCore::physics::Aabb> dynamic_blockers_{};
+        std::vector<RelayCore::physics::WorldCollider> dynamic_blockers_{};
         std::vector<std::string> inventory_item_ids_{};
         std::vector<std::string> activated_target_ids_{};
         std::vector<std::string> signaled_target_ids_{};
@@ -426,7 +432,7 @@ namespace RelayGame
         RelayGame::MissionDefinition loaded_mission_definition_{};
         std::vector<RelayCore::gameplay::RuntimeTurret> loaded_level_turrets_{};
         std::vector<RuntimeEnemy> enemies_;
-        std::vector<RelayCore::physics::Aabb> enemy_blockers_;
+        std::vector<RelayCore::physics::WorldCollider> enemy_blockers_;
         std::vector<RelayCore::gameplay::RuntimeHazardVolume> loaded_level_hazards_{};
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FrameGameplayActions frame_actions_{};

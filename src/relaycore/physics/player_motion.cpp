@@ -29,13 +29,11 @@ namespace RelayCore::physics
         {
             RELAYCORE_PROFILE_FUNCTION();
             const float cos_pitch = std::cos(pitch_radians);
-            return glm::normalize(
-                glm::vec3{
-                    std::cos(yaw_radians) * cos_pitch,
-                    std::sin(pitch_radians),
-                    std::sin(yaw_radians) * cos_pitch,
-                }
-            );
+            return glm::normalize(glm::vec3{
+                std::cos(yaw_radians) * cos_pitch,
+                std::sin(pitch_radians),
+                std::sin(yaw_radians) * cos_pitch,
+            });
         }
 
         [[nodiscard]] auto make_right_free(const float yaw_radians) -> glm::vec3
@@ -106,7 +104,7 @@ namespace RelayCore::physics
         const MoveInput& input,
         const float yaw_radians,
         const float dt,
-        const CollisionWorld world,
+        const WorldQuery world,
         const PlayerMotionConfig& config,
         GroundedMoveDiagnostics* diagnostics
     )

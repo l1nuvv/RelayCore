@@ -1,30 +1,21 @@
 #include "relaycore/core/profiling.h"
-#include "relaycore/world/blockout_level.h"
 #include "relaygame/player_controller.h"
 
 #include <algorithm>
 
 namespace RelayGame
 {
-    void GroundedPlayerController::set_static_collision_world(const RelayCore::BlockoutLevel& level)
+    void
+    GroundedPlayerController::set_static_collision_world(std::span<const RelayCore::physics::WorldCollider> colliders)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        static_collision_world_.clear();
-        static_collision_world_.reserve(level.solids.size() + level.prop_colliders.size());
-
-        for (const RelayCore::BlockoutSolid& solid : level.solids)
-        {
-            static_collision_world_.push_back({solid.mins, solid.maxs});
-        }
-
+        static_collision_world_.assign(colliders.begin(), colliders.end());
         static_collision_index_.set_cell_size(kStaticCollisionCellSize);
-        for (const auto& solid : level.prop_colliders)
-            static_collision_world_.push_back({solid.mins, solid.maxs});
         static_collision_index_.reset(static_collision_world_.size());
 
         for (std::size_t index = 0; index < static_collision_world_.size(); ++index)
         {
-            static_collision_index_.insert(static_collision_world_[index], static_cast<std::uint32_t>(index));
+            static_collision_index_.insert(static_collision_world_[index].bounds, static_cast<std::uint32_t>(index));
         }
 
         collision_world_ = static_collision_world_;
@@ -55,8 +46,7 @@ namespace RelayGame
 
     void GroundedPlayerController::update(
         const RelayCore::FrameInfo& frame,
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::physics::Aabb> dynamic_blockers
+        std::span<const RelayCore::physics::WorldCollider> dynamic_blockers
     )
     {
         RELAYCORE_PROFILE_ZONE_N("GroundedPlayerController::update");
@@ -67,21 +57,15 @@ namespace RelayGame
             return;
         }
 
-        update_grounded(frame, level, dynamic_blockers);
+        update_grounded(frame, dynamic_blockers);
     }
 
     void GroundedPlayerController::update_grounded(
         const RelayCore::FrameInfo& frame,
-        const RelayCore::BlockoutLevel& level,
-        std::span<const RelayCore::physics::Aabb> dynamic_blockers
+        std::span<const RelayCore::physics::WorldCollider> dynamic_blockers
     )
     {
         RELAYCORE_PROFILE_ZONE_N("physics::update_grounded");
-
-        if (static_collision_world_.size() != level.solids.size() + level.prop_colliders.size())
-        {
-            set_static_collision_world(level);
-        }
 
         refresh_collision_world(dynamic_blockers);
         const auto input = poll_move_input();
@@ -96,7 +80,7 @@ namespace RelayGame
             input,
             yaw_radians_,
             static_cast<float>(frame.delta_seconds),
-            RelayCore::physics::CollisionWorld{collision_world_},
+            RelayCore::physics::WorldQuery{collision_world_},
             config,
             &movement_diagnostics_
         );
@@ -152,7 +136,9 @@ namespace RelayGame
         collision_query_diagnostics_.hit_z = false;
     }
 
-    void GroundedPlayerController::refresh_collision_world(std::span<const RelayCore::physics::Aabb> dynamic_blockers)
+    void GroundedPlayerController::refresh_collision_world(
+        std::span<const RelayCore::physics::WorldCollider> dynamic_blockers
+    )
     {
         RELAYCORE_PROFILE_FUNCTION();
         collision_query_diagnostics_.static_world_solids = static_cast<std::uint32_t>(static_collision_world_.size());

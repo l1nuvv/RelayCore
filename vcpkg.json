@@ -10,6 +10,10 @@
     "fastgltf",
     "glm",
     {
+      "name": "joltphysics",
+      "default-features": false
+    },
+    {
       "name": "imgui",
       "default-features": false,
       "features": [

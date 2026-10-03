@@ -97,7 +97,9 @@ Rules:
 - start without optional Jolt profiler/RTTI features. Use Tracy as the project profiler. Add Jolt debug rendering only if a physics-debug task needs it;
 - use Jolt's local job support for physics if required before creating any engine-wide job system.
 
-Research snapshot: upstream Jolt `5.6.0`; public vcpkg port `5.5.0`. Use the coherent vcpkg version unless a specific 5.6 capability/fix is required; do not create an overlay port only to chase the latest minor release.
+E-011 integration (2026-10-04): the existing baseline resolves `joltphysics` `5.6.0#1`. `vcpkg-configuration.json` selects the repository overlay at `vcpkg-overlays/joltphysics`, copied from that port and pinned to upstream `v5.6.0` with its SHA512. The overlay changes CPU options, not the release: SSE4.1/4.2, AVX/AVX2/AVX512, FMA, F16C, LZCNT and TZCNT are disabled to retain the x64 SSE2 floor. Single precision, the shared DLL and the existing dynamic MSVC CRT remain in use; optional profiler, C++ RTTI and Jolt debug renderer are disabled. Do not replace the overlay just to chase a newer minor version; keep these CPU/ABI choices explicit when upgrading.
+
+`physics::PhysicsWorld` owns a static query scene behind a Pimpl; `JPH::*` appears only in its implementation. `LevelSessionBuilder::build_physics_fixture` explicitly prepares the isolated fixture. Immutable worlds can be shared by copies of prepared sessions and transferred to `GameWorldRuntime`; ordinary map builds keep the AABB backend. `WorldQuery` borrows either AABB records or the fixture for ray queries. Box casts/overlaps use RelayCore-owned inputs/results on `PhysicsWorld`; FPS axis movement on the fixture fails explicitly until E-013 parity. There is no physics update/job system, dynamics or `CharacterVirtual` integration in E-011. See the E-011 roadmap card for current verification evidence.
 
 ## 5. Authoring interchange — glTF 2.0 + fastgltf
 
@@ -318,7 +320,7 @@ Keep the existing miniaudio/GLM/spdlog/toml++/Tracy/doctest dependencies.
 
 ### Physics milestone
 
-Add:
+Added for the isolated E-011 fixture:
 
 ```text
 joltphysics

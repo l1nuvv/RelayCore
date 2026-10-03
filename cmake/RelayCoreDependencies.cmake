@@ -15,6 +15,10 @@ macro(relaycore_find_dependencies)
     find_package(VulkanMemoryAllocator CONFIG REQUIRED)
     find_package(slang CONFIG REQUIRED)
     find_package(fastgltf CONFIG REQUIRED)
+    find_package(Jolt CONFIG REQUIRED)
+    set_target_properties(Jolt::Jolt PROPERTIES
+        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+        MAP_IMPORTED_CONFIG_MINSIZEREL Release)
 
     message(STATUS "Vulkan headers: ${Vulkan_VERSION}; loader: ${Vulkan_LIBRARY}")
     message(STATUS "Slang compiler: ${SLANGC_EXECUTABLE}")
