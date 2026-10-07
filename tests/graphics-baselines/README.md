@@ -10,3 +10,9 @@ review. These two samples now represent the revised room, not the historical
 VK-012 scene. Other samples retain their existing authority. See
 [slice evidence](../../docs/art/pressure-transfer-visual-slice.md); the full test's
 pre-existing `mesh-reload-0` mismatch was reproduced on the before-map snapshot.
+
+2026-10-08: G-016 explicitly replaces the same two pressure-transfer samples for
+the supported turret placement and retuned mixed-room lights. Reviewed both
+exported legacy captures and the actual 1280x720 HDR before/after views; the latter
+retain visible equipment, cover and controls. Comparison tolerances are unchanged.
+See [implementation and pending human acceptance](../../docs/playtests/G-011-2026-09-29.md#g-016--техническая-доводка-2026-10-08).

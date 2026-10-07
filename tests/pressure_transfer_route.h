@@ -28,6 +28,7 @@ namespace RelayCore::test
         unsigned mixed_exposed_ticks = 0, mixed_shotgun_shots = 0;
         float mixed_rover_hit_range = 0, closest_mixed_rover_z = 37;
         RelayGame::PlayerWeapon weapon = RelayGame::PlayerWeapon::Precise;
+        bool pistol_only = false;
 
         explicit PressureRoute(const RelayCore::core::GameplayConfig& config) :
             session(RelayGame::LevelSessionBuilder{config}.build(core::asset_path("levels/pressure_transfer.toml"))),
@@ -120,6 +121,8 @@ namespace RelayCore::test
                                                  : RelayGame::PlayerWeapon::Precise)
                                           : (nearest < 4 && !inventory.empty() ? RelayGame::PlayerWeapon::Shotgun
                                                                                : RelayGame::PlayerWeapon::Precise);
+                    if (pistol_only)
+                        weapon = RelayGame::PlayerWeapon::Precise;
                     const auto shot = RelayGame::fire_player_weapon(
                         world(),
                         eye,
@@ -228,10 +231,15 @@ namespace RelayCore::test
             walk_to({10, .01F, 22});
             walk_to({10, .01F, 25});
             walk_to({18, .01F, 25});
+            walk_to({18, .01F, 19.5F});
+            walk_to({20, .01F, 19.5F});
+            static_cast<void>(use("gallery_reader"));
+            walk_to({18, .01F, 19.5F});
             walk_to({18, .01F, 22});
             walk_to({24, .01F, 22});
             walk_to({30, .01F, 22});
-            walk_to({30, .01F, 28});
+            walk_to({28.5F, .01F, 22});
+            walk_to({28.5F, .01F, 28});
             walk_to({28, .01F, 29});
         }
 

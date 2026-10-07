@@ -25,12 +25,12 @@ namespace RelayCore::render
 
         static void draw_player_status_card(const PlayerDiagnostics& player);
 
-        static void draw_inventory_card(const InteractionDiagnostics& interaction);
+        static auto draw_inventory_card(const InteractionDiagnostics& interaction) -> float;
 
         static void draw_objective_card(const InteractionDiagnostics& interaction);
 
         static void draw_interaction_prompt_card(const InteractionDiagnostics& interaction);
 
-        static void draw_transient_event_card(const InteractionDiagnostics& interaction);
+        static void draw_transient_event_card(const InteractionDiagnostics& interaction, float top);
     };
 } // namespace RelayCore::render

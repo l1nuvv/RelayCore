@@ -16,11 +16,11 @@ namespace RelayCore::render
         constexpr float kInventoryMargin = 28.0F;
         constexpr float kInventoryWrapWidth = 260.0F;
         constexpr float kInventoryRounding = 8.0F;
-        constexpr float kObjectiveWrapWidth = 320.0F;
+        constexpr float kObjectiveWrapWidth = 400.0F;
         constexpr float kObjectiveRounding = 8.0F;
         constexpr float kPromptBottomMargin = 64.0F;
         constexpr float kPromptRounding = 8.0F;
-        constexpr float kPromptWrapWidth = 380.0F;
+        constexpr float kPromptWrapWidth = 475.0F;
         constexpr float kEventTopMargin = 92.0F;
         constexpr float kEventRounding = 10.0F;
         constexpr float kStatusMargin = 28.0F;
@@ -140,14 +140,15 @@ namespace RelayCore::render
             draw_player_status_card(player);
         }
 
-        if (has_transient_event(interaction))
-        {
-            draw_transient_event_card(interaction);
-        }
-
+        float event_top = ImGui::GetMainViewport()->WorkPos.y + kEventTopMargin;
         if (has_inventory_prompt(interaction))
         {
-            draw_inventory_card(interaction);
+            event_top = draw_inventory_card(interaction) + 16.0F;
+        }
+
+        if (has_transient_event(interaction))
+        {
+            draw_transient_event_card(interaction, event_top);
         }
 
         if (has_objective_prompt(interaction))
@@ -278,7 +279,7 @@ namespace RelayCore::render
         );
     }
 
-    void GameHud::draw_inventory_card(const InteractionDiagnostics& interaction)
+    auto GameHud::draw_inventory_card(const InteractionDiagnostics& interaction) -> float
     {
         ImGuiViewport* viewport = const_cast<ImGuiViewport*>(ImGui::GetMainViewport());
         ImDrawList* draw_list = ImGui::GetForegroundDrawList();
@@ -291,7 +292,10 @@ namespace RelayCore::render
             calc_wrapped_text_size(font, font_size, kInventoryWrapWidth, interaction.inventory_summary);
         const float card_width = std::max(header_size.x, body_size.x) + (padding.x * 2.0F);
         const float card_height = padding.y + header_size.y + 10.0F + body_size.y + padding.y;
-        const ImVec2 min{viewport->WorkPos.x + kInventoryMargin, viewport->WorkPos.y + kInventoryMargin};
+        const ImVec2 min{
+            viewport->WorkPos.x + viewport->WorkSize.x - card_width - kInventoryMargin,
+            viewport->WorkPos.y + kInventoryMargin,
+        };
         const ImVec2 max{min.x + card_width, min.y + card_height};
         const ImU32 background_color = ImGui::ColorConvertFloat4ToU32(ImVec4(0.06F, 0.11F, 0.10F, 0.88F));
         const ImU32 border_color = ImGui::ColorConvertFloat4ToU32(ImVec4(0.34F, 0.82F, 0.74F, 0.52F));
@@ -309,6 +313,7 @@ namespace RelayCore::render
             nullptr,
             kInventoryWrapWidth
         );
+        return max.y;
     }
 
     void GameHud::draw_objective_card(const InteractionDiagnostics& interaction)
@@ -316,13 +321,13 @@ namespace RelayCore::render
         ImGuiViewport* viewport = const_cast<ImGuiViewport*>(ImGui::GetMainViewport());
         ImDrawList* draw_list = ImGui::GetForegroundDrawList();
         ImFont* font = ImGui::GetFont();
-        const float font_size = ImGui::GetFontSize();
+        const float font_size = ImGui::GetFontSize() * 1.25F;
         const bool mission_complete = interaction.mission_complete;
         const std::string header = mission_complete ? "ЗАДАЧА ВЫПОЛНЕНА"
                                                     : "ЗАДАЧА " + std::to_string(interaction.objective_current) + "/"
                                                           + std::to_string(interaction.objective_total);
         const ImVec2 padding{18.0F, 14.0F};
-        const ImVec2 header_size = ImGui::CalcTextSize(header.c_str());
+        const ImVec2 header_size = calc_wrapped_text_size(font, font_size, kObjectiveWrapWidth, header);
         const ImVec2 title_size =
             calc_wrapped_text_size(font, font_size, kObjectiveWrapWidth, interaction.objective_title);
         const ImVec2 detail_size =
@@ -347,7 +352,7 @@ namespace RelayCore::render
         }
 
         const ImVec2 min{
-            viewport->WorkPos.x + viewport->WorkSize.x - card_width - kObjectiveMargin,
+            viewport->WorkPos.x + kObjectiveMargin,
             viewport->WorkPos.y + kObjectiveMargin,
         };
         const ImVec2 max{min.x + card_width, min.y + card_height};
@@ -366,7 +371,7 @@ namespace RelayCore::render
         draw_card_background(draw_list, min, max, background_color, border_color, kObjectiveRounding);
 
         ImVec2 cursor{min.x + padding.x, min.y + padding.y};
-        draw_list->AddText(cursor, header_color, header.c_str());
+        draw_list->AddText(font, font_size, cursor, header_color, header.c_str(), nullptr, kObjectiveWrapWidth);
         cursor.y += header_size.y;
 
         if (has_title)
@@ -407,7 +412,7 @@ namespace RelayCore::render
         ImGuiViewport* viewport = const_cast<ImGuiViewport*>(ImGui::GetMainViewport());
         ImDrawList* draw_list = ImGui::GetForegroundDrawList();
         ImFont* font = ImGui::GetFont();
-        const float font_size = ImGui::GetFontSize();
+        const float font_size = ImGui::GetFontSize() * 1.25F;
         const std::string binding_label = interaction.use_binding_label.empty() ? "E" : interaction.use_binding_label;
         const std::string prompt_label = "[" + binding_label + "] " + interaction.focused_label;
         const bool has_detail = !interaction.focused_detail.empty();
@@ -461,7 +466,7 @@ namespace RelayCore::render
         }
     }
 
-    void GameHud::draw_transient_event_card(const InteractionDiagnostics& interaction)
+    void GameHud::draw_transient_event_card(const InteractionDiagnostics& interaction, const float top)
     {
         ImGuiViewport* viewport = const_cast<ImGuiViewport*>(ImGui::GetMainViewport());
         ImDrawList* draw_list = ImGui::GetForegroundDrawList();
@@ -472,8 +477,8 @@ namespace RelayCore::render
         const ImVec2 text_size = calc_wrapped_text_size(font, font_size, 420.0F, interaction.transient_event_text);
         const ImVec2 card_size{text_size.x + (padding.x * 2.0F), text_size.y + (padding.y * 2.0F)};
         const ImVec2 min{
-            viewport->WorkPos.x + (viewport->WorkSize.x - card_size.x) * 0.5F,
-            viewport->WorkPos.y + kEventTopMargin,
+            viewport->WorkPos.x + viewport->WorkSize.x - card_size.x - kInventoryMargin,
+            top,
         };
         const ImVec2 max{min.x + card_size.x, min.y + card_size.y};
 

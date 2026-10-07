@@ -1999,20 +1999,28 @@ namespace
         player.weapon_reticle_radius = 12;
         InteractionDiagnostics interaction{};
         interaction.has_objective = true;
-        interaction.objective_title = "Перепуск давления";
-        interaction.objective_detail = "Найдите пульт перепуска";
+        interaction.objective_current = 5;
+        interaction.objective_total = 7;
+        interaction.objective_title = "Восстановить оборудование перепускного зала";
+        interaction.objective_detail =
+            "Робот проходит под верстаком; высокий шкаф закрывает огонь турели. Пульт — на правой стене.";
         interaction.has_inventory = true;
         interaction.inventory_summary = "Дробовик получен";
         interaction.has_focused_usable = true;
         interaction.focused_label = "Пульт перепуска";
+        interaction.focused_detail = "Включить перепуск давления и разблокировать выход в технический сектор.";
         interaction.use_binding_label = "E";
+        interaction.has_transient_event = true;
+        interaction.transient_event_text = "Перепуск работает. Пульт выхода на дальней стене разблокирован.";
+        interaction.transient_event_strength = 1.0F;
+        player.weapon_selection_hint = "[1] Пистолет · [2] Дробовик";
         const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60};
         for (int cycle = 0; cycle < 3; ++cycle)
         {
             overlay.initialize(window, device);
             require(overlay.is_initialized(), "Vulkan ImGui did not initialize");
             ImGui::GetIO().IniFilename = nullptr;
-            const int w = cycle == 1 ? 960 : width, h = cycle == 1 ? 540 : height;
+            const int w = cycle == 1 ? 1920 : 1280, h = cycle == 1 ? 1080 : 720;
             require(SDL_SetWindowSize(window.handle(), w, h), "Vulkan UI window resize failed");
             SDL_PumpEvents();
             camera.set_viewport(w, h);
@@ -2237,9 +2245,10 @@ int main(int argc, char** argv)
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
     const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
+    const bool ui_only = argc == 2 && std::string_view{argv[1]} == "--ui-only";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
-        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only)
+        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -2260,7 +2269,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (resources_only)
+        if (ui_only)
+            check_ui(device, vk_window, authoring, atlas, captures);
+        else if (resources_only)
         {
             VulkanMeshRenderer renderer{
                 device,

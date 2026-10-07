@@ -1100,6 +1100,34 @@ int main(int argc, char** argv)
             auto pump_session = RelayGame::LevelSessionBuilder{config.gameplay}.build(b);
             auto carried_inventory = pump.world.inventory_item_ids;
             std::vector<std::string> activated, signaled;
+            const auto control =
+                std::ranges::find(pump_session.usables, "pump_control", &RelayCore::gameplay::RuntimeUsable::name);
+            require(control != pump_session.usables.end(), "Pump startup control is missing");
+            require(
+                RelayGame::apply_usable_interaction(
+                    pump_session.usables[0],
+                    pump_session.doors,
+                    pump_session.usables,
+                    carried_inventory,
+                    activated,
+                    signaled
+                )
+                        .kind
+                    == RelayCore::gameplay::UseInteractionOutcome::Locked,
+                "Pump exit opened before equipment startup"
+            );
+            require(
+                RelayGame::apply_usable_interaction(
+                    *control,
+                    pump_session.doors,
+                    pump_session.usables,
+                    carried_inventory,
+                    activated,
+                    signaled
+                )
+                    .primary_applied,
+                "Key carried from intake did not start the pumps"
+            );
             require(
                 RelayGame::apply_usable_interaction(
                     pump_session.usables[0],

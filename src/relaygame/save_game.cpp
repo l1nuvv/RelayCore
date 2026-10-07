@@ -214,7 +214,7 @@ namespace RelayGame
             }
             if (version >= 3)
             {
-                std::unordered_set<int> ids;
+                std::unordered_set<int> enemy_ids;
                 for (const auto& node : array(table, "enemies"))
                 {
                     const auto& data = table_at(node);
@@ -222,7 +222,7 @@ namespace RelayGame
                     const auto id = count(data, "entity");
                     const auto mode = count(data, "mode");
                     if (id > 100000 || mode > static_cast<unsigned>(EnemyMode::Dead)
-                        || !ids.insert(static_cast<int>(id)).second)
+                        || !enemy_ids.insert(static_cast<int>(id)).second)
                         throw std::runtime_error("Save: invalid enemy identity or mode");
                     enemy.entity_index = static_cast<int>(id);
                     enemy.mode = static_cast<EnemyMode>(mode);

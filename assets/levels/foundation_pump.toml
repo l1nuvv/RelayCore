@@ -1,11 +1,11 @@
-# Narrow pump gallery with a return link and a key-operated exit.
+# Pump sector: sheltered approach, key-operated pump startup, then the exit.
 [[entity_group]]
 classname = "prop_static"
 model = "models/utility_pipe.rcmodel"
 entries = [
-  { origin = [-1.6,2.5,0], angles = [90,0,0] },
-  { origin = [-1.6,2.5,3], angles = [90,0,0] },
-  { origin = [-1.6,2.5,7], angles = [90,0,0] },
+  { origin = [-2.6,2.5,0], angles = [90,0,0] },
+  { origin = [-2.6,2.5,3], angles = [90,0,0] },
+  { origin = [-2.6,2.5,7], angles = [90,0,0] },
 ]
 
 [[entity]]
@@ -17,20 +17,23 @@ angles = [180,0,0]
 [[entity]]
 classname = "prop_static"
 model = "models/safety_notice.rcmodel"
-origin = [1.82,1.15,4.6]
+origin = [2.82,1.15,4.6]
 angles = [270,0,0]
 
 [[solid_group]]
 boxes = [
-  { origin = [0,-0.125,3], size = [4,0.25,14], material = "Concrete" },
-  { origin = [0,3.5,3], size = [4,0.25,14], material = "Ceiling" },
-  { origin = [-2,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
-  { origin = [2,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
-  { origin = [0,1.7,-4], size = [4,3.4,0.25], material = "Wall" },
-  { origin = [0,1.7,10], size = [4,3.4,0.25], material = "Wall" },
-  { origin = [-1.5,1.7,6], size = [1,3.4,0.25], material = "Wall" },
-  { origin = [1.5,1.7,6], size = [1,3.4,0.25], material = "Wall" },
+  { origin = [0,-0.125,3], size = [6,0.25,14], material = "Concrete" },
+  { origin = [0,3.5,3], size = [6,0.25,14], material = "Ceiling" },
+  { origin = [-3,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
+  { origin = [3,1.7,3], size = [0.25,3.4,14], material = "WallPanel" },
+  { origin = [0,1.7,-4], size = [6,3.4,0.25], material = "Wall" },
+  { origin = [0,1.7,10], size = [6,3.4,0.25], material = "Wall" },
+  { origin = [-2,1.7,6], size = [2,3.4,0.25], material = "Wall" },
+  { origin = [2,1.7,6], size = [2,3.4,0.25], material = "Wall" },
   { origin = [0,3.15,6], size = [2,0.5,0.25], material = "Wall" },
+  { origin = [1.6,1.1,2.6], size = [1.6,2.2,1.6], material = "metal" },
+  { origin = [1.6,1.2,5.7744], size = [0.8,2.4,0.4], material = "metal" },
+  { origin = [-2.8,1,1.5], size = [0.15,2,1.3], material = "metal" },
 ]
 [[entity]]
 classname = "player_spawn"
@@ -56,9 +59,10 @@ origin = [0,2.9,7]
 color = [0.55,0.8,0.65]
 radius = 6
 intensity = 1.5
+required_target = "pump_running"
 [[entity]]
 classname = "prop_static"
-origin = [-1.3,0,2]
+origin = [-2.4,0,4.4]
 model = "models/service_cylinder.obj"
 texture = "models/service_cylinder.bmp"
 collision_mins = [-0.25,0,-0.25]
@@ -71,23 +75,52 @@ targetname = "pump_door"
 origin = [0,0,6]
 size = [2,2.9,0.2]
 move_offset = [0,3,0]
+activation_policy = "open_only"
 [[entity]]
 classname = "gameplay_entity"
 kind = "panel"
 targetname = "pump_button"
 target = "pump_door"
-origin = [1.4,1.3,5.75]
+origin = [-1.4,1.3,5.75]
 size = [0.3,0.5,0.15]
 mount_axis = "-z"
+locked = true
+signal_action = "unlock"
+single_use = true
+label = "Открыть служебный выход"
+locked_message = "Сначала запустите насосы: пульт на левой стене, ключ из мастерской."
+success_message = "Насосы работают. Служебный выход открыт — пройдите через дверь."
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+targetname = "pump_control"
+target = "pump_running"
+action = "activate_target"
+chain_target = "pump_button"
+origin = [-2.665,1.4,1.5]
+size = [0.12,0.5,0.38]
+mount_axis = "+x"
 required_item = "service_key"
 required_item_name = "Сервисный ключ"
-label = "Разблокировать выход"
+use_radius = 1.8
+single_use = true
+label = "Запустить насосы — сектор 02"
+denied_message = "Нужен сервисный ключ из мастерской сектора 01."
+success_message = "Насосы запущены. Вентиляция и свет восстановлены; пульт служебного выхода разблокирован."
+
+[[entity]]
+classname = "mission_step"
+kind = "activate_target"
+target = "pump_running"
+title = "Восстановить насосы — сектор 02"
+detail = "Ключ из мастерской подходит к пусковому пульту слева. Высокий блок закрывает огонь турели; робот подходит по свободной полосе."
 [[entity]]
 classname = "mission_step"
 kind = "door_open"
 target = "pump_door"
-title = "Открыть выход сервисным ключом"
-detail = "Используйте ключ из первого сектора на пульте у двери. Для возврата идите назад."
+title = "Открыть служебный выход"
+detail = "Насосы разблокировали пульт у дальней двери. Для возврата в мастерскую идите назад."
 [[entity]]
 classname = "mission_step"
 kind = "zone"
@@ -105,8 +138,61 @@ requires_completion = false
 
 [[entity]]
 classname = "enemy_rover"
-origin = [0.7,0.01,4]
+origin = [-0.7,0.01,4.4]
 angles = [180,0,0]
 health = 60
-speed = 1.6
+speed = 1.8
 detection_range = 10
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "turret"
+targetname = "pump_turret"
+origin = [1.6,1.55,5.2]
+angles = [180,0,0]
+size = [0.78,0.92,0.78]
+label = "Охрана насосной"
+health = 60
+damage = 10
+attack_range = 12
+warmup = 1
+fire_interval = 1.3
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [1.6,0,2.6]
+scale = [0.666667,1,0.8]
+
+[[entity]]
+classname = "audio_zone"
+name = "pump_machinery"
+origin = [0,1.7,3]
+size = [6,3.4,14]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.18
+required_target = "pump_running"
+
+[[entity]]
+classname = "world_effect"
+kind = "fan"
+origin = [0,2.6,9.78]
+angles = [180,0,0]
+required_target = "pump_running"
+
+[[entity]]
+classname = "world_effect"
+kind = "decal"
+origin = [-1.5,2.5,-3.874]
+mark = "02"
+
+[[entity]]
+classname = "mission_settings"
+completion_title = "Оба сектора восстановлены"
+completion_detail = "Ключ получен, насосы работают, служебный выход открыт."
+
+[[entity]]
+classname = "episode_end"
+origin = [0,1.65,8]
+angles = [180,0,0]
+close_door = "pump_door"

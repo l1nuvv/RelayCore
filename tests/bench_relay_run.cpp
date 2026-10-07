@@ -15,6 +15,7 @@
 #include <span>
 
 #include "bench_relay_route.h"
+#include "cooling_loop_route.h"
 #include "pressure_transfer_route.h"
 #include "scoped_temp_directory.h"
 
@@ -33,6 +34,34 @@ namespace
                   << "; p95=" << samples[samples.size() * 95 / 100] << "; p99=" << samples[samples.size() * 99 / 100]
                   << "; max=" << samples.back() << '\n';
     }
+    auto cooling_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
+    {
+        RelayCore::test::CoolingLoopRoute route{config};
+        auto entry = route.save();
+        entry.player.position = {0, .01F, 5.5F};
+        entry.player.view_angles = {1.5707963268F, 0};
+        route.close_rover = true;
+        route.walk({-4.5F, .01F, 2});
+        static_cast<void>(route.use("cooling_shotgun"));
+        route.walk({-3, .01F, 2});
+        route.walk({-3, .01F, 6});
+        route.walk({-4, .01F, 7});
+        auto service = route.save();
+        route.walk({-4, .01F, 18.8F});
+        route.walk({-5.3F, .01F, 18.5F});
+        route.isolate();
+        route.reach_control();
+        auto standby = route.save();
+        static_cast<void>(route.use("cooling_control"));
+        auto powered = route.save();
+        standby.player.position = powered.player.position = {-3, .01F, 21.5F};
+        standby.player.view_angles = powered.player.view_angles = {.7F, .08F};
+        route.leave();
+        if (!route.mission.completed())
+            throw std::runtime_error("Cooling loop route did not complete");
+        return {entry, service, standby, powered};
+    }
+
     auto bench_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
     {
         RelayCore::test::BenchRelayRoute route{config};
@@ -82,7 +111,8 @@ namespace
         return {entry, distance, cover, powered};
     }
 
-    auto transfer_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
+    auto transfer_saves(const RelayCore::core::GameplayConfig& config, bool atmosphere = false)
+        -> std::array<RelayGame::SavedGame, 4>
     {
         RelayCore::test::PressureRoute route{config};
         route.reach_mixed();
@@ -92,6 +122,7 @@ namespace
         auto distance = route.save();
         distance.player.view_angles = {1.5707963268F, -.18F};
         route.fight_mixed(RelayCore::test::PressureTactic::Distance);
+        const auto unpowered = route.save();
         route.power_transfer();
         auto powered = route.save();
         powered.player.view_angles = {2.4F, -.1F};
@@ -118,7 +149,8 @@ namespace
                   << "; distance_turret_exposed_ticks=" << route.mixed_exposed_ticks
                   << "; cover_rover_hit_metres=" << close.mixed_rover_hit_range
                   << "; cover_turret_exposed_ticks=" << close.mixed_exposed_ticks << '\n';
-        return {entry, distance, cover, powered};
+        return atmosphere ? std::array{unpowered, powered, unpowered, powered}
+                          : std::array{entry, distance, cover, powered};
     }
 } // namespace
 
@@ -131,13 +163,19 @@ int main(int argc, char** argv)
     const bool transfer = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--pressure-transfer";
     });
+    const bool cooling = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--cooling-loop";
+    });
     const bool mounting_views = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--mounting-views";
     });
     const bool visual_slice = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--visual-slice";
     });
-    const std::string_view workload = transfer ? "pressure_transfer" : "bench_relay";
+    const bool atmosphere = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--atmosphere";
+    });
+    const std::string_view workload = cooling ? "cooling_loop" : transfer ? "pressure_transfer" : "bench_relay";
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -146,7 +184,9 @@ int main(int argc, char** argv)
     try
     {
         auto config = RelayCore::core::load_default_engine_config();
-        config.gameplay.level_path = transfer ? "levels/pressure_transfer.toml" : "levels/bench_relay.toml";
+        config.gameplay.level_path = cooling    ? "levels/cooling_loop.toml"
+                                     : transfer ? "levels/pressure_transfer.toml"
+                                                : "levels/bench_relay.toml";
         config.window.width = 1280;
         config.window.height = 720;
         config.window.high_dpi = false;
@@ -163,7 +203,9 @@ int main(int argc, char** argv)
         RelayCore::AudioSystem audio{config.audio};
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
-        auto saves = transfer ? transfer_saves(config.gameplay) : bench_saves(config.gameplay);
+        auto saves = cooling    ? cooling_saves(config.gameplay)
+                     : transfer ? transfer_saves(config.gameplay, atmosphere)
+                                : bench_saves(config.gameplay);
         if (transfer && mounting_views)
         {
             const std::array<glm::vec3, 4> positions{
@@ -191,13 +233,24 @@ int main(int argc, char** argv)
                 saves[i].player.view_angles = angles[i];
             }
         }
-        const std::array names = visual_slice     ? std::array{"overview", "machinery", "control", "reverse"}
+        if (transfer && atmosphere)
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i].player.position = i < 2 ? glm::vec3{34, .01F, 31} : glm::vec3{37.3F, .01F, 39};
+                saves[i].player.view_angles = i < 2 ? glm::vec2{1.06F, 0} : glm::vec2{.4F, 0};
+            }
+        const std::array names = cooling ? std::array{"entry", "service", "standby", "powered"}
+                                 : atmosphere
+                                     ? std::array{"hall-before", "hall-after", "control-before", "control-after"}
+                                 : visual_slice   ? std::array{"overview", "machinery", "control", "reverse"}
                                  : mounting_views ? std::array{"service", "gallery", "notice", "fan"}
                                                   : std::array{"entry", "distance", "cover", "powered"};
-        const std::string capture_directory = transfer ? (visual_slice     ? "pressure-visual-captures"
-                                                          : mounting_views ? "pressure-mounting-captures"
-                                                                           : "pressure-transfer-captures")
-                                                       : "bench-relay-captures";
+        const std::string capture_directory = cooling    ? "cooling-loop-captures"
+                                              : transfer ? (atmosphere       ? "pressure-atmosphere-captures"
+                                                            : visual_slice   ? "pressure-visual-captures"
+                                                            : mounting_views ? "pressure-mounting-captures"
+                                                                             : "pressure-transfer-captures")
+                                                         : "bench-relay-captures";
         std::filesystem::create_directories(capture_directory);
         std::cout << "workload=" << workload
                   << "; resolution=1280x720; vsync=off; hdr=on; pipeline=hardware_srgb; shadows="

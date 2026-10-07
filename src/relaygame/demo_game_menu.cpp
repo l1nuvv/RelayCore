@@ -173,6 +173,8 @@ namespace RelayGame
         const bool pressure_transfer = screen_ == Screen::MainMenu
                                            ? new_game_level_ == "levels/pressure_transfer.toml"
                                            : runtime_.level_path().ends_with("pressure_transfer.toml");
+        const bool cooling_loop = screen_ == Screen::MainMenu ? new_game_level_ == "levels/cooling_loop.toml"
+                                                              : runtime_.level_path().ends_with("cooling_loop.toml");
         const bool bench_relay = screen_ == Screen::MainMenu ? new_game_level_ == "levels/bench_relay.toml"
                                                              : runtime_.level_path().ends_with("bench_relay.toml");
         const bool occult_lab = screen_ == Screen::MainMenu ? new_game_level_ == "levels/occult_lab_b17.toml"
@@ -180,6 +182,7 @@ namespace RelayGame
         ImGui::SeparatorText(
             development_sandbox_ ? "ИСПЫТАТЕЛЬНЫЙ ПОЛИГОН"
             : pressure_transfer  ? "ПЕРЕПУСК ДАВЛЕНИЯ"
+            : cooling_loop       ? "КОНТУР ОХЛАЖДЕНИЯ"
             : bench_relay        ? "РЕЛЕ МАСТЕРСКОЙ"
             : occult_lab         ? "ЛАБОРАТОРИЯ B-17"
                                  : "КОНТУР 03 / ВОССТАНОВЛЕНИЕ"
@@ -203,6 +206,9 @@ namespace RelayGame
                           "откройте выход."
                     : bench_relay
                         ? "Ремонтный зал, два оружия и охрана среди рабочих столов. Включите реле и откройте выход."
+                    : cooling_loop
+                        ? "Утечка в охлаждающем секторе. Изолируйте аварийную линию, запустите оборудование и "
+                          "откройте служебный выход."
                     : occult_lab
                         ? "Наблюдательный пост и резонансная лаборатория. Осмотрите оборудование и проверьте изолятор."
                         : "Сервисная мастерская и насосная галерея. Найдите ключ и откройте путь через оба сектора."
@@ -230,6 +236,7 @@ namespace RelayGame
                     "Сценарий новой игры",
                     new_game_level_.empty()                              ? "Восстановление питания"
                     : new_game_level_ == "levels/pressure_transfer.toml" ? "Перепуск давления"
+                    : cooling_loop                                       ? "Контур охлаждения"
                     : new_game_level_ == "levels/bench_relay.toml"       ? "Реле мастерской"
                     : new_game_level_ == "levels/occult_lab_b17.toml"    ? "Лаборатория B-17"
                                                                          : "Два сектора"
@@ -241,6 +248,8 @@ namespace RelayGame
                     new_game_level_ = "levels/foundation_intake.toml";
                 if (ImGui::Selectable("Перепуск давления", new_game_level_ == "levels/pressure_transfer.toml"))
                     new_game_level_ = "levels/pressure_transfer.toml";
+                if (ImGui::Selectable("Контур охлаждения", cooling_loop))
+                    new_game_level_ = "levels/cooling_loop.toml";
                 if (ImGui::Selectable("Реле мастерской", bench_relay))
                     new_game_level_ = "levels/bench_relay.toml";
                 if (ImGui::Selectable("Лаборатория B-17", occult_lab))

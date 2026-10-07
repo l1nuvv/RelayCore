@@ -1513,6 +1513,9 @@ int main(int argc, char** argv)
             for (int i = 0; i < 150; ++i)
                 fixture.update(game_frame, services);
             fixture.debug_update_mission(RelayCore::physics::make_player_aabb({11, .01F, 22}, .3F, 1.8F));
+            static_cast<void>(use_transfer("gallery_reader"));
+            for (int i = 0; i < 150; ++i)
+                fixture.update(game_frame, services);
             fixture.debug_update_mission(RelayCore::physics::make_player_aabb({30, .01F, 28}, .3F, 1.8F));
             if (!fixture.select_weapon(RelayGame::PlayerWeapon::Shotgun))
                 throw std::runtime_error("Pressure transfer lost its weapon pickup");

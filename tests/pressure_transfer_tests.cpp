@@ -5,6 +5,7 @@
 #include "relaygame/level_editor_document.h"
 #include "relaygame/static_props.h"
 #include "relaygame/usable_interaction.h"
+#include "relaygame/world_audio_zones.h"
 
 #include <algorithm>
 #include <array>
@@ -73,6 +74,13 @@ TEST_CASE("pressure transfer wall equipment and lights meet their supporting sur
         ++mounted;
     }
     CHECK(mounted == 11);
+    for (const auto& turret : route.session.combat.turrets)
+    {
+        CHECK(turret.yaw == 180);
+        const auto size = turret.bounds.maxs - turret.bounds.mins;
+        CHECK(supported(turret.origin + glm::vec3{0, 0, size.z * .48F}));
+        CHECK_FALSE(supported(turret.origin - glm::vec3{0, 0, size.z * .49F}));
+    }
     for (const auto& solid : route.session.level.solids)
         if (solid.material == RelayCore::SurfaceMaterial::LightStrip)
             CHECK(supported({(solid.mins.x + solid.maxs.x) * .5F, solid.maxs.y, (solid.mins.z + solid.maxs.z) * .5F}));
@@ -152,6 +160,108 @@ TEST_CASE("pressure transfer native bench admits rover and low shots but blocks 
     CHECK(top->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
     CHECK(top->surface == RelayCore::SurfaceMaterial::Tile);
     CHECK(world.cast_box({28, .91F, 32}, {.3F, .9F, .3F}, {0, 0, 3}).has_value());
+}
+
+TEST_CASE("pressure transfer remains completable with the pistol alone")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    PressureRoute route{{}};
+    route.pistol_only = true;
+    route.reach_mixed();
+    route.fight_mixed(RelayCore::test::PressureTactic::Distance);
+    route.power_transfer();
+    route.leave();
+    CHECK(route.mission.completed());
+    CHECK(route.player.kills == 4);
+    CHECK(route.shotgun_shots == 0);
+    MESSAGE(
+        "pistol-only: shots=",
+        route.precise_shots,
+        "; damage=",
+        route.player.damage_taken,
+        "; ticks=",
+        route.ticks
+    );
+}
+
+TEST_CASE("pressure transfer close rover rewards shotgun timing while distant fire rewards the pistol")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto fight = [](float range, RelayGame::PlayerWeapon weapon) {
+        PressureRoute route{{}};
+        route.position = {4, .01F, 12};
+        route.session.enemies[0].state.position = {4, .01F, 12 + range};
+        for (int i = 0; i < 1200 && route.session.enemies[0].state.mode != RelayGame::EnemyMode::Dead; ++i)
+        {
+            route.tick(false);
+            const auto eye = route.position + glm::vec3{0, 1.65F, 0};
+            const auto target = route.session.enemies[0].state.position + glm::vec3{0, .45F, 0};
+            static_cast<void>(RelayGame::fire_player_weapon(
+                route.world(),
+                eye,
+                glm::normalize(target - eye),
+                route.player,
+                route.session.combat.turrets,
+                route.session.enemies,
+                weapon
+            ));
+        }
+        CHECK(route.session.enemies[0].state.mode == RelayGame::EnemyMode::Dead);
+        CHECK(route.player.alive);
+        return std::pair{route.ticks, route.player.shots_fired};
+    };
+    const auto close_shotgun = fight(2.2F, RelayGame::PlayerWeapon::Shotgun);
+    const auto close_pistol = fight(2.2F, RelayGame::PlayerWeapon::Precise);
+    CHECK(close_shotgun.first < close_pistol.first);
+    CHECK(close_shotgun.second == 1);
+    CHECK(close_pistol.second == 3);
+    const auto distant_shotgun = fight(8, RelayGame::PlayerWeapon::Shotgun);
+    const auto distant_pistol = fight(8, RelayGame::PlayerWeapon::Precise);
+    CHECK(distant_pistol.first < distant_shotgun.first);
+    MESSAGE(
+        "close kill ticks: shotgun=",
+        close_shotgun.first,
+        "; pistol=",
+        close_pistol.first,
+        "; distant: shotgun=",
+        distant_shotgun.first,
+        "; pistol=",
+        distant_pistol.first
+    );
+}
+
+TEST_CASE("pressure transfer stops the pressure leak and switches to running ventilation")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    PressureRoute route{{}};
+    const auto listener = RelayCore::physics::make_player_aabb({38, .01F, 40}, .3F, 1.8F);
+    const auto standby = RelayGame::find_active_audio_zone(route.session.audio_zones, listener);
+    REQUIRE(standby >= 0);
+    CHECK(route.session.audio_zones[standby].name == "transfer_standby");
+    route.reach_mixed();
+    route.fight_mixed(RelayCore::test::PressureTactic::Cover);
+    route.power_transfer();
+    RelayGame::update_world_environment(route.session.environment, route.activated, 2);
+    RelayGame::update_world_environment(route.session.environment, route.activated, 2);
+    const auto running =
+        RelayGame::find_active_audio_zone(route.session.audio_zones, listener, standby, route.activated);
+    REQUIRE(running >= 0);
+    CHECK(route.session.audio_zones[running].name == "transfer_ventilation");
+    for (const auto& effect : route.session.environment)
+    {
+        if (effect.kind == RelayGame::EnvironmentKind::Steam)
+        {
+            CHECK_FALSE(effect.active);
+            CHECK(effect.strength < .001F);
+        }
+        if (effect.kind == RelayGame::EnvironmentKind::Fan)
+            CHECK(effect.strength > .9F);
+        if (effect.kind == RelayGame::EnvironmentKind::Lamp && effect.required_target == "transfer_running")
+            CHECK(effect.strength == 1);
+    }
 }
 
 TEST_CASE("pressure transfer editor round trip preserves save compatibility")
@@ -323,7 +433,7 @@ TEST_CASE("pressure transfer native tactics survive disk continue and encounter 
                 CHECK(runtime.enemies()[1].state.health == route.session.enemies[1].state.health);
                 CHECK(runtime.turrets()[1].destroyed == route.session.combat.turrets[1].destroyed);
                 CHECK(runtime.activated_target_ids() == route.activated);
-                CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 5 : 6));
+                CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 6 : 7));
                 CHECK(runtime.doors()[1].state == RelayCore::gameplay::DoorState::Closed);
                 CHECK_FALSE(runtime.query_physics_fixture({28, .6F, 31.4F}, {0, 0, 1}, 3));
                 const auto top = runtime.query_physics_fixture({28, 1.1F, 31.4F}, {0, 0, 1}, 3);
@@ -359,7 +469,7 @@ TEST_CASE("pressure transfer native tactics survive disk continue and encounter 
             CHECK(runtime.activated_target_ids() == route.activated);
             CHECK(runtime.enemies()[1].state.mode == route.session.enemies[1].state.mode);
             CHECK(runtime.turrets()[1].destroyed == route.session.combat.turrets[1].destroyed);
-            CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 5 : 6));
+            CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 6 : 7));
             if (phase == 0)
             {
                 route.position = runtime.debug_player_position();
