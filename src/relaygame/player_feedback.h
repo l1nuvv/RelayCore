@@ -1,9 +1,26 @@
 #pragma once
 
+#include "relaycore/physics/world_query.h"
 #include "relaycore/world/blockout_level.h"
+
+#include <optional>
+#include <span>
+
+namespace RelayCore::gameplay
+{
+    struct CombatFireResult;
+}
 
 namespace RelayGame
 {
+    struct WeaponImpactFeedback {
+        std::optional<RelayCore::physics::WorldQueryHit> hard{};
+        std::optional<RelayCore::physics::WorldQueryHit> metal{};
+    };
+
+    [[nodiscard]] auto weapon_impact_feedback(std::span<const RelayCore::gameplay::CombatFireResult> rays)
+        -> WeaponImpactFeedback;
+
     enum class FootstepSurface {
         Concrete,
         Metal,

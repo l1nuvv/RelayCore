@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <glm/vec3.hpp>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -83,7 +84,7 @@ namespace RelayCore
          * @brief Plays a sound file once if audio is available.
          * @param file_path Path to the sound file to play.
          */
-        void play_one_shot(const std::filesystem::path& file_path);
+        void play_one_shot(const std::filesystem::path& file_path, std::optional<glm::vec3> position = std::nullopt);
         void stop_one_shots() noexcept;
         void preload_one_shots(std::span<const std::filesystem::path> paths);
         void set_master_volume(float volume);

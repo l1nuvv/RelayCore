@@ -1,35 +1,21 @@
 ---
 name: relaycore-profile
-description: Analyze RelayCore performance using Tracy captures, timing data, frame diagnostics, or a reproducible workload, and implement optimizations only when requested. Use for profiling, frame-time regressions, allocation/hot-path work, or performance reviews; do not use for generic code cleanup.
+description: Investigate RelayCore frame-time regressions or measured CPU/GPU/query/upload/wait costs using Tracy and reproducible workloads. Use for profiling and requested measured optimization; not for generic cleanup, graphics correctness alone or estimating player experience.
 ---
 
-# RelayCore performance workflow
+# RelayCore profiling
 
-Performance claims require evidence.
+Paths below are relative to the repository root. Read the profiling section of `docs/DEVELOPMENT.md`; inspect current presets, workload arguments and Tracy client version before selecting tools. Read only the relevant report in `docs/profiling/` or protocol linked by the requested roadmap ticket.
 
-## Investigate
+## Establish comparable evidence
 
-1. Identify the exact workload/capture and whether CPU, GPU, synchronization, allocation, or I/O is suspected.
-2. Use the profiler capture and current source together. Do not infer a hot path from code appearance alone.
-3. Rank issues by measured contribution and frequency, not by how “low-level” an optimization sounds.
-4. Distinguish total-frame impact from an expensive-but-rare zone.
+- Use the optimized profiling configuration. Debug/ASan/validation FPS does not characterize the playable build. Record revision plus working-tree changes, executable/assets, GPU/driver, resolution, VSync, color pipeline/HDR, shadows, audio and validation state.
+- Choose the workload that exercises the reported issue. Existing episode/bench/view workloads have different boundaries; inspect what they actually update/render/present. Stationary states and fixed simulation ticks do not establish continuous player-route performance or human duration.
+- Capture a baseline before editing. Separate first-use from revisit and state whether OS/driver caches were controlled; a new process alone is not a cold-cache measurement. Avoid concurrent builds, GPU tests and other captures.
+- Inspect CPU work, GPU intervals, uploads, queries and fence/present waits separately. Nested or overlapping CPU/GPU times cannot be added as independent costs. Missing allocation instrumentation is not evidence of zero allocations.
 
-## Optimization order
+## Investigate and conclude
 
-Prefer, when supported by evidence:
+Rank measured contribution/frequency, form a specific hypothesis, then optimize only if requested. Prefer removing work or improving data shape before new scheduling/cache/render architecture. For a cache change identify ownership, invalidation and stale-data verification.
 
-1. eliminate unnecessary work;
-2. reduce frequency of work;
-3. improve data shape/locality and allocation behavior;
-4. remove avoidable synchronization/state churn;
-5. only then consider micro-optimizations.
-
-Do not introduce jobs/fibers, complex caches, custom allocators, SIMD, spatial structures, or render architecture solely because they are common engine techniques.
-
-For caches/dirty flags, state owner, invalidation condition, rebuild point, and stale-data verification.
-
-## Verification
-
-Preserve correctness tests. Compare the same workload before/after when possible and report the measured metric. If measurement is unavailable after a code change, describe it as a hypothesis or structural improvement, not a confirmed speedup.
-
-Keep Tracy instrumentation only when it answers a recurring diagnostic question; do not fill hot paths with decorative zones.
+Run affected correctness checks and repeat the same workload/settings. Report sample count, frame-time distribution and spikes with measurement boundaries; expand sampling only when noise or a missing scenario prevents a conclusion. If there is no comparable after-capture, report the unverified hypothesis or structural change without a speedup claim. Preserve relevant evidence paths; do not add instrumentation without a diagnostic purpose.

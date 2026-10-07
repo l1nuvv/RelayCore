@@ -3,6 +3,7 @@
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor_document.h"
+#include "relaygame/player_feedback.h"
 
 #include <doctest/doctest.h>
 
@@ -78,6 +79,7 @@ TEST_CASE("shotgun has a close range advantage and counts one discharge")
         CHECK(shot.pellet_traces[1].end.x * shot.pellet_traces[2].end.x < 0);
         CHECK(shotgun.shots_fired == 1);
         CHECK(shotgun.shots_hit == 1);
+        CHECK_FALSE(shot.rays[0].world_impact);
         CHECK(shotgun.weapon_cooldown_remaining_seconds == doctest::Approx(.85F));
         CHECK(shotgun.weapon_damage == precise.weapon_damage);
         static_cast<void>(RelayGame::fire_player_weapon(
@@ -163,7 +165,57 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
         CHECK(shot.killed_enemy);
         CHECK(turrets[0].health == turrets[0].max_health);
         CHECK(player.kills == 1);
+        for (std::size_t i = 0; i < shot.ray_count; ++i)
+            CHECK_FALSE(shot.rays[i].world_impact);
     }
+}
+
+TEST_CASE("weapon impacts select the nearest real surface per family for both weapons")
+{
+    using RelayCore::SurfaceMaterial;
+    using RelayCore::physics::WorldCollider;
+    using RelayCore::physics::WorldObjectKind;
+    const std::array walls{
+        WorldCollider{{{-5, -5, 4}, {0.01F, 5, 4.2F}}, SurfaceMaterial::Concrete, {WorldObjectKind::Solid, 0}},
+        WorldCollider{{{0.02F, -5, 5}, {5, 5, 5.2F}}, SurfaceMaterial::Metal, {WorldObjectKind::PropCollider, 1}},
+    };
+    for (const auto weapon : {RelayGame::PlayerWeapon::Precise, RelayGame::PlayerWeapon::Shotgun})
+    {
+        RelayCore::gameplay::PlayerCombatState player;
+        auto attack = RelayGame::fire_player_weapon({walls}, {}, {0, 0, 1}, player, {}, {}, weapon);
+        const auto feedback = RelayGame::weapon_impact_feedback(std::span{attack.rays.data(), attack.ray_count});
+        REQUIRE(feedback.hard);
+        CHECK(feedback.hard->position.z == doctest::Approx(4));
+        CHECK(feedback.hard->object.index == 0);
+        CHECK(feedback.hard->normal == glm::vec3{0, 0, -1});
+        CHECK(feedback.metal.has_value() == (weapon == RelayGame::PlayerWeapon::Shotgun));
+        if (feedback.metal)
+        {
+            CHECK(feedback.metal->position.z == doctest::Approx(5));
+            CHECK(feedback.metal->object.index == 1);
+        }
+        CHECK(player.shots_hit == 0);
+        CHECK(player.hit_confirmation_remaining_seconds == 0);
+        const auto cooldown = RelayGame::fire_player_weapon({walls}, {}, {0, 0, 1}, player, {}, {}, weapon);
+        CHECK_FALSE(cooldown.combat.fired);
+        CHECK_FALSE(cooldown.combat.world_impact);
+        player.weapon_cooldown_remaining_seconds = 0;
+        attack = RelayGame::fire_player_weapon({walls}, {}, {0, 0, -1}, player, {}, {}, weapon);
+        for (std::size_t i = 0; i < attack.ray_count; ++i)
+            CHECK_FALSE(attack.rays[i].world_impact);
+    }
+
+    std::array<RelayCore::gameplay::CombatFireResult, 4> rays;
+    rays[0].fired = rays[1].fired = rays[2].fired = true;
+    rays[0].world_impact = RelayCore::physics::WorldQueryHit{.distance = 8, .surface = SurfaceMaterial::WallPanel};
+    rays[1].world_impact = RelayCore::physics::WorldQueryHit{.distance = 3, .surface = SurfaceMaterial::Metal};
+    rays[2].world_impact = RelayCore::physics::WorldQueryHit{.distance = 2, .surface = SurfaceMaterial::Tile};
+    rays[3].world_impact = RelayCore::physics::WorldQueryHit{.distance = 1, .surface = SurfaceMaterial::Concrete};
+    const auto feedback = RelayGame::weapon_impact_feedback(rays);
+    REQUIRE(feedback.metal);
+    REQUIRE(feedback.hard);
+    CHECK(feedback.metal->distance == 3);
+    CHECK(feedback.hard->distance == 2);
 }
 
 TEST_CASE("shotgun can destroy multiple turrets with one event per target")

@@ -38,6 +38,11 @@ if(WIN32)
         COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/collision_assets_tests.ps1"
             -Compiler $<TARGET_FILE:relaycore_collision_compile> -Importer $<TARGET_FILE:relaycore_model_import>
             -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
+    add_test(NAME relaycore.tooling.irradiance_assets
+        COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/irradiance_assets_tests.ps1"
+            -Baker $<TARGET_FILE:relaycore_irradiance_bake> -Authoring "${PROJECT_SOURCE_DIR}/assets/config/render_authoring.toml")
+    set_tests_properties(relaycore.tooling.irradiance_assets PROPERTIES
+        ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
 endif()
 add_executable(relaycore_content_validation)
 add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp collision_asset_tests.cpp
@@ -247,7 +252,8 @@ add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
 add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
 add_test(NAME graphics.hdr_pipeline COMMAND relaycore_vulkan_mesh_tests --hdr)
 add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --irradiance)
-set_tests_properties(graphics.vulkan_mesh graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes PROPERTIES
+add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
+set_tests_properties(graphics.vulkan_mesh graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -302,6 +308,10 @@ set_tests_properties(graphics.vulkan_window PROPERTIES
 )
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
 add_test(NAME graphics.bench_relay COMMAND relaycore_bench_relay_run)
+add_test(NAME graphics.pressure_transfer COMMAND relaycore_bench_relay_run --pressure-transfer)
+set_tests_properties(graphics.pressure_transfer PROPERTIES LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_bench_relay_run>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
 set_tests_properties(graphics.bench_relay PROPERTIES LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_bench_relay_run>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
@@ -344,7 +354,7 @@ set_tests_properties(
 )
 
 
-set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.hdr_settings graphics.power_restoration graphics.hdr_episode graphics.bench_relay PROPERTIES
+set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.hdr_settings graphics.power_restoration graphics.hdr_episode graphics.bench_relay graphics.pressure_transfer PROPERTIES
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 
 doctest_discover_tests(

@@ -22,6 +22,8 @@
 /vcpkg_installed/
 /.cache/
 /.clangd/
+__pycache__/
+*.pyc
 
 # IDEs and editors
 .idea/

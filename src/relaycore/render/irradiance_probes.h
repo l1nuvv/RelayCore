@@ -40,6 +40,11 @@ namespace RelayCore::render
     [[nodiscard]] auto
     irradiance_source_signature(const IrradianceBakeScene& scene, const IrradianceProbeSettings& settings)
         -> std::uint64_t;
+    [[nodiscard]] auto irradiance_inputs_match(
+        const IrradianceProbeVolume& volume,
+        const IrradianceBakeScene& scene,
+        const IrradianceProbeSettings& settings
+    ) -> bool;
     [[nodiscard]] auto bake_irradiance_probes(const IrradianceBakeScene& scene, const IrradianceProbeSettings& settings)
         -> IrradianceProbeVolume;
     [[nodiscard]] auto

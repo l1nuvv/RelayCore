@@ -209,6 +209,8 @@ namespace RelayGame
             std::filesystem::path weapon_fire{};
             std::filesystem::path shotgun_fire{};
             std::filesystem::path weapon_hit{};
+            std::filesystem::path impact_hard{};
+            std::filesystem::path impact_metal{};
             std::filesystem::path threat_windup{};
             std::filesystem::path rover_attack{};
             std::filesystem::path turret_fire{};
@@ -302,7 +304,11 @@ namespace RelayGame
 
         void apply_combat_target_event(const RelayCore::gameplay::CombatTargetEvent& event);
 
-        void play_gameplay_audio(RelayCore::EngineServices& services, const std::filesystem::path& cue_path);
+        void play_gameplay_audio(
+            RelayCore::EngineServices& services,
+            const std::filesystem::path& cue_path,
+            std::optional<glm::vec3> position = std::nullopt
+        );
 
         void play_door_state_change_audio(RelayCore::EngineServices& services);
 

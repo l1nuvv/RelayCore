@@ -23,7 +23,7 @@ The core direction is a believable late-1980s/1990s scientific-industrial facili
 - Use geometry for silhouette, depth, interaction, and construction; use materials and decals for secondary surface detail where the pipeline supports them.
 - Prefer reusable modular dimensions and readable large forms. Background props need only the detail justified by their viewing distance; hero props can concentrate detail in a few meaningful features.
 - Keep practical lighting and ordinary infrastructure dominant, with localized occult focal points. Do not translate the board's scene lighting into baked texture shadows or glow unless the requested asset type requires it.
-- Follow current origin, naming, scale, material, and export conventions. For asset production, use `relaycore-assets` and its relevant quality gate; the art reference does not authorize new renderer or pipeline capabilities.
+- Follow current origin, naming, scale, material, and export conventions. For asset production, use `relaycore-assets` for pipeline checks; the art reference does not authorize new renderer or pipeline capabilities.
 
 ## Conflicts and review
 

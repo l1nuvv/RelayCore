@@ -1,36 +1,25 @@
 ---
 name: relaycore-assets
-description: Create, modify, or review RelayCore visual/content assets such as textures, materials, shaders, blockout/content data, UI graphics, decals, signs, or generated game art. Use when asset quality, visual consistency, or authored-content quality matters; do not use for ordinary C++ implementation alone.
+description: Produce or diagnose RelayCore assets through source export, native compilation, receipts, staging and runtime loading. Use for GLB/rcmodel, collision/probe products, textures/audio/UI asset delivery or pipeline changes; not for art direction alone, gameplay-only TOML edits or unrelated C++ fixes.
 ---
 
-# RelayCore asset authoring
+# RelayCore asset production
 
-Create assets for a grounded 1990s scientific-industrial FPS with engineered occult technology. Read `docs/ART_DIRECTION.md` for the authoritative visual direction; use `relaycore-art-direction` when the task requires art decisions or visual review. This skill owns asset authoring and pipeline validation.
+Paths below are relative to the repository root. For visual decisions use `relaycore-art-direction`; this workflow owns technical delivery.
 
-Read only the reference relevant to the task:
+## Find the owning pipeline
 
-- [references/visual-direction.md](references/visual-direction.md) for visual/art decisions.
-- [references/quality-gate.md](references/quality-gate.md) before finalizing generated or modified assets.
+- Native models: read the static-model section of `docs/DEVELOPMENT.md`, current importer diagnostics and `cmake/RelayCoreModelAssets.cmake`. The importer supports a deliberate subset of glTF; a valid GLB is not necessarily a supported RelayCore model.
+- Collision: read `docs/COLLISION_ASSETS.md` and `cmake/RelayCoreCollisionAssets.cmake`. Collision is authored separately and explicitly paired with a model, not inferred from render triangles.
+- Irradiance: inspect `cmake/RelayCoreIrradianceAssets.cmake` and the affected bake inputs. Use current fingerprint/staleness checks before reusing products; unchanged-looking files or old reports are insufficient evidence.
+- Other assets: inspect the adjacent asset README, generator and runtime consumer for dimensions, units, channels, color space, alpha, tiling and naming. Run only the generator needed by the request; some exporters regenerate multiple assets.
 
-## Workflow
+## Compile and validate
 
-1. Inspect adjacent assets, material/shader usage, naming, dimensions, and authored data before creating anything.
-2. Define the asset's gameplay purpose and where it will be seen: wall/floor/prop/UI/signage/decoration/debug/etc.
-3. Match current technical constraints instead of inventing a new asset convention.
-4. Generate or edit only the requested deliverables. Do not create a large “asset pack” unless requested.
-5. Prefer restrained, readable forms and surfaces. Add detail because it communicates material, function, scale, wear, or navigation—not because empty space looks unfinished.
-6. Validate in the actual pipeline or in-engine when available. A standalone image looking plausible is not sufficient evidence that the asset works in RelayCore.
+Trace the changed source through its declaration, compiler/product, receipt or fingerprint, staged path and runtime reference. Each runtime path has one authored or generated owner. Do not put generated native products into source `assets/` or repair stale state by editing receipts/manifests.
 
-## Technical discipline
+Use existing CMake targets and `relaycore-verify` to select checks. Model receipts are checked by `scripts/check-model-assets.ps1`; collision pairing/staleness by `cmake/check_collision_assets.cmake`. Follow their current parameters. Isolated physics fixtures avoid shader/irradiance work; demo staging may trigger expensive bakes. Serialize builds sharing an output tree and avoid rebuilding locked runtime DLLs.
 
-- Do not fake binary/image output with placeholder text files.
-- Do not silently change formats, resolutions, channel conventions, color-space assumptions, shader semantics, or authored schemas.
-- Avoid baked light/shadow/AO/perspective unless the current asset type intentionally contains it.
-- Preserve alpha intent and edge quality when transparency is involved.
-- For tiling textures, verify seams and avoid unique features that reveal repetition too aggressively.
-- For signs/UI, use meaningful readable text only when the task supplies or requires it; do not invent pseudo-language glyph noise.
-- For shaders/material data, favor the current renderer's actual needs over PBR boilerplate or unused channels.
+CTest supplies asset roots. For manual renderer checks use a complete staged runtime root, including compiled SPIR-V and native products, rather than source `assets/`. Rebuild/stage before F7; editor saves are user copies, not source-map edits.
 
-## Output
-
-Report created/changed asset paths, intended use, technical assumptions, validation performed, and anything that still needs in-engine inspection.
+Check the affected product/loader and map or representative rendered view. For images also check seams, alpha edges, consumed channels and unintended baked lighting. A plausible standalone image or successful export is not runtime validation. Report the source/product/staged paths, checks performed and any remaining visual/runtime gap. Stop once the affected path is verified; packaging requires a packaging/release request.

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <glm/vec3.hpp>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -98,6 +99,7 @@ namespace RelayCore::gameplay
         bool killed_turret = false;
         int turret_index = -1;
         float hit_distance = 0.0F;
+        std::optional<physics::WorldQueryHit> world_impact{};
         CombatTargetEvent target_event{};
     };
 

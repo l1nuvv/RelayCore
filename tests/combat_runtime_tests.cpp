@@ -139,6 +139,10 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     );
     CHECK(blocked_shot.fired);
     CHECK_FALSE(blocked_shot.hit_turret);
+    REQUIRE(blocked_shot.world_impact);
+    CHECK(blocked_shot.world_impact->surface == RelayCore::SurfaceMaterial::Metal);
+    CHECK(blocked_shot.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Door);
+    CHECK(blocked_shot.world_impact->position == player.shot_trace.end);
     CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
     CHECK(player.shot_trace.end.z == doctest::Approx(2.85F));
     CHECK(turrets[0].health == doctest::Approx(50.0F));
@@ -156,6 +160,7 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     );
     CHECK(first_hit.fired);
     CHECK(first_hit.hit_turret);
+    CHECK_FALSE(first_hit.world_impact);
     CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
     CHECK(player.shot_trace.end.z == doctest::Approx(first_hit.hit_distance));
     CHECK_FALSE(first_hit.killed_turret);

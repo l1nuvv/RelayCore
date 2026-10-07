@@ -1,6 +1,6 @@
 """Blender --background --disable-autoexec --python scripts/export-native-lab-glb.py."""
 from pathlib import Path
-from math import cos, sin, pi, sqrt
+from math import cos, sin, pi, sqrt, atan2
 import sys
 
 import bpy
@@ -52,8 +52,8 @@ def material(name, color, finish=None):
         shader.inputs["Base Color"].default_value = (1, 1, 1, 1)
         shader.inputs["Metallic"].default_value = metallic
         shader.inputs["Roughness"].default_value = roughness
-        value["uv_repeat"] = {"paint": 3, "plastic": 12, "galvanized": 8, "brass": 3,
-                              "rubber": 12, "canvas": 10, "ceramic": 2, "blackened": 4,
+        value["uv_metres"] = {"paint": 1.5, "plastic": 2, "galvanized": 2, "brass": 2,
+                              "rubber": 3, "canvas": 4, "ceramic": 1, "blackened": 2,
                               "concrete": 1}[finish]
     return value
 
@@ -111,9 +111,28 @@ def export(name, tangents=False):
     for obj in list(bpy.context.scene.objects):
         if obj.type == "MESH":
             surface = obj.data.materials[0]
-            if obj.data.uv_layers.active:
-                for loop in obj.data.uv_layers.active.data:
-                    loop.uv *= surface.get("uv_repeat", 1)
+            if "uv_metres" in surface:
+                uv = obj.data.uv_layers.active or obj.data.uv_layers.new()
+                density = surface["uv_metres"]
+                for polygon in obj.data.polygons:
+                    axis = max(range(3), key=lambda a: abs(polygon.normal[a]))
+                    world_normal = obj.matrix_world.to_3x3() @ polygon.normal
+                    world_axis = max(range(3), key=lambda a: abs(world_normal[a]))
+                    axes = ((1, 2), (0, 2), (0, 1))[world_axis]
+                    cylindrical = obj.get("cylindrical_uv", False) and axis != 2
+                    angles = [atan2(obj.data.vertices[i].co.y, obj.data.vertices[i].co.x)
+                              for i in polygon.vertices] if cylindrical else []
+                    seam = angles and max(angles) - min(angles) > pi
+                    for loop_index in polygon.loop_indices:
+                        point = obj.data.vertices[obj.data.loops[loop_index].vertex_index].co
+                        if cylindrical:
+                            angle = atan2(point.y, point.x)
+                            if seam and angle < 0:
+                                angle += 2 * pi
+                            uv.data[loop_index].uv = (angle * obj["uv_radius"] * density, point.z * density)
+                        else:
+                            point = obj.matrix_world @ point
+                            uv.data[loop_index].uv = (point[axes[0]] * density, point[axes[1]] * density)
             if surface.node_tree.nodes.get("Principled BSDF").inputs["Metallic"].default_value != 1:
                 surfaces.setdefault(surface, []).append(obj)
     for surface, objects in surfaces.items():
@@ -142,12 +161,14 @@ def export(name, tangents=False):
         mesh.free()
     bpy.context.preferences.filepaths.save_version = 0
     bpy.ops.wm.save_as_mainfile(filepath=str(output / f"{name}.blend"))
+    temporary = output / f"{name}.export.glb"
     bpy.ops.export_scene.gltf(
-        filepath=str(output / f"{name}.glb"), export_format="GLB", export_yup=True,
+        filepath=str(temporary), export_format="GLB", export_yup=True,
         export_normals=True, export_texcoords=True, export_tangents=tangents,
         export_animations=False, export_skins=False, export_cameras=False,
         export_lights=False, export_extras=False,
     )
+    temporary.replace(output / f"{name}.glb")
 
 
 def cylinder(name, center, radius, depth, surface, parent, rotation=(0, 0, 0), sides=20):
@@ -156,6 +177,8 @@ def cylinder(name, center, radius, depth, surface, parent, rotation=(0, 0, 0), s
     obj = bpy.context.object
     obj.name = name
     obj.data.materials.append(surface)
+    obj["cylindrical_uv"] = True
+    obj["uv_radius"] = radius
     for polygon in obj.data.polygons:
         polygon.use_smooth = len(polygon.vertices) == 4
     obj.parent = parent
@@ -420,110 +443,9 @@ label("VERIFY CONTINUITY", (.21, -.018, .25), .040, dark, sign)
 label("AUTHORIZED PERSONNEL ONLY", (0, -.018, .08), .043, dark, sign)
 export("facility_sign")
 
-scientist = assembly("Protective laboratory suit - 1.82m")
-cloth = material("Unbleached protective canvas", (.54, .52, .42), "canvas")
-rubber = material("Charcoal rubber boots gloves and mask", (.027, .034, .030), "rubber")
-glass = material("Dark circular safety lenses", (.045, .075, .060))
-glass.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = .12
-brass = material("Aged respirator fittings", (.30, .22, .115), "brass")
+if not {arg for arg in sys.argv if arg.startswith("--model=")} or "--model=scientist_hazmat" in sys.argv:
+    exec((root / "scripts/author-scientist.py").read_text(encoding="utf-8"))
 
-def ellipsoid(name, center, scale, surface):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=12, location=center)
-    obj = bpy.context.object
-    obj.name = name
-    obj.scale = scale
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    obj.data.materials.append(surface)
-    for polygon in obj.data.polygons:
-        polygon.use_smooth = True
-    obj.parent = scientist
-    return obj
-
-def garment(name, profile):
-    count = 32
-    vertices, faces = [], []
-    for x, y, z, width, depth in profile:
-        for step in range(count):
-            angle = step * 2 * pi / count
-            fold = .003 * sin(7 * angle + z * 16) + .002 * sin(3 * angle - z * 9)
-            vertices.append((x + (width + fold) * cos(angle), y + (depth + fold) * sin(angle), z))
-    for ring in range(len(profile) - 1):
-        for step in range(count):
-            following = (step + 1) % count
-            faces.append((ring * count + step, ring * count + following,
-                          (ring + 1) * count + following, (ring + 1) * count + step))
-    faces.extend((tuple(reversed(range(count))), tuple(range(len(vertices) - count, len(vertices)))))
-    mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata(vertices, [], faces)
-    mesh.materials.append(cloth)
-    uv = mesh.uv_layers.new()
-    for polygon in mesh.polygons:
-        polygon.use_smooth = True
-        seam = any(index % count == count - 1 for index in polygon.vertices)
-        for loop in polygon.loop_indices:
-            index = mesh.loops[loop].vertex_index
-            u = index % count / count
-            uv.data[loop].uv = (1 if seam and u == 0 else u, vertices[index][2])
-    obj = bpy.data.objects.new(name, mesh)
-    bpy.context.collection.objects.link(obj)
-    obj.parent = scientist
-
-for x in (-.105, .105):
-    ellipsoid("Rubber safety boot", (x, -.05, .09), (.077, .15, .09), rubber)
-    garment("Protective trouser leg", [(x, .005, z, width, depth) for z, width, depth in
-            ((.16, .078, .084), (.24, .082, .09), (.42, .077, .085), (.52, .085, .09),
-             (.66, .095, .105), (.79, .105, .115), (.88, .10, .11))])
-garment("Tailored protective smock", [(0, 0, z, width, depth) for z, width, depth in
-        ((.71, .23, .14), (.78, .255, .15), (.92, .24, .145), (1.08, .225, .135),
-         (1.24, .26, .16), (1.37, .255, .145), (1.43, .22, .125), (1.48, .11, .10))])
-vertices, faces = [], []
-for row, (z, half_width) in enumerate(((.73, .195), (.89, .205), (1.08, .19), (1.23, .17), (1.33, .145))):
-    for step in range(9):
-        u = step / 4 - 1
-        vertices.append((half_width * u, -.177 + .033 * u * u + .003 * sin(step * 2 + row), z))
-for row in range(4):
-    for step in range(8):
-        index = row * 9 + step
-        faces.append((index, index + 1, index + 10, index + 9))
-mesh = bpy.data.meshes.new("Flexible laboratory apron")
-mesh.from_pydata(vertices, [], faces)
-mesh.materials.append(rubber)
-uv = mesh.uv_layers.new()
-for polygon in mesh.polygons:
-    polygon.use_smooth = True
-    for loop in polygon.loop_indices:
-        index = mesh.loops[loop].vertex_index
-        uv.data[loop].uv = (index % 9 / 8, index // 9 / 4)
-apron = bpy.data.objects.new("Rubberized laboratory apron", mesh)
-bpy.context.collection.objects.link(apron)
-apron.parent = scientist
-bpy.context.view_layer.objects.active = apron
-modifier = apron.modifiers.new("Apron thickness", "SOLIDIFY")
-modifier.thickness = .002
-bpy.ops.object.modifier_apply(modifier=modifier.name)
-ellipsoid("Closed protective hood", (0, 0, 1.65), (.135, .13, .17), cloth)
-ellipsoid("Respirator facepiece", (0, -.12, 1.635), (.108, .06, .118), rubber)
-for x in (-.057, .057):
-    tube("Circular goggle rim", (x, -.187, 1.70), .045, .009, brass, scientist, (pi / 2, 0, 0))
-    cylinder("Safety goggle lens", (x, -.188, 1.70), .038, .008, glass, scientist, (pi / 2, 0, 0))
-cylinder("Respirator filter", (0, -.203, 1.565), .048, .075, rubber, scientist, (pi / 2, 0, 0))
-for z in (1.54, 1.555, 1.57, 1.585):
-    box("Filter grille", (0, -.244, z), (.062, .006, .005), brass, scientist, .001)
-for side in (-1, 1):
-    garment("Protective sleeve", [(side * x, y, z, width, depth) for x, y, z, width, depth in
-            ((.325, -.025, .92, .055, .06), (.32, -.02, 1.0, .065, .075),
-             (.31, 0, 1.10, .075, .075), (.30, .008, 1.19, .08, .085),
-             (.275, 0, 1.32, .085, .095), (.235, 0, 1.41, .07, .075))])
-    ellipsoid("Protective glove palm", (side * .327, -.025, .84), (.032, .052, .062), rubber)
-    for y, length in ((-.06, .043), (-.035, .060), (-.01, .057), (.015, .045)):
-        ellipsoid("Relaxed glove finger", (side * .327, y, .787 - length / 2), (.011, .012, length / 2), rubber)
-    ellipsoid("Protective glove thumb", (side * .306, -.071, .839), (.019, .022, .042), rubber)
-    cylinder("Elastic protective cuff", (side * .325, -.025, .926), .06, .035, cloth, scientist)
-    box("Apron neck strap", (side * .115, -.145, 1.40), (.020, .012, .20), rubber, scientist, .003)
-box("Personnel identification patch", (-.08, -.184, 1.29), (.07, .004, .06), cloth, scientist, .001)
-label("17", (-.08, -.188, 1.29), .032, rubber, scientist)
-box("Apron waist tie", (0, .147, 1.11), (.40, .016, .027), rubber, scientist, .004)
-export("scientist_hazmat")
 
 arch = assembly("Concrete service vault - 3.2m clear span")
 concrete = material("Aged warm cast concrete", (.37, .36, .31), "concrete")
@@ -639,3 +561,22 @@ for row in range(3):
         switch.rotation_euler.x = .30
 label("RELAY / FIELD CONTROL", (0, .208, 1.20), .041, ivory, console)
 export("control_console")
+
+fixture = assembly("Fluorescent ceiling fitting - stamped steel and prismatic diffuser frame")
+enamel = material("Aged ivory fixture enamel", (.62, .62, .56))
+enamel.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = .65
+reflector = material("Formed aluminum reflector", (.48, .49, .46))
+reflector.node_tree.nodes.get("Principled BSDF").inputs["Metallic"].default_value = .75
+reflector.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = .55
+fastener = material("Fixture clips and screws", (.13, .14, .13))
+box("Ballast and wiring pan", (0,0,-.025), (1.30,.36,.05), enamel, fixture, .006)
+for side in (-1,1):
+    box("Folded diffuser retaining rail", (0,side*.17,-.075), (1.30,.025,.10), enamel, fixture, .003)
+    box("Fixture end cap", (side*.638,0,-.075), (.024,.34,.10), enamel, fixture, .003)
+    panel = box("Angled reflector", (0,side*.10,-.06), (1.23,.12,.008), reflector, fixture, .002)
+    panel.rotation_euler.x = side*.30
+    for x in (-.40,.40):
+        box("Diffuser spring clip", (x,side*.183,-.10), (.035,.015,.055), fastener, fixture, .002)
+    for x in (-.59,.59):
+        cylinder("Captive screw", (x,side*.145,-.127), .006,.004,fastener,fixture,sides=12)
+export("fluorescent_fixture")

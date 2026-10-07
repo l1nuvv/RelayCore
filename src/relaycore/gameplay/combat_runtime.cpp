@@ -300,6 +300,7 @@ namespace RelayCore::gameplay
 
         if (best_turret_index < 0)
         {
+            result.world_impact = blocker;
             return result;
         }
 

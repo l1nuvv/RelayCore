@@ -151,6 +151,8 @@ namespace RelayGame
             audio_cues_.weapon_fire,
             audio_cues_.shotgun_fire,
             audio_cues_.weapon_hit,
+            audio_cues_.impact_hard,
+            audio_cues_.impact_metal,
             audio_cues_.threat_windup,
             audio_cues_.rover_attack,
             audio_cues_.turret_fire,

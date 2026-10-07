@@ -186,6 +186,7 @@ namespace RelayGame
         result.combat = RelayCore::gameplay::apply_player_fire(world, origin, ray, player, turrets, distance);
         if (index >= 0 && result.combat.fired && !result.combat.hit_turret)
         {
+            result.combat.world_impact.reset();
             result.enemy_index = index;
             auto& state = enemies[static_cast<std::size_t>(index)].state;
             player.damage_dealt += std::min(state.health, player.weapon_damage);

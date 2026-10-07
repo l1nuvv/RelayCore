@@ -1,18 +1,24 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/render/model_asset.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor_document.h"
+#include "relaygame/static_props.h"
 #include "relaygame/usable_interaction.h"
 
 #include <algorithm>
 #include <array>
 #include <doctest/doctest.h>
 #include <filesystem>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
+#include <limits>
 
+#include "pressure_transfer_route.h"
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
-#include "world_query_fixture.h"
+
+using RelayCore::test::PressureRoute;
 
 namespace
 {
@@ -21,165 +27,73 @@ namespace
         return std::filesystem::path{__FILE__}.parent_path().parent_path() / "assets/levels/pressure_transfer.toml";
     }
 
-    auto blockers(const RelayGame::LevelSession& session) -> std::vector<RelayCore::physics::Aabb>
-    {
-        std::vector<RelayCore::physics::Aabb> result;
-        for (const auto* solids : {&session.level.solids, &session.level.prop_colliders})
-            for (const auto& solid : *solids)
-                result.push_back({solid.mins, solid.maxs});
-        for (const auto& door : session.doors)
-            if (RelayCore::gameplay::is_door_blocking(door))
-                result.push_back(RelayCore::gameplay::current_door_bounds(door));
-        return result;
-    }
-
-    struct PressureRoute {
-        RelayGame::LevelSession session;
-        RelayGame::MissionRuntime mission;
-        RelayCore::gameplay::PlayerCombatState player;
-        std::vector<std::string> inventory, activated, signaled;
-        std::vector<RelayCore::physics::WorldCollider> enemy_scratch;
-        glm::vec3 position;
-        unsigned precise_shots = 0, shotgun_shots = 0;
-
-        explicit PressureRoute(const RelayCore::core::GameplayConfig& config) :
-            session(RelayGame::LevelSessionBuilder{config}.build(map_path())), position(session.spawn_position)
-        {
-            mission.reset(session.mission_definition);
-        }
-
-        void tick(bool fire = true)
-        {
-            constexpr float dt = 1.0F / 120;
-            const auto actor = RelayCore::physics::make_player_aabb(position, .3F, 1.8F);
-            const auto eye = position + glm::vec3{0, 1.65F, 0};
-            RelayCore::gameplay::tick_combat_state(dt, player, session.combat.turrets);
-            static_cast<void>(RelayCore::gameplay::update_doors(dt, actor, session.doors));
-            static_cast<void>(RelayCore::gameplay::update_combat_threats(
-                RelayCore::test::WorldQueryFixture{session.level, session.doors},
-                actor,
-                eye,
-                player,
-                session.combat.turrets,
-                session.combat.hazards,
-                dt
-            ));
-            static_cast<void>(RelayGame::update_enemies(
-                RelayCore::test::WorldQueryFixture{session.level, session.doors},
-                actor,
-                eye,
-                player,
-                session.enemies,
-                dt,
-                enemy_scratch
-            ));
-            if (fire)
-            {
-                glm::vec3 target{};
-                float nearest = 16;
-                bool nearest_enemy = false;
-                for (const auto& enemy : session.enemies)
-                    if (enemy.state.mode != RelayGame::EnemyMode::Dead)
-                    {
-                        const auto center = enemy.state.position + glm::vec3{0, .45F, 0};
-                        const float distance = glm::distance(eye, center);
-                        if (distance < nearest)
-                        {
-                            nearest = distance;
-                            target = center;
-                            nearest_enemy = true;
-                        }
-                    }
-                for (const auto& turret : session.combat.turrets)
-                    if (!turret.destroyed && glm::distance(eye, turret.origin) < nearest)
-                    {
-                        nearest = glm::distance(eye, turret.origin);
-                        target = turret.origin;
-                        nearest_enemy = false;
-                    }
-                if (nearest < 16 && (!nearest_enemy || nearest < 4))
-                {
-                    const auto weapon = nearest < 4 && !inventory.empty() ? RelayGame::PlayerWeapon::Shotgun
-                                                                          : RelayGame::PlayerWeapon::Precise;
-                    const auto shot = RelayGame::fire_player_weapon(
-                        RelayCore::test::WorldQueryFixture{session.level, session.doors},
-                        eye,
-                        glm::normalize(target - eye),
-                        player,
-                        session.combat.turrets,
-                        session.enemies,
-                        weapon
-                    );
-                    if (shot.combat.fired)
-                        weapon == RelayGame::PlayerWeapon::Shotgun ? ++shotgun_shots : ++precise_shots;
-                }
-            }
-            mission.update(actor, session.doors, inventory, activated, signaled);
-        }
-
-        auto use(std::string_view name) -> RelayCore::gameplay::UseInteractionOutcome
-        {
-            const auto found = std::ranges::find(session.usables, name, &RelayCore::gameplay::RuntimeUsable::name);
-            REQUIRE(found != session.usables.end());
-            const auto world = blockers(session);
-            const auto eye = position + glm::vec3{0, 1.65F, 0};
-            const auto focus = RelayCore::gameplay::find_focused_usable(
-                eye,
-                glm::normalize(found->origin - eye),
-                session.usables,
-                2.25F,
-                .75F,
-                RelayCore::test::WorldQueryFixture{world}
-            );
-            REQUIRE(focus.usable_index == found - session.usables.begin());
-            const auto event = RelayGame::apply_usable_interaction(
-                *found,
-                session.doors,
-                session.usables,
-                inventory,
-                activated,
-                signaled
-            );
-            tick();
-            return event.kind;
-        }
-
-        void walk_to(glm::vec3 destination)
-        {
-            for (int i = 0;
-                 i < 4000
-                 && glm::distance(glm::vec2{position.x, position.z}, glm::vec2{destination.x, destination.z}) > .06F;
-                 ++i)
-            {
-                auto world = blockers(session);
-                for (const auto& enemy : session.enemies)
-                    if (enemy.state.mode != RelayGame::EnemyMode::Dead)
-                        world.push_back(RelayGame::enemy_bounds(enemy.state));
-                auto delta = destination - position;
-                delta.y = 0;
-                const auto velocity = glm::normalize(delta) * 3.0F + glm::vec3{0, -1, 0};
-                position = RelayCore::physics::move_and_collide(
-                               RelayCore::test::WorldQueryFixture{world},
-                               position,
-                               velocity,
-                               1.0F / 120,
-                               {},
-                               true
-                )
-                               .position;
-                tick();
-                REQUIRE(player.alive);
-            }
-            CAPTURE(destination.x);
-            CAPTURE(destination.z);
-            CAPTURE(position.x);
-            CAPTURE(position.z);
-            REQUIRE(glm::distance(glm::vec2{position.x, position.z}, glm::vec2{destination.x, destination.z}) < .07F);
-            CHECK(RelayCore::physics::probe_ground(RelayCore::test::WorldQueryFixture{blockers(session)}, position, {})
-            );
-        }
-    };
 } // namespace
+
+TEST_CASE("pressure transfer wall equipment and lights meet their supporting surfaces")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    PressureRoute route{RelayCore::core::GameplayConfig{}};
+    const auto supported = [&](glm::vec3 point) {
+        return std::ranges::any_of(route.session.level.solids, [&](const auto& solid) {
+            return solid.material != RelayCore::SurfaceMaterial::LightStrip
+                   && glm::all(glm::greaterThanEqual(point, solid.mins - glm::vec3{.002F}))
+                   && glm::all(glm::lessThanEqual(point, solid.maxs + glm::vec3{.002F}));
+        });
+    };
+    int mounted = 0;
+    for (const auto& prop : RelayGame::build_static_props(route.session.level))
+    {
+        const auto name = prop.model.stem().string();
+        if (name != "ventilation_unit" && name != "utility_pipe" && name != "safety_notice"
+            && name != "lab_notes_board")
+            continue;
+        CAPTURE(name);
+        CAPTURE(prop.authored_entity_index);
+        const auto model = RelayCore::render::read_model_asset(prop.model);
+        glm::vec3 mins{std::numeric_limits<float>::max()}, maxs{-std::numeric_limits<float>::max()};
+        for (const auto& part : model.parts)
+            for (const auto& vertex : model.meshes[part.mesh].geometry.vertices)
+            {
+                const auto position = glm::vec3{prop.transform * part.transform * glm::vec4{vertex.position, 1}};
+                mins = glm::min(mins, position);
+                maxs = glm::max(maxs, position);
+            }
+        auto rear = (mins + maxs) * .5F;
+        const auto yaw = route.session.level.entities[prop.authored_entity_index].angles.x;
+        if (yaw == 270)
+            rear.x = maxs.x;
+        else if (yaw == 90)
+            rear.x = mins.x;
+        else if (yaw == 180)
+            rear.z = maxs.z;
+        else
+            rear.z = mins.z;
+        CHECK(supported(rear));
+        ++mounted;
+    }
+    CHECK(mounted == 11);
+    for (const auto& solid : route.session.level.solids)
+        if (solid.material == RelayCore::SurfaceMaterial::LightStrip)
+            CHECK(supported({(solid.mins.x + solid.maxs.x) * .5F, solid.maxs.y, (solid.mins.z + solid.maxs.z) * .5F}));
+    for (const auto& effect : route.session.environment)
+    {
+        if (effect.kind == RelayGame::EnvironmentKind::Fan)
+        {
+            CHECK(effect.angles.x == 270);
+            CHECK(supported(effect.origin + glm::vec3{.12F, 0, 0}));
+        }
+        if (effect.kind == RelayGame::EnvironmentKind::Decal)
+        {
+            CAPTURE(effect.mark);
+            auto transform = glm::translate(glm::mat4{1}, effect.origin);
+            transform = glm::rotate(transform, glm::radians(effect.angles.x), glm::vec3{0, 1, 0});
+            for (const float x : {-.42F, .42F})
+                for (const float y : {-.35F, .35F})
+                    CHECK(supported(glm::vec3{transform * glm::vec4{x, y, -.001F, 1}}));
+        }
+    }
+}
 
 TEST_CASE("pressure transfer complete route keeps interactions reachable and repeats both weapon roles")
 {
@@ -197,39 +111,47 @@ TEST_CASE("pressure transfer complete route keeps interactions reachable and rep
         route.walk_to({6.1F, .01F, 8.5F});
         CHECK(route.use("service_reader") == RelayCore::gameplay::UseInteractionOutcome::MissingRequiredItem);
         CHECK(route.session.doors[0].state == RelayCore::gameplay::DoorState::Closed);
-        route.walk_to({2, .01F, 5.3F});
-        CHECK(route.use("transfer_shotgun") == RelayCore::gameplay::UseInteractionOutcome::PickedUpItem);
-        route.walk_to({6.1F, .01F, 8.5F});
-        CHECK(route.use("service_reader") == RelayCore::gameplay::UseInteractionOutcome::ActivatedTarget);
-        route.walk_to({4, .01F, 8});
-        for (int i = 0; i < 270; ++i)
-            route.tick();
-        route.walk_to({4, .01F, 22});
-        route.walk_to({10, .01F, 22});
-        route.walk_to({10, .01F, 25});
-        route.walk_to({18, .01F, 25});
-        route.walk_to({18, .01F, 22});
-        route.walk_to({24, .01F, 22});
-        route.walk_to({30, .01F, 22});
-        route.walk_to({30, .01F, 28});
-        route.walk_to({28, .01F, 29});
-        route.walk_to({28, .01F, 40});
-        route.walk_to({33, .01F, 40});
-        route.walk_to({38, .01F, 40});
+        route.reach_mixed();
+        const auto tactic =
+            repeat == 1 ? RelayCore::test::PressureTactic::Distance : RelayCore::test::PressureTactic::Cover;
+        route.fight_mixed(tactic);
+        CAPTURE(route.mixed_rover_hit_range);
+        CHECK(route.mixed_rover_hit_range > 0);
+        if (tactic == RelayCore::test::PressureTactic::Distance)
+        {
+            CHECK(route.mixed_rover_hit_range > 4);
+            CHECK(route.mixed_shotgun_shots == 0);
+        } else
+        {
+            CHECK(route.mixed_rover_hit_range < 4);
+            CHECK(route.mixed_shotgun_shots > 0);
+            CHECK(route.closest_mixed_rover_z < 33);
+        }
         CHECK(route.session.doors[1].state == RelayCore::gameplay::DoorState::Closed);
-        CHECK(route.use("transfer_control") == RelayCore::gameplay::UseInteractionOutcome::ActivatedTarget);
-        route.walk_to({31, .01F, 42.5F});
-        CHECK(route.use("exit_reader") == RelayCore::gameplay::UseInteractionOutcome::ActivatedTarget);
-        route.walk_to({28, .01F, 42});
-        for (int i = 0; i < 270; ++i)
-            route.tick();
-        route.walk_to({28, .01F, 49});
+        route.power_transfer();
+        route.leave();
         CHECK(route.mission.completed());
         CHECK(route.player.kills == 4);
         CHECK(route.player.deaths == 0);
         CHECK(route.precise_shots > 0);
         CHECK(route.shotgun_shots > 0);
     }
+}
+
+TEST_CASE("pressure transfer native bench admits rover and low shots but blocks a standing shortcut")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    PressureRoute route{{}};
+    REQUIRE(route.session.physics_fixture);
+    const auto& world = *route.session.physics_fixture;
+    CHECK_FALSE(world.raycast({28, .6F, 32}, {0, 0, 1}, 3));
+    CHECK_FALSE(world.cast_box({28, .485F, 32}, {.42F, .475F, .42F}, {0, 0, 3}));
+    const auto top = world.raycast({28, 1.1F, 32}, {0, 0, 1}, 3);
+    REQUIRE(top);
+    CHECK(top->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
+    CHECK(top->surface == RelayCore::SurfaceMaterial::Tile);
+    CHECK(world.cast_box({28, .91F, 32}, {.3F, .9F, .3F}, {0, 0, 3}).has_value());
 }
 
 TEST_CASE("pressure transfer editor round trip preserves save compatibility")
@@ -361,5 +283,65 @@ TEST_CASE("pressure transfer continue and retry preserve pickup device and exit 
         runtime.restore_encounter_snapshot(checkpoint);
         CHECK(runtime.player_combat_state().deaths == checkpoint.game.world.player_combat.deaths);
         CHECK(runtime.doors()[1].state == checkpoint.game.world.doors[1].state);
+    }
+}
+
+TEST_CASE("pressure transfer native tactics survive disk continue and encounter replacement")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::EngineConfig config;
+    for (const auto tactic : {RelayCore::test::PressureTactic::Distance, RelayCore::test::PressureTactic::Cover})
+    {
+        PressureRoute route{config.gameplay};
+        route.reach_mixed();
+        RelayGame::GameWorldRuntime runtime;
+        for (int phase = 0; phase < 2; ++phase)
+        {
+            if (phase == 1)
+            {
+                route.fight_mixed(tactic);
+                route.power_transfer();
+            }
+            const auto save = route.save();
+            const auto disk = temp.path() / "native-progress.toml";
+            RelayGame::write_saved_game(disk, save);
+            runtime.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path)
+            );
+            runtime.restore_saved_game(RelayGame::load_saved_game(disk));
+            const auto checkpoint = runtime.capture_encounter_snapshot(save.played_seconds, 0, false);
+            const auto check_state = [&] {
+                CHECK(runtime.debug_player_position() == route.position);
+                CHECK(runtime.selected_weapon() == route.weapon);
+                CHECK(runtime.player_combat_state().health == route.player.health);
+                CHECK(runtime.player_combat_state().kills == route.player.kills);
+                CHECK(runtime.enemies()[1].state.position == route.session.enemies[1].state.position);
+                CHECK(runtime.enemies()[1].state.mode == route.session.enemies[1].state.mode);
+                CHECK(runtime.enemies()[1].state.health == route.session.enemies[1].state.health);
+                CHECK(runtime.turrets()[1].destroyed == route.session.combat.turrets[1].destroyed);
+                CHECK(runtime.activated_target_ids() == route.activated);
+                CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 5 : 6));
+                CHECK(runtime.doors()[1].state == RelayCore::gameplay::DoorState::Closed);
+                CHECK_FALSE(runtime.query_physics_fixture({28, .6F, 31.4F}, {0, 0, 1}, 3));
+                const auto top = runtime.query_physics_fixture({28, 1.1F, 31.4F}, {0, 0, 1}, 3);
+                REQUIRE(top);
+                CHECK(top->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
+            };
+            check_state();
+            runtime.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path)
+            );
+            runtime.restore_encounter_snapshot(checkpoint);
+            check_state();
+        }
+        route.leave();
+        const auto disk = temp.path() / "completed.toml";
+        RelayGame::write_saved_game(disk, route.save());
+        runtime.restore_saved_game(RelayGame::load_saved_game(disk));
+        CHECK(runtime.mission_status().completed);
+        CHECK(runtime.player_combat_state().kills == 4);
     }
 }

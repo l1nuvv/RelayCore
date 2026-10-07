@@ -63,6 +63,8 @@ namespace RelayGame
                                       ? audio_cues_.panel_press
                                       : RelayCore::core::asset_path(gameplay_audio.weapon_fire);
         audio_cues_.shotgun_fire = RelayCore::core::asset_path("audio/combat/shotgun_fire.wav");
+        audio_cues_.impact_hard = RelayCore::core::asset_path("audio/combat/impact_hard.wav");
+        audio_cues_.impact_metal = RelayCore::core::asset_path("audio/combat/impact_metal.wav");
         audio_cues_.weapon_hit = gameplay_audio.weapon_hit.empty()
                                      ? std::filesystem::path{}
                                      : RelayCore::core::asset_path(gameplay_audio.weapon_hit);
@@ -217,6 +219,11 @@ namespace RelayGame
         );
         if (selected_weapon_ == PlayerWeapon::Shotgun)
             player_controller_.apply_weapon_recoil(.035F * camera_motion_);
+        const auto impacts = weapon_impact_feedback(std::span{attack.rays.data(), attack.ray_count});
+        if (impacts.hard)
+            play_gameplay_audio(services, audio_cues_.impact_hard, impacts.hard->position);
+        if (impacts.metal)
+            play_gameplay_audio(services, audio_cues_.impact_metal, impacts.metal->position);
         for (std::size_t i = 0; i < attack.ray_count; ++i)
             if (attack.rays[i].killed_turret)
                 apply_combat_target_event(attack.rays[i].target_event);
@@ -276,8 +283,11 @@ namespace RelayGame
         }
     }
 
-    void
-    GameWorldRuntime::play_gameplay_audio(RelayCore::EngineServices& services, const std::filesystem::path& cue_path)
+    void GameWorldRuntime::play_gameplay_audio(
+        RelayCore::EngineServices& services,
+        const std::filesystem::path& cue_path,
+        const std::optional<glm::vec3> position
+    )
     {
         RELAYCORE_PROFILE_FUNCTION();
         if (cue_path.empty())
@@ -286,7 +296,7 @@ namespace RelayGame
         }
         audio_state_.last_one_shot_path = cue_path;
         ++audio_state_.one_shot_count;
-        services.audio_system().play_one_shot(cue_path);
+        services.audio_system().play_one_shot(cue_path, position);
     }
 
     void GameWorldRuntime::play_door_state_change_audio(RelayCore::EngineServices& services)

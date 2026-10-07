@@ -16,6 +16,8 @@ namespace RelayCore::render
         constexpr float pi = std::numbers::pi_v<float>;
         constexpr std::uint32_t magic = 0x42505249; // IRPB, little endian.
         constexpr std::uint32_t version = 1;
+        // Increment when transport or sampling semantics change, independently of the file format.
+        constexpr std::uint32_t bake_revision = 1;
 
         void require(bool condition, const char* message)
         {
@@ -119,7 +121,7 @@ namespace RelayCore::render
             for (int axis = 0; axis < 3; ++axis)
                 integer(std::bit_cast<std::uint32_t>(v[axis]));
         };
-        integer(version);
+        integer(bake_revision);
         vector(s.mins);
         vector(s.maxs);
         for (int axis = 0; axis < 3; ++axis)
@@ -151,6 +153,17 @@ namespace RelayCore::render
             integer(std::bit_cast<std::uint32_t>(light.radius));
         }
         return hash;
+    }
+
+    auto irradiance_inputs_match(
+        const IrradianceProbeVolume& volume,
+        const IrradianceBakeScene& scene,
+        const IrradianceProbeSettings& settings
+    ) -> bool
+    {
+        return volume.source_signature == irradiance_source_signature(scene, settings)
+               && volume.settings.mins == settings.mins && volume.settings.maxs == settings.maxs
+               && volume.settings.dimensions == settings.dimensions && volume.settings.rays == settings.rays;
     }
 
     auto bake_irradiance_probes(const IrradianceBakeScene& scene, const IrradianceProbeSettings& s)

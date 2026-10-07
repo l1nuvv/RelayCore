@@ -70,8 +70,22 @@ def shotgun_report():
     return sample
 
 
+def build_impacts():
+    write("impact_hard.wav", .11, lambda t, n: .55*n*math.exp(-95*t) + .16*tone(t, 180)*math.exp(-55*t))
+    write("impact_metal.wav", .19, lambda t, n: .24*n*math.exp(-110*t) + (.25*tone(t, 3100) + .13*tone(t, 4730))*math.exp(-28*t))
+
+
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--impacts-only", action="store_true")
+    args = parser.parse_args()
     ROOT.mkdir(parents=True, exist_ok=True)
+    build_impacts()
+    if args.impacts_only:
+        print("Generated 2 impact cues in", ROOT)
+        raise SystemExit(0)
     # Dry report, metal impact, rising motor, heavy discharge, servo strike,
     # falling motor with debris, and a low body impact have distinct envelopes.
     write("weapon_fire.wav", .16, pistol_report())
@@ -82,4 +96,4 @@ if __name__ == "__main__":
     write("rover_attack.wav", .20, lambda t, n: (.26*n + .22*tone(t, 420)) * math.exp(-22*t))
     write("destroyed.wav", .55, lambda t, n: .34*n*math.exp(-9*t) + .20*math.sin(2*math.pi*(480*t-330*t*t))*math.exp(-5*t))
     write("player_hurt.wav", .20, lambda t, n: (.35*tone(t, 62) + .13*n) * math.exp(-22*t))
-    print("Generated 8 combat cues in", ROOT)
+    print("Generated 10 combat cues in", ROOT)

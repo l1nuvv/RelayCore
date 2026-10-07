@@ -3,39 +3,19 @@
 ## Project contract
 
 - RelayCore is a custom C++20 engine and GoldSource-inspired indoor FPS product, not a historical recreation or a general-purpose framework. Keep it understandable, debuggable, profileable, and shippable under one-developer direction even when implementation is agent-assisted.
-- Optimize for a codebase one developer can understand, debug, profile, and keep shipping.
 - Prefer a small working vertical slice over framework-building, speculative generality, or architecture for hypothetical future features.
 - Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime uses SDL3 and direct Vulkan 1.3; OpenGL was removed at VK-013. Tests use doctest; performance work uses Tracy.
 
-## Design and engineering knowledge
-
-- Apply relevant game design, systems design, level design, engine architecture, mathematics, graphics, collision detection, and tools UX knowledge to concrete project decisions. Use the references below as a foundation, not an exhaustive list or a mandatory reading sequence for every task.
-- Draw on other relevant books, primary research, official documentation, production experience, and project evidence when they answer a concrete question. Do not assume a technique fits RelayCore merely because a respected source describes it.
-- Game design references: Jesse Schell, *The Art of Game Design*; Tynan Sylvester, *Designing Games*; Richard Lemarchand, *A Playful Production Process*; Steve Swink, *Game Feel*; Katie Salen and Eric Zimmerman, *Rules of Play*.
-- Systems design references: Michael Sellers, *Advanced Game Design: A Systems Approach*; Ernest Adams and Joris Dormans, *Game Mechanics: Advanced Game Design*; Christopher Barney, *Pattern Language for Game Design*; Geoffrey Engelstein and Isaac Shalev, *Building Blocks of Tabletop Game Design*.
-- Level design references: Benjamin Bauer, *A Practical Guide to Level Design*; Christopher W. Totten, *An Architectural Approach to Level Design*; Scott Rogers, *Level Up! The Guide to Great Video Game Design*.
-- Engine and tools references: Jason Gregory, *Game Engine Architecture* (foundations/core systems and graphics/motion/sound); Robert Nystrom, *Game Programming Patterns*; David Lightbown, *Designing the User Experience of Game Development Tools*.
-- Mathematics, graphics, and collision references: Eric Lengyel, *Foundations of Game Engine Development*, Volumes 1 and 2; Steve Marschner and Peter Shirley, *Fundamentals of Computer Graphics*; Tomas Akenine-Moller et al., *Real-Time Rendering*; Matt Pharr, Wenzel Jakob, and Greg Humphreys, *Physically Based Rendering*; Christer Ericson, *Real-Time Collision Detection*.
-- Start gameplay design from the intended player experience and observable player decisions. Evaluate mechanics together with resources, feedback loops, enemy behavior, and level layout; verify their interactions through a working slice and focused playtests.
-- Treat control response, acceleration, camera motion, action timing, and audiovisual feedback as part of gameplay behavior. Physical correctness alone does not establish good game feel.
-- Establish routes, sightlines, cover, landmarks, encounter pacing, and learning opportunities during blockout. Validate spatial readability and combat behavior before adding visual detail.
-- Use explicit ownership, update order, coordinate conventions, units, and numerical assumptions in technical work. Choose architecture and patterns to solve demonstrated problems at the project's current scale.
-- When a principle materially affects a decision, briefly explain the concrete benefit and tradeoff. Validate with the appropriate code checks, runtime observation, playtests, or measurements. Do not invent quotations, page references, or edition-specific claims; verify exact attribution when needed.
-- When design principles conflict, prefer the option that reduces demonstrated change cost in this codebase. Explain the concrete benefit and tradeoff.
-
-## Gameplay types and interfaces
-
-- Shared operations do not automatically require inheritance or a virtual interface. Start with a concrete implementation; represent weapon or enemy variants that differ only in parameters through typed data using existing project conventions.
-- Separate behavior when actual variants require different logic. Introduce a common interface when callers need to use those implementations through a meaningful shared contract. For a small closed set of variants, an enum and direct dispatch may be simpler; choose based on current call sites and ownership.
-- Keep contracts specific to capabilities and responsibilities. Weapon firing and reloading belong to weapon behavior; enemy decision-making belongs to enemy behavior. Do not force every enemy or gameplay object to implement unrelated methods, or create a separate interface for each individual weapon or enemy.
-- Add abstractions incrementally when they remove real duplication, encode an invariant, or clarify ownership. Do not build a hierarchy or extensibility framework for hypothetical future content.
-
 ## Evidence and scope
 
-- For work on gameplay development, project direction, or the next milestone, read `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical audits and plans retained in Git are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
-- For engine/world architecture, asset pipeline, rendering/physics world capabilities, or Source/Source 2 compatibility work, read `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. It is the long-term architecture/capability reference, not an automatic task queue.
+- For gameplay development, project direction, or milestone work, read the introduction, status table and selected ticket in `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical audits and plans retained in Git are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
+- For changes that materially affect engine/world architecture, asset pipeline contracts, rendering/physics capabilities, or Source/Source 2 compatibility, read the relevant sections of `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. It is the long-term architecture/capability reference, not an automatic task queue.
 - For Vulkan/backend migration work, also read `docs/VULKAN_MIGRATION_PLAN.md` and operate only within the requested phase/gate. Do not mix parity migration with new renderer architecture unless the phase explicitly requires it.
 - For dependency selection, replacement, addition/removal, version/baseline changes, or third-party subsystem foundations, read `docs/DEPENDENCY_STACK.md`. It records approved responsibilities and staged integration; it is not permission to add future dependencies before their owning milestone.
+
+- For build/runtime setup, graphics diagnostics, profiling or native asset production, read only the relevant section of `docs/DEVELOPMENT.md`. For editor/map transitions use `docs/EDITOR_AND_CAMPAIGN.md`; for native collision products use `docs/COLLISION_ASSETS.md`; for requested packaging/release/update work use `docs/UPDATES.md`.
+- For gameplay/system/level design or architecture rationale, consult `docs/DESIGN_REFERENCES.md` as needed. It preserves the project design references and gameplay type guidance without making them mandatory for routine fixes.
+- For complex, multi-session work, keep scope, milestones, decisions and verification in the existing owning plan/ticket. Add a task-specific plan only when no existing document fits; do not duplicate roadmap statuses or create plans for routine fixes.
 
 - Start with the files named by the task, their nearest tests, and direct call sites.
 - Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
@@ -80,18 +60,13 @@
 
 ## Authored content and assets
 
-- For visual/art decisions, read `docs/ART_DIRECTION.md` and use `.agents/skills/relaycore-art-direction/SKILL.md`. The document is a visual reference, not an implementation queue; proposed scenes do not authorize content or pipeline work.
-- Preserve the project direction: a grounded late-1980s/1990s scientific-industrial facility with a restrained, engineered occult layer, strong spatial readability, functional materials, and atmosphere over visual noise.
-- Match nearby assets and authored data before inventing a new visual or schema convention.
-- Avoid generic AI sci-fi slop: random neon, excessive greebles, meaningless fake labels, uniform edge wear, over-grunge, over-glossy surfaces, unnecessary micro-detail, and decoration that weakens gameplay readability.
-- Do not bake lighting, shadows, AO, text, or perspective into an asset unless the current pipeline or task explicitly requires it.
-- For generated visual assets, require a clear gameplay purpose, intended scale/use, tiling/alpha requirements when relevant, and an in-engine or pipeline-level validation step when available.
+- For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
 
 ## Build and verification
 
 - Routine verification ends with the relevant build/tests. Create or recreate a ZIP/standalone package only when the user directly asks for packaging or a release; do not do it automatically because an older plan or ticket mentions delivery. Reuse existing artifacts when sufficient and avoid spending time, compute, or tokens on unnecessary archives.
 - Use only presets/targets that exist in the current `CMakePresets.json` and CMake files. Never invent a command when the repository can provide the exact one.
-- Run `git diff --check` after edits.
+- Use `.agents/skills/relaycore-verify/SKILL.md` when selecting nontrivial verification scope or diagnosing build/test failures. Run `git diff --check` after edits.
 - Start with the narrowest relevant build/test. Run broader workflows only when the change crosses build/config/runtime boundaries or the user requests full validation.
 - Known baseline flow is preset-based, for example `cmake --preset msvc-debug`, targeted `cmake --build --preset ...`, and matching `ctest --preset ... --output-on-failure`; verify current preset names before use.
 - MSVC presets require a Visual Studio developer environment and valid `VCPKG_ROOT`.

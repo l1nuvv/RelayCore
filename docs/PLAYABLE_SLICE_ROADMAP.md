@@ -6,6 +6,8 @@
 
 Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; E-010/N4.1 дал общие world queries поверх AABB, E-011/N4.2 — изолированный Jolt fixture. E-012–E-014 выполнены 2026-10-07: collision products/staging, native movement/gameplay parity и editor collision inspection. G-012/N4.6 технически выполнен 2026-10-07 и ожидает нового игрока (`awaiting_playtest`); N4 целиком ещё не принят. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
 
+**Продолжение по поручению автора 2026-10-07:** нового игрока и другой ПК временно отложить; развивать текущую игру и движок. E-015/E-017 выполнены, G-013/G-014 технически проверены; следующий implementation ticket — G-015, затем E-018 по измеренным first-use uploads. Обе тактики G-013/G-014 работают с текущим rover, поэтому E-016 остаётся deferred; вернуться к нему только по конкретному воспроизведению в consumer. Подробности — в карточках ниже и текущем цикле `PROJECT_PLAN.md`. Открытая внешняя приёмка сохраняется, но не блокирует этот трек.
+
 ## 1. Назначение и порядок использования
 
 Этот документ — основная очередь развития RelayCore к небольшому законченному эпизоду. Он предназначен для автора проекта и ИИ, который продолжает работу в новой задаче без истории разговора.
@@ -198,7 +200,7 @@ E-001 ускоряет настройку, но его задержка не з�
 
 Три трека: G — непосредственно gameplay; E — необходимые runtime/tooling capabilities; H — correctness, проверяемость, performance evidence, build и документация.
 
-Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; evidence в `VULKAN_MIGRATION_PLAN.md`. E-003–E-009 дали native model workflow, выбранные materials, HDR и baked diffuse probes. При отложенной автором человеческой проверке инженерное продолжение по поручению — E-010 → E-011 → E-012 → E-013 → E-014 → G-012; E-015 условна. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability. Порядковые номера таблицы сохраняют историю, зависимости карточек определяют текущий порядок.
+Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; evidence в `VULKAN_MIGRATION_PLAN.md`. E-003–E-009 дали native model workflow, выбранные materials, HDR и baked diffuse probes. При отложенной автором человеческой проверке инженерное продолжение по поручению — E-010 → E-011 → E-012 → E-013 → E-014 → G-012; E-015/E-017 выполнены, G-013/G-014 технически проверены, далее G-015. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability. Порядковые номера таблицы сохраняют историю, зависимости карточек определяют текущий порядок.
 
 | Порядок | ID | Название | Трек | Priority | Статус |
 | --- | --- | --- | --- | --- | --- |
@@ -239,7 +241,13 @@ E-001 ускоряет настройку, но его задержка не з�
 | 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | done |
 | 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | done |
 | 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | awaiting_playtest |
-| 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | deferred |
+| 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | done |
+| 39 | G-013 | Два тактических решения native-встречи | Gameplay/authoring | P2 | awaiting_playtest |
+| 40 | E-016 | Обход препятствий rover под встречу G-013 | Engine/gameplay | P2 | deferred |
+| 41 | G-014 | Native-встреча в существующем эпизоде | Gameplay/authoring | P2 | awaiting_playtest |
+| 42 | E-017 | Переиспользование актуальных irradiance products | Engine/content tooling | P2 | done |
+| 43 | G-015 | Локальный retry смешанной встречи | Gameplay/runtime | P2 | ready |
+| 44 | E-018 | Подготовка GPU-ресурсов до первого игрового кадра | Engine/render | P2 | pending |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
 
@@ -1145,15 +1153,145 @@ Evidence: `build/msvc-debug/e014-runtime.xml`, focused `e014-focused.xml`, `e014
 
 Evidence: `build/msvc-debug/g012-content.xml`, `g012-regressions.xml`, `g012-graphics.xml`, focused `g012-focused.xml`; optimized `build/msvc-relwithdebinfo/g012-content.xml`; `tests/bench-relay-captures/{entry,encounter,powered}.bmp`. Новый bake: 30 probes / 1840 triangles / 3 lights, signature `7671343688987210812`, одинаковый SHA-256 Debug/optimized `00722A2E3BE9A0AE1CB630C41A0619A5A7D71E2B0BEC08BA5EB6D9EF8364142D`. Прежний Debug native_lab probe переиспользован при неизменных inputs, hash сохранён; optimized native_lab пересобран. Ненужный повторный Debug native_lab bake остановлен. Debug LNK1236 устранён пересборкой повреждённого intermediate object, без изменения его source content. Проверки выполнены в VS developer environment вне sandbox; ZIP, ASan и полный graphics suite не запускались.
 
-[Optimized профиль](profiling/G-012-2026-10-07.md): RTX 4060 Ti / driver 596.49, 1280×720, VSync off, hardware_srgb/HDR/shadows/HUD on, audio off, validation=false. Три состояния first-use/revisit, 10 947 rendered frames, CPU/GPU Tracy capture с query/draw/upload/present/fence costs. Frame p95 1,3464–1,5681 мс, first-use spike 46,8843 мс; это короткие стационарные состояния, не непрерывный rendered проход человека и не cold OS/driver cache. [Протокол нового игрока](playtests/G-012-2026-10-07.md) подготовлен, результаты отсутствуют. G-012/N4 не объявлены принятыми; G-011/H-008/H-009 сохраняют статусы. E-015 остаётся deferred до конкретной feedback-потребности.
+[Optimized профиль](profiling/G-012-2026-10-07.md): RTX 4060 Ti / driver 596.49, 1280×720, VSync off, hardware_srgb/HDR/shadows/HUD on, audio off, validation=false. Три состояния first-use/revisit, 10 947 rendered frames, CPU/GPU Tracy capture с query/draw/upload/present/fence costs. Frame p95 1,3464–1,5681 мс, first-use spike 46,8843 мс; это короткие стационарные состояния, не непрерывный rendered проход человека и не cold OS/driver cache. [Протокол нового игрока](playtests/G-012-2026-10-07.md) подготовлен, результаты отсутствуют. G-012/N4 не объявлены принятыми; G-011/H-008/H-009 сохраняют статусы. На момент этого evidence E-015 оставалась deferred; последующее выполнение описано в её карточке.
 
-Граница evidence: успешные сборки/tests/capture относятся к прежним native models из `2440823` и изменению G-012. После проверок в общем checkout появились параллельные правки GLB/exporter/model manifest, не входящие в checkpoint. Повторный `cmake --build --preset validation-debug -j 1` остановился на новом `lab_bench.glb`: `model contains a degenerate triangle`; последующая попытка узкой пересборки встретила отсутствующий `content/models/scientist_hazmat.glb` из изменённого manifest. Эти правки сохранены отдельно; текущий совмещённый working tree не объявлен проверенным. CLI `relaycore_level_check assets/levels/bench_relay.toml --entry entrance` на прежних staged assets дал valid=true, warnings=0 (`g012-level-check.json`); clang-format, diff-check, graphics preset smoke и pre-commit tooling test прошли.
+Граница исходного evidence: успешные сборки/tests/capture выше относятся к прежним native models из `2440823` и изменению G-012. После проверок в общем checkout появились параллельные правки GLB/exporter/model manifest, не входящие в checkpoint. Повторный `cmake --build --preset validation-debug -j 1` остановился на новом `lab_bench.glb`: `model contains a degenerate triangle`; последующая попытка узкой пересборки встретила отсутствующий `content/models/scientist_hazmat.glb` из изменённого manifest. CLI на прежних staged assets дал valid=true, warnings=0 (`g012-level-check.json`); clang-format, diff-check, graphics preset smoke и pre-commit tooling test прошли. Состояние после интеграции перепроверено ниже.
+
+**N0 / повторная проверка общего дерева, 2026-10-07.** Прежние import blockers больше не воспроизводятся: Debug `relaycore_model_assets` собран, включая `scientist_hazmat.glb`. Для дальнейшей проверки переиспользованы актуальные RelWithDebInfo products; повторный Debug bake остановлен, его завершение не заявляется. Optimized staging и целевые content/tests/bench/lifecycle/level-check targets собраны. SHA-256 всех 20 моделей (source/importer/rules/declaration/product/staged) и пары `lab_bench` model/collision совпали с receipts. Контент, GLB/native/irradiance и ближайшие collision/editor/lifecycle regressions — **58/58** (в том числе 37 content); изолированный Debug asset-tooling — **2/2**; optimized SDL/Vulkan lifecycle и G-012 — **2/2**, без пропусков. CLI на текущих staged assets: valid=true, warnings=0. Кадры entry/encounter/powered просмотрены. Graphics run использовал `validation=false`; новой проверки validation layers, ASan, измерения performance и человеческого прохода не было. Старый профиль выше не характеризует изменённые модели.
+
+Команды N0 (build/tooling в VS developer environment; runtime/tooling запускались вне sandbox):
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_model_assets -j 2
+cmake --build --preset validation-relwithdebinfo --target relaycore_content_validation relaycore_tests relaycore_bench_relay_run relaycore_game_lifecycle relaycore_level_check -j 2
+ctest --test-dir build/msvc-debug -R '^relaycore\.tooling\.(model_assets|collision_assets)$' --no-tests=error --output-on-failure --output-junit n0-asset-tooling.xml
+ctest --test-dir build/msvc-relwithdebinfo -R '^validation\.|^relaycore\.(native|GLB|Blender|irradiance|physics\.(staged collision|native collision|native opening|editor switches))' --no-tests=error --output-on-failure --output-junit n0-content-native.xml
+ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(bench_relay|game_lifecycle)$' --no-tests=error --output-on-failure --output-junit n0-graphics.xml
+./scripts/check-model-assets.ps1 -ProjectRoot . -BuildRoot build/msvc-relwithdebinfo -RuntimeAssets build/msvc-relwithdebinfo/src/relaygame/assets
+cmake -DCOLLISION_PROJECT_ROOT=E:/Code/C++/RelayCore -DCOLLISION_BUILD_ROOT=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo -DCOLLISION_COMPILER=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo/relaycore_collision_compile.exe -DCOLLISION_RUNTIME_ASSETS=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo/src/relaygame/assets -DCOLLISION_INSPECT_NAME=lab_bench -P cmake/check_collision_assets.cmake
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path 'build/msvc-relwithdebinfo/src/relaygame/assets').Path
+./build/msvc-relwithdebinfo/src/relaygame/relaycore_level_check.exe assets/levels/bench_relay.toml --entry entrance
+git diff --check
+```
+
+JUnit reports находятся в соответствующих build directories; CLI report — `build/msvc-relwithdebinfo/n0-bench-level-check.json`, кадры — `build/msvc-relwithdebinfo/tests/bench-relay-captures/`. Первоначальный sandbox tooling run не запустил WindowsApps `pwsh.exe` (permission denied); повтор вне sandbox прошёл. Новых source/content правок для устранения старых blockers не потребовалось. G-012 остаётся `awaiting_playtest`, E-015 — `deferred`; новых архивов нет.
 
 #### E-015 — surface-aware impact feedback по потребности, N5
 
-**Статус / приоритет / объём:** `deferred` / P2 / S–M. **Условие возврата:** hit semantics E-013 и конкретный feedback consumer G-012/playtest.
+**Статус / приоритет / объём:** `done` / P2 / S–M. **Основание открытия 2026-10-07:** автор поручил дальнейшую разработку при отложенных внешних проверках. Consumer — metal/concrete укрытия `bench_relay`, оба оружия; исходный fire result терял surface semantics, отдельного world-impact cue не было.
 
 Связать существующий `SurfaceMaterial` query hit с минимальным нужным impact sound/эффектом, например металл и бетон. Decals/particles/material maps добавлять только под выбранный результат; физика возвращает данные, game/audio/render владельцы выбирают feedback. Проверить occlusion/nearest hit, surface mapping, bounded effect lifetime и audio/visual fixture. Новый universal effects framework не нужен.
+
+Выбранный slice: два коротких original mono PCM16 cues — металл и общий твёрдый материал. Сохранить полный optional world hit в результате каждого луча, исключить actor hits/промах/невыстрел. Game feedback выбирает ближайшее попадание каждого семейства; дробь создаёт максимум два world cues на выстрел. Miniaudio воспроизводит их из hit position с distance attenuation, переиспользуя по одному cached voice на путь; cues заранее декодируются при activation. Новых authored knobs, форматов и dependencies нет. Glass/breakage, decals, particles и геометрическая акустика — вне этого slice.
+
+**Результат:** per-ray `world_impact` сохраняет hit semantics, actor hit не создаёт world cue. В `player_feedback` ограниченный выбор ближайших hard/metal hits; `AudioSystem::play_one_shot` принимает optional world position и переключает spatialization при повторном использовании voice. Generator `scripts/build-combat-audio.py --impacts-only` создаёт только `assets/audio/combat/impact_hard.wav` (0,11 с) и `impact_metal.wav` (0,19 с), mono PCM16/44100 Hz. Повторный запуск сохранил SHA-256; staged Debug WAV совпадают с source. Успешно выполнены tests дверей, ближайшего world hit, native mesh surface/normal/identity, actor occlusion, дроби и cooldown/miss. Lifecycle fixture проверил реальное событие mouse fire → world hit → нужный audio cue для обоих семейств. Audio engine и WAV decoder запускались; субъективная слышимость/баланс не проверялись. Общие команды и evidence — в E-017 ниже.
+
+#### E-017 — переиспользование актуальных irradiance products
+
+**Статус / приоритет / объём:** `done` / P2 / S. Открыт при проверке E-015: изменение audio/combat перелинковало общий baker и запустило bake всех трёх карт. `bench_relay` занял около 202 секунд; оставшиеся повторные bake прерваны. Все Debug/RelWithDebInfo model products совпали побайтно, готовый optimized `bench_relay.rcprobe` совпал с новым Debug по SHA-256. Готовые native_lab/occult products переиспользованы для дальнейшей проверки.
+
+Существующий baker перед транспортом света читает текущий product и проверяет ту же сигнатуру и grid settings, что runtime loader. Совпадение сохраняет bytes, несовпадение запускает обычный bake; malformed product остаётся диагностируемой ошибкой. Ревизия transport/sampling входит в сигнатуру отдельно от file version; обе исходно равны 1, текущие fingerprints/format не меняются. При изменении bake semantics необходимо повысить bake revision. CMake dependencies, presets, receipts и authored inputs сохраняются.
+
+**Техническая приёмка:** current product не пересчитывается и не переписывается; geometry/light/material/grid/rays меняют fingerprint, stale inputs пересчитываются; повреждённые данные не принимаются как cache hit. Проверить deterministic irradiance и runtime staleness cases, маленький CLI fixture missing → baked → reused → changed inputs → baked → malformed failure; текущие три карты должны пройти runtime loading. Это ускорение workflow на подтверждённом случае, не заявление о runtime FPS.
+
+**Результат и проверки E-015/E-017, 2026-10-07:** Debug targets ниже собраны в VS x64 environment с cache-compatible `VCPKG_ROOT`. Baker переиспользовал все три product с прежними signatures: native_lab `14886341886457994988`, bench_relay `14550697581208431987`, occult_lab_b17 `11698937278769134311`. Соответствующие logged check/preparation интервалы — примерно 0,19 / 0,73 / 5,69 с; полный bench bake выше — отдельный фактический запуск, это не benchmark runtime. Следующая такая же Debug build выполнила только три staging utility steps, bake не назначался.
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_tests relaycore_audio_lifetime relaycore_game_lifecycle relaycore_content_validation relaycore_demo -j 2
+cmake --build --preset demo-relwithdebinfo -j 2
+ctest --test-dir build/msvc-debug -R '^relaycore\.(combat|player fire|shotgun|rover|nonlethal|weapon impacts|audio|irradiance|native irradiance|physics\.native opening|tooling\.irradiance_assets)|^validation\.|^graphics\.game_lifecycle$' --output-on-failure --no-tests=error --output-junit e015-e017-checks.xml
+ctest --test-dir build/msvc-debug -R '^relaycore\.tooling\.irradiance_assets$' --output-on-failure --no-tests=error --output-junit e017-tooling.xml
+git diff --check
+```
+
+Итог по 62 различным cases: unit **21/21**, content **37/37**, native query **1/1**, audio/lifecycle **2/2**, tooling fixture **1/1**; пропусков нет. Исходный combined JUnit содержит 61 pass и один failure ожидания текста диагностики в новом fixture: loader правильно отказал с `invalid irradiance product size`, тест ожидал `truncated irradiance product`. Исправлено только ожидание, final `e017-tooling.xml` — 1/1. Lifecycle исполнялся с Vulkan `validation=true`; новый input/audio fixture выполнен. Обычная RelWithDebInfo demo собрана, все три optimized probes тоже переиспользованы без пересчёта; optimized runtime отдельно не запускался. Source formatting и diff-check прошли. Проверены 55 локальных ссылок двух plan documents. ZIP, ASan, performance capture, внешний playtest и другой ПК не запускались.
+
+#### G-013 — два тактических решения native-встречи
+
+**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** технически завершённый E-015. Техническая проверка выполнена 2026-10-07; человеческие наблюдения отложены по поручению автора и не блокируют G-014.
+
+**Опыт:** игрок выбирает между точным выстрелом с дистанции и сближением к rover с дробовиком, меняя позицию относительно турели и native-укрытия. Использовать существующий `bench_relay`, его реле, двери, snapshots и текущие угрозы. Начать с текущих sightlines/доступных проходов и ближайших content tests, затем изменить только layout/placement/timing, необходимые для двух решений. Не увеличивать маршрут ради длительности и не добавлять обязательную последовательность одинаковых устройств.
+
+**Техническая приёмка:** две воспроизводимые траектории с разными позициями/моментами выхода под огонь доходят до реле и выхода; native-проём сохраняет роль для rover/низкой линии огня; из укрытия нельзя получать урон сквозь закрытый blocker. Death/retry, snapshot, disk continue до/после реле согласованы. Проверить CLI/content, затронутые enemy/query cases и rendered вход/бой/включённое реле. Успех автоматических траекторий не означает равноценность или удовольствие от тактик. Нового игрока и другой ПК сейчас не требовать; человеческие наблюдения добавить, когда автор к ним вернётся.
+
+**Engine gate:** если rover не достигает доступной позиции из-за прямого движения к `last_seen`, сначала сохранить минимальное воспроизведение для E-016. Не маскировать проблему уменьшением collider или прохождением сквозь укрытие. Если обе встречи работают с текущим поведением, оставить E-016 deferred и перейти к G-014. Вероятные пути: `assets/levels/bench_relay.toml`, `tests/shipped_content_validation_tests.cpp`, `tests/bench_relay_run.cpp`; арт и bake — только при изменении соответствующих inputs.
+
+**Результат G-013, 2026-10-07:** существующий layout уже допускает две разные тактики; менять геометрию, параметры угроз и collision не потребовалось. Дальний маршрут уничтожает турель точным оружием от входа, затем стреляет в rover с дистанции и обходит верстак со стороны `x=1,6`. Ближний маршрут оставляет турель активной, занимает укрытие у `(x=-2,6; z=3,1)`, встречает прошедший под верстаком rover дробовиком, затем выходит к `(x=-1,3; z=3,1)` для точного огня по турели. Оба маршрута дважды достигают реле и выхода без смерти; разные дистанции попадания и число тиков открытой линии на активную турель проверяются assertions. Подсказка открытия зала теперь сообщает функцию высокого блока; прежнее указание пульта на правой стене сохранено после проверки кадра от входа.
+
+Закрытый вход и высокое укрытие проверены отдельно: выстрел обрывается world hit, здоровье игрока/турели не меняется за 480 тиков без стрельбы. Native-opening ray/sweep и пересечение rover сохранены. Для обеих тактик disk continue до и после включения реле, сохранённая смерть/respawn и полный encounter snapshot восстанавливают игрока, оружие, rover, турель, двери, unlock и незавершённое задание. Существующий editor/native-reference и финальный continue regression также прошли.
+
+`graphics.bench_relay` теперь сохраняет реальные промежуточные состояния `entry/distance/cover/powered`, включая реле до открытия выхода; powered state больше не конструируется из завершённой миссии. Четыре актуальных BMP просмотрены в `build/msvc-debug/tests/bench-relay-captures/`. В этом rendered fixture: первое попадание в rover 8,7829 / 1,81895 м, открытая линия на активную турель 63 / 492 тика для distance/cover соответственно. Это измерения scripted поведения, не длительность человеческого боя и не вывод о равноценности тактик. Vulkan validation включён; RTX 4060 Ti, API 1.4.329 при требовании 1.3; ошибок validation не обнаружено.
+
+Собраны Debug targets ниже; выполнено 20 CTest cases без failures/skips, JUnit `build/msvc-debug/g013-checks.xml`. После добавления assertions здоровья, инвентаря и входной двери повторён только tactical-state case: 1/1 passed, `build/msvc-debug/g013-state.xml`. `clang-format --dry-run --Werror` трёх изменённых test sources и `git diff --check` прошли. CLI: `valid=true`, warnings=0, отчёт `build/msvc-debug/g013-map.json`. `demo-relwithdebinfo` обновил обычные игровые assets. Оба preset переиспользовали 30 probes с signature `14550697581208431987`; новых lighting inputs нет. Проверки и ограничения дополняют существующий [протокол G-012](playtests/G-012-2026-10-07.md#g-013--две-тактики-в-том-же-участке). E-016 не открыт: в проверенных маршрутах rover достигает боевой позиции; произвольный обход препятствий этим не доказан.
+
+```powershell
+cmake --build --preset validation-debug --target relaycore_content_validation relaycore_bench_relay_run relaycore_tests relaycore_physics_tests relaycore_game_lifecycle relaycore_level_check -j 2
+ctest --test-dir build/msvc-debug -R '^validation\.bench relay|^relaycore\.(rover|player fire|shotgun|nonlethal|physics\.native opening)|^graphics\.(bench_relay|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit g013-checks.xml
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
+./build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/bench_relay.toml --entry entrance
+cmake --build --preset demo-relwithdebinfo -j 2
+```
+
+#### E-016 — обход препятствий rover под встречу G-013
+
+**Статус / приоритет / объём:** `deferred` / P2 / M–L. **Условие открытия:** конкретный воспроизводимый доступный обход, который rover из G-013 не проходит. Направление к `last_seen` без поиска пути подтверждено кодом; дефект выбранной встречи пока не установлен.
+
+Зафиксировать fixture: rover увидел игрока, путь огибает одно статическое укрытие, прямая перекрыта; отдельно закрытая дверь и недостижимая позиция. Выбрать минимальную устойчивую навигацию по требованиям этого участка. Если нужен navmesh, открыть owning milestone Recast/Detour по dependency/architecture reference; geometry, agents, products и runtime ownership определить до интеграции. JPH/Detour types не выходят в gameplay/save contracts. Не вводить универсальное поведение AI, новые состояния врагов или динамическую перестройку всей карты без consumer.
+
+**Техническая приёмка:** rover обходит доступное укрытие, сохраняет принятые скорость/windup/recovery и collision; не проходит закрытую дверь, не зацикливается на недостижимой цели. LOS и hit occlusion остаются world-query задачей. Повтор встречи, respawn, snapshot, disk continue и editor/session replacement восстанавливают согласованное поведение; transient path можно пересчитать из восстановленного состояния. Проверки — fixture, ближайшие enemy/movement/save, затем consumer G-013. Сложность и стоимость replanning измерить до оптимизаций.
+
+#### G-014 — native-встреча в существующем эпизоде
+
+**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** технические результаты G-013 получены 2026-10-07; G-014 технически проверен 2026-10-07. E-016 не потребовался. Человеческие наблюдения отложены автором и не блокируют инженерное продолжение.
+
+Выбрать один участок `pressure_transfer`, где native shape и две тактики улучшают пространственное решение. Сохранить остальной маршрут, текущие objectives/переходы и роли трёх встреч; не переписывать эпизод целиком и не копировать полигон в новую кампанию. Чередовать безопасное наблюдение, выбор пути/оружия, короткую угрозу и видимое последствие действия. Конкретную правку назначить после сверки текущей карты и результатов G-013.
+
+**Техническая приёмка:** обе тактики достижимы без progression blocker; выбранная geometry, cover/LOS, interaction и save/continue согласованы; CLI, content, затронутые lifecycle/graphics пройдены. При изменившемся workload записать локальный optimized baseline и исследовать только обнаруженные расходы. Человеческая приёмка эпизода остаётся открытой; внешние проверки и ZIP сейчас не входят в работу. Дальнейшую capability выбрать из фактического ограничения этого участка.
+
+**Результат G-014, 2026-10-07:** в смешанном перепускном зале добавлен существующий `lab_bench.rcmodel` с парным `lab_bench.rccollision`, `(28;0;32,8)`, scale `(1;1,25;1)`. Первые две встречи, текущие угрозы, семь задач, связи пультов, выход и финал сохранены. Низкий проём пропускает rover и луч, стоящий игрок обходит верстак. Высокий шкаф сохраняет защиту от турели; подсказка текущей задачи объясняет различие укрытий. Новых моделей, форматов, dependencies, irradiance inputs или renderer features нет.
+
+Дальний маршрут встречает rover точным оружием с защищённого входа `(28;29)`, затем выходит на турель к `(34;29)` и проходит по стороне `x=34`. Ближний занимает `(28;30,3)`, стреляет дробовиком после прохода rover под столом, обходит верстак со стороны `x=25,8` и выходит к турели через `(30;38)`. Три полных scripted прохода (cover/distance/cover) дают четыре kills, оба оружия и выход без смерти. В rendered fixture первые попадания в rover: 6,70354 / 2,81467 м; открытая линия на активную турель: 73 / 84 тика. Это evidence доступности решений, не баланс или длительность игры человека.
+
+Первоначальный верстак при `z=33,5` перекрывал rover обзор игрока, неподвижно стоящего в защищённом входе. Сдвиг на 0,7 м восстановил прежнее обнаружение/сближение; collider и AI не менялись. Native ray/sweep, защита шкафом, дверь/угол первой встречи, editor round-trip и save/respawn прошли. Для обеих тактик disk continue и encounter restore после замены сессии проверяют реальные player/weapon/combat/enemy/mission states до боя и после перепуска, а также native-query binding; финальный save сохраняет завершение.
+
+Route fixture выделен в `tests/pressure_transfer_route.h` для content и rendered consumer. Движение, LOS, focus и огонь теперь используют session PhysicsWorld плюс текущие двери/actors; прежний AABB-only fixture не мог подтвердить native-проём. Рефакторинг отдельно прошёл пять прежних cases до правки карты (`g014-refactor.xml`). Добавлен узкий `graphics.pressure_transfer` через существующий runner `--pressure-transfer`; общие render/load циклы переиспользуются для bench и нового consumer. Просмотрены entry/distance/cover/powered BMP в `build/msvc-debug/tests/pressure-transfer-captures/`; настоящие DemoGame states загружаются из изолированных сохранений. Debug Vulkan validation включён; optimized выключен; RTX 4060 Ti, API 1.4.329 при требовании 1.3.
+
+Финальный Debug: 8/8 pressure content/graphics без failures/skips, `build/msvc-debug/g014-debug.xml`; bench graphics и lifecycle отдельно прошли. Ранние ошибки fixture обхода стартового стола и source/staged level path исправлены и сняты финальной проверкой; runtime save matching не ослаблен. Optimized: 8/8 content/graphics без skips/failures, `build/msvc-relwithdebinfo/g014-optimized.xml`. Check Map — `valid=true`, warnings=0 (`build/msvc-debug/g014-map.json`). `clang-format --dry-run --Werror` трёх изменённых test sources и `git diff --check` прошли. Обычная optimized игра и её assets обновлены, staging проверил прежние model/collision receipts; SHA-256 исходной карты и обеих staged копий совпадает. Локальный baseline и разбор first-use расходов — [profiling G-014](profiling/G-014-2026-10-07.md). Протокол наблюдателя расширен в [G-011](playtests/G-011-2026-09-29.md#g-014--native-встреча-2026-10-07); человеческую приёмку G-011/G-014 это не закрывает.
+
+```powershell
+cmake --build --preset validation-debug --target relaycore_content_validation relaycore_bench_relay_run relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_level_check -j 2
+ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer|^graphics\.(pressure_transfer|bench_relay)$' --output-on-failure --no-tests=error --output-junit g014-final.xml
+ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer native tactics' --output-on-failure --no-tests=error --output-junit g014-state.xml
+ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer|^graphics\.pressure_transfer$' --output-on-failure --no-tests=error --output-junit g014-debug.xml
+cmake --build --preset validation-relwithdebinfo --target relaycore_demo relaycore_content_validation relaycore_bench_relay_run -j 2
+ctest --test-dir build/msvc-relwithdebinfo -R '^validation\.pressure transfer|^graphics\.pressure_transfer$' --output-on-failure --no-tests=error --output-junit g014-optimized.xml
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
+./build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/pressure_transfer.toml
+```
+
+**Исправление размещения по скриншотам автора, 2026-10-07:** отдельный visual bugfix в `pressure_transfer.toml`: задние поверхности плакатов/доски и вентиляционных кассет, опоры труб подведены к стенам; световые полосы подняты до потолка (верх корпуса 3,8 м), индикатор выходного света перенесён под его корпус. Плакат у входа в смешанный зал стоял в проёме без стены — перенесён на простенок; начальный плакат разнесён с кнопкой. Вентилятор развёрнут лицом в зал и закреплён задней поверхностью, соседняя кассета перенесена от его обода; стартовая кассета поднята над трубой. Модели, renderer и игровой маршрут не менялись. Новый content case проверяет опору 11 native props по вершинам текущих products, светильников и вентилятора. Runner `--pressure-transfer --mounting-views` сохраняет отдельные ракурсы в `tests/pressure-mounting-captures/`; просмотрены service/gallery/notice/fan, включая крупный план потолочного света. Debug и RelWithDebInfo: по 9/9 pressure content/graphics без failures/skips (`pressure-mounting-debug.xml`, `pressure-mounting-optimized.xml` в соответствующих build trees); Check Map `valid=true`, warnings=0. Обычная optimized игра обновлена. Эти исправления не закрывают человеческую приёмку встречи и не меняют очередь G-015 → E-018; прежний profiling capture относится к прежнему размещению карты.
+
+По дополнительному скриншоту исправлены также номера `01/02/03`: плоскость на расстоянии 1 мм от стены; `01/03` развёрнуты к игроку, `03` целиком перенесён на простенок над плакатом вместо края проёма. В content case добавлена проверка четырёх краёв каждой номерной отметки. После этой последней правки: по 2/2 affected content/graphics без failures/skips в Debug и RelWithDebInfo (`pressure-decals-debug.xml`, `pressure-decals-optimized.xml`); Check Map снова без warnings, обновлённые service/notice кадры просмотрены, `clang-format` и `git diff --check` прошли.
+
+#### G-015 — локальный retry смешанной встречи
+
+**Статус / приоритет / объём:** `ready` / P2 / S–M. **Зависимость:** технически проверенный G-014. Следующий implementation ticket; в G-014 не реализован.
+
+**Основание:** `GameWorldRuntime::respawn_player_at_spawn` всегда возвращает к исходному spawn `(4;2)`, сохраняя inventory, kills и mission progress. После смерти в перепускном зале это повтор пути через уже пройденные встречи; ограничение подтверждено кодом и текущими respawn tests. Потребность — быстрый повтор боевого решения, а не новый save framework. Неприятность/длительность такого возврата человеком пока не измерены.
+
+**Опыт и границы:** после достижения смешанного зала смерть возвращает к защищённому подходу к нему; до этого сохраняется исходный spawn. Сохранить принятые world-progress semantics, не оживлять уже убитые угрозы и не откатывать устройства автоматически. Начать с existing mission zone/level entry, respawn и save/snapshot consumers; выбрать минимальную явную привязку без level-path hardcoding. Не вводить зависимость, отдельную checkpoint framework или новый save format без конкретной необходимости.
+
+**Техническая приёмка:** повтор обеих тактик, безопасная spawn pose вне native collision/дверей, смерть до/после перепуска, disk continue со смертью и живым игроком, encounter restore и session replacement согласованы. Живой continue сохраняет настоящую позицию; старые сценарии сохраняют своё поведение. Проверки — узкие mission/respawn/save, pressure routes и affected lifecycle. Время человека и удобство retry остаются отложенной приёмкой; ZIP и другой ПК не требуются.
+
+#### E-018 — подготовка GPU-ресурсов до первого игрового кадра
+
+**Статус / приоритет / объём:** `pending` / P2 / M. **Зависимость:** измеренный G-014 baseline; реализация после G-015. Отдельный engine consumer — подготовка и повтор новой игровой сессии `pressure_transfer`.
+
+**Основание:** Tracy G-014 показывает максимальный кадр index 0 во всех восьми состояниях: около 80 мс first-use и 13–19 мс последующих сессий. Mesh/texture uploads и upload waits приходятся на этот кадр; GPU scene p99 ≤0,293 мс, queries/frame mean ≤0,00184 мс. Это существующий расход пути подготовки ресурсов, не доказанная регрессия от одной модели. Точные границы/inputs — в [отчёте G-014](profiling/G-014-2026-10-07.md).
+
+Начать с текущих PreparedWorldSceneData/activation и render-owned mesh/texture acquisition. Цель — выполнить необходимые uploads до первого игрового кадра, сохраняя явные ожидания и прежнее владение; время не скрывать и отдельно учитывать loading/transition. Не вводить глобальный asset catalog, render graph, frames-in-flight или новый job/cache framework. Постоянный residency/cache допускается только после доказанного lifetime/invalidation решения; сначала проверить более локальный перенос работы.
+
+**Техническая приёмка:** тот же optimized workload и Tracy before/after отделяют loading, первый кадр, GPU/upload/wait и warm states. Нет missing first-frame resources, stale handles, роста ресурсов при повторных session/menu/editor/failed-prepare rollback. Affected lifetime/graphics/validation checks исполняются без skips; общий startup/loading cost и цена памяти явно отражены. Не заявлять уменьшение полного времени загрузки только потому, что upload перенесён между фазами. H-008 непрерывного эпизода и другой ПК остаются отдельной приёмкой.
 
 #### H-008 — актуальный профиль нового маршрута
 
@@ -1173,7 +1311,7 @@ Evidence: `build/msvc-debug/g012-content.xml`, `g012-regressions.xml`, `g012-gra
 
 #### Проверки и порядок следующей работы
 
-Ближайшее продуктовое действие — первый проход G-011 новым игроком без подсказок по [протоколу](playtests/G-011-2026-09-29.md), когда автор возобновит отложенную проверку. При продолжении инженерного плана следующая ready задача — G-012/N4.6: короткий игровой участок с native collision после выполненных E-010–E-014. G-009 принята, G-010 отложена, native slices N1–N3 выполнены. Объёмы S/M/L — относительные; календарные сроки до испытаний не оценены.
+Автор 2026-10-07 поручил продолжить развитие игры и движка на текущем ПК, временно отложив нового игрока и другой компьютер. E-015/E-017 выполнены, G-013/G-014 технически проверены; следующий implementation ticket — G-015, затем E-018 по измеренным first-use uploads. E-016 нужен только по воспроизведённой потребности consumer; основание и направление в [PROJECT_PLAN](PROJECT_PLAN.md#текущий-цикл--игровая-отдача-native-базы-2026-10-07). Внешние критерии G-011/G-012/G-013/G-014/H-008/H-009 сохраняются открытыми и не блокируют этот implementation track. Возвращаться к протоколам новых игроков только после возобновления проверки автором. G-009 принята, G-010 отложена; scope S/M/L относительный, календарных обещаний нет.
 
 Для authoring начинать с `relaycore_level_check` и `validation-debug`. Для оружия/AI — ближайшие combat/enemy/input/save tests, затем content и затронутые lifecycle/graphics. Команды и существующие presets приведены в разделе 9; configure/build выполнять в VS developer environment с корректным `VCPKG_ROOT`. Ручные критерии не заменять автотестами. Каждый implementation ticket заканчивать обновлением статуса, evidence и `git diff --check`.
 

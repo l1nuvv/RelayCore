@@ -31,6 +31,17 @@ int main(int argc, char** argv)
             RelayCore::render::ColorPipelineMode::hardware_srgb
         );
         const auto inputs = RelayGame::build_world_irradiance_scene(prepared, authoring);
+        if (std::filesystem::exists(argv[3]))
+        {
+            const auto existing = RelayCore::render::read_irradiance_probes(argv[3]);
+            if (RelayCore::render::irradiance_inputs_match(existing, inputs, source->settings))
+            {
+                std::cout << "reused " << existing.probes.size() << " probes; signature=" << existing.source_signature
+                          << '\n';
+                RelayCore::log::shutdown();
+                return 0;
+            }
+        }
         const auto volume = RelayCore::render::bake_irradiance_probes(inputs, source->settings);
         std::filesystem::create_directories(std::filesystem::path{argv[3]}.parent_path());
         RelayCore::render::write_irradiance_probes(argv[3], volume);

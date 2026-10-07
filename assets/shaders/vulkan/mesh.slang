@@ -203,12 +203,11 @@ float point_depth(float3 ray,int light)
     }
     return shadowPoints.Sample(float3(uv*0.5+0.5,float(light*6+face))).r;
 }
-float local_visibility(int index,float3 lightVector,float distanceToLight,float radius,float3 normal,float3 direction,float attenuation)
+float local_visibility(int index,float3 lightVector,float distanceToLight,float radius,float3 normal,float3 receiverPlaneNormal,float3 direction,float attenuation)
 {
     if ((shadows.flags.w & (1<<index))==0 || attenuation<=0 || distanceToLight<=0.05) return 1;
     float3 ray=-lightVector/distanceToLight;
     float bias=0.025+0.045*(1-max(dot(normal,direction),0.0));
-    float receiver=(distanceToLight-bias)/radius;
     float3 tangent=normalize(cross(ray,abs(ray.y)>0.9 ? float3(1,0,0) : float3(0,1,0)));
     float3 bitangent=cross(ray,tangent);
     float visibility=0;
@@ -216,6 +215,12 @@ float local_visibility(int index,float3 lightVector,float distanceToLight,float 
     {
         float2 offset=float2(tap==0 || tap==2 ? -1 : 1,tap<2 ? -1 : 1);
         float3 sampleRay=normalize(ray+(tangent*offset.x+bitangent*offset.y)*(2.0/256));
+        // Each PCF ray intersects a different point on the geometric receiver plane.
+        // Comparing every tap to the centre distance self-shadows grazing surfaces.
+        float planeCosine=dot(receiverPlaneNormal,sampleRay);
+        float sampleDistance=abs(planeCosine)>0.0001
+            ? distanceToLight*dot(receiverPlaneNormal,ray)/planeCosine : distanceToLight;
+        float receiver=(sampleDistance-bias)/radius;
         visibility+=receiver<=point_depth(sampleRay,index) ? 0.25 : 0;
     }
     return visibility;
@@ -265,7 +270,7 @@ float soft_panel_volume(float2 uv, float scale)
 }
 #include "scene_materials.slang"
 
-float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance)
+float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance)
 {
     float skyAmbient = saturate(normal.y * 0.5 + 0.5);
     float underside = saturate(-normal.y);
@@ -299,7 +304,7 @@ float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float2 uv,
         float attenuation = saturate(1 - distanceToLight / max(lights.positionRadius[i].w, 0.001));
         attenuation = attenuation * attenuation * (3 - 2 * attenuation);
         float wrapped = saturate(dot(normal, direction) * materials.local.x + materials.local.y);
-        result += color * lights.color[i].rgb * attenuation * wrapped * materials.local.z * local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,direction,attenuation);
+        result += color * lights.color[i].rgb * attenuation * wrapped * materials.local.z * local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,receiverPlaneNormal,direction,attenuation);
     }
     result+=spot_contribution(color,normal,position,geometricNormal);
     return result;
@@ -334,7 +339,7 @@ float3 metallic_roughness_brdf(float3 base, float3 normal, float3 view, float3 l
     float3 fresnel = f0 + (1-f0) * pow(1-vh, 5);
     return ((1-fresnel) * (1-metallic) * base / 3.14159265 + fresnel * distribution * visibility) * nl;
 }
-float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 position, float fogDistance)
+float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float3 position, float fogDistance)
 {
     float3 base = mr_linear(color);
     float3 view = safe_normalize_vec3(float3(draw.cameraX,draw.cameraY,draw.cameraZ)-position,normal);
@@ -352,7 +357,7 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
         float3 lightDirection = distanceToLight > 0.0001 ? delta/distanceToLight : float3(0,1,0);
         float attenuation = saturate(1-distanceToLight/max(lights.positionRadius[i].w,0.001));
         attenuation = attenuation*attenuation*(3-2*attenuation);
-        float visibility = local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,lightDirection,attenuation);
+        float visibility = local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,receiverPlaneNormal,lightDirection,attenuation);
         result += metallic_roughness_brdf(base,normal,view,lightDirection) * mr_linear(lights.color[i].rgb)
                   * attenuation * materials.local.z * visibility;
     }
@@ -403,6 +408,8 @@ float4 fragment_main(Varying input) : SV_Target
         color = lerp(input.color, input.color * sample, materials.atlas[id].y);
     }
     float3 geometricNormal = normalize(input.worldNormal);
+    // Interpolated mesh normals describe shading, not the rasterized triangle plane.
+    float3 receiverPlaneNormal = normalize(cross(ddx(input.worldPosition), ddy(input.worldPosition)));
     float3 shadingNormal = geometricNormal;
     if ((draw.flags & 8) != 0)
     {
@@ -420,8 +427,8 @@ float4 fragment_main(Varying input) : SV_Target
     emissive *= overlay ? 1.18 : 1.0;
     bool metallicRoughness = (draw.flags & 16) != 0;
     float3 lighting = metallicRoughness
-        ? metallic_roughness_color(materialColor, shadingNormal, geometricNormal, input.worldPosition, input.fogDistance)
-        : lit_color(materialColor, shadingNormal, geometricNormal, uv, input.worldPosition,
+        ? metallic_roughness_color(materialColor, shadingNormal, geometricNormal, receiverPlaneNormal, input.worldPosition, input.fogDistance)
+        : lit_color(materialColor, shadingNormal, geometricNormal, receiverPlaneNormal, uv, input.worldPosition,
                     id, clothing, model, input.fogDistance);
     float3 fogColor = metallicRoughness ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
     bool hdr = materials.grading.y != 0;

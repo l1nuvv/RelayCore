@@ -178,6 +178,16 @@ TEST_CASE("native opening drives shots LOS rover movement focus doors and trigge
             RelayGame::PlayerWeapon::Precise
         );
         CHECK((shot.enemy_index == 0) == (x == 0));
+        CHECK(shot.combat.world_impact.has_value() == (x != 0));
+        if (shot.combat.world_impact)
+        {
+            const auto surface = query().raycast({x, .5F, 0}, {0, 0, 1}, 8);
+            REQUIRE(surface);
+            CHECK(shot.combat.world_impact->object.kind == WorldObjectKind::CollisionMesh);
+            CHECK(shot.combat.world_impact->surface == surface->surface);
+            CHECK(shot.combat.world_impact->position == surface->position);
+            CHECK(shot.combat.world_impact->normal == surface->normal);
+        }
         enemies[0].state.mode = RelayGame::EnemyMode::Idle;
         enemies[0].state.last_seen = {};
         const auto actor = make_player_aabb({x, .001F, 0}, .3F, 1.8F);

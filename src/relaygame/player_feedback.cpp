@@ -1,5 +1,7 @@
 #include "relaygame/player_feedback.h"
 
+#include "relaycore/gameplay/combat_runtime.h"
+
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
@@ -8,6 +10,41 @@
 
 namespace RelayGame
 {
+    auto weapon_impact_feedback(const std::span<const RelayCore::gameplay::CombatFireResult> rays)
+        -> WeaponImpactFeedback
+    {
+        WeaponImpactFeedback result;
+        using M = RelayCore::SurfaceMaterial;
+        for (const auto& ray : rays)
+        {
+            if (!ray.fired || !ray.world_impact)
+                continue;
+            const auto& hit = *ray.world_impact;
+            auto* selected = &result.hard;
+            switch (hit.surface)
+            {
+                case M::Metal:
+                case M::Corridor:
+                case M::Platform:
+                case M::PlatformTop:
+                case M::PlatformTop2:
+                case M::Hazard:
+                case M::Beam:
+                case M::Trim:
+                case M::WallPanel:
+                case M::Post:
+                    selected = &result.metal;
+                    break;
+                default:
+                    break;
+            }
+            // One nearest cue per surface family keeps a shotgun discharge bounded.
+            if (!*selected || hit.distance < (*selected)->distance)
+                *selected = hit;
+        }
+        return result;
+    }
+
     auto footstep_surface(const RelayCore::BlockoutLevel& level, glm::vec3 feet) -> FootstepSurface
     {
         auto material = RelayCore::SurfaceMaterial::Concrete;

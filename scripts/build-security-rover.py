@@ -23,7 +23,7 @@ def quad(a,b,c,d,tile):
         p, _, n = vertices[start+i]
         vertices[start+i] = p, (x+uv[0], y+uv[1]), n
 
-def shell(rings, tile):
+def shell(rings, tile, cap_top=True):
     # Octagonal cross sections create a bevelled, sloping shell.
     pattern = [(-1,-.65),(-.65,-1),(.65,-1),(1,-.65),(1,.65),(.65,1),(-.65,1),(-1,.65)]
     points = [[(x*w,y,z*l+offset) for x,z in pattern] for y,w,l,offset in rings]
@@ -33,7 +33,8 @@ def shell(rings, tile):
             quad(lower[i],upper[i],upper[j],lower[j],tile)
     for i in range(1,7):
         triangle(points[0][0],points[0][i],points[0][i+1],tile)
-        triangle(points[-1][0],points[-1][i+1],points[-1][i],tile)
+        if cap_top:
+            triangle(points[-1][0],points[-1][i+1],points[-1][i],tile)
 
 def wheel(x,z):
     rings=[]
@@ -83,17 +84,34 @@ root = Path(__file__).resolve().parents[1]/'assets/models'
 write_obj(root/'security_rover.obj', vertices, 'security rover: own mesh')
 
 live = vertices
-wreck = []
-angle = math.radians(65)
-
-def roll(p):
-    x, y, z = p
-    return (x*math.cos(angle)-(y-.45)*math.sin(angle)-.1,
-            x*math.sin(angle)+(y-.45)*math.cos(angle)+.35, z)
+vertices = []
+# The broken upper shell exposes the drive tray instead of compressing an intact rover.
+shell([(.10,.22,.27,0),(.18,.27,.32,0),(.28,.27,.32,0)],0,cap_top=False)
+shell([(.17,.235,.285,0),(.19,.235,.285,0)],1)
+for x in (-.14,.14):
+    begin=len(vertices)
+    shell([(.19,.035,.12,-.08),(.24,.035,.12,-.08)],2)
+    for i in range(begin,len(vertices)):
+        p,uv,n=vertices[i];vertices[i]=((p[0]+x,p[1],p[2]),uv,n)
+# A peeled service cover remains attached along the rear edge.
+quad((-.25,.28,-.29),(.24,.28,-.29),(.18,.37,-.08),(-.20,.32,-.03),0)
+quad((-.25,.278,-.29),(-.20,.318,-.03),(.18,.368,-.08),(.24,.278,-.29),1)
+for x,z in [(-.12,.02),(-.04,.05),(.05,.04),(.13,.02)]:
+    for i in range(8):
+        a,b=i*math.tau/8,(i+1)*math.tau/8
+        quad((x+math.cos(a)*.016,.19,z+math.sin(a)*.016),
+             (x+math.cos(a)*.016,.235,z+math.sin(a)*.016),
+             (x+math.cos(b)*.016,.235,z+math.sin(b)*.016),
+             (x+math.cos(b)*.016,.19,z+math.sin(b)*.016),2)
+wreck = vertices
 
 def broken_head(p):
     x, y, z = p
-    return (x+.58, y-.48, z+.22)
+    y,z=(y-.82)*.8,(z-.02)*.8
+    pitch,roll=math.radians(-25),math.radians(70)
+    y,z=y*math.cos(pitch)-z*math.sin(pitch),y*math.sin(pitch)+z*math.cos(pitch)
+    return (x*.75*math.cos(roll)-y*math.sin(roll)+.36,
+            x*.75*math.sin(roll)+y*math.cos(roll)+.205,z+.03)
 
 def append_part(begin, end, transform, dark=False):
     for i in range(begin, end, 3):
@@ -107,20 +125,80 @@ def append_part(begin, end, transform, dark=False):
         for j, point in zip(range(i, i+3), points):
             uv = live[j][1]
             if dark:
-                uv = (uv[0], uv[1]+.5)
+                uv = (.65, .65)
             wreck.append((point, uv, tuple(value/length for value in normal)))
 
-append_part(0, head_start, roll)
-append_part(head_start, head_end, broken_head, dark=True)
-append_part(head_end, wheel_starts[0], roll)
+append_part(head_start, head_end, broken_head)
 for index, begin in enumerate(wheel_starts):
     end = wheel_starts[index+1] if index+1 < len(wheel_starts) else len(live)
-    if index < 2:
-        append_part(begin, end, roll)
+    if index == 3:
+        append_part(begin, end, lambda p: (p[0]*.8+.09, p[1]*.85, p[2]*.8+.08))
     else:
-        shift = -.35 if index == 2 else .40
-        append_part(begin, end, lambda p, shift=shift: (p[0]+shift, p[1]-.10, p[2]+.3))
+        append_part(begin, end, lambda p: (p[0]*.8, p[1]*.90, p[2]*.8))
 
-floor_offset = .025-min(p[1] for p,_,_ in wreck)
+def hardware_box(center,size,tile,angle=0):
+    points=[]
+    for x,y,z in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),
+                  (-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]:
+        x,y,z=x*size[0]/2,y*size[1]/2,z*size[2]/2
+        points.append((center[0]+x,center[1]+y*math.cos(angle)-z*math.sin(angle),
+                       center[2]+y*math.sin(angle)+z*math.cos(angle)))
+    for face in [(0,3,2,1),(4,5,6,7),(0,1,5,4),(3,7,6,2),(0,4,7,3),(1,2,6,5)]:
+        quad(*(points[i] for i in face),tile)
+
+def hardware_cylinder(a,b,radius,tile,sides=12):
+    direction=[b[i]-a[i] for i in range(3)]
+    length=math.sqrt(sum(x*x for x in direction));direction=[x/length for x in direction]
+    reference=(0,1,0) if abs(direction[1])<.9 else (1,0,0)
+    tangent=[direction[1]*reference[2]-direction[2]*reference[1],
+             direction[2]*reference[0]-direction[0]*reference[2],
+             direction[0]*reference[1]-direction[1]*reference[0]]
+    length=math.sqrt(sum(x*x for x in tangent));tangent=[x/length for x in tangent]
+    bitangent=[direction[1]*tangent[2]-direction[2]*tangent[1],
+               direction[2]*tangent[0]-direction[0]*tangent[2],
+               direction[0]*tangent[1]-direction[1]*tangent[0]]
+    rings=[[(p[axis]+radius*(math.cos(i*math.tau/sides)*tangent[axis]
+                          +math.sin(i*math.tau/sides)*bitangent[axis]))
+            for axis in range(3)] for p in (a,b) for i in range(sides)]
+    for i in range(sides):
+        j=(i+1)%sides
+        quad(rings[i],rings[j],rings[sides+j],rings[sides+i],tile)
+        triangle(a,rings[j],rings[i],tile)
+        triangle(b,rings[sides+i],rings[sides+j],tile)
+
+for z in (-.2,.2):
+    hardware_cylinder((-.26,.189,z),(.26,.189,z),.022,2)
+    hardware_box((0,.225,z),(.18,.07,.085),1)
+for index,(x,z) in enumerate([(-.256,-.2),(-.256,.2),(.256,-.2),(.346,.28)]):
+    y=.1785 if index==3 else .189
+    side=-1 if x<0 else 1
+    outer=x+side*.07
+    hardware_cylinder((outer,y,z),(outer+side*.009,y,z),.069,2,20)
+    for i in range(6):
+        angle=i*math.tau/6
+        by,bz=y+math.sin(angle)*.045,z+math.cos(angle)*.045
+        hardware_cylinder((outer+side*.010,by,bz),(outer+side*.016,by,bz),.007,1,6)
+    for i in range(24):
+        angle=i*math.tau/24
+        hardware_box((x,y+math.cos(angle)*.176,z+math.sin(angle)*.176),(.10,.009,.028),1,angle)
+for x in (-.245,.245):
+    for z in (-.26,0,.26):
+        hardware_cylinder((x,.276,z),(x,.284,z),.009,2,8)
+for a,b in zip([(.12,.25,.10),(.20,.29,.08),(.26,.19,.06)],
+               [(.20,.29,.08),(.26,.19,.06),(.31,.11,.02)]):
+    hardware_cylinder(a,b,.008,1,8)
+
+# Consistent planar density within each atlas tile; narrow details no longer stretch a whole tile.
+for i in range(0,len(wreck),3):
+    normal=wreck[i][2]
+    axis=max(range(3),key=lambda a:abs(normal[a]))
+    axes=((1,2),(0,2),(0,1))[axis]
+    for j in range(i,i+3):
+        p,uv,n=wreck[j]
+        tile_x,tile_y=int(uv[0]*2)*.5,int(uv[1]*2)*.5
+        uv=(tile_x+.25+p[axes[0]]*.38,tile_y+.25+p[axes[1]]*.38)
+        wreck[j]=(p,uv,n)
+
+floor_offset = .001-min(p[1] for p,_,_ in wreck)
 wreck = [((p[0], p[1]+floor_offset, p[2]), uv, n) for p,uv,n in wreck]
 write_obj(root/'security_rover_destroyed.obj', wreck, 'destroyed security rover')

@@ -10,6 +10,11 @@
 
 namespace RelayCore::test
 {
+    enum class BenchRelayTactic {
+        Distance,
+        Cover
+    };
+
     struct BenchRelayRoute {
         RelayGame::LevelSession session;
         RelayGame::MissionRuntime mission;
@@ -19,12 +24,18 @@ namespace RelayCore::test
         glm::vec3 position;
         std::uint64_t ticks = 0;
         unsigned precise_shots = 0, shotgun_shots = 0;
+        unsigned turret_exposed_ticks = 0;
+        float first_rover_hit_range = 0;
         float closest_rover_z = 100;
         RelayGame::PlayerWeapon weapon = RelayGame::PlayerWeapon::Precise;
+        BenchRelayTactic tactic;
 
-        explicit BenchRelayRoute(const core::GameplayConfig& config) :
+        explicit BenchRelayRoute(
+            const core::GameplayConfig& config,
+            BenchRelayTactic selected_tactic = BenchRelayTactic::Cover
+        ) :
             session(RelayGame::LevelSessionBuilder{config}.build(core::asset_path("levels/bench_relay.toml"))),
-            position(session.spawn_position)
+            position(session.spawn_position), tactic(selected_tactic)
         {
             mission.reset(session.mission_definition);
         }
@@ -51,6 +62,11 @@ namespace RelayCore::test
             gameplay::tick_combat_state(dt, player, session.combat.turrets);
             static_cast<void>(gameplay::update_doors(dt, actor, session.doors));
             const auto query = world();
+            const auto& turret = session.combat.turrets.front();
+            const auto to_turret = turret.origin - eye;
+            if (!turret.destroyed && glm::length(to_turret) < turret.attack_range
+                && !query.raycast(eye, glm::normalize(to_turret), glm::length(to_turret)))
+                ++turret_exposed_ticks;
             static_cast<void>(gameplay::update_combat_threats(
                 query,
                 actor,
@@ -66,12 +82,18 @@ namespace RelayCore::test
             if (fire)
             {
                 std::optional<glm::vec3> target;
-                if (rover.state.mode != RelayGame::EnemyMode::Dead && rover.state.position.z < 6.1F
-                    && glm::distance(eye, rover.state.position) < 4)
+                bool aim_at_rover = false;
+                if (rover.state.mode != RelayGame::EnemyMode::Dead
+                    && ((tactic == BenchRelayTactic::Distance && turret.destroyed)
+                        || (tactic == BenchRelayTactic::Cover && rover.state.position.z < 6.1F
+                            && glm::distance(eye, rover.state.position) < 4)))
                 {
                     target = rover.state.position + glm::vec3{0, .45F, 0};
-                    weapon = RelayGame::PlayerWeapon::Shotgun;
-                } else if (!session.combat.turrets.front().destroyed)
+                    weapon = tactic == BenchRelayTactic::Cover ? RelayGame::PlayerWeapon::Shotgun
+                                                               : RelayGame::PlayerWeapon::Precise;
+                    aim_at_rover = true;
+                } else if (!turret.destroyed
+                           && (tactic == BenchRelayTactic::Distance || rover.state.mode == RelayGame::EnemyMode::Dead))
                 {
                     target = session.combat.turrets.front().origin;
                     weapon = RelayGame::PlayerWeapon::Precise;
@@ -88,7 +110,11 @@ namespace RelayCore::test
                         weapon
                     );
                     if (shot.combat.fired)
+                    {
                         weapon == RelayGame::PlayerWeapon::Precise ? ++precise_shots : ++shotgun_shots;
+                        if (aim_at_rover && shot.enemy_index >= 0 && first_rover_hit_range == 0)
+                            first_rover_hit_range = glm::distance(eye, *target);
+                    }
                 }
             }
             mission.update(actor, session.doors, inventory, activated, signaled);
@@ -156,29 +182,59 @@ namespace RelayCore::test
             return event.kind;
         }
 
-        void enter_bay()
+        void open_bay()
         {
             walk({-2.5F, .01F, -2.3F});
             static_cast<void>(use("bay_shotgun"));
             walk({2.3F, .01F, -.4F});
             static_cast<void>(use("bay_reader"));
             walk({0, .01F, -.4F});
+        }
+
+        void enter_bay()
+        {
+            open_bay();
             wait(200);
             walk({0, .01F, 2.2F});
         }
 
-        void finish()
+        void fight()
         {
+            if (tactic == BenchRelayTactic::Cover)
+            {
+                walk({-2.6F, .01F, 3.1F});
+                wait(600);
+                if (session.enemies.front().state.mode != RelayGame::EnemyMode::Dead)
+                    throw std::runtime_error("Bench relay rover did not reach the cover approach");
+                walk({-1.3F, .01F, 3.1F});
+            }
             wait(360);
+            if (player.kills != 2)
+                throw std::runtime_error("Bench relay tactic left a threat alive");
+        }
+
+        void power_relay()
+        {
+            fight();
             walk({1.6F, .01F, 2.2F});
             walk({1.6F, .01F, 9.5F});
             walk({-2.6F, .01F, 11.2F});
             static_cast<void>(use("relay_control"));
+        }
+
+        void leave_bay()
+        {
             walk({2.3F, .01F, 11.2F});
             static_cast<void>(use("exit_reader"));
             walk({0, .01F, 11.2F});
             wait(200);
             walk({0, .01F, 14});
+        }
+
+        void finish()
+        {
+            power_relay();
+            leave_bay();
         }
 
         auto save() const -> RelayGame::SavedGame

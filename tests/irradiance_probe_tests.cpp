@@ -47,6 +47,7 @@ TEST_CASE("irradiance bake transports colored diffuse light and respects opaque 
     scene.lights.push_back({{0, 1, 0}, {8, 8, 8}, 12});
     IrradianceProbeSettings settings{{-1, 0, -1}, {1, 2, 1}, {2, 2, 2}, 512};
     const auto open = bake_irradiance_probes(scene, settings);
+    CHECK(irradiance_inputs_match(open, scene, settings));
     CHECK(open.probes == bake_irradiance_probes(scene, settings).probes);
     const auto bounce = sample_irradiance_probes(open, {0, .2F, 0}, {0, -1, 0});
     CHECK(bounce.x > .3F);
@@ -57,6 +58,7 @@ TEST_CASE("irradiance bake transports colored diffuse light and respects opaque 
     scene.triangles.push_back({{-20, 0, -20}, {20, 0, 20}, {20, 0, -20}, {0, 0, 0}});
     CHECK(sample_irradiance_probes(bake_irradiance_probes(scene, settings), {0, .2F, 0}, {0, -1, 0}).x == 0);
     CHECK(open.source_signature != irradiance_source_signature(scene, settings));
+    CHECK_FALSE(irradiance_inputs_match(open, scene, settings));
     scene.lights[0].radius = 0;
     CHECK_THROWS_WITH_AS(
         static_cast<void>(bake_irradiance_probes(scene, settings)),

@@ -30,23 +30,71 @@ TEST_CASE("bench relay native opening passes rover and low rays while the enclos
     CHECK(box.cast_box({0, .485F, 5.5F}, {.42F, .475F, .42F}, {0, 0, 3}).has_value());
 }
 
-TEST_CASE("bench relay complete route uses both weapons native pursuit controls and exit")
+TEST_CASE("bench relay distance and cover tactics reach relay and exit with different exposure")
 {
     RelayCore::test::ScopedTempDirectory temp;
     RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
     for (int attempt = 0; attempt < 2; ++attempt)
     {
-        RelayCore::test::BenchRelayRoute route{{}};
-        route.enter_bay();
-        route.finish();
-        CHECK(route.mission.completed());
-        CHECK(route.player.kills == 2);
-        CHECK(route.player.deaths == 0);
-        CHECK(route.precise_shots > 0);
-        CHECK(route.shotgun_shots > 0);
-        CHECK(route.closest_rover_z < 6.1F);
-        CHECK(route.session.doors.back().state == RelayCore::gameplay::DoorState::Open);
+        RelayCore::test::BenchRelayRoute distance{{}, RelayCore::test::BenchRelayTactic::Distance};
+        RelayCore::test::BenchRelayRoute cover{{}, RelayCore::test::BenchRelayTactic::Cover};
+        for (auto* route : {&distance, &cover})
+        {
+            route->enter_bay();
+            route->finish();
+            CHECK(route->mission.completed());
+            CHECK(route->player.kills == 2);
+            CHECK(route->player.deaths == 0);
+            CHECK(route->precise_shots > 0);
+            CHECK(route->session.doors.back().state == RelayCore::gameplay::DoorState::Open);
+        }
+        CAPTURE(distance.first_rover_hit_range);
+        CAPTURE(cover.first_rover_hit_range);
+        CAPTURE(distance.turret_exposed_ticks);
+        CAPTURE(cover.turret_exposed_ticks);
+        CHECK(distance.shotgun_shots == 0);
+        CHECK(distance.first_rover_hit_range > 4);
+        CHECK(cover.shotgun_shots > 0);
+        CHECK(cover.first_rover_hit_range < 4);
+        CHECK(cover.closest_rover_z < 6.1F);
+        CHECK(cover.turret_exposed_ticks > distance.turret_exposed_ticks);
     }
+}
+
+TEST_CASE("bench relay closed gate and standing cover stop turret damage and outgoing fire")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::test::BenchRelayRoute route{{}};
+    const auto check_cover = [&] {
+        const auto eye = route.position + glm::vec3{0, 1.65F, 0};
+        const auto direction = glm::normalize(route.session.combat.turrets.front().origin - eye);
+        const auto health = route.player.health;
+        const auto turret_health = route.session.combat.turrets.front().health;
+        const auto shot = RelayGame::fire_player_weapon(
+            route.world(),
+            eye,
+            direction,
+            route.player,
+            route.session.combat.turrets,
+            route.session.enemies
+        );
+        REQUIRE(shot.combat.fired);
+        CHECK_FALSE(shot.combat.hit_turret);
+        REQUIRE(shot.combat.world_impact);
+        for (int i = 0; i < 480; ++i)
+            route.tick(false);
+        CHECK(route.player.health == health);
+        CHECK(route.session.combat.turrets.front().health == turret_health);
+    };
+    route.position = {0, .01F, -.4F};
+    check_cover();
+    route.enter_bay();
+    route.walk({-2.6F, .01F, 3.1F});
+    // Isolate the turret: the rover remains active in the two complete tactical routes above.
+    route.session.enemies.front().state.mode = RelayGame::EnemyMode::Dead;
+    REQUIRE_FALSE(route.session.combat.turrets.front().destroyed);
+    check_cover();
 }
 
 TEST_CASE("bench relay editor and disk continue preserve native references encounters and objective state")
@@ -106,4 +154,69 @@ TEST_CASE("bench relay editor and disk continue preserve native references encou
     CHECK(restored.mission_status().completed);
     CHECK(restored.player_combat_state().kills == 2);
     CHECK(restored.activated_target_ids() == route.activated);
+}
+
+TEST_CASE("bench relay tactical snapshots disk continue and death retry preserve relay state")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::core::EngineConfig config;
+    for (const auto tactic : {RelayCore::test::BenchRelayTactic::Distance, RelayCore::test::BenchRelayTactic::Cover})
+    {
+        RelayCore::test::BenchRelayRoute route{config.gameplay, tactic};
+        route.enter_bay();
+        RelayGame::GameWorldRuntime restored;
+        restored.load_level_session(
+            config,
+            RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path)
+        );
+        for (int phase = 0; phase < 2; ++phase)
+        {
+            CAPTURE(phase);
+            if (phase == 1)
+                route.power_relay();
+            const auto disk = temp.path() / "tactic.toml";
+            const auto save = route.save();
+            RelayGame::write_saved_game(disk, save);
+            restored.restore_saved_game(RelayGame::load_saved_game(disk));
+            const auto checkpoint = restored.capture_encounter_snapshot(save.played_seconds, 0, false);
+            const auto check_state = [&] {
+                CHECK(restored.debug_player_position() == save.player.position);
+                CHECK(restored.selected_weapon() == save.world.selected_weapon);
+                CHECK(restored.inventory_item_ids() == route.inventory);
+                CHECK(restored.player_combat_state().health == route.player.health);
+                CHECK(restored.player_combat_state().kills == save.world.player_combat.kills);
+                CHECK(restored.enemies().front().state.position == save.enemies.front().position);
+                CHECK(restored.enemies().front().state.health == save.enemies.front().health);
+                CHECK(restored.enemies().front().state.mode == save.enemies.front().mode);
+                CHECK(restored.turrets().front().health == route.session.combat.turrets.front().health);
+                CHECK(restored.activated_target_ids() == route.activated);
+                CHECK(restored.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 3 : 4));
+                CHECK_FALSE(restored.mission_status().completed);
+                const auto exit_reader =
+                    std::ranges::find(restored.usables(), "exit_reader", &RelayCore::gameplay::RuntimeUsable::name);
+                REQUIRE(exit_reader != restored.usables().end());
+                CHECK(exit_reader->locked == (phase == 0));
+                CHECK(restored.doors().front().state == route.session.doors.front().state);
+                CHECK(restored.doors().back().state == RelayCore::gameplay::DoorState::Closed);
+            };
+            check_state();
+            const auto live_player = route.player;
+            static_cast<void>(RelayCore::gameplay::apply_player_damage(route.player, 1000, "test"));
+            const auto dead = route.save();
+            route.player = live_player;
+            RelayGame::write_saved_game(disk, dead);
+            restored.restore_saved_game(RelayGame::load_saved_game(disk));
+            CHECK_FALSE(restored.player_combat_state().alive);
+            CHECK(restored.debug_advance_player_respawn(2));
+            CHECK(restored.player_combat_state().alive);
+            CHECK(restored.debug_player_position() == route.session.spawn_position);
+            CHECK(restored.activated_target_ids() == route.activated);
+            CHECK(restored.enemies().front().state.mode == save.enemies.front().mode);
+            restored.restore_encounter_snapshot(checkpoint);
+            check_state();
+        }
+        route.leave_bay();
+        CHECK(route.mission.completed());
+    }
 }

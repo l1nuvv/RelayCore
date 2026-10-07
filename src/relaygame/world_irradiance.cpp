@@ -6,10 +6,12 @@
 #include "relaygame/world_scene_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <glm/geometric.hpp>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace RelayGame
 {
@@ -96,29 +98,49 @@ namespace RelayGame
         for (const auto& chunk : scene.blockout.chunks)
             if (!chunk.transparent)
                 append(chunk.mesh, glm::mat4{1}, glm::vec3{1});
+        const auto srgb_bytes = [] {
+            std::array<float, 256> values{};
+            for (std::size_t i = 0; i < values.size(); ++i)
+                values[i] = srgb_channel_to_linear(static_cast<float>(i) / 255.F);
+            return values;
+        }();
+        struct BakeModel {
+            ModelAssetData asset;
+            std::vector<glm::vec3> reflectance;
+        };
+        // One preparation owns this cache; every new load rereads assets and validates their current signature.
+        std::unordered_map<std::filesystem::path, BakeModel> models;
         for (const auto& prop : scene.props)
         {
             if (prop.model.extension() != ".rcmodel")
                 throw std::runtime_error("irradiance bake supports compiled .rcmodel static props only");
-            const auto model = read_model_asset(prop.model);
-            for (const auto& part : model.parts)
+            auto [found, inserted] = models.try_emplace(prop.model);
+            auto& model = found->second;
+            if (inserted)
             {
-                const auto& material = model.materials[part.material];
-                glm::vec3 mean{};
-                for (std::size_t pixel = 0; pixel < material.base_color.pixels.size(); pixel += 4)
-                    mean += srgb_visual_rgb_to_linear(
-                        glm::vec3{
-                            material.base_color.pixels[pixel],
-                            material.base_color.pixels[pixel + 1],
-                            material.base_color.pixels[pixel + 2]
-                        }
-                        / 255.F
-                    );
-                mean /= static_cast<float>(material.base_color.pixels.size() / 4);
-                if (material.metallic_roughness)
-                    mean *= .96F * (1 - material.metallic_roughness->metallic);
-                append(model.meshes[part.mesh].geometry, prop.transform * part.transform, mean);
+                model.asset = read_model_asset(prop.model);
+                model.reflectance.reserve(model.asset.materials.size());
+                for (const auto& material : model.asset.materials)
+                {
+                    glm::vec3 mean{};
+                    for (std::size_t pixel = 0; pixel < material.base_color.pixels.size(); pixel += 4)
+                        mean += glm::vec3{
+                            srgb_bytes[material.base_color.pixels[pixel]],
+                            srgb_bytes[material.base_color.pixels[pixel + 1]],
+                            srgb_bytes[material.base_color.pixels[pixel + 2]]
+                        };
+                    mean /= static_cast<float>(material.base_color.pixels.size() / 4);
+                    if (material.metallic_roughness)
+                        mean *= .96F * (1 - material.metallic_roughness->metallic);
+                    model.reflectance.push_back(mean);
+                }
             }
+            for (const auto& part : model.asset.parts)
+                append(
+                    model.asset.meshes[part.mesh].geometry,
+                    prop.transform * part.transform,
+                    model.reflectance[part.material]
+                );
         }
         for (const auto& entry : scene.local_lights)
             if (entry.required_target.empty())
@@ -157,10 +179,7 @@ namespace RelayGame
         }
         const auto inputs = build_world_irradiance_scene(linear_scene ? *linear_scene : scene, authoring);
         auto volume = RelayCore::render::read_irradiance_probes(source->product);
-        if (volume.source_signature != RelayCore::render::irradiance_source_signature(inputs, source->settings)
-            || volume.settings.mins != source->settings.mins || volume.settings.maxs != source->settings.maxs
-            || volume.settings.dimensions != source->settings.dimensions
-            || volume.settings.rays != source->settings.rays)
+        if (!RelayCore::render::irradiance_inputs_match(volume, inputs, source->settings))
             throw std::runtime_error(
                 "stale irradiance product " + source->product.string()
                 + "; rebuild relaycore_irradiance_assets after geometry, static lights or bake settings changes"

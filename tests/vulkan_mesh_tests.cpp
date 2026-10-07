@@ -693,6 +693,80 @@ namespace
         }
     }
 
+    void check_point_shadow_receiver(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        auto box = make_color_box_mesh_data();
+        for (auto& vertex : box.vertices)
+        {
+            vertex.color = {.5F, .5F, .5F};
+            vertex.material_kind = 1;
+        }
+        StaticColorMesh blocker;
+        blocker.initialize(box);
+        PerspectiveCamera camera{{.position = {0, 1.65F, -1.7F}, .target = {0, 3.6F, 0}}};
+        camera.set_viewport(width, height);
+        for (const bool smooth_normals : {false, true})
+        {
+            auto receiver = box;
+            for (auto& vertex : receiver.vertices)
+            {
+                vertex.position *= glm::vec3{12, .2F, 12};
+                if (smooth_normals && vertex.normal.y < -.5F)
+                    vertex.normal = glm::normalize(glm::vec3{vertex.position.x * .18F, -1, vertex.position.z * .18F});
+            }
+            StaticColorMesh ceiling;
+            ceiling.initialize(receiver);
+            RenderQueue queue;
+            queue.push(ceiling, glm::translate(glm::mat4{1}, {0, 3.6F, 0}));
+            for (const auto pipeline : {ColorPipelineMode::legacy_gamma, ColorPipelineMode::hardware_srgb})
+            {
+                RendererConfig config{};
+                config.shadow_light_intensity = 0;
+                const auto encoding =
+                    pipeline == ColorPipelineMode::hardware_srgb ? TextureEncoding::srgb : TextureEncoding::linear;
+                VulkanMeshRenderer
+                    renderer{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, encoding, config, pipeline};
+                const std::array lights{LocalLight{{0, 2.6F, 0}, visual_rgb_for_pipeline({.6F, .5F, .4F}, pipeline), 5}
+                };
+                renderer.set_local_lights(lights);
+                const auto shadowed = renderer.render_image(queue.items(), camera, width, height);
+                config.shadow_enabled = false;
+                renderer.set_config(config);
+                const auto lit = renderer.render_image(queue.items(), camera, width, height);
+                const auto prefix = std::string{"point-receiver-"} + color_pipeline_mode_name(pipeline)
+                                    + (smooth_normals ? "-smooth" : "-flat");
+                save(shadowed, captures / (prefix + "-shadowed.bmp"));
+                save(lit, captures / (prefix + "-lit.bmp"));
+                size_t darkened = 0;
+                for (size_t i = 0; i < lit.pixels.size(); i += 4)
+                    if (int(lit.pixels[i]) - int(shadowed.pixels[i]) > 3)
+                        ++darkened;
+                std::cout << prefix << " self_shadow_pixels=" << darkened << '\n';
+                require(darkened < size_t(width * height) / 100, "Unoccluded ceiling self-shadows under a point light");
+                auto blocked_queue = queue;
+                blocked_queue.push(
+                    blocker,
+                    glm::translate(glm::mat4{1}, {.8F, 3.05F, 0}) * glm::scale(glm::mat4{1}, {.3F, .15F, .3F})
+                );
+                const auto blocked_lit = renderer.render_image(blocked_queue.items(), camera, width, height);
+                config.shadow_enabled = true;
+                renderer.set_config(config);
+                const auto blocked = renderer.render_image(blocked_queue.items(), camera, width, height);
+                darkened = 0;
+                for (size_t i = 0; i < blocked.pixels.size(); i += 4)
+                    if (int(blocked_lit.pixels[i]) - int(blocked.pixels[i]) > 3)
+                        ++darkened;
+                require(darkened > 100, "Point receiver correction removed real blocker shadows");
+                save(blocked, captures / (prefix + "-blocked.bmp"));
+            }
+        }
+    }
+
     void check_light_selection(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -2069,6 +2143,7 @@ namespace
 int main(int argc, char** argv)
 {
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
+    const bool point_receiver_only = argc == 2 && std::string_view{argv[1]} == "--point-receiver-only";
     const bool color_baseline = argc == 2 && std::string_view{argv[1]} == "--color-baseline";
     const bool profiling = argc == 2 && std::string_view{argv[1]} == "--profile-views";
     const bool native_view = argc == 2 && std::string_view{argv[1]} == "--profile-native";
@@ -2077,7 +2152,7 @@ int main(int argc, char** argv)
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
-        && !native_hdr && !probes_only)
+        && !native_hdr && !probes_only && !point_receiver_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -2098,7 +2173,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (native_hdr)
+        if (point_receiver_only)
+            check_point_shadow_receiver(device, authoring, atlas, captures);
+        else if (native_hdr)
             profile_views(device, vk_window, authoring, atlas, true, true);
         else if (native_view)
             profile_views(device, vk_window, authoring, atlas, true);
@@ -2165,6 +2242,8 @@ int main(int argc, char** argv)
                 check_normal_maps(device, authoring, atlas, captures);
                 check_metallic_roughness(device, authoring, atlas, captures);
             }
+            if (!shadows_only)
+                check_point_shadow_receiver(device, authoring, atlas, captures);
             check_shadows(device, vk_window, authoring, atlas, captures);
         }
         require(allocation_count(device) == 0, "Vulkan mesh renderer leaked VMA resources");

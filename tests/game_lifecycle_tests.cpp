@@ -6,6 +6,7 @@
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
 #include "relaygame/demo_game_debug_commands_internal.h"
+#include "relaygame/player_controller_config.h"
 #include "relaygame/usable_interaction.h"
 
 #include <SDL3/SDL.h>
@@ -511,6 +512,45 @@ int main(int argc, char** argv)
                 renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config())
             );
         }
+        const bool previous_advanced_diagnostics = renderer.advanced_diagnostics_visible();
+        renderer.set_advanced_diagnostics_visible(true);
+        for (const auto material : {RelayCore::SurfaceMaterial::Concrete, RelayCore::SurfaceMaterial::Metal})
+        {
+            RelayCore::BlockoutLevel level;
+            level.solids.push_back({{-5, -.2F, -5}, {5, 0, 5}, RelayCore::SurfaceMaterial::Concrete});
+            level.solids.push_back({{4, 0, -5}, {4.2F, 3, 5}, material});
+            RelayGame::GameWorldRuntime impacts;
+            impacts.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}
+                    .build(std::move(level), directory.path() / "impact.toml")
+            );
+            auto save = impacts.capture_saved_game(0, true);
+            save.player.position = {0, .01F, 0};
+            save.player.view_angles = {};
+            impacts.restore_saved_game(save);
+            impacts.prepare_level_session_activation(services);
+            impacts.activate_level_session(services);
+            impacts.publish_diagnostics(renderer);
+            const auto before = renderer.audio_diagnostics().one_shot_count;
+            ImGui::GetIO().WantCaptureMouse = false;
+            SDL_Event fire{};
+            fire.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            fire.button.button = RelayGame::build_player_controller_config(config).bindings.primary_attack_button;
+            impacts.on_event(fire, services);
+            impacts.update({.delta_seconds = 1.0 / 120}, services);
+            impacts.publish_diagnostics(renderer);
+            const auto expected =
+                material == RelayCore::SurfaceMaterial::Metal ? "impact_metal.wav" : "impact_hard.wav";
+            require(impacts.player_combat_state().shots_fired == 1, "Impact fixture did not fire from input");
+            require(
+                renderer.audio_diagnostics().one_shot_count == before + 2
+                    && std::filesystem::path{renderer.audio_diagnostics().last_one_shot_path}.filename() == expected,
+                "World impact did not dispatch the matching cue after the weapon report"
+            );
+            impacts.shutdown(services);
+        }
+        renderer.set_advanced_diagnostics_visible(previous_advanced_diagnostics);
         {
             RelayGame::GameWorldRuntime encounter;
             encounter.load_level_session(

@@ -12,8 +12,10 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <span>
 
 #include "bench_relay_route.h"
+#include "pressure_transfer_route.h"
 #include "scoped_temp_directory.h"
 
 namespace
@@ -31,11 +33,108 @@ namespace
                   << "; p95=" << samples[samples.size() * 95 / 100] << "; p99=" << samples[samples.size() * 99 / 100]
                   << "; max=" << samples.back() << '\n';
     }
+    auto bench_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
+    {
+        RelayCore::test::BenchRelayRoute route{config};
+        const auto entry = route.save();
+        RelayCore::test::BenchRelayRoute distant_route{config, RelayCore::test::BenchRelayTactic::Distance};
+        distant_route.open_bay();
+        distant_route.wait(120);
+        auto distance = distant_route.save();
+        distance.player.view_angles = {1.83F, -.1F};
+        distant_route.walk({0, .01F, 2.2F});
+        distant_route.finish();
+        route.enter_bay();
+        route.walk({-2.6F, .01F, 3.1F});
+        bool rover_visible = false;
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            const auto eye = route.position + glm::vec3{0, 1.65F, 0};
+            const auto target = route.session.enemies.front().state.position + glm::vec3{0, .45F, 0};
+            const auto delta = target - eye;
+            if (!route.world().raycast(eye, glm::normalize(delta), glm::length(delta)))
+            {
+                rover_visible = true;
+                break;
+            }
+            route.tick(false);
+        }
+        if (!rover_visible || route.session.enemies.front().state.mode == RelayGame::EnemyMode::Dead)
+            throw std::runtime_error("Bench relay cover capture needs a visible approaching rover");
+        auto cover = route.save();
+        cover.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+        const auto to_rover = glm::normalize(
+            route.session.enemies.front().state.position + glm::vec3{0, .45F, 0} - route.position
+            - glm::vec3{0, 1.62F, 0}
+        );
+        cover.player.view_angles = {std::atan2(to_rover.z, to_rover.x), std::asin(to_rover.y)};
+        route.power_relay();
+        auto powered = route.save();
+        powered.player.view_angles = {.21F, -.1F};
+        route.leave_bay();
+        if (!distant_route.mission.completed() || distant_route.player.kills != 2 || !route.mission.completed()
+            || route.player.kills != 2 || route.shotgun_shots == 0 || route.precise_shots == 0)
+            throw std::runtime_error("Bench relay scripted route failed");
+        std::cout << "distance_rover_hit_metres=" << distant_route.first_rover_hit_range
+                  << "; distance_turret_exposed_ticks=" << distant_route.turret_exposed_ticks
+                  << "; cover_rover_hit_metres=" << route.first_rover_hit_range
+                  << "; cover_turret_exposed_ticks=" << route.turret_exposed_ticks << '\n';
+        return {entry, distance, cover, powered};
+    }
+
+    auto transfer_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
+    {
+        RelayCore::test::PressureRoute route{config};
+        route.reach_mixed();
+        auto entry = route.save();
+        entry.player.view_angles = {1.5707963268F, -.1F};
+        route.mixed_tactic = RelayCore::test::PressureTactic::Distance;
+        auto distance = route.save();
+        distance.player.view_angles = {1.5707963268F, -.18F};
+        route.fight_mixed(RelayCore::test::PressureTactic::Distance);
+        route.power_transfer();
+        auto powered = route.save();
+        powered.player.view_angles = {2.4F, -.1F};
+        route.leave();
+        if (!route.mission.completed() || route.player.kills != 4)
+            throw std::runtime_error("Pressure transfer distant route did not complete");
+
+        RelayCore::test::PressureRoute close{config};
+        close.reach_mixed();
+        close.mixed_tactic = RelayCore::test::PressureTactic::Cover;
+        close.walk_to({28, .01F, 30.3F});
+        auto cover = close.save();
+        cover.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+        const auto delta = glm::normalize(
+            close.session.enemies[1].state.position + glm::vec3{0, .45F, 0} - close.position - glm::vec3{0, 1.65F, 0}
+        );
+        cover.player.view_angles = {std::atan2(delta.z, delta.x), std::asin(delta.y)};
+        close.fight_mixed(RelayCore::test::PressureTactic::Cover);
+        close.power_transfer();
+        close.leave();
+        if (!close.mission.completed() || close.player.kills != 4 || close.mixed_shotgun_shots == 0)
+            throw std::runtime_error("Pressure transfer close route did not complete");
+        std::cout << "distance_rover_hit_metres=" << route.mixed_rover_hit_range
+                  << "; distance_turret_exposed_ticks=" << route.mixed_exposed_ticks
+                  << "; cover_rover_hit_metres=" << close.mixed_rover_hit_range
+                  << "; cover_turret_exposed_ticks=" << close.mixed_exposed_ticks << '\n';
+        return {entry, distance, cover, powered};
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
-    const bool profile = argc > 1 && std::string_view{argv[1]} == "--profile";
+    const auto arguments = std::span{argv + 1, static_cast<std::size_t>(argc - 1)};
+    const bool profile = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--profile";
+    });
+    const bool transfer = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--pressure-transfer";
+    });
+    const bool mounting_views = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--mounting-views";
+    });
+    const std::string_view workload = transfer ? "pressure_transfer" : "bench_relay";
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -44,7 +143,7 @@ int main(int argc, char** argv)
     try
     {
         auto config = RelayCore::core::load_default_engine_config();
-        config.gameplay.level_path = "levels/bench_relay.toml";
+        config.gameplay.level_path = transfer ? "levels/pressure_transfer.toml" : "levels/bench_relay.toml";
         config.window.width = 1280;
         config.window.height = 720;
         config.window.high_dpi = false;
@@ -61,29 +160,30 @@ int main(int argc, char** argv)
         RelayCore::AudioSystem audio{config.audio};
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
-        RelayCore::test::BenchRelayRoute route{config.gameplay};
-        const auto entry = route.save();
-        route.enter_bay();
-        auto encounter = route.save();
-        encounter.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
-        const auto to_rover = glm::normalize(
-            route.session.enemies.front().state.position + glm::vec3{0, .45F, 0} - route.position
-            - glm::vec3{0, 1.62F, 0}
-        );
-        encounter.player.view_angles = {std::atan2(to_rover.z, to_rover.x), std::asin(to_rover.y)};
-        route.finish();
-        if (!route.mission.completed() || route.player.kills != 2 || route.shotgun_shots == 0
-            || route.precise_shots == 0)
-            throw std::runtime_error("Bench relay scripted route failed");
-        auto powered = route.save();
-        powered.world.mission = {.active = true, .completed = false, .current_step = 4};
-        powered.player.position = {1.6F, .01F, 9.5F};
-        powered.player.view_angles = {-2.14F, -.15F};
-        const std::array saves{entry, encounter, powered};
-        const std::array names{"entry", "encounter", "powered"};
-        std::filesystem::create_directories("bench-relay-captures");
-        std::cout << "workload=bench_relay; resolution=1280x720; vsync=off; hdr=on; pipeline=hardware_srgb; shadows="
-                  << config.renderer.shadow_enabled << "; route_ticks=" << route.ticks << '\n';
+        auto saves = transfer ? transfer_saves(config.gameplay) : bench_saves(config.gameplay);
+        if (transfer && mounting_views)
+        {
+            const std::array<glm::vec3, 4> positions{
+                {{4, .01F, 4}, {14, .01F, 23}, {29.5F, .01F, 27.5F}, {37.7F, .01F, 39}}
+            };
+            const std::array<glm::vec2, 4> angles{{{.5F, .3F}, {-.463648F, .55F}, {-.5F, .15F}, {.35F, .3F}}};
+            const auto powered = saves[3];
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = powered;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
+        const std::array names = mounting_views ? std::array{"service", "gallery", "notice", "fan"}
+                                                : std::array{"entry", "distance", "cover", "powered"};
+        const std::string capture_directory =
+            transfer ? (mounting_views ? "pressure-mounting-captures" : "pressure-transfer-captures")
+                     : "bench-relay-captures";
+        std::filesystem::create_directories(capture_directory);
+        std::cout << "workload=" << workload
+                  << "; resolution=1280x720; vsync=off; hdr=on; pipeline=hardware_srgb; shadows="
+                  << config.renderer.shadow_enabled << '\n';
         for (int pass = 0; pass < 2; ++pass)
             for (std::size_t stage = 0; stage < saves.size(); ++stage)
             {
@@ -159,7 +259,7 @@ int main(int argc, char** argv)
                         if (!surface
                             || !SDL_SaveBMP(
                                 surface,
-                                ("bench-relay-captures/" + std::string{names[stage]} + ".bmp").c_str()
+                                (capture_directory + "/" + std::string{names[stage]} + ".bmp").c_str()
                             ))
                             throw std::runtime_error(SDL_GetError());
                         SDL_DestroySurface(surface);
@@ -175,10 +275,10 @@ int main(int argc, char** argv)
                 game.return_to_menu(services);
                 game.on_shutdown(services);
             }
-        std::cout << "bench_relay=passed\n";
+        std::cout << workload << "=passed\n";
     } catch (const std::exception& error)
     {
-        std::cerr << "bench_relay=failed: " << error.what() << '\n';
+        std::cerr << workload << "=failed: " << error.what() << '\n';
         result = 1;
     }
     RelayCore::log::shutdown();

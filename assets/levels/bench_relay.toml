@@ -134,7 +134,7 @@ use_radius = 1.8
 single_use = true
 label = "Открыть ремонтный зал"
 denied_message = "Возьмите дробовик со стола справа."
-success_message = "Зал открыт. Пульт реле находится на правой стене у выхода."
+success_message = "Зал открыт. Высокий блок у входа закрывает огонь турели. Реле — у дальней двери."
 
 [[entity]]
 classname = "enemy_rover"

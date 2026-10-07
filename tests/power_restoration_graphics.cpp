@@ -86,8 +86,13 @@ namespace
 int main(int argc, char** argv)
 {
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
-    const bool art_review = argc > 1 && std::string_view{argv[1]} == "--art-review";
-    const bool hdr = art_review || (argc > 1 && std::string_view{argv[1]} == "--hdr");
+    const bool art_review = argc > 1 && std::string_view{argv[1]}.starts_with("--art-review");
+    const bool art_legacy = argc > 1 && std::string_view{argv[1]} == "--art-review-legacy";
+    const auto arguments = std::span{argv + 1, static_cast<size_t>(argc - 1)};
+    const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
+        return std::string_view{value} == "--no-shadows";
+    });
+    const bool hdr = (art_review && !art_legacy) || (argc > 1 && std::string_view{argv[1]} == "--hdr");
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -101,8 +106,9 @@ int main(int argc, char** argv)
     try
     {
         RelayCore::test::ScopedTempDirectory hdr_data;
-        auto config_path =
-            RelayCore::core::asset_path(art_review ? "config/occult_lab_b17.toml" : "config/engine.toml");
+        auto config_path = RelayCore::core::asset_path(
+            art_review && !art_legacy ? "config/occult_lab_b17.toml" : "config/engine.toml"
+        );
         if (hdr && !art_review)
         {
             std::ifstream source(config_path);
@@ -117,7 +123,7 @@ int main(int argc, char** argv)
         config.window.high_dpi = false;
         config.window.vsync = false;
         config.renderer.imgui.enabled = true;
-        if (argc > 1 && std::string_view{argv[1]} == "--no-directional-shadows")
+        if (no_shadows || (argc > 1 && std::string_view{argv[1]} == "--no-directional-shadows"))
             config.renderer.shadow_enabled = false;
         RelayCore::Window window{config.window};
         SDL_HideWindow(window.handle());
@@ -130,11 +136,15 @@ int main(int argc, char** argv)
         renderer.on_resize(width, height);
         if (art_review)
         {
+            const auto review_directory = std::filesystem::path{"power-captures"} / (art_legacy ? "legacy" : "hdr")
+                                          / (no_shadows ? "no-shadows" : "shadows");
+            std::filesystem::create_directories(review_directory);
             struct View {
                 const char* map;
                 const char* image;
                 glm::vec3 eye;
                 glm::vec3 target;
+                float fov = 60;
             };
             const std::array views{
                 View{"occult_lab_b17", "b17-entrance.bmp", {0, 1.65F, -8}, {0, 1.65F, -4}},
@@ -143,27 +153,51 @@ int main(int argc, char** argv)
                 View{"occult_lab_b17", "b17-instruments.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
                 View{"occult_lab_b17", "b17-sample-bench.bmp", {4.5F, 1.55F, -2.15F}, {4.5F, 1.2F, -3.55F}},
                 View{"power_restoration", "revamp-power.bmp", {0, 1.65F, -3}, {2, 1.3F, 2}},
+                View{"power_restoration", "fix-ceiling.bmp", {-2.8F, 1.65F, -2.4F}, {-2.8F, 3.6F, -.7F}},
+                View{"power_restoration", "fix-pipe.bmp", {3, 1.65F, 2.8F}, {4.65F, 2.85F, 2.8F}},
+                View{"power_restoration", "fix-turret.bmp", {3.8F, 1.65F, 7.3F}, {2.2F, 1.65F, 7.3F}},
+                View{"occult_lab_b17", "fix-scientist.bmp", {-1.0F, 1.65F, 2.9F}, {-3, 1.2F, 3.8F}},
+                View{"occult_lab_b17", "scientist-front.bmp", {-2.13F, .95F, 3.39F}, {-3, .95F, 3.8F}, 100},
+                View{"occult_lab_b17", "scientist-side.bmp", {-3.5F, 1.3F, 2.1F}, {-3, .95F, 3.8F}},
                 View{"bench_relay", "revamp-bench.bmp", {0, 1.65F, -3}, {-2.5F, 1.3F, -1}},
+                View{"bench_relay", "fix-wreck.bmp", {0, 1.45F, 5.5F}, {0, .35F, 7}},
+                View{"bench_relay", "wreck-side.bmp", {1.0F, .6F, 6.15F}, {0, .25F, 7}},
                 View{"pressure_transfer", "revamp-transfer.bmp", {4, 1.65F, 1.3F}, {2, 1.2F, 4}},
             };
             for (const auto& view : views)
             {
+                const auto start = std::chrono::steady_clock::now();
                 const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
                     RelayCore::core::asset_path(std::string{"levels/"} + view.map + ".toml")
                 );
-                RelayGame::WorldSceneRenderer scene;
-                scene.initialize(
-                    RelayGame::build_prepared_world_scene_data(
-                        session.level,
-                        renderer.authoring_config(),
-                        renderer.color_pipeline_mode()
-                    ),
-                    renderer.static_models()
+                const auto loaded = std::chrono::steady_clock::now();
+                const auto prepared = RelayGame::build_prepared_world_scene_data(
+                    session.level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
                 );
+                const auto prepared_at = std::chrono::steady_clock::now();
+                RelayGame::WorldSceneRenderer scene;
+                scene.initialize(prepared, renderer.static_models());
+                const auto initialized = std::chrono::steady_clock::now();
+                const auto milliseconds = [](auto duration) {
+                    return std::chrono::duration<double, std::milli>(duration).count();
+                };
+                std::cout << view.image << " load_ms=" << milliseconds(loaded - start)
+                          << " prepare_ms=" << milliseconds(prepared_at - loaded)
+                          << " initialize_ms=" << milliseconds(initialized - prepared_at) << '\n';
                 renderer.camera().set_position(view.eye);
                 renderer.camera().set_target(view.target);
+                renderer.camera().apply_projection_config({.vertical_fov_radians = glm::radians(view.fov)});
                 renderer.begin_frame();
-                const auto enemies = RelayGame::build_enemies(session.level);
+                auto enemies = RelayGame::build_enemies(session.level);
+                if (std::string_view{view.image} == "fix-wreck.bmp" || std::string_view{view.image} == "wreck-side.bmp")
+                    for (auto& enemy : enemies)
+                    {
+                        enemy.state.mode = RelayGame::EnemyMode::Dead;
+                        enemy.state.health = 0;
+                        enemy.state.position = {0, .01F, 7};
+                    }
                 scene.render(
                     renderer,
                     renderer.camera(),
@@ -179,7 +213,7 @@ int main(int argc, char** argv)
                     {},
                     enemies
                 );
-                (void) capture(renderer, std::filesystem::path{"power-captures"} / view.image);
+                (void) capture(renderer, review_directory / view.image);
                 scene.shutdown();
             }
             return 0;

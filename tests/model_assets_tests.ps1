@@ -79,7 +79,10 @@ add_dependencies(staged_assets relaycore_model_assets)
     $cabinetProduct = Join-Path $build 'generated/model-assets/models/power_cabinet.rcmodel'
     $materialProductHash = (Get-FileHash -LiteralPath $cabinetProduct).Hash
     $declarationText = [IO.File]::ReadAllText($materialDeclaration)
-    [IO.File]::WriteAllText($materialDeclaration, $declarationText.Replace('RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet ON', 'RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet OFF'))
+    $compileLoop = 'foreach(source IN LISTS RELAYCORE_MODEL_SOURCES)'
+    Assert ($declarationText.Contains($compileLoop)) 'Missing model compilation loop in fixture declaration.'
+    [IO.File]::WriteAllText($materialDeclaration, $declarationText.Replace($compileLoop,
+        "set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet OFF)`n$compileLoop"))
     Reject { Check-Models } 'stale or differs'
     Assert ((Build-Models).Contains('Compiling model')) 'Material policy change did not invalidate compilation.'
     Assert ((Get-FileHash -LiteralPath $cabinetProduct).Hash -ne $materialProductHash) 'Material policy did not reach the product.'
