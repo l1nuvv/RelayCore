@@ -132,7 +132,7 @@ namespace RelayGame
                 RelayCore::core::asset_path("audio/player/land_" + std::string{surfaces[surface]} + ".wav");
         }
         player_sounds_[15] = RelayCore::core::asset_path("audio/player/flashlight_switch.wav");
-        player_controller_.set_static_collision_world(world_colliders_);
+        player_controller_.set_static_collision_world(world_colliders_, physics_fixture_.get());
         simulation_loop_.reset();
     }
 
@@ -1028,7 +1028,7 @@ namespace RelayGame
     ) const -> std::optional<RelayCore::physics::WorldQueryHit>
     {
         if (!physics_fixture_)
-            throw std::logic_error("No isolated physics fixture is active");
+            throw std::logic_error("No native collision world is active");
         return physics_fixture_->raycast(origin, direction, max_distance);
     }
 

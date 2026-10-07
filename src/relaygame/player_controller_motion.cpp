@@ -5,10 +5,13 @@
 
 namespace RelayGame
 {
-    void
-    GroundedPlayerController::set_static_collision_world(std::span<const RelayCore::physics::WorldCollider> colliders)
+    void GroundedPlayerController::set_static_collision_world(
+        std::span<const RelayCore::physics::WorldCollider> colliders,
+        const RelayCore::physics::PhysicsWorld* physics
+    )
     {
         RELAYCORE_PROFILE_FUNCTION();
+        physics_ = physics;
         static_collision_world_.assign(colliders.begin(), colliders.end());
         static_collision_index_.set_cell_size(kStaticCollisionCellSize);
         static_collision_index_.reset(static_collision_world_.size());
@@ -80,7 +83,8 @@ namespace RelayGame
             input,
             yaw_radians_,
             static_cast<float>(frame.delta_seconds),
-            RelayCore::physics::WorldQuery{collision_world_},
+            physics_ ? RelayCore::physics::WorldQuery{*physics_, dynamic_blockers}
+                     : RelayCore::physics::WorldQuery{collision_world_},
             config,
             &movement_diagnostics_
         );
@@ -143,6 +147,15 @@ namespace RelayGame
         RELAYCORE_PROFILE_FUNCTION();
         collision_query_diagnostics_.static_world_solids = static_cast<std::uint32_t>(static_collision_world_.size());
         collision_query_diagnostics_.dynamic_blocker_count = static_cast<std::uint32_t>(dynamic_blockers.size());
+
+        if (physics_)
+        {
+            collision_query_diagnostics_.static_candidate_count =
+                static_cast<std::uint32_t>(static_collision_world_.size());
+            collision_query_diagnostics_.collision_world_solids =
+                static_cast<std::uint32_t>(static_collision_world_.size() + dynamic_blockers.size());
+            return;
+        }
 
         if (static_collision_index_.empty())
         {

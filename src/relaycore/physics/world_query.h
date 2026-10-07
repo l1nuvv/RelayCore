@@ -90,7 +90,7 @@ namespace RelayCore::physics
             float max_distance,
             WorldQueryMask mask = WorldQueryMask::World
         ) const -> std::optional<WorldQueryHit>;
-        // Axis movement remains AABB-only until the FPS parity milestone.
+        // Feet-origin, world-aligned box; the caller owns step/ground/velocity policy.
         [[nodiscard]] auto
         move_axis(const glm::vec3& start_position, const CollisionConfig& config, int axis, float delta) const
             -> AxisMoveResult;

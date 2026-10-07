@@ -40,7 +40,8 @@ if(WIN32)
             -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
 endif()
 add_executable(relaycore_content_validation)
-add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp collision_asset_tests.cpp)
+add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp collision_asset_tests.cpp
+    mesh_movement_tests.cpp native_collision_gameplay_tests.cpp player_motion_tests.cpp)
 add_dependencies(relaycore_physics_tests relaycore_collision_fixture_assets)
 target_compile_definitions(relaycore_physics_tests PRIVATE
     RELAYCORE_TEST_COLLISION_PRODUCT="${RELAYCORE_COLLISION_FIXTURE_ROOT}/collision/lab_bench.rccollision")
@@ -355,5 +356,5 @@ doctest_discover_tests(
     relaycore_physics_tests
     TEST_PREFIX "relaycore.physics."
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_physics_tests>"
-    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${PROJECT_SOURCE_DIR}/assets"
+    PROPERTIES ENVIRONMENT "RELAYCORE_ASSET_ROOT=${RELAYCORE_COLLISION_FIXTURE_ROOT}"
 )

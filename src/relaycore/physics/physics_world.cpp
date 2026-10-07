@@ -83,6 +83,18 @@ namespace RelayCore::physics
             JPH::ObjectLayer mask_;
         };
 
+        class MeshBodies final : public JPH::BodyFilter {
+        public:
+            explicit MeshBodies(std::size_t box_count) : box_count_(box_count) {}
+            auto ShouldCollideLocked(const JPH::Body& body) const -> bool override
+            {
+                return body.GetUserData() >= box_count_;
+            }
+
+        private:
+            std::size_t box_count_;
+        };
+
         auto to_jolt(const glm::vec3& value) -> JPH::Vec3
         {
             return {value.x, value.y, value.z};
@@ -119,6 +131,7 @@ namespace RelayCore::physics
         JPH::PhysicsSystem system;
         std::vector<JPH::BodyID> bodies;
         std::vector<Metadata> metadata;
+        std::vector<WorldCollider> boxes;
         bool added = false;
 
         explicit Impl(std::size_t count)
@@ -197,6 +210,7 @@ namespace RelayCore::physics
     {
         initialize_jolt();
         impl_ = std::make_unique<Impl>(boxes.size() + meshes.size());
+        impl_->boxes.assign(boxes.begin(), boxes.end());
         for (const auto& box : boxes)
         {
             const auto half_extents = (box.bounds.maxs - box.bounds.mins) * .5F;
@@ -247,6 +261,11 @@ namespace RelayCore::physics
 
     PhysicsWorld::~PhysicsWorld() = default;
 
+    auto PhysicsWorld::box_colliders() const noexcept -> std::span<const WorldCollider>
+    {
+        return impl_->boxes;
+    }
+
     auto PhysicsWorld::raycast(
         const glm::vec3& origin,
         const glm::vec3& direction,
@@ -290,6 +309,17 @@ namespace RelayCore::physics
         const WorldQueryMask mask
     ) const -> std::optional<WorldQueryHit>
     {
+        return cast_box(centre, half_extents, displacement, mask, false);
+    }
+
+    auto PhysicsWorld::cast_box(
+        const glm::vec3& centre,
+        const glm::vec3& half_extents,
+        const glm::vec3& displacement,
+        const WorldQueryMask mask,
+        const bool meshes_only
+    ) const -> std::optional<WorldQueryHit>
+    {
         RELAYCORE_PROFILE_FUNCTION();
         validate_box(centre, half_extents);
         validate_vector(displacement, "box displacement");
@@ -302,8 +332,17 @@ namespace RelayCore::physics
         settings.SetBackFaceMode(JPH::EBackFaceMode::CollideWithBackFaces);
         settings.mReturnDeepestPoint = true;
         JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> collector;
-        impl_->system.GetNarrowPhaseQuery()
-            .CastShape(cast, settings, JPH::RVec3::sZero(), collector, {}, QueryLayers{mask});
+        const MeshBodies mesh_filter{impl_->boxes.size()};
+        const JPH::BodyFilter all_bodies;
+        impl_->system.GetNarrowPhaseQuery().CastShape(
+            cast,
+            settings,
+            JPH::RVec3::sZero(),
+            collector,
+            {},
+            QueryLayers{mask},
+            meshes_only ? mesh_filter : all_bodies
+        );
         if (!collector.HadHit())
             return {};
         const auto& result = collector.mHit;

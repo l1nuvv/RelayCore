@@ -79,6 +79,16 @@ namespace RelayGame
             };
         }
 
+        void validate_mesh_spawn(const LevelSession& session, std::string_view label)
+        {
+            if (session.physics_fixture
+                && session.physics_fixture
+                       ->overlap_box(session.spawn_position + glm::vec3{0, .9F, 0}, {.299F, .899F, .299F}))
+                throw std::runtime_error(
+                    session.level_path.string() + ": " + std::string{label} + " intersects native collision geometry"
+                );
+        }
+
     } // namespace
 
     LevelSessionBuilder::LevelSessionBuilder(const RelayCore::core::GameplayConfig& config) noexcept : config_(config)
@@ -109,6 +119,7 @@ namespace RelayGame
             throw std::runtime_error(path.string() + ": missing level_entry '" + entry + "'");
         session.spawn_position = found->origin;
         session.spawn_view_angles = spawn_view_angles_from_entity(*found);
+        validate_mesh_spawn(session, "level_entry '" + entry + "'");
         const auto player = RelayCore::physics::make_player_aabb(session.spawn_position, .3F, 1.8F);
         for (const auto* solids : {&session.level.solids, &session.level.prop_colliders})
             for (const auto& solid : *solids)
@@ -168,6 +179,27 @@ namespace RelayGame
             if (prop.collider)
                 session.world_colliders[collider_index++].object.authored_entity_index = prop.authored_entity_index;
 
+        std::vector<std::vector<RelayCore::physics::PhysicsTriangle>> triangles;
+        std::vector<RelayCore::physics::PhysicsMesh> meshes;
+        triangles.reserve(props.size());
+        meshes.reserve(props.size());
+        for (std::size_t index = 0; index < props.size(); ++index)
+        {
+            const auto& prop = props[index];
+            if (prop.collision_product.empty())
+                continue;
+            const auto& model = session.level.entities[prop.authored_entity_index].properties.at("model");
+            const auto asset = RelayCore::physics::read_collision_asset(prop.collision_product, model);
+            triangles.push_back(RelayCore::physics::transform_collision_triangles(asset.triangles, prop.transform));
+            meshes.push_back(
+                {triangles.back(),
+                 {RelayCore::physics::WorldObjectKind::CollisionMesh, index, prop.authored_entity_index}}
+            );
+        }
+        if (!meshes.empty())
+            session.physics_fixture =
+                std::make_shared<RelayCore::physics::PhysicsWorld>(session.world_colliders, meshes);
+
         const auto spawn_it = std::find_if(
             session.level.entities.begin(),
             session.level.entities.end(),
@@ -180,6 +212,7 @@ namespace RelayGame
             session.spawn_position = spawn_it->origin;
             session.spawn_view_angles = spawn_view_angles_from_entity(*spawn_it);
         }
+        validate_mesh_spawn(session, "player spawn");
 
         RelayCore::gameplay::build_runtime_interactions(
             session.level,

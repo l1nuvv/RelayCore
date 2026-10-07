@@ -120,7 +120,10 @@ namespace RelayGame
         void
         initialize(const glm::vec3& spawn_position, std::optional<glm::vec2> spawn_view_angles = std::nullopt) noexcept;
 
-        void set_static_collision_world(std::span<const RelayCore::physics::WorldCollider> colliders);
+        void set_static_collision_world(
+            std::span<const RelayCore::physics::WorldCollider> colliders,
+            const RelayCore::physics::PhysicsWorld* physics = nullptr
+        );
 
         void set_session_capture(RelayCore::Window& window, bool capture) const;
 
@@ -234,6 +237,7 @@ namespace RelayGame
         bool keyboard_input_blocked_ = false;
         bool mouse_input_blocked_ = false;
         std::vector<RelayCore::physics::WorldCollider> static_collision_world_{};
+        const RelayCore::physics::PhysicsWorld* physics_ = nullptr;
         std::vector<RelayCore::physics::WorldCollider> collision_world_{};
         RelayCore::core::SpatialIndex2D<std::uint32_t> static_collision_index_{kStaticCollisionCellSize};
         std::vector<std::uint32_t> static_collision_candidates_{};

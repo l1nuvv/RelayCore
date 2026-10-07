@@ -53,7 +53,7 @@ TEST_CASE("Jolt fixture boxes preserve ray distance surface identity and masks")
         WorldCollider{{{.5F, 0, -1}, {.7F, 2, 1}}, SurfaceMaterial::Metal, {WorldObjectKind::Door, 0, 9}},
     };
     CHECK(WorldQuery{physics, doors}.raycast({0, 1, 0}, {1, 0, 0}, 4)->object.kind == WorldObjectKind::Door);
-    CHECK_THROWS_AS(static_cast<void>(WorldQuery{physics}.move_axis({}, {}, 0, 1)), std::logic_error);
+    CHECK(WorldQuery{physics}.move_axis({}, {}, 0, 1).hit);
 }
 
 TEST_CASE("Jolt fixture triangle doorway preserves holes winding and per triangle surfaces")

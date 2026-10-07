@@ -89,6 +89,22 @@ namespace RelayGame
                 }
                 prop.collider = collider;
             }
+            if (entity.properties.contains("collision_asset"))
+            {
+                const auto& reference = required("collision_asset");
+                const auto relative = std::filesystem::path{reference};
+                if (prop.collider || prop.model.extension() != ".rcmodel" || relative.extension() != ".rccollision"
+                    || relative.parent_path().generic_string() != "collision"
+                    || relative.stem().string().find_first_not_of(
+                           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+                       ) != std::string::npos)
+                    throw std::runtime_error(
+                        label
+                        + ": collision_asset requires collision/<name>.rccollision, a native model and no "
+                          "collision_mins/maxs/material"
+                    );
+                prop.collision_product = RelayCore::core::asset_path(reference);
+            }
             props.push_back(std::move(prop));
         }
         return props;

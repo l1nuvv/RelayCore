@@ -1,6 +1,7 @@
 # Native collision products
 
-E-012 adds independent `.rccollision` products. Existing gameplay maps keep their AABB backend until E-013.
+E-012 adds independent `.rccollision` products; E-013 connects explicit authored placements to gameplay.
+Existing maps retain their AABB backend unless a native prop opts in.
 
 Declare a source basename and its model basename in `cmake/RelayCoreCollisionAssets.cmake`.
 The model must already be declared in `RelayCoreModelAssets.cmake`; the collision source must repeat the
@@ -38,4 +39,31 @@ build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe --collision build/m
 The focused physics targets stage model/collision products into `build/<preset>/physics-fixture/assets`
 using the same manifest synchronizer, without depending on shader compilation or irradiance baking.
 Loading failures leave the active session intact. The bench fixture exercises rays through the opening and against
-metal supports/tile worktop. Player-controller parity and authored level placement are separate E-013 work.
+metal supports/tile worktop.
+
+## Authored placement and movement
+
+A native `prop_static` opts in by declaring `collision_asset = "collision/lab_bench.rccollision"`
+alongside `model = "models/lab_bench.rcmodel"`. Its origin, angles and scale transform both products.
+The collision reference must name a staged `collision/<name>.rccollision` paired with that model;
+legacy `collision_mins/maxs/material` and `collision_asset` are mutually exclusive.
+Session preparation loads and validates the geometry before replacing the active session.
+Maps without this property retain the existing AABB path.
+
+The player remains a feet-origin, world-aligned box with the existing configurable dimensions,
+axis order, substeps, step height, ground probe/snap and acceleration/friction/jump rules at 120 Hz.
+`WorldQuery` preserves endpoint clipping for authored boxes, including its epsilon behavior;
+only mesh geometry uses Jolt box sweeps. Sweeps reduce the orthogonal half extents by epsilon
+and stop epsilon before contact. This keeps box trajectories identical while retaining mesh holes.
+Rays use the same immutable static world plus live door/actor records, with original masks,
+surface materials and authored identity. No capsule, `CharacterVirtual`, dynamics or slope policy is introduced.
+
+The existing fixed-step phases are retained: movement, focus and player fire see the preceding
+completed door state; use and trigger entry then request door changes, doors advance with overlap
+reopening, and enemy movement/LOS and combat threats see the advanced state. Every query view
+collects door bounds from the current fraction; actor-specific movement overlap filtering is retained.
+Door geometry is never baked into the immutable mesh world. Snapshot/continue restore gameplay
+state while session preparation/activation owns geometry and rebinds the controller's borrowed view.
+
+`tests/native_collision_fixture.h` supplies the shared lifecycle/gameplay fixture. Its bench is
+scaled vertically to provide standing clearance; it is test geometry, not a new shipped level.

@@ -16,7 +16,7 @@ namespace RelayCore::physics
         WorldObjectId object;
     };
 
-    // Static query fixture only. Coordinates are metres, +Y up, right handed; triangles are CCW.
+    // Immutable static query world. Coordinates are metres, +Y up, right handed; triangles are CCW.
     // Queries are two sided. This does not run dynamics or implement FPS movement policy.
     class PhysicsWorld {
     public:
@@ -43,6 +43,15 @@ namespace RelayCore::physics
             const -> std::optional<WorldQueryHit>;
 
     private:
+        friend class WorldQuery;
+        [[nodiscard]] auto box_colliders() const noexcept -> std::span<const WorldCollider>;
+        [[nodiscard]] auto cast_box(
+            const glm::vec3& centre,
+            const glm::vec3& half_extents,
+            const glm::vec3& displacement,
+            WorldQueryMask mask,
+            bool meshes_only
+        ) const -> std::optional<WorldQueryHit>;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

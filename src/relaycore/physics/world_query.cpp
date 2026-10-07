@@ -4,7 +4,7 @@
 #include "relaycore/physics/physics_world.h"
 
 #include <algorithm>
-#include <stdexcept>
+#include <cmath>
 
 namespace RelayCore::physics
 {
@@ -19,7 +19,7 @@ namespace RelayCore::physics
         const PhysicsWorld& physics,
         const std::span<const WorldCollider> doors,
         const std::span<const WorldCollider> actors
-    ) noexcept : colliders_{{{}, doors, actors}}, physics_(&physics)
+    ) noexcept : colliders_{{physics.box_colliders(), doors, actors}}, physics_(&physics)
     {}
 
     auto WorldQuery::with_actors(const std::span<const WorldCollider> actors) const noexcept -> WorldQuery
@@ -40,7 +40,8 @@ namespace RelayCore::physics
         auto result =
             physics_ ? physics_->raycast(origin, direction, max_distance, mask) : std::optional<WorldQueryHit>{};
         float distance = result ? result->distance : max_distance;
-        for (const auto colliders : colliders_)
+        for (const auto colliders :
+             {physics_ ? std::span<const WorldCollider>{} : colliders_[0], colliders_[1], colliders_[2]})
             for (const auto& collider : colliders)
             {
                 if ((static_cast<std::uint8_t>(mask) & static_cast<std::uint8_t>(query_layer(collider.object.kind)))
@@ -70,15 +71,29 @@ namespace RelayCore::physics
     ) const -> AxisMoveResult
     {
         RELAYCORE_PROFILE_FUNCTION();
-        if (physics_)
-            throw std::logic_error(
-                "Jolt fixture does not implement FPS axis movement; use the AABB controller until parity"
-            );
         glm::vec3 position = start_position;
         position[axis] += delta;
         const std::array<float, 3> min_offsets{-config.radius, 0, -config.radius};
         const std::array<float, 3> max_offsets{config.radius, config.height, config.radius};
         bool hit = false;
+        if (physics_ && delta != 0)
+        {
+            glm::vec3 half_extents{config.radius, config.height * .5F, config.radius};
+            // Match the AABB overlap tolerance on the two axes orthogonal to travel.
+            for (int component = 0; component < 3; ++component)
+                if (component != axis)
+                    half_extents[component] -= config.epsilon;
+            const auto centre = start_position + glm::vec3{0, config.height * .5F, 0};
+            glm::vec3 displacement{};
+            displacement[axis] = delta;
+            if (const auto contact =
+                    physics_->cast_box(centre, half_extents, displacement, WorldQueryMask::World, true))
+            {
+                const auto travel = std::max(0.0F, std::abs(delta) * contact->fraction - config.epsilon);
+                position[axis] = start_position[axis] + std::copysign(travel, delta);
+                hit = true;
+            }
+        }
         for (const auto colliders : colliders_)
             for (const auto& collider : colliders)
             {

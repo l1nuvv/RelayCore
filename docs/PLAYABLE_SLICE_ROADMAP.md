@@ -236,8 +236,8 @@ E-001 ускоряет настройку, но его задержка не з�
 | 32 | E-010 / N4.1 | Общие world queries поверх AABB | Engine/world | P2 | done |
 | 33 | E-011 / N4.2 | Jolt static world на изолированном fixture | Engine/physics | P2 | done |
 | 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | done |
-| 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | ready |
-| 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | pending |
+| 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | done |
+| 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | ready |
 | 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | pending |
 | 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | deferred |
 
@@ -1086,15 +1086,32 @@ Sandbox не видел установленный MSVC/Git; успешные bu
 
 #### E-013 — mesh-world movement/query parity и lifecycle, N4.4
 
-**Статус / приоритет / объём:** `ready` / P2 / M. **Зависимость:** E-011/E-012 выполнены.
+**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-011/E-012 выполнены.
 
 Подключить mesh-world к основным consumers на одном fixture/уровне. Сначала зафиксировать текущие acceleration/friction/air movement/jump/step/ground probe/snap и fixed 120 Hz на существующих fixtures. Geometry/player collider policy описать явно; `CharacterVirtual` выбирать только если текущий movement solver требует этого и сравнение сохраняет game feel. Crouch и новое поведение склонов не являются автоматической backend parity.
 
 **Готово, когда:** movement fixtures сохраняют ожидаемый результат; native проём/неправильная форма корректны для движения, shots и LOS. Door blocker transforms обновляются в определённом simulation order до запросов, reopen-on-overlap/trigger entry и focus сохранены. Проверены death/respawn, snapshot/disk continue, level transition, editor preview, reload rollback и teardown. Исходные карты проходят затронутые content/lifecycle regressions и реальный проход; расхождения movement явно рассмотрены до переключения backend. Скорость не объявлять улучшенной без измерения.
 
+**Результат 2026-10-07:** `prop_static.collision_asset` явно связывает native model со staged collision product; AABB collision fields с ним несовместимы. Builder проверяет pairing/geometry, запекает instance transform и готовит immutable world до activation. Controller заимствует world у сессии; movement, shots, rover LOS/movement и focus используют общий query contract. Spawn/entry пересечения проверяются. Карты без нового свойства сохраняют AABB. Shared test fixture масштабирует bench по Y для standing clearance; игровая карта не добавлена.
+
+До подключения пройдены 25 baseline checks. Прямой sweep боксов изменял air acceleration у стены из-за отличия contact skin от прежнего endpoint epsilon. Поэтому boxes сохраняют axis clipping, mesh использует box sweep; четыре 360-tick trajectories требуют точного равенства position/velocity/grounded. Mesh tests покрывают opening, thin panels, floor/ceiling, step, jump, probe/snap. Geometry/player policy и сохранённые door phases: [COLLISION_ASSETS.md](COLLISION_ASSETS.md#authored-placement-and-movement). CharacterVirtual, crouch, slopes и dynamics не вводились.
+
+**Проверки:** Debug build physics/game_lifecycle/content_validation/tests/demo успешен; 120 выбранных unit regressions, 31 physics и 33 content checks прошли. Финальный native/lifecycle прогон — 4/4: runtime движение через просвет из восстановленной скорости, GPU rendering, snapshot/disk continue, editor preview, transition, malformed config/missing collision reload rollback/recovery, death/continue/respawn и teardown. ASan physics — 31/31. Отдельный native irradiance fingerprint/staleness check — 1/1.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_game_lifecycle relaycore_content_validation relaycore_tests relaycore_demo -j 1
+ctest --preset test-debug -R '^(relaycore\.physics\.|validation\.|graphics\.game_lifecycle$|relaycore\..*(world quer|player|movement|step|ground|wall|floor|ceiling|jump|rover|combat|turret|door|trigger|usable|save|snapshot|editor|level session|prop|fixed simulation))' --output-on-failure --no-tests=error --output-junit e013-runtime.xml
+ctest --preset test-debug -R '^(graphics\.game_lifecycle$|relaycore\.physics\.native)' --output-on-failure --no-tests=error --output-junit e013-lifecycle.xml
+ctest --preset test-debug -R '^relaycore\.native irradiance products reject stale geometry lights and settings in either display mode$' --output-on-failure --no-tests=error --output-junit e013-probe-reuse.xml
+cmake --build --preset demo-asan --target relaycore_physics_tests -j 2
+ctest --preset test-asan -R '^relaycore\.physics\.' --output-on-failure --no-tests=error --output-junit e013-physics.xml
+```
+
+Evidence: `build/msvc-debug/e013-before.xml`, `e013-runtime.xml` (184 passed, первый lifecycle fixture setup failed), финальные `e013-lifecycle.xml`, `e013-probe-reuse.xml`, `tests/native_collision_traversal.bmp`; `build/msvc-asan/e013-physics.xml`. Проверки выполнены вне sandbox в VS developer environment. Прежний native_lab rcprobe переиспользован при неизменных lighting inputs; fingerprint проверен в обоих display modes. Повторный bake остановлен, CLion/system CMake command mismatch и два output aliases исправлены configure/Ninja restat; DLL copy/discovery race устранён serial link. Optimized/full graphics suite, человеческий проход и performance не проверялись. VERSION/dependencies не менялись, ZIP не создавались. E-014 ready; G-011/H-008/H-009 сохраняют статусы.
+
 #### E-014 — collision authoring/debug и asset inspection, N4.5
 
-**Статус / приоритет / объём:** `pending` / P2 / S–M. **Зависимость:** E-012/E-013; базовая диагностика доступна уже в E-011.
+**Статус / приоритет / объём:** `ready` / P2 / S–M. **Зависимость:** E-012/E-013 выполнены; базовая диагностика доступна уже в E-011.
 
 Расширить существующий editor/inspector: render/collision overlay, ray/shape hit и normal, surface/layer, выбранный collision объект и authored identity. Показать source/product/bounds/receipt version и ошибки pairing/staleness. Не создавать отдельный physics editor. Typed property schema вводить локально только при подтверждённой дублирующейся валидации/controls новых collision полей; общая reflection/schema миграция не входит в ticket.
 
@@ -1132,7 +1149,7 @@ Sandbox не видел установленный MSVC/Git; успешные bu
 
 #### Проверки и порядок следующей работы
 
-Ближайшее продуктовое действие — первый проход G-011 новым игроком без подсказок по [протоколу](playtests/G-011-2026-09-29.md), когда автор возобновит отложенную проверку. При продолжении инженерного плана следующая ready задача — E-012/N4.3: native collision product после выполненных E-010/E-011, без смены backend текущих игровых карт. G-009 принята, G-010 отложена, native slices N1–N3 выполнены. Объёмы S/M/L — относительные; календарные сроки до испытаний не оценены.
+Ближайшее продуктовое действие — первый проход G-011 новым игроком без подсказок по [протоколу](playtests/G-011-2026-09-29.md), когда автор возобновит отложенную проверку. При продолжении инженерного плана следующая ready задача — E-014/N4.5: collision authoring/debug после выполненных E-010–E-013, затем игровой consumer G-012. G-009 принята, G-010 отложена, native slices N1–N3 выполнены. Объёмы S/M/L — относительные; календарные сроки до испытаний не оценены.
 
 Для authoring начинать с `relaycore_level_check` и `validation-debug`. Для оружия/AI — ближайшие combat/enemy/input/save tests, затем content и затронутые lifecycle/graphics. Команды и существующие presets приведены в разделе 9; configure/build выполнять в VS developer environment с корректным `VCPKG_ROOT`. Ручные критерии не заменять автотестами. Каждый implementation ticket заканчивать обновлением статуса, evidence и `git diff --check`.
 
@@ -1321,6 +1338,7 @@ Vulkan migration и production asset/physics/navigation foundations больше
 | 2026-10-04 | Пересмотр PROJECT_PLAN / N4 | Добавлены E-010–E-014 и G-012 с зависимостями; E-010 ready, следующие pending, E-015 deferred. E-009 добавлена в единую таблицу как уже выполненная по карточке от 3 октября. | Внешний strategic analysis сопоставлен с текущими AABB/query callers, player spatial index, LevelSession, prop surface data, manifest, scene fence wait и evidence N1–N3. Изменены только план и roadmap: 42 локальные ссылки/якоря и восемь строк/карточек tickets проверены, diff-check прошёл. Новые build/run/tests/profiles, реализация Jolt и ZIP не выполнялись. G-011/H-008/H-009 сохраняют статусы. |
 | 2026-10-04 | E-010 / N4.1 | done; E-011 ready | Общий AABB WorldQuery, prepared static/door/actor records и typed hit; перенесены combat/LOS/focus/player/rover consumers с сохранением movement math и spatial index. MSVC Debug build, focused unit 58/58 + rover regression 1/1, content 33/33, Vulkan lifecycle/episode 2/2, scoped format и diff-check прошли. Commands/evidence в карточке E-010; dependencies/formats не менялись, Jolt и ZIP не добавлялись. Human playtest, другой GPU и performance не проверялись. |
 | 2026-10-04 | E-011 / N4.2 | done; E-012 ready | Изолированный Jolt static fixture с ray/box cast/overlap, layers, triangle surfaces и staged/active lifetime; pinned 5.6.0#1 SSE2 overlay, прежний baseline. Debug focused 65/65, content 33/33, Vulkan 2/2, ASan 6/6, optimized unity build и queries 6/6; CLI, scoped format и diff-check прошли. Карточка E-011 содержит commands/evidence/ограничения. Обычные игровые карты остаются AABB; G-011/H-008/H-009 открыты, ZIP не создавались. |
+| 2026-10-07 | E-013 / N4.4 | done; E-014 ready | Opt-in native collision placements, прежний box movement и mesh sweeps, общий gameplay query path. Debug: 120 unit, 31 physics, 33 content passed; финальный native/lifecycle 4/4, probe reuse 1/1. ASan physics 31/31; evidence/ограничения в карточке. ZIP, human playtest и performance не выполнялись. |
 
 После каждой выполненной задачи добавлять короткую запись и обновлять единую таблицу статусов в разделе 6. Не копировать сюда полные логи. Для `awaiting_playtest` явно написать, какой человек/сценарий/ПК ещё нужен; для `done` перечислить реально выполненные проверки.
 

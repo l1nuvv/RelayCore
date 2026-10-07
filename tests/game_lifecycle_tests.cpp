@@ -23,6 +23,7 @@
 #include <windows.h>
 #endif
 
+#include "native_collision_fixture.h"
 #include "scoped_temp_directory.h"
 
 namespace
@@ -754,7 +755,10 @@ int main(int argc, char** argv)
         renderer.set_diagnostics_visible(true);
         require(game.has_custom_ui() && !window.relative_mouse_mode(), "Startup must show menu and release mouse");
 
-        for (const auto* map : {"levels/test_room.toml", "levels/rc022_reference.toml"})
+        const auto native_map = directory.path() / "native_collision.toml";
+        RelayCore::test::write_native_collision_fixture(native_map);
+        const auto native_map_name = native_map.string();
+        for (const auto* map : {"levels/test_room.toml", "levels/rc022_reference.toml", native_map_name.c_str()})
         {
             config.gameplay.level_path = map;
             config.input.capture_mouse_on_start = std::string_view{map} == "levels/test_room.toml";
@@ -787,7 +791,28 @@ int main(int argc, char** argv)
                 );
             }
             game.on_update(frame, services);
-            if (std::string_view{map} == "levels/test_room.toml")
+            if (std::string_view{map} == native_map_name)
+            {
+                auto moving = RelayGame::load_saved_game(progress_path);
+                moving.player.position = {0, .001F, 2};
+                moving.player.velocity = {0, 0, 8};
+                game.return_to_menu(services);
+                game.on_shutdown(services);
+                RelayGame::write_saved_game(progress_path, moving);
+                game.on_startup(services);
+                renderer.set_diagnostics_visible(true);
+                game.begin_episode(true, services);
+                for (int i = 0; i < 60; ++i)
+                    game.on_update(frame, services);
+                require(
+                    renderer.player_diagnostics().position.z > 3.5F,
+                    "Native opening blocked standing player traversal"
+                );
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                capture_frame(renderer, "native_collision_traversal.bmp");
+            }
+            if (std::string_view{map} == "levels/test_room.toml" || std::string_view{map} == native_map_name)
             {
                 const auto camera_before_reload = services.camera().position();
                 const auto config_path = config.source_path;
@@ -797,7 +822,7 @@ int main(int argc, char** argv)
                     invalid_config << "broken = [\n";
                 }
                 key(SDL_SCANCODE_F7);
-                game.on_update(frame, services);
+                game.on_update({}, services);
                 config.source_path = config_path;
                 require(
                     !game.has_custom_ui() && window.relative_mouse_mode()
@@ -809,6 +834,35 @@ int main(int argc, char** argv)
                         && !renderer.iteration_diagnostics().last_reload_succeeded,
                     "Failed reload was not reported"
                 );
+            }
+            if (std::string_view{map} == native_map_name)
+            {
+                const auto authored = read_file(native_map);
+                auto broken = authored;
+                const std::string reference = "collision/lab_bench.rccollision";
+                broken.replace(broken.find(reference), reference.size(), "collision/missing.rccollision");
+                std::ofstream{native_map, std::ios::binary} << broken;
+                const auto source_path = config.source_path;
+                config.source_path = directory.path() / "native-reload.toml";
+                std::ofstream{config.source_path} << "[game]\nlevel_path = \"" << native_map.generic_string() << "\"\n";
+                const auto before = services.camera().position();
+                key(SDL_SCANCODE_F7);
+                game.on_update({}, services);
+                require(
+                    !renderer.iteration_diagnostics().last_reload_succeeded
+                        && renderer.iteration_diagnostics().last_reload_error.find("missing.rccollision")
+                               != std::string::npos
+                        && services.camera().position() == before && !game.has_custom_ui(),
+                    "Missing collision product damaged the active native session"
+                );
+                std::ofstream{native_map, std::ios::binary} << authored;
+                key(SDL_SCANCODE_F7);
+                game.on_update({}, services);
+                require(
+                    renderer.iteration_diagnostics().last_reload_succeeded,
+                    "Native session did not recover after restoring collision reference"
+                );
+                config.source_path = source_path;
             }
             const auto disk_before_snapshot = read_file(progress_path);
             key(SDL_SCANCODE_F9);
@@ -905,6 +959,14 @@ int main(int argc, char** argv)
                 renderer.runtime_diagnostics().simulation_tick == editor_checkpoint.world.simulation_tick,
                 "Editor lost campaign simulation state"
             );
+            if (std::string_view{map} == native_map_name)
+            {
+                game.transition_to({{}, native_map, "arrival", false}, services);
+                require(
+                    !game.has_custom_ui() && renderer.player_diagnostics().position.z < .05F,
+                    "Native collision session transition did not activate its entry"
+                );
+            }
             game.return_to_menu(services);
             require(game.has_custom_ui() && !window.relative_mouse_mode(), "Menu retained gameplay input");
             require(renderer.runtime_diagnostics().level_name.empty(), "Menu retained old level diagnostics");
@@ -1206,17 +1268,20 @@ int main(int argc, char** argv)
             );
             reload_game.on_shutdown(reload_services);
         }
+        for (const bool native_collision : {false, true})
         {
             auto death_config = config;
-            death_config.gameplay.level_path = RelayCore::core::asset_path("levels/power_restoration.toml").string();
+            death_config.gameplay.level_path =
+                native_collision ? native_map_name
+                                 : RelayCore::core::asset_path("levels/power_restoration.toml").string();
             RelayCore::EngineServices death_services{death_config, window, renderer, audio, running};
             const auto session = RelayGame::LevelSessionBuilder{death_config.gameplay}.build();
             RelayGame::GameWorldRuntime seed;
             seed.load_level_session(death_config, session);
-            seed.debug_set_player_position({6.8F, .01F, 18});
+            seed.debug_set_player_position(native_collision ? glm::vec3{2.5F, .03F, 0} : glm::vec3{6.8F, .01F, 18});
             auto save = seed.capture_saved_game(60, true);
             save.world.player_combat.health = 1;
-            const auto user_path = directory.path() / "death_continue";
+            const auto user_path = directory.path() / (native_collision ? "native_death_continue" : "death_continue");
             std::filesystem::create_directories(user_path);
             RelayGame::write_saved_game(user_path / "progress.toml", save);
             RelayGame::DemoGame dying{user_path};
