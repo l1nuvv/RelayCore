@@ -355,7 +355,27 @@ namespace RelayGame
                     && std::ranges::none_of(
                         session.usables,
                         [&](const auto& usable) {
-                            return usable.target == door.name && usable.enabled && !usable.locked;
+                            if (usable.target != door.name || !usable.enabled)
+                                return false;
+                            if (!usable.locked)
+                                return true;
+                            using namespace RelayCore::gameplay;
+                            if (usable.signal_action != UsableSignalAction::Unlock
+                                && usable.signal_action != UsableSignalAction::ToggleLock)
+                                return false;
+                            return std::ranges::any_of(
+                                       session.usables,
+                                       [&](const auto& source) {
+                                           return source.enabled && !source.locked
+                                                  && (source.chain_target == usable.name
+                                                      || (source.action_kind == UsableActionKind::SignalTarget
+                                                          && source.target == usable.name));
+                                       }
+                                   )
+                                   || std::ranges::any_of(session.triggers, [&](const auto& trigger) {
+                                          return trigger.action_kind == TriggerActionKind::SignalTarget
+                                                 && trigger.target == usable.name;
+                                      });
                         }
                     )
                     && std::ranges::none_of(session.triggers, [&](const auto& trigger) {

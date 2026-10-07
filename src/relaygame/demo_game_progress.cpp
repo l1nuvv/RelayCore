@@ -192,9 +192,13 @@ namespace RelayGame
             IM_COL32(8, 12, 11, 255)
         );
         const bool pressure_transfer = runtime_.level_path().ends_with("pressure_transfer.toml");
+        const bool bench_relay = runtime_.level_path().ends_with("bench_relay.toml");
         const char* text = pressure_transfer  ? (finale_time_ < 2   ? "Перепуск работает. Давление выровнено."
                                                  : finale_time_ < 4 ? "Выход в технический сектор открыт."
                                                                     : "Следующий маршрут: технический сектор.")
+                           : bench_relay      ? (finale_time_ < 2   ? "Реле мастерской восстановлено."
+                                                 : finale_time_ < 4 ? "Служебный выход открыт."
+                                                                    : "Ремонтный зал пройден.")
                            : finale_time_ < 2 ? "Питание и охлаждение в норме."
                            : finale_time_ < 4 ? "Изоляция сектора завершена. Допуск подтверждён."
                                               : "Следующий маршрут: исследовательский блок.";

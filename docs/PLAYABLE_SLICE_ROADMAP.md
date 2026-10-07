@@ -4,7 +4,7 @@
 
 План следующего цикла актуализирован 2026-09-28 по текущему рабочему дереву: раздел 7, блок «Следующий цикл — от полигона к новому эпизоду». Исходный baseline и журнал ниже сохранены как история. Новые задачи описывают рекомендованный порядок; этот запрос на план не запускает их реализацию.
 
-Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; E-010/N4.1 дал общие world queries поверх AABB, E-011/N4.2 — изолированный Jolt fixture. E-012–E-014 выполнены 2026-10-07: collision products/staging, native movement/gameplay parity и editor collision inspection. Следующая инженерная задача — игровой участок G-012/N4.6. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
+Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; E-010/N4.1 дал общие world queries поверх AABB, E-011/N4.2 — изолированный Jolt fixture. E-012–E-014 выполнены 2026-10-07: collision products/staging, native movement/gameplay parity и editor collision inspection. G-012/N4.6 технически выполнен 2026-10-07 и ожидает нового игрока (`awaiting_playtest`); N4 целиком ещё не принят. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
 
 ## 1. Назначение и порядок использования
 
@@ -238,7 +238,7 @@ E-001 ускоряет настройку, но его задержка не з�
 | 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | done |
 | 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | done |
 | 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | done |
-| 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | ready |
+| 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | awaiting_playtest |
 | 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | deferred |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
@@ -1133,11 +1133,21 @@ Evidence: `build/msvc-debug/e014-runtime.xml`, focused `e014-focused.xml`, `e014
 
 #### G-012 — короткий игровой участок с native collision, N4.6
 
-**Статус / приоритет / объём:** `ready` / P2 / M. **Зависимость:** E-013/E-014 выполнены. Использовать результаты G-011, когда они доступны; ранее отложенный playtest не блокирует независимую техническую работу по поручению автора.
+**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** E-013/E-014 выполнены. Техническая часть выполнена 2026-10-07; новый игрок ещё не проверял участок. Использовать результаты G-011, когда они доступны; ранее отложенный playtest не блокирует независимую техническую работу по поручению автора.
 
 Проверить новую world capability в одном коротком участке: геометрия с полезным проёмом/неправильной формой, существующие turret/rover и два оружия, interaction/objective и save/continue, текущие materials/HDR/probes. Выбрать случай, где общий AABB действительно мешает проходу или линии огня. Не создавать новую кампанию, противника или navmesh ради демонстрации. Art direction — по действующему документу/навыку при authoring.
 
 **Готово, когда:** technical content/lifecycle/query regressions и полный проход пройдены; новый игрок без подсказок проверил маршрут, выбор оружия и читаемость коллизии, зафиксированы время/смерти/затруднения. До человеческой проверки — `awaiting_playtest`. Для нового workload снять cold/warm optimized профиль с query/draw/upload/wait costs по H-008 методике; он не закрывает приёмку `pressure_transfer` или другой GPU автоматически.
+
+Технический результат: `bench_relay.toml` / «Реле мастерской» доступен через выбор новой игры. Существующие turret/rover, два оружия, реле с разблокировкой выхода, две двери и пять шагов задания образуют один короткий участок. Native lab_bench с масштабом Y=1,25 пропускает rover под столешницей; общий AABB блокирует тот же sweep и низкий луч, стоящий игрок обходит стол сбоку. Использованы текущие models/materials, HDR, 30 baked probes от трёх статических источников и включаемый свет выхода. Новой кампании, dependencies, model assets или форматов нет.
+
+Проверки: Debug demo/validation/lifecycle/profile target и optimized demo/validation/profile target собраны. Debug content **36/36**, ближайшие editor/irradiance/physics **47/47**, graphics lifecycle и bench HDR smoke **2/2**; optimized G-012 **3/3**. Полный deterministic маршрут повторён дважды с обоими оружиями, двумя уничтоженными угрозами и без смерти; 2188 тиков при 120 Hz не являются человеческой длительностью. Editor save/undo/rebuild, snapshots/preview/menu, disk continue до/после реле пройдены. Исправлена выявленная ложная editor warning для панели двери, разблокируемой прямым unlock-сигналом; потерянная связь по-прежнему диагностируется. Runtime validation graphics warnings/errors отсутствуют. Кадры entry/encounter/powered просмотрены; уточнены стороны в подсказках и ориентация маркировки.
+
+Evidence: `build/msvc-debug/g012-content.xml`, `g012-regressions.xml`, `g012-graphics.xml`, focused `g012-focused.xml`; optimized `build/msvc-relwithdebinfo/g012-content.xml`; `tests/bench-relay-captures/{entry,encounter,powered}.bmp`. Новый bake: 30 probes / 1840 triangles / 3 lights, signature `7671343688987210812`, одинаковый SHA-256 Debug/optimized `00722A2E3BE9A0AE1CB630C41A0619A5A7D71E2B0BEC08BA5EB6D9EF8364142D`. Прежний Debug native_lab probe переиспользован при неизменных inputs, hash сохранён; optimized native_lab пересобран. Ненужный повторный Debug native_lab bake остановлен. Debug LNK1236 устранён пересборкой повреждённого intermediate object, без изменения его source content. Проверки выполнены в VS developer environment вне sandbox; ZIP, ASan и полный graphics suite не запускались.
+
+[Optimized профиль](profiling/G-012-2026-10-07.md): RTX 4060 Ti / driver 596.49, 1280×720, VSync off, hardware_srgb/HDR/shadows/HUD on, audio off, validation=false. Три состояния first-use/revisit, 10 947 rendered frames, CPU/GPU Tracy capture с query/draw/upload/present/fence costs. Frame p95 1,3464–1,5681 мс, first-use spike 46,8843 мс; это короткие стационарные состояния, не непрерывный rendered проход человека и не cold OS/driver cache. [Протокол нового игрока](playtests/G-012-2026-10-07.md) подготовлен, результаты отсутствуют. G-012/N4 не объявлены принятыми; G-011/H-008/H-009 сохраняют статусы. E-015 остаётся deferred до конкретной feedback-потребности.
+
+Граница evidence: успешные сборки/tests/capture относятся к прежним native models из `2440823` и изменению G-012. После проверок в общем checkout появились параллельные правки GLB/exporter/model manifest, не входящие в checkpoint. Повторный `cmake --build --preset validation-debug -j 1` остановился на новом `lab_bench.glb`: `model contains a degenerate triangle`; последующая попытка узкой пересборки встретила отсутствующий `content/models/scientist_hazmat.glb` из изменённого manifest. Эти правки сохранены отдельно; текущий совмещённый working tree не объявлен проверенным. CLI `relaycore_level_check assets/levels/bench_relay.toml --entry entrance` на прежних staged assets дал valid=true, warnings=0 (`g012-level-check.json`); clang-format, diff-check, graphics preset smoke и pre-commit tooling test прошли.
 
 #### E-015 — surface-aware impact feedback по потребности, N5
 

@@ -624,10 +624,13 @@ namespace RelayCore::render
         {
             if (!pending)
                 return;
-            require_mesh_vk(
-                vkWaitForFences(device.handle(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
-                "Failed to wait for Vulkan mesh frame"
-            );
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan scene fence");
+                require_mesh_vk(
+                    vkWaitForFences(device.handle(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
+                    "Failed to wait for Vulkan mesh frame"
+                );
+            }
             pending = false;
             profiler.collect();
         }

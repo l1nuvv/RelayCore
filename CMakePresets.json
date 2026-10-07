@@ -136,6 +136,7 @@
         "relaycore_vulkan_upload_tests",
         "relaycore_vulkan_mesh_tests",
         "relaycore_game_lifecycle",
+        "relaycore_bench_relay_run",
         "relaycore_power_restoration_graphics"
       ]
     },

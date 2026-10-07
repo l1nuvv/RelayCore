@@ -1,0 +1,204 @@
+# Short maintenance bay: arm, open the bay, restore the relay, leave through the service exit.
+# Native bench collision preserves the rover lane below the worktop. Metres, +Y up.
+[[entity]]
+classname = "irradiance_volume"
+product = "lighting/bench_relay.rcprobe"
+mins = [-3.85,0,-3.85]
+maxs = [3.85,3.3,12.3]
+dimensions = [3,2,5]
+rays = 256
+
+[[solid_group]]
+boxes = [
+  { origin = [0,-0.12,5.5], size = [8,0.24,19], material = "maintenance_floor" },
+  { origin = [0,3.5,5.5], size = [8,0.2,19], material = "Ceiling" },
+  { origin = [-4,1.7,5.5], size = [0.2,3.4,19], material = "WallPanel" },
+  { origin = [4,1.7,5.5], size = [0.2,3.4,19], material = "concrete" },
+  { origin = [0,1.7,-4], size = [8,3.4,0.2], material = "WallPanel" },
+  { origin = [0,1.7,15], size = [8,3.4,0.2], material = "concrete" },
+  { origin = [-2.75,1.7,1], size = [2.5,3.4,0.2], material = "WallPanel" },
+  { origin = [2.75,1.7,1], size = [2.5,3.4,0.2], material = "WallPanel" },
+  { origin = [0,3,1], size = [3,0.8,0.2], material = "Beam" },
+  { origin = [-2.6,1.05,4], size = [1.4,2.1,0.8], material = "metal" },
+  { origin = [-2.75,1.7,12.5], size = [2.5,3.4,0.2], material = "WallPanel" },
+  { origin = [2.75,1.7,12.5], size = [2.5,3.4,0.2], material = "WallPanel" },
+  { origin = [0,3,12.5], size = [3,0.8,0.2], material = "Beam" },
+  { origin = [0,3.3,-1.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
+  { origin = [0,3.3,5.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
+  { origin = [0,3.3,10.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
+  { origin = [3.82,2.8,5.5], size = [0.08,0.08,18], material = "Metal" },
+  { origin = [0,2.65,12.35], size = [2.8,0.1,0.06], material = "Trim", tint = [0.65,0.57,0.32] },
+]
+
+[[entity]]
+classname = "player_spawn"
+origin = [0,0.02,-3]
+angles = [0,0,0]
+
+[[entity]]
+classname = "level_entry"
+targetname = "entrance"
+origin = [0,0.02,-3]
+angles = [0,0,0]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/lab_bench.rcmodel"
+collision_asset = "collision/lab_bench.rccollision"
+entries = [
+  { targetname = "supply_bench", origin = [-2.5,0,-1] },
+  { targetname = "open_workbench", origin = [0,0,7], scale = [1,1.25,1] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "relay_cabinet"
+model = "models/power_cabinet.rcmodel"
+origin = [2.8,0,7]
+collision_mins = [-0.6,0,-0.4]
+collision_maxs = [0.6,2.1,0.51]
+collision_material = "Metal"
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "pickup"
+targetname = "bay_shotgun"
+origin = [-2.5,1.045,-1]
+size = [1.08,0.21,0.14]
+item_id = "weapon_shotgun"
+item_name = "дробовик"
+use_radius = 1.8
+label = "Взять дробовик"
+success_message = "Дробовик взят. Клавиши 1/2 — смена оружия. Пульт слева открывает ремонтный зал."
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "door"
+targetname = "bay_gate"
+origin = [0,0,1]
+size = [2.98,2.6,0.22]
+move_offset = [0,2.9,0]
+move_speed = 1.8
+activation_policy = "open_only"
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+targetname = "bay_reader"
+target = "bay_gate"
+origin = [2.3,1.35,0.76]
+size = [0.38,0.5,0.12]
+mount_axis = "-z"
+required_item = "weapon_shotgun"
+required_item_name = "дробовик"
+use_radius = 1.8
+single_use = true
+label = "Открыть ремонтный зал"
+denied_message = "Возьмите дробовик со стола справа."
+success_message = "Зал открыт. Пульт реле находится на правой стене у выхода."
+
+[[entity]]
+classname = "enemy_rover"
+origin = [0,0.01,8.3]
+health = 60
+speed = 1.6
+detection_range = 6.5
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "turret"
+targetname = "bay_turret"
+origin = [-2.8,1.55,10.5]
+size = [0.78,0.92,0.78]
+health = 60
+damage = 5
+attack_range = 16
+warmup = 1
+fire_interval = 1.5
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+targetname = "relay_control"
+action = "activate_target"
+target = "relay_running"
+chain_target = "exit_reader"
+origin = [-3.76,1.35,11.2]
+size = [0.12,0.5,0.38]
+mount_axis = "+x"
+use_radius = 1.8
+single_use = true
+label = "Включить реле мастерской"
+success_message = "Реле включено. Пульт у дальней двери разблокирован."
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "door"
+targetname = "bay_exit"
+origin = [0,0,12.5]
+size = [2.98,2.6,0.22]
+move_offset = [0,2.9,0]
+move_speed = 1.8
+activation_policy = "open_only"
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+targetname = "exit_reader"
+target = "bay_exit"
+origin = [2.3,1.35,12.26]
+size = [0.38,0.5,0.12]
+mount_axis = "-z"
+use_radius = 1.8
+locked = true
+signal_action = "unlock"
+single_use = true
+label = "Открыть служебный выход"
+locked_message = "Включите реле на пульте у выхода."
+success_message = "Выход открыт. Пройдите через дверь."
+
+[[entity]]
+classname = "mission_settings"
+completion_title = "Реле мастерской восстановлено"
+completion_detail = "Питание подано. Служебный выход открыт."
+
+[[entity_group]]
+classname = "mission_step"
+entries = [
+  { kind = "pickup_item", target = "weapon_shotgun", title = "Взять дробовик", detail = "Оружие на рабочем столе справа от входа. 1/2 — выбор оружия." },
+  { kind = "door_open", target = "bay_gate", title = "Открыть ремонтный зал", detail = "Пульт слева от двери. За ней работает охрана." },
+  { kind = "activate_target", target = "relay_running", title = "Включить реле", detail = "Пройдите через ремонтный зал к пульту на правой стене у выхода." },
+  { kind = "door_open", target = "bay_exit", title = "Открыть выход", detail = "Реле разблокировало пульт у дальней двери." },
+  { kind = "zone", origin = [0,0.01,14], size = [2.8,2.5,1.5], title = "Покинуть мастерскую", detail = "Пройдите через служебный выход." },
+]
+
+[[entity]]
+classname = "episode_end"
+origin = [0,1.65,14]
+angles = [180,0,0]
+close_door = "bay_exit"
+
+[[entity_group]]
+classname = "render_light"
+entries = [
+  { origin = [0,3.1,-1.5], color = [0.45,0.48,0.43], radius = 7, intensity = 1.2 },
+  { origin = [0,3.1,5.5], color = [0.45,0.48,0.43], radius = 8, intensity = 1.2 },
+  { origin = [0,3.1,10.5], color = [0.45,0.48,0.43], radius = 7, intensity = 1.2 },
+  { origin = [0,2.8,14], color = [0.35,0.48,0.38], radius = 4, intensity = 1, required_target = "relay_running" },
+]
+
+[[entity]]
+classname = "world_effect"
+kind = "decal"
+mark = "01"
+origin = [2.9,2,0.88]
+angles = [180,0,0]
+
+[[entity]]
+classname = "audio_zone"
+name = "bay_ventilation"
+origin = [0,1.7,8]
+size = [8,3.4,8]
+loop = "audio/ambient_airlock_hum.wav"
+volume = 0.15
+required_target = "relay_running"

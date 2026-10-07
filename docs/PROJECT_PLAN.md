@@ -6,7 +6,7 @@
 
 ## План развития после E-004 — 2026-10-02
 
-Этот раздел — актуальная последовательность развития по текущему рабочему дереву, актуализированная 2026-10-07. Предыдущий план M0–M6 и журнал ниже сохранены: они описывают игровой цикл и его проверки. Основная очередь и фактические статусы остаются в roadmap; N1 выполнен как E-005, выбранные N2 и N3 slices завершены как E-006–E-009; по последующему поручению выполнены E-010–E-013/N4.1–N4.4. Следующая инженерная задача — E-014/N4.5; остальные этапы требуют своих зависимостей и поручения автора. Наличие плана само по себе не запускает реализацию.
+Этот раздел — актуальная последовательность развития по текущему рабочему дереву, актуализированная 2026-10-07. Предыдущий план M0–M6 и журнал ниже сохранены: они описывают игровой цикл и его проверки. Основная очередь и фактические статусы остаются в roadmap; N1 выполнен как E-005, выбранные N2 и N3 slices завершены как E-006–E-009; по последующему поручению выполнены E-010–E-014/N4.1–N4.5. G-012/N4.6 технически выполнен, статус `awaiting_playtest`; остальные этапы требуют своих зависимостей и поручения автора. Наличие плана само по себе не запускает реализацию.
 
 ### Цель и основание
 
@@ -37,8 +37,8 @@ Jolt уже выбран в [dependency policy](DEPENDENCY_STACK.md#4-physics--j
 | Vulkan | VK-013, VK-014 и VK-F01 завершены; единственный runtime backend | Развивать native capabilities поверх действующего backend |
 | Модели | GLB → `.rcmodel` v3; loader читает v1–v3; opaque base-color, normal и opt-in roughness/metalness factors | N2 native material slice завершён; IBL, material data maps, alpha, skin/animation ещё не поддерживаются |
 | Сборка контента | E-004: явный список GLB, per-preset products, staging, SHA256 receipts и packaging checks | Следующая модель должна проходить обычную сборку; общего asset catalog/cache ещё нет |
-| Геометрия/движение | AABB и opt-in native collision products; прежний box movement, mesh sweeps; rover движется к `last_seen` без поиска пути | Render-модель требует отдельной authored collision; игровой consumer G-012 ещё впереди |
-| Освещение | Dynamic lights/shadows, fog/post; E-008 linear FP16 HDR/exposure/UI; E-009 baked diffuse SH9 probes | Native lab имеет offline one-bounce product и invalidation; lightmaps, reflection probes и масштабирование света требуют отдельного consumer |
+| Геометрия/движение | AABB и opt-in native collision products; прежний box movement, mesh sweeps; rover движется к `last_seen` без поиска пути | Render-модель требует отдельной authored collision; consumer G-012 технически выполнен, human acceptance ожидается |
+| Освещение | Dynamic lights/shadows, fog/post; E-008 linear FP16 HDR/exposure/UI; E-009 baked diffuse SH9 probes | Native lab и G-012 имеют offline one-bounce products и invalidation; lightmaps, reflection probes и масштабирование света требуют отдельного consumer |
 | Инструменты/доставка | Редактор и CLI проверки карты; Release/ZIP/updater уже существуют | Расширять действующий workflow под новый контент |
 | Приёмка | H-008/H-009 открыты; blind playtest и другой GPU ранее отложены автором | Инженерный трек может продолжаться; полную игровую и аппаратную приёмку не объявлять |
 
@@ -194,7 +194,7 @@ G-001 остаётся отдельным незавершённым измер�
 
 ### Ближайшая рекомендуемая итерация
 
-**G-012 / N4.6 — короткий игровой участок с native collision.** E-010–E-014 завершены: query contract, collision products, native gameplay/lifecycle и collision authoring/debug готовы. Следующий шаг — игровой consumer с полезным проёмом/неправильной формой, существующими угрозами/оружием, interaction/objective и save/continue; surface feedback добавляется по потребности. G-011 передаётся новому игроку, когда автор возобновит человеческую проверку; её статус сохраняется. Архивы создавать только по прямой просьбе.
+**G-012 / N4.6 — `awaiting_playtest`.** E-010–E-014 завершены; технический consumer «Реле мастерской» выполнен 2026-10-07. Rover проходит под native-столом, общий AABB блокирует тот же путь; два оружия, turret, реле/выход, objective/save и editor/lifecycle проверены. Debug: content 36/36, editor/irradiance/physics 47/47, graphics 2/2; optimized G-012 3/3. [First-use/warm профиль](profiling/G-012-2026-10-07.md) фиксирует CPU/GPU/query/draw/upload/present/wait costs трёх состояний на RTX 4060 Ti; непрерывный rendered маршрут человека не измерен. Следующая приёмка — [новый игрок без подсказок](playtests/G-012-2026-10-07.md), время, смерти, выбор оружия и читаемость проёма. E-015 остаётся deferred до конкретной feedback-потребности; N4 не объявлен принятым по автотесту. G-011 передаётся новому игроку, когда автор возобновит человеческую проверку; G-011/H-008/H-009 сохраняют статусы. Архивы создавать только по прямой просьбе.
 
 E-014 выполнен 2026-10-07: мастерская назначает native product/AABB с pairing validation и undo/save/reload; overlay и ray/box queries показывают geometry, hit/normal, surface/layer и authored identity. Inspector поддерживает native mesh и pin restoration; product inspection проверяет существующие receipts и staged collision/model. Debug: 106/106 targeted checks, включая SDL/Vulkan lifecycle и выбор collision щелчком; opening/support/selected captures просмотрены. Lighting inputs и rcprobe bytes сохранены, повторный bake не запускался. Evidence и ограничения — в [карточке E-014](PLAYABLE_SLICE_ROADMAP.md#e-014--collision-authoringdebug-и-asset-inspection-n45).
 

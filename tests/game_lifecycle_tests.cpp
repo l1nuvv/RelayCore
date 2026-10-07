@@ -758,7 +758,9 @@ int main(int argc, char** argv)
         const auto native_map = directory.path() / "native_collision.toml";
         RelayCore::test::write_native_collision_fixture(native_map);
         const auto native_map_name = native_map.string();
-        for (const auto* map : {"levels/test_room.toml", "levels/rc022_reference.toml", native_map_name.c_str()})
+        for (const auto* map :
+             {"levels/test_room.toml", "levels/rc022_reference.toml", native_map_name.c_str(), "levels/bench_relay.toml"
+             })
         {
             config.gameplay.level_path = map;
             config.input.capture_mouse_on_start = std::string_view{map} == "levels/test_room.toml";

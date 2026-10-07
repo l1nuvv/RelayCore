@@ -55,6 +55,9 @@ target_link_libraries(relaycore_audio_lifetime PRIVATE
 set_target_properties(relaycore_audio_lifetime PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_game_lifecycle game_lifecycle_tests.cpp)
 target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+add_executable(relaycore_bench_relay_run bench_relay_run.cpp)
+target_link_libraries(relaycore_bench_relay_run PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+set_target_properties(relaycore_bench_relay_run PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_episode_profile EXCLUDE_FROM_ALL episode_profile.cpp)
 target_link_libraries(relaycore_episode_profile PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
 set_target_properties(relaycore_episode_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
@@ -142,6 +145,7 @@ target_sources(
         development_sandbox_tests.cpp
         native_lab_tests.cpp
         pressure_transfer_tests.cpp
+        bench_relay_tests.cpp
 )
 
 target_link_libraries(
@@ -204,6 +208,7 @@ foreach(test_target IN ITEMS
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
     relaycore_episode_profile
+    relaycore_bench_relay_run
 )
     relaycore_apply_standard_target_settings(${test_target})
 
@@ -229,7 +234,7 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
 
 foreach(runtime_graphics_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_audio_lifetime
     relaycore_vulkan_mesh_tests relaycore_window_lifetime_tests relaycore_game_lifecycle
-    relaycore_power_restoration_graphics relaycore_episode_profile)
+    relaycore_power_restoration_graphics relaycore_episode_profile relaycore_bench_relay_run)
     add_dependencies(${runtime_graphics_target} relaycore_demo_assets)
 endforeach()
 
@@ -296,6 +301,10 @@ set_tests_properties(graphics.vulkan_window PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_window_tests>"
 )
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
+add_test(NAME graphics.bench_relay COMMAND relaycore_bench_relay_run)
+set_tests_properties(graphics.bench_relay PROPERTIES LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_bench_relay_run>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
 add_test(NAME graphics.hdr_settings COMMAND relaycore_game_lifecycle --hdr-settings)
 if(WIN32)
     foreach(mode IN ITEMS ui no-ui failed-ui failed-no-ui)
@@ -335,7 +344,7 @@ set_tests_properties(
 )
 
 
-set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.hdr_settings graphics.power_restoration graphics.hdr_episode PROPERTIES
+set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.hdr_settings graphics.power_restoration graphics.hdr_episode graphics.bench_relay PROPERTIES
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 
 doctest_discover_tests(
