@@ -1,11 +1,14 @@
 #include "relaycore/app/engine_services.h"
 #include "relaycore/core/paths.h"
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaycore/world/surface_material_utils.h"
 #include "relaygame/level_editor.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/world_inspector.h"
 
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_error.h>
 #include <algorithm>
@@ -21,6 +24,7 @@ namespace RelayGame
     {
         map_files_.clear();
         model_files_.clear();
+        collision_files_.clear();
         texture_files_.clear();
         for (const auto& folder : {RelayCore::core::asset_path("levels"), user_maps_path_})
             if (std::filesystem::is_directory(folder))
@@ -44,6 +48,123 @@ namespace RelayGame
         map_files_.erase(std::unique(map_files_.begin(), map_files_.end()), map_files_.end());
         std::ranges::sort(model_files_);
         std::ranges::sort(texture_files_);
+        const auto collision = RelayCore::core::asset_path("collision");
+        if (std::filesystem::is_directory(collision))
+            for (const auto& file : std::filesystem::directory_iterator(collision))
+                if (file.is_regular_file() && file.path().extension() == ".rccollision")
+                    collision_files_.push_back("collision/" + file.path().filename().generic_string());
+        std::ranges::sort(collision_files_);
+    }
+
+    void LevelEditor::draw_collision_tools(RelayCore::EngineServices& services)
+    {
+        ImGui::Checkbox("Collision overlay / queries", &collision_debug_visible_);
+        if (!collision_debug_visible_)
+            return;
+        ImGui::TextWrapped("Boxes: cyan; mesh: orange; Tile: yellow; Hazard: red; selected: white. Normals: green.");
+        if (!collision_preview_valid_ || preview_revision_ != document_.revision())
+        {
+            ImGui::TextWrapped("Collision preview is out of date; fix the authored error before querying.");
+            return;
+        }
+        const auto eye = services.camera().position(), forward = services.camera().forward();
+        const auto query = [&](const char* label, const std::optional<RelayCore::physics::WorldQueryHit>& hit) {
+            ImGui::Text("%s: %s", label, hit ? "hit" : "clear");
+            if (!hit)
+                return;
+            const auto info = build_collision_inspector_diagnostics(
+                document_.level(),
+                *hit,
+                *collision_world_->object_bounds(hit->object)
+            );
+            ImGui::TextWrapped(
+                "%s | %s | %s | %.2f m",
+                info.object_kind.c_str(),
+                info.material.c_str(),
+                info.collision_layer.c_str(),
+                hit->distance
+            );
+            ImGui::Text("Hit %.2f %.2f %.2f", hit->position.x, hit->position.y, hit->position.z);
+            ImGui::Text("Normal %.2f %.2f %.2f", hit->normal.x, hit->normal.y, hit->normal.z);
+            ImGui::TextWrapped("%s", info.authored_summary.c_str());
+            ImGui::PushID(label);
+            if (ImGui::Button("Select hit"))
+                document_.select(EditorSelection{
+                    hit->object.kind != RelayCore::physics::WorldObjectKind::Solid,
+                    hit->object.kind == RelayCore::physics::WorldObjectKind::Solid
+                        ? hit->object.index
+                        : static_cast<std::size_t>(hit->object.authored_entity_index)
+                });
+            ImGui::PopID();
+        };
+        query("Ray, 24 m", collision_world_->raycast(eye, forward, 24));
+        query("Box, half extents 0.2 m", collision_world_->cast_box(eye, glm::vec3{.2F}, forward * 24.0F));
+        if (const auto selected = document_.selection(); selected && selected->entity)
+        {
+            const auto& entity = document_.level().entities[selected->index];
+            if (const auto product = entity.properties.find("collision_asset"); product != entity.properties.end())
+            {
+                ImGui::TextWrapped(
+                    "Product: %s\nModel: %s",
+                    product->second.c_str(),
+                    entity.properties.at("model").c_str()
+                );
+                for (const auto& mesh : collision_meshes_)
+                    if (mesh.authored_entity_index == static_cast<int>(selected->index))
+                    {
+                        const auto bounds = RelayCore::physics::collision_bounds(mesh.triangles);
+                        ImGui::Text(
+                            "Bounds %.2f %.2f %.2f -> %.2f %.2f %.2f",
+                            bounds.mins.x,
+                            bounds.mins.y,
+                            bounds.mins.z,
+                            bounds.maxs.x,
+                            bounds.maxs.y,
+                            bounds.maxs.z
+                        );
+                    }
+                if (ImGui::Button("Check build receipt / staleness"))
+                {
+                    collision_receipt_product_ = product->second;
+                    const std::string name =
+                        "-DCOLLISION_INSPECT_NAME=" + std::filesystem::path{product->second}.stem().string();
+                    const std::string root =
+                        "-DCOLLISION_RUNTIME_ASSETS=" + RelayCore::core::asset_root_path().generic_string();
+                    const char* args[]{
+                        RELAYCORE_INSPECT_CMAKE,
+                        name.c_str(),
+                        root.c_str(),
+                        "-P",
+                        RELAYCORE_INSPECT_COLLISION_SCRIPT,
+                        nullptr
+                    };
+                    const auto properties = SDL_CreateProperties();
+                    SDL_SetPointerProperty(properties, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, const_cast<char**>(args));
+                    SDL_SetNumberProperty(properties, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER, SDL_PROCESS_STDIO_APP);
+                    SDL_SetBooleanProperty(properties, SDL_PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true);
+                    const std::unique_ptr<SDL_Process, decltype(&SDL_DestroyProcess)> process{
+                        SDL_CreateProcessWithProperties(properties),
+                        SDL_DestroyProcess
+                    };
+                    SDL_DestroyProperties(properties);
+                    if (!process)
+                        throw std::runtime_error(SDL_GetError());
+                    std::size_t length = 0;
+                    int exit_code = 0;
+                    const std::unique_ptr<void, decltype(&SDL_free)> output{
+                        SDL_ReadProcess(process.get(), &length, &exit_code),
+                        SDL_free
+                    };
+                    if (!output)
+                        throw std::runtime_error(SDL_GetError());
+                    collision_receipt_ = (exit_code == 0 ? "OK\n" : "ERROR\n")
+                                         + std::string{static_cast<const char*>(output.get()), length};
+                }
+                if (collision_receipt_product_ == product->second && !collision_receipt_.empty())
+                    ImGui::TextWrapped("Last check (repeat after external edits):\n%s", collision_receipt_.c_str());
+            }
+        }
+        ImGui::Separator();
     }
 
     void LevelEditor::open_map(const std::filesystem::path& path, RelayCore::EngineServices& services, bool discard)
@@ -469,6 +590,15 @@ namespace RelayGame
             text("Модель", "model");
             if (std::filesystem::path{prop("model", "")}.extension() != ".rcmodel")
                 text("Файл BMP", "texture");
+            if (ImGui::BeginCombo("Collision product", prop("collision_asset", "(none)").c_str()))
+            {
+                if (ImGui::Selectable("(none)"))
+                    document_.set_model_collision_asset({});
+                for (const auto& path : collision_files_)
+                    if (ImGui::Selectable(path.c_str(), prop("collision_asset") == path))
+                        document_.set_model_collision_asset(path);
+                ImGui::EndCombo();
+            }
             bool collision = entity.properties.contains("collision_mins");
             if (ImGui::Checkbox("Коллизия: отдельный бокс", &collision))
                 document_.set_model_collision(collision);

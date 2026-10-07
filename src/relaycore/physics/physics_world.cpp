@@ -122,6 +122,7 @@ namespace RelayCore::physics
     struct PhysicsWorld::Impl {
         struct Metadata {
             WorldObjectId object;
+            Aabb bounds;
             SurfaceMaterial surface{};
             std::vector<SurfaceMaterial> triangle_surfaces;
         };
@@ -161,6 +162,8 @@ namespace RelayCore::physics
 
         void add(const JPH::Shape* shape, const glm::vec3& position, Metadata data)
         {
+            const auto bounds = shape->GetLocalBounds();
+            data.bounds = {from_jolt(bounds.mMin) + position, from_jolt(bounds.mMax) + position};
             JPH::BodyCreationSettings settings{
                 shape,
                 to_jolt(position),
@@ -260,6 +263,14 @@ namespace RelayCore::physics
     }
 
     PhysicsWorld::~PhysicsWorld() = default;
+
+    auto PhysicsWorld::object_bounds(WorldObjectId object) const -> std::optional<Aabb>
+    {
+        for (const auto& data : impl_->metadata)
+            if (data.object == object)
+                return data.bounds;
+        return {};
+    }
 
     auto PhysicsWorld::box_colliders() const noexcept -> std::span<const WorldCollider>
     {

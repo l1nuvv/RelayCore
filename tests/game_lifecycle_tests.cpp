@@ -1195,6 +1195,58 @@ int main(int argc, char** argv)
             }
 
             capture_frame(renderer, "editor_workshop.bmp");
+            editor.open_map(native_map, services, true);
+            editor.set_collision_debug_visible(true);
+            services.camera().set_position({0, 1.0F, -1});
+            services.camera().set_orientation(1.5707963268F, 0);
+            for (int i = 0; i < 2; ++i)
+            {
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            capture_frame(renderer, "editor_collision_opening.bmp");
+            services.camera().set_position({1.05F, 1.0F, -1});
+            for (int i = 0; i < 2; ++i)
+            {
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            capture_frame(renderer, "editor_collision_support.bmp");
+            ImGui::GetIO().AddMousePosEvent(320, 240);
+            for (int i = 0; i < 4; ++i)
+            {
+                if (i == 1)
+                    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+                if (i == 2)
+                    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            require(
+                editor.document().selection() == RelayGame::EditorSelection{true, 2},
+                "Editor collision picking lost mesh authored identity"
+            );
+            capture_frame(renderer, "editor_collision_selected.bmp");
+            editor.save_map(directory.path() / "native_editor_saved.toml", services);
+            require(
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(editor.save_path()).physics_fixture != nullptr,
+                "Editor collision overlay/save lost native collision product"
+            );
             editor.shutdown();
             std::cout << "0.8/0.9: editor map roundtrip and campaign A -> B -> restart -> A passed\n";
         }

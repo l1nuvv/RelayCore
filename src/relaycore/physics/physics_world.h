@@ -25,6 +25,8 @@ namespace RelayCore::physics
         PhysicsWorld(const PhysicsWorld&) = delete;
         auto operator=(const PhysicsWorld&) -> PhysicsWorld& = delete;
 
+        [[nodiscard]] auto object_bounds(WorldObjectId object) const -> std::optional<Aabb>;
+
         [[nodiscard]] auto raycast(
             const glm::vec3& origin,
             const glm::vec3& direction,

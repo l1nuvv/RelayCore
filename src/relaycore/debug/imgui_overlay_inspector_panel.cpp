@@ -56,6 +56,18 @@ namespace RelayCore::debug
                     inspector.bounds_maxs.y,
                     inspector.bounds_maxs.z
                 );
+                if (inspector.has_collision_hit)
+                {
+                    begin_metric_row("Normal");
+                    ImGui::Text(
+                        "%.2f %.2f %.2f",
+                        inspector.hit_normal.x,
+                        inspector.hit_normal.y,
+                        inspector.hit_normal.z
+                    );
+                    begin_metric_row("Collision layer");
+                    ImGui::TextUnformatted(inspector.collision_layer.c_str());
+                }
                 if (inspector.has_origin)
                 {
                     begin_metric_row("Origin");
@@ -93,6 +105,8 @@ namespace RelayCore::debug
             }
 
             draw_optional_text_value("Name", inspector.name);
+            draw_optional_text_wrapped_value("Collision product", inspector.collision_product);
+            draw_optional_text_wrapped_value("Paired model", inspector.collision_model);
             draw_optional_text_wrapped_value("Label", inspector.label);
             draw_optional_text_value("Target", inspector.target);
             draw_optional_text_value("Chain target", inspector.chain_target);

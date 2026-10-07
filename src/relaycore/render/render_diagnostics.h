@@ -211,6 +211,11 @@ namespace RelayCore::render
         int authored_line = 0;
         int authored_column = 0;
         glm::vec3 hit_point{};
+        glm::vec3 hit_normal{};
+        bool has_collision_hit = false;
+        std::string collision_layer{};
+        std::string collision_product{};
+        std::string collision_model{};
         glm::vec3 origin{};
         glm::vec3 bounds_mins{};
         glm::vec3 bounds_maxs{};

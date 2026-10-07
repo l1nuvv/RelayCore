@@ -87,6 +87,10 @@ target_sources(
 target_compile_features(relaygame_runtime PUBLIC cxx_std_20)
 configure_file(game_version.h.in generated/relaygame/game_version.h @ONLY)
 target_include_directories(relaygame_runtime PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/inspect_collision.cmake" CONTENT
+    "set(COLLISION_PROJECT_ROOT [==[${PROJECT_SOURCE_DIR}]==])\nset(COLLISION_BUILD_ROOT [==[${PROJECT_BINARY_DIR}]==])\nset(COLLISION_COMPILER [==[$<TARGET_FILE:relaycore_collision_compile>]==])\ninclude([==[${PROJECT_SOURCE_DIR}/cmake/check_collision_assets.cmake]==])\n")
+set_source_files_properties(level_editor_tools.cpp PROPERTIES COMPILE_DEFINITIONS
+    "RELAYCORE_INSPECT_CMAKE=\"${CMAKE_COMMAND}\";RELAYCORE_INSPECT_COLLISION_SCRIPT=\"${CMAKE_CURRENT_BINARY_DIR}/generated/inspect_collision.cmake\"")
 
 target_include_directories(relaygame_runtime PUBLIC ${PROJECT_SOURCE_DIR}/src)
 

@@ -332,7 +332,7 @@ namespace RelayGame
     auto GameWorldRuntime::build_live_inspector_diagnostics() const -> RelayCore::render::InspectorDiagnostics
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::live_inspector_diagnostics_build");
-        return RelayGame::build_world_inspector_diagnostics(
+        auto diagnostics = RelayGame::build_world_inspector_diagnostics(
             level_,
             doors_,
             triggers_,
@@ -341,6 +341,19 @@ namespace RelayGame
             player_controller_.eye_position_world(),
             player_controller_.view_forward()
         );
+        if (physics_fixture_)
+        {
+            const auto hit = physics_fixture_->raycast(
+                player_controller_.eye_position_world(),
+                player_controller_.view_forward(),
+                24.0F
+            );
+            if (hit && hit->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh
+                && (!diagnostics.has_pick || hit->distance < diagnostics.distance))
+                diagnostics =
+                    build_collision_inspector_diagnostics(level_, *hit, *physics_fixture_->object_bounds(hit->object));
+        }
+        return diagnostics;
     }
 
     auto GameWorldRuntime::build_inspector_diagnostics() const -> RelayCore::render::InspectorDiagnostics

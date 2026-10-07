@@ -1,7 +1,9 @@
 #include "relaycore/core/paths.h"
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/render/static_model.h"
 #include "relaygame/level_editor_document.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/static_props.h"
 
 #include <algorithm>
 #include <cmath>
@@ -162,6 +164,7 @@ namespace RelayGame
         auto& entity = level_.entities[selection_->index];
         if (enabled)
         {
+            entity.properties.erase("collision_asset");
             const auto box = model_bounds_.at(entity.properties.at("model"));
             const auto encode = [](glm::vec3 v) {
                 return std::to_string(v.x) + ' ' + std::to_string(v.y) + ' ' + std::to_string(v.z);
@@ -172,6 +175,26 @@ namespace RelayGame
         } else
             for (const char* key : {"collision_mins", "collision_maxs", "collision_material"})
                 entity.properties.erase(key);
+        changed();
+    }
+
+    void LevelEditorDocument::set_model_collision_asset(const std::string& reference)
+    {
+        if (!selection_ || !selection_->entity || level_.entities[selection_->index].classname != "prop_static")
+            return;
+        auto candidate = level_;
+        auto& properties = candidate.entities[selection_->index].properties;
+        for (const char* key : {"collision_mins", "collision_maxs", "collision_material", "collision_asset"})
+            properties.erase(key);
+        if (!reference.empty())
+            properties["collision_asset"] = reference;
+        for (const auto& prop : build_static_props(candidate))
+            if (prop.authored_entity_index == static_cast<int>(selection_->index) && !prop.collision_product.empty())
+                static_cast<void>(
+                    RelayCore::physics::read_collision_asset(prop.collision_product, properties.at("model"))
+                );
+        checkpoint();
+        level_ = std::move(candidate);
         changed();
     }
 

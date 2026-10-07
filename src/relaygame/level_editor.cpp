@@ -3,12 +3,14 @@
 #include "relaycore/app/engine_services.h"
 #include "relaycore/app/frame_timer.h"
 #include "relaycore/core/profiling.h"
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaycore/world/surface_material_utils.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/save_game.h"
+#include "relaygame/static_props.h"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -124,6 +126,10 @@ namespace RelayGame
     void LevelEditor::shutdown() noexcept
     {
         scene_.shutdown();
+        collision_world_.reset();
+        collision_meshes_.clear();
+        collision_boxes_.clear();
+        collision_preview_valid_ = false;
         active_ = false;
         play_requested_ = false;
         exit_requested_ = false;
@@ -158,6 +164,7 @@ namespace RelayGame
     void LevelEditor::rebuild(RelayCore::EngineServices& services)
     {
         preview_revision_ = document_.revision();
+        collision_preview_valid_ = false;
         rebuild_scene(document_.level(), save_path_, services);
     }
 
@@ -169,6 +176,33 @@ namespace RelayGame
     {
         RELAYCORE_PROFILE_ZONE_N("LevelEditor::rebuild_scene");
         auto session = LevelSessionBuilder{services.config().gameplay}.build(level, path);
+        std::vector<CollisionMeshOverlay> meshes;
+        for (const auto& prop : build_static_props(level))
+            if (!prop.collision_product.empty())
+            {
+                const auto asset = RelayCore::physics::read_collision_asset(
+                    prop.collision_product,
+                    level.entities[static_cast<std::size_t>(prop.authored_entity_index)].properties.at("model")
+                );
+                meshes.push_back(
+                    {RelayCore::physics::transform_collision_triangles(asset.triangles, prop.transform),
+                     prop.authored_entity_index}
+                );
+            }
+        auto boxes = session.world_colliders;
+        for (std::size_t i = 0; i < session.doors.size(); ++i)
+            boxes.push_back(
+                {RelayCore::gameplay::current_door_bounds(session.doors[i]),
+                 RelayCore::SurfaceMaterial::Metal,
+                 {RelayCore::physics::WorldObjectKind::Door, i, session.doors[i].authored_entity_index}}
+            );
+        std::vector<RelayCore::physics::PhysicsMesh> mesh_views;
+        for (std::size_t i = 0; i < meshes.size(); ++i)
+            mesh_views.push_back(
+                {meshes[i].triangles,
+                 {RelayCore::physics::WorldObjectKind::CollisionMesh, i, meshes[i].authored_entity_index}}
+            );
+        auto collision = std::make_shared<RelayCore::physics::PhysicsWorld>(boxes, mesh_views);
         WorldSceneRenderer staged;
         staged.initialize(
             build_prepared_world_scene_data(
@@ -180,6 +214,11 @@ namespace RelayGame
         );
         scene_.shutdown();
         scene_ = std::move(staged);
+        collision_meshes_ = std::move(meshes);
+        collision_boxes_ = std::move(boxes);
+        collision_world_ = std::move(collision);
+        collision_preview_valid_ = true;
+        collision_receipt_.clear();
         doors_ = std::move(session.doors);
         usables_ = std::move(session.usables);
         turrets_ = std::move(session.combat.turrets);
@@ -247,6 +286,56 @@ namespace RelayGame
         auto& camera = services.camera();
         auto* draw = ImGui::GetForegroundDrawList();
         draw->PushClipRect({panel_width_, 0}, ImGui::GetIO().DisplaySize, true);
+        if (collision_debug_visible_ && collision_preview_valid_)
+        {
+            const auto line = [&](glm::vec3 a, glm::vec3 b, ImU32 color, float width = 1.0F) {
+                const auto first = project(a, camera), second = project(b, camera);
+                if (first && second)
+                    draw->AddLine(*first, *second, color, width);
+            };
+            const auto selected = document_.selection();
+            for (const auto& mesh : collision_meshes_)
+                for (const auto& triangle : mesh.triangles)
+                {
+                    const bool picked =
+                        selected && selected->entity && static_cast<int>(selected->index) == mesh.authored_entity_index;
+                    const auto color =
+                        picked                                                   ? IM_COL32(255, 255, 255, 255)
+                        : triangle.surface == RelayCore::SurfaceMaterial::Hazard ? IM_COL32(255, 80, 80, 255)
+                        : triangle.surface == RelayCore::SurfaceMaterial::Tile   ? IM_COL32(255, 220, 80, 255)
+                                                                                 : IM_COL32(255, 150, 70, 255);
+                    line(triangle.a, triangle.b, color, picked ? 2.0F : 1.0F);
+                    line(triangle.b, triangle.c, color, picked ? 2.0F : 1.0F);
+                    line(triangle.c, triangle.a, color, picked ? 2.0F : 1.0F);
+                }
+            for (const auto& box : collision_boxes_)
+                for (int corner = 0; corner < 8; ++corner)
+                    for (int axis = 0; axis < 3; ++axis)
+                        if (!(corner & (1 << axis)))
+                        {
+                            glm::vec3 a{}, b{};
+                            for (int component = 0; component < 3; ++component)
+                            {
+                                a[component] =
+                                    corner & (1 << component) ? box.bounds.maxs[component] : box.bounds.mins[component];
+                                b[component] = (corner | (1 << axis)) & (1 << component) ? box.bounds.maxs[component]
+                                                                                         : box.bounds.mins[component];
+                            }
+                            line(a, b, IM_COL32(80, 220, 235, 255));
+                        }
+            const auto eye = camera.position(), forward = camera.forward();
+            for (const auto& hit :
+                 {collision_world_->raycast(eye, forward, 24),
+                  collision_world_->cast_box(eye, glm::vec3{.2F}, forward * 24.0F)})
+                if (hit)
+                {
+                    line(hit->position, hit->position + hit->normal * .6F, IM_COL32(100, 255, 100, 255), 3);
+                    if (const auto point = project(hit->position, camera))
+                        draw->AddCircle(*point, 5, IM_COL32(100, 255, 100, 255), 12, 2);
+                }
+            const auto size = ImGui::GetIO().DisplaySize;
+            draw->AddCircle({size.x * .5F, size.y * .5F}, 4, IM_COL32(255, 255, 255, 255), 12);
+        }
         for (std::size_t i = 0; i < document_.level().entities.size(); ++i)
         {
             const auto& entity = document_.level().entities[i];
@@ -399,7 +488,20 @@ namespace RelayGame
             }
         } else if (scene_mouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !handle_clicked)
         {
-            document_.select(document_.pick(camera.position(), mouse_ray(camera)));
+            if (collision_debug_visible_ && collision_preview_valid_)
+            {
+                const auto hit = collision_world_->raycast(camera.position(), mouse_ray(camera), 1000);
+                document_.select(
+                    hit ? std::optional{EditorSelection{
+                              hit->object.kind != RelayCore::physics::WorldObjectKind::Solid,
+                              hit->object.kind == RelayCore::physics::WorldObjectKind::Solid
+                                  ? hit->object.index
+                                  : static_cast<std::size_t>(hit->object.authored_entity_index)
+                          }}
+                        : std::nullopt
+                );
+            } else
+                document_.select(document_.pick(camera.position(), mouse_ray(camera)));
             // Light/spawn markers are selectable even when embedded in geometry.
             for (std::size_t i = 0; i < document_.level().entities.size(); ++i)
             {
@@ -433,6 +535,7 @@ namespace RelayGame
             ImGui::TextWrapped("ПКМ + WASD — полёт; Q/E — вниз/вверх. Shift — быстрее. ЛКМ — выбор. Потяни цветную "
                                "стрелку для перемещения.");
             ImGui::Separator();
+            draw_collision_tools(services);
             if (ImGui::Button("Играть с начала [F11]", {-1, 30}))
                 request_play();
             if (ImGui::Button("Закрыть редактор", {-1, 28}))

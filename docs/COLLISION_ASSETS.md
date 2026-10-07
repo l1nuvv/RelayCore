@@ -29,6 +29,27 @@ timestamp-preserving edits therefore fail with a rebuild diagnostic. A failed co
 product, receipt and staged collision intact. Removed declarations disappear from the runtime manifest and staging.
 Runtime loading needs only the product and expected model reference, with no source/DCC files.
 
+## Editor and inspection
+
+In the existing level workshop, select a `prop_static` and choose **Collision product** or the separate
+box checkbox. Assigning a product validates its model pairing before changing the document and removes
+the box fields; enabling a box removes the product reference. Undo/redo and save/reload preserve this choice.
+
+Enable **Collision overlay / queries** to draw collision over the rendered scene. Boxes are cyan;
+native triangles are orange, tile yellow and hazard red; selected mesh triangles are white.
+The panel casts a 24 m ray and an axis-aligned box with 0.2 m half extents along the camera forward vector.
+It reports hit position, normal, surface, layer and authored identity. Green markers show contacts/normals;
+**Select hit** or clicking scene collision selects the authored object, including through actual mesh openings.
+An invalid edit disables collision queries/overlay until the preview rebuild succeeds.
+
+For a selected native prop, the panel shows product/model references and transformed collision bounds.
+**Check build receipt / staleness** runs the existing read-only CMake checker on that product, showing
+source, pairing, receipt version and SHA-256 validation, including both staged collision and paired model.
+Repeat the check after external edits. Receipt inspection requires the developer build and checkout;
+missing metadata/tool paths are reported as errors. Ordinary gameplay only loads runtime products.
+The gameplay Inspector also reports native mesh hits, normals, surfaces, bounds and authored source;
+pinned selection can be restored by authored source after reload.
+
 ```powershell
 cmake --build --preset demo-debug --target relaycore_collision_assets relaycore_physics_tests relaycore_physics_fixture -j 2
 ctest --preset test-debug -R '^relaycore\.(physics\.|tooling\.collision_assets$)' --output-on-failure --no-tests=error

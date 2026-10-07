@@ -450,7 +450,8 @@ namespace RelayGame
                 usables_,
                 {},
                 state.primary_source_reference,
-                player_controller_.eye_position_world()
+                player_controller_.eye_position_world(),
+                physics_fixture_.get()
             );
         if (!restored.has_pick)
         {

@@ -3,7 +3,9 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/debug/inspector_source_reference.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/physics/physics_world.h"
 #include "relaycore/world/surface_material_utils.h"
+#include "relaygame/static_props.h"
 
 #include <algorithm>
 #include <cctype>
@@ -565,6 +567,42 @@ namespace RelayGame
         }
     } // namespace
 
+    auto build_collision_inspector_diagnostics(
+        const RelayCore::BlockoutLevel& level,
+        const RelayCore::physics::WorldQueryHit& hit,
+        const RelayCore::physics::Aabb& bounds
+    ) -> RelayCore::render::InspectorDiagnostics
+    {
+        using namespace RelayCore::physics;
+        RelayCore::render::InspectorDiagnostics result;
+        result.has_pick = true;
+        result.has_collision_hit = true;
+        result.distance = hit.distance;
+        result.hit_point = hit.position;
+        result.hit_normal = hit.normal;
+        result.bounds_mins = bounds.mins;
+        result.bounds_maxs = bounds.maxs;
+        result.material = material_label(hit.surface);
+        result.collision_layer = query_layer(hit.object.kind) == WorldQueryMask::Doors ? "Doors" : "Static";
+        result.object_kind = hit.object.kind == WorldObjectKind::CollisionMesh  ? "collision_mesh"
+                             : hit.object.kind == WorldObjectKind::PropCollider ? "prop_collider"
+                             : hit.object.kind == WorldObjectKind::Door         ? "door"
+                                                                                : "solid";
+        if (hit.object.kind == WorldObjectKind::Solid)
+            assign_solid_source(result, level, hit.object.index);
+        else if (const auto* entity = try_get_entity_by_index(level, hit.object.authored_entity_index))
+        {
+            assign_entity_source(result, level, *entity, static_cast<std::size_t>(hit.object.authored_entity_index));
+            result.has_origin = true;
+            result.origin = entity->origin;
+            if (const auto* product = find_entity_property(*entity, "collision_asset"))
+                result.collision_product = *product;
+            if (const auto* model = find_entity_property(*entity, "model"))
+                result.collision_model = *model;
+        }
+        return result;
+    }
+
     auto build_world_inspector_diagnostics(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
@@ -753,7 +791,8 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
         const std::string_view object_kind,
         const std::string_view primary_source_reference,
-        const glm::vec3& eye_position
+        const glm::vec3& eye_position,
+        const RelayCore::physics::PhysicsWorld* physics
     ) -> RelayCore::render::InspectorDiagnostics
     {
         RELAYCORE_PROFILE_ZONE_N("WorldInspector::find_by_authored_source");
@@ -761,6 +800,36 @@ namespace RelayGame
         if (primary_source_reference.empty())
         {
             return {};
+        }
+
+        if (physics && (object_kind.empty() || object_kind == "collision_mesh"))
+        {
+            const auto props = build_static_props(level);
+            for (std::size_t i = 0; i < props.size(); ++i)
+            {
+                const RelayCore::physics::WorldObjectId object{
+                    RelayCore::physics::WorldObjectKind::CollisionMesh,
+                    i,
+                    props[i].authored_entity_index
+                };
+                const auto bounds = physics->object_bounds(object);
+                if (!bounds)
+                    continue;
+                const auto center = bounds_center(*bounds);
+                RelayCore::physics::WorldQueryHit hit{
+                    .distance = glm::length(center - eye_position),
+                    .position = center,
+                    .object = object
+                };
+                auto diagnostics = build_collision_inspector_diagnostics(level, hit, *bounds);
+                diagnostics.has_collision_hit = false;
+                diagnostics.material.clear();
+                if (RelayCore::debug::build_primary_inspector_source_reference(diagnostics) == primary_source_reference)
+                {
+                    diagnostics.pinned = true;
+                    return diagnostics;
+                }
+            }
         }
 
         for (std::size_t usable_index = 0; usable_index < usables.size(); ++usable_index)

@@ -4,7 +4,7 @@
 
 План следующего цикла актуализирован 2026-09-28 по текущему рабочему дереву: раздел 7, блок «Следующий цикл — от полигона к новому эпизоду». Исходный baseline и журнал ниже сохранены как история. Новые задачи описывают рекомендованный порядок; этот запрос на план не запускает их реализацию.
 
-Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; по последующему поручению выполнен E-010/N4.1, общие world queries поверх AABB. E-011/N4.2 выполнен: изолированный Jolt fixture. E-012/N4.3 выполнен 2026-10-07: native collision product и staging. Следующая инженерная задача — E-013/N4.4, movement/query parity; далее диагностика и игровой участок G-012. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
+Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; E-010/N4.1 дал общие world queries поверх AABB, E-011/N4.2 — изолированный Jolt fixture. E-012–E-014 выполнены 2026-10-07: collision products/staging, native movement/gameplay parity и editor collision inspection. Следующая инженерная задача — игровой участок G-012/N4.6. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
 
 ## 1. Назначение и порядок использования
 
@@ -237,8 +237,8 @@ E-001 ускоряет настройку, но его задержка не з�
 | 33 | E-011 / N4.2 | Jolt static world на изолированном fixture | Engine/physics | P2 | done |
 | 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | done |
 | 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | done |
-| 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | ready |
-| 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | pending |
+| 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | done |
+| 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | ready |
 | 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | deferred |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
@@ -1111,15 +1111,29 @@ Evidence: `build/msvc-debug/e013-before.xml`, `e013-runtime.xml` (184 passed, п
 
 #### E-014 — collision authoring/debug и asset inspection, N4.5
 
-**Статус / приоритет / объём:** `ready` / P2 / S–M. **Зависимость:** E-012/E-013 выполнены; базовая диагностика доступна уже в E-011.
+**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-012/E-013 выполнены; базовая диагностика доступна уже в E-011.
 
 Расширить существующий editor/inspector: render/collision overlay, ray/shape hit и normal, surface/layer, выбранный collision объект и authored identity. Показать source/product/bounds/receipt version и ошибки pairing/staleness. Не создавать отдельный physics editor. Typed property schema вводить локально только при подтверждённой дублирующейся валидации/controls новых collision полей; общая reflection/schema миграция не входит в ticket.
 
 **Готово, когда:** известный проём и неверно назначенная collision/surface видны и диагностируются; editor save/undo/preview/reload сохраняют product references. Проверены targeted editor/content tests и просмотр overlay на fixture; bake/lighting не перезапускаются без изменения их inputs.
 
+**Выполнено 2026-10-07:** в существующую мастерскую добавлены выбор native collision product и взаимно исключающий AABB, проверка pairing до изменения документа, undo/redo/save/reload. Overlay рисует boxes и transformed mesh triangles поверх render scene, выделяет выбранный collider и поверхности; ray и box sweep показывают hit/normal/surface/layer/authored identity. Выбор щелчком использует collision geometry и сохраняет реальный проём. При невалидном edit устаревший collision preview выключается. Gameplay Inspector показывает native mesh hits и восстанавливает pin по authored source после reload.
+
+Для выбранного prop доступны product/model/world bounds и read-only проверка build receipt: source, version, SHA-256 source/compiler/rule/declaration/model/product, staged collision и paired model. Использован текущий CMake checker, без второго hashing/receipt формата; проверка запускается по кнопке и требует developer build/checkout. Runtime geometry не требует source/CMake. Отдельный physics editor, reflection/schema framework и новые зависимости не добавлялись. Workflow — [COLLISION_ASSETS.md](COLLISION_ASSETS.md#editor-and-inspection).
+
+**Проверки:** Debug configure и build physics/game_lifecycle/tests/content_validation/demo успешны. Финальный targeted прогон — 106/106: 38 unit, 33 physics, 33 content, tooling и реальный SDL/Vulkan lifecycle. Новые tests проверяют opening, mesh bounds, metal/tile, normal/layer/authored source, pin restoration, shape hit, atomic assignment/pairing errors и undo/save/reload. Tooling проверяет receipt inspection, неизвестный product, timestamp-preserving stale source и повреждённую staged paired model. Lifecycle проверяет collision picking и сохранение native references; просмотрены GPU captures opening/support/selected.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_physics_tests relaycore_irradiance_bake -j 1
+cmake --build --preset demo-debug --target relaycore_game_lifecycle relaycore_tests relaycore_content_validation relaycore_demo -j 1
+ctest --preset test-debug -R '^(relaycore\.physics\.|relaycore\.tooling\.collision_assets$|relaycore\..*(editor|inspector|level session|prop|native irradiance products reject stale)|validation\.|graphics\.game_lifecycle$)' --output-on-failure --no-tests=error --output-junit e014-runtime.xml
+```
+
+Evidence: `build/msvc-debug/e014-runtime.xml`, focused `e014-focused.xml`, `e014-tooling.xml`; `tests/editor_collision_opening.bmp`, `editor_collision_support.bmp`, `editor_collision_selected.bmp`. Проверки выполнены в VS developer environment вне sandbox. Прежний native_lab rcprobe переиспользован при неизменных lighting inputs через Ninja restat; SHA-256 `3FFF895E93CB32BABB7A2F3B9F166A26C9BDB69F8A25E3ACFD178DB7E5E7FD5B` сохранён, fingerprint/staleness regression прошёл. Bake и ZIP не запускались. ASan/optimized/full graphics suite, человеческий проход и performance в E-014 не проверялись. G-012 ready; G-011/H-008/H-009 сохраняют статусы.
+
 #### G-012 — короткий игровой участок с native collision, N4.6
 
-**Статус / приоритет / объём:** `pending` / P2 / M. **Зависимость:** E-013/E-014. Использовать результаты G-011, когда они доступны; ранее отложенный playtest не блокирует независимую техническую работу по поручению автора.
+**Статус / приоритет / объём:** `ready` / P2 / M. **Зависимость:** E-013/E-014 выполнены. Использовать результаты G-011, когда они доступны; ранее отложенный playtest не блокирует независимую техническую работу по поручению автора.
 
 Проверить новую world capability в одном коротком участке: геометрия с полезным проёмом/неправильной формой, существующие turret/rover и два оружия, interaction/objective и save/continue, текущие materials/HDR/probes. Выбрать случай, где общий AABB действительно мешает проходу или линии огня. Не создавать новую кампанию, противника или navmesh ради демонстрации. Art direction — по действующему документу/навыку при authoring.
 
@@ -1149,7 +1163,7 @@ Evidence: `build/msvc-debug/e013-before.xml`, `e013-runtime.xml` (184 passed, п
 
 #### Проверки и порядок следующей работы
 
-Ближайшее продуктовое действие — первый проход G-011 новым игроком без подсказок по [протоколу](playtests/G-011-2026-09-29.md), когда автор возобновит отложенную проверку. При продолжении инженерного плана следующая ready задача — E-014/N4.5: collision authoring/debug после выполненных E-010–E-013, затем игровой consumer G-012. G-009 принята, G-010 отложена, native slices N1–N3 выполнены. Объёмы S/M/L — относительные; календарные сроки до испытаний не оценены.
+Ближайшее продуктовое действие — первый проход G-011 новым игроком без подсказок по [протоколу](playtests/G-011-2026-09-29.md), когда автор возобновит отложенную проверку. При продолжении инженерного плана следующая ready задача — G-012/N4.6: короткий игровой участок с native collision после выполненных E-010–E-014. G-009 принята, G-010 отложена, native slices N1–N3 выполнены. Объёмы S/M/L — относительные; календарные сроки до испытаний не оценены.
 
 Для authoring начинать с `relaycore_level_check` и `validation-debug`. Для оружия/AI — ближайшие combat/enemy/input/save tests, затем content и затронутые lifecycle/graphics. Команды и существующие presets приведены в разделе 9; configure/build выполнять в VS developer environment с корректным `VCPKG_ROOT`. Ручные критерии не заменять автотестами. Каждый implementation ticket заканчивать обновлением статуса, evidence и `git diff --check`.
 

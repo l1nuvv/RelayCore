@@ -1,7 +1,9 @@
+#include "relaycore/debug/inspector_source_reference.h"
 #include "relaycore/physics/physics_world.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/level_editor_document.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/world_inspector.h"
 
 #include <doctest/doctest.h>
 
@@ -11,6 +13,95 @@
 
 using namespace RelayCore;
 using namespace RelayCore::physics;
+
+TEST_CASE("native collision inspector distinguishes opening surfaces shape hits and authored identity")
+{
+    test::ScopedTempDirectory temp;
+    test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto map = temp.path() / "inspect.toml";
+    test::write_native_collision_fixture(map);
+    core::EngineConfig config;
+    const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(map);
+    const auto& world = *session.physics_fixture;
+    CHECK_FALSE(world.raycast({0, 1, 0}, {0, 0, 1}, 4));
+    const auto support = world.raycast({1.05F, 1, 0}, {0, 0, 1}, 4);
+    REQUIRE(support);
+    const auto bounds = world.object_bounds(support->object);
+    REQUIRE(bounds);
+    CHECK(bounds->mins.z == doctest::Approx(2.55F));
+    CHECK(bounds->maxs.y == doctest::Approx(2.76F));
+    const auto info = RelayGame::build_collision_inspector_diagnostics(session.level, *support, *bounds);
+    CHECK(info.has_collision_hit);
+    CHECK(info.object_kind == "collision_mesh");
+    CHECK(info.material == "metal");
+    CHECK(info.collision_layer == "Static");
+    CHECK(info.hit_normal.z == doctest::Approx(-1));
+    CHECK(info.authored_index == 2);
+    CHECK(info.has_authored_location);
+    CHECK(info.collision_product == "collision/lab_bench.rccollision");
+    CHECK(info.collision_model == "models/lab_bench.rcmodel");
+    const auto restored = RelayGame::find_world_inspector_diagnostics_by_authored_source(
+        session.level,
+        session.doors,
+        session.triggers,
+        session.usables,
+        "collision_mesh",
+        debug::build_primary_inspector_source_reference(info),
+        {0, 1, 0},
+        &world
+    );
+    CHECK(restored.has_pick);
+    CHECK(restored.pinned);
+    CHECK(restored.authored_index == 2);
+    CHECK(restored.collision_product == info.collision_product);
+    CHECK_FALSE(restored.has_collision_hit);
+    const auto top = world.raycast({0, 2.6F, 0}, {0, 0, 1}, 4);
+    REQUIRE(top);
+    CHECK(RelayGame::build_collision_inspector_diagnostics(session.level, *top, *bounds).material == "tile");
+    CHECK_FALSE(world.cast_box({0, 1, 0}, glm::vec3{.2F}, {0, 0, 4}));
+    REQUIRE(world.cast_box({1.05F, 1, 0}, glm::vec3{.2F}, {0, 0, 4}));
+    CHECK(world.cast_box({1.05F, 1, 0}, glm::vec3{.2F}, {0, 0, 4})->object == support->object);
+    CHECK_FALSE(world.object_bounds({WorldObjectKind::CollisionMesh, 999, 2}));
+}
+
+TEST_CASE("editor switches collision products atomically and preserves references through undo save and reload")
+{
+    test::ScopedTempDirectory temp;
+    test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto map = temp.path() / "authoring.toml";
+    test::write_native_collision_fixture(map);
+    core::EngineConfig config;
+    RelayGame::LevelSessionBuilder builder{config.gameplay};
+    RelayGame::LevelEditorDocument document;
+    document.reset(builder.build(map).level);
+    document.select(RelayGame::EditorSelection{true, 2});
+    document.set_model_collision(true);
+    CHECK_FALSE(document.level().entities[2].properties.contains("collision_asset"));
+    CHECK(document.level().entities[2].properties.contains("collision_mins"));
+    document.undo();
+    CHECK(document.level().entities[2].properties.contains("collision_asset"));
+    document.redo();
+    document.set_model_collision_asset("collision/lab_bench.rccollision");
+    CHECK_FALSE(document.level().entities[2].properties.contains("collision_mins"));
+    const auto revision = document.revision();
+    CHECK_THROWS(document.set_model_collision_asset("collision/missing.rccollision"));
+    CHECK_THROWS(document.set_model_collision_asset("../lab_bench.rccollision"));
+    CHECK(document.revision() == revision);
+    document.set_model_collision_asset({});
+    CHECK_FALSE(document.level().entities[2].properties.contains("collision_asset"));
+    document.undo();
+    const auto edited = temp.path() / "saved.toml";
+    document.save(edited);
+    const auto reloaded = builder.build(edited);
+    REQUIRE(reloaded.physics_fixture);
+    CHECK(reloaded.level.entities[2].properties.at("collision_asset") == "collision/lab_bench.rccollision");
+    CHECK_FALSE(reloaded.physics_fixture->raycast({0, 1, 0}, {0, 0, 1}, 4));
+    document.set_property("model", "models/service_cylinder.rcmodel");
+    CHECK_THROWS_WITH(
+        document.set_model_collision_asset("collision/lab_bench.rccollision"),
+        doctest::Contains("collision/model pairing differs; rebuild assets or fix reference")
+    );
+}
 
 TEST_CASE("native collision session preserves transforms pairing editor data and safe spawns")
 {

@@ -21,14 +21,21 @@ function Reject-Build([string]$Expected) {
     $output = (& $CMake --build $build --target staged_assets 2>&1) -join "`n"
     Assert ($LASTEXITCODE -ne 0 -and $output.Contains($Expected)) "Expected '$Expected', got: $output"
 }
-function Check-Collision([bool]$MustFail = $false) {
+function Check-Collision([bool]$MustFail = $false, [string]$InspectName = '') {
+    $inspectArgs = @()
+    if ($InspectName) { $inspectArgs += "-DCOLLISION_INSPECT_NAME=$InspectName" }
     $output = (& $CMake "-DCOLLISION_PROJECT_ROOT=$fixture" "-DCOLLISION_BUILD_ROOT=$build" `
         "-DCOLLISION_COMPILER=$build/relaycore_collision_compile.exe" "-DCOLLISION_RUNTIME_ASSETS=$runtime" `
-        -P "$fixture/cmake/check_collision_assets.cmake" 2>&1) -join "`n"
+        @inspectArgs -P "$fixture/cmake/check_collision_assets.cmake" 2>&1) -join "`n"
     if ($MustFail) {
         Assert ($LASTEXITCODE -ne 0) 'Stale collision was accepted.'
     } else {
         Assert ($LASTEXITCODE -eq 0) "Collision check failed: $output"
+        if ($InspectName) {
+            Assert ($output.Contains('Receipt version: 1')) 'Inspector omitted receipt version.'
+            Assert ($output.Contains("Source: content/collision/$InspectName.toml")) 'Inspector omitted source.'
+            Assert ($output.Contains('are current (SHA-256)')) 'Inspector omitted verification result.'
+        }
     }
 }
 try {
@@ -88,6 +95,8 @@ add_dependencies(staged_assets relaycore_model_assets relaycore_collision_assets
     $staged = "$runtime/collision/lab_bench.rccollision"
     $originalHash = (Get-FileHash -LiteralPath $product).Hash
     $originalTime = (Get-Item -LiteralPath $product).LastWriteTimeUtc
+    Check-Collision $false 'lab_bench'
+    Check-Collision $true 'missing'
     Assert (-not (Build-Collision).Contains('Compiling collision')) 'No-op build recompiled collision.'
     Assert ((Get-Item -LiteralPath $product).LastWriteTimeUtc -eq $originalTime) 'No-op build rewrote collision.'
     Remove-Item -LiteralPath $product
@@ -99,6 +108,7 @@ add_dependencies(staged_assets relaycore_model_assets relaycore_collision_assets
     [IO.File]::WriteAllText($source, $originalSource.Replace('surface = "tile"', 'surface = "metal"'))
     (Get-Item -LiteralPath $source).LastWriteTimeUtc = $sourceTime
     Check-Collision $true
+    Check-Collision $true 'lab_bench'
     Reject-Build 'stale or differs'
     (Get-Item -LiteralPath $source).LastWriteTimeUtc = [DateTime]::UtcNow
     Assert ((Build-Collision).Contains('Compiling collision')) 'Source change did not invalidate collision.'
@@ -173,6 +183,10 @@ surface = "metal"
     Check-Collision $true
     Build-Collision | Out-Null
     Check-Collision
+    [IO.File]::AppendAllText("$runtime/models/lab_bench.rcmodel", 'damaged')
+    Check-Collision $true 'lab_bench'
+    Build-Collision | Out-Null
+    Check-Collision $false 'lab_bench'
     [IO.File]::AppendAllText($product, 'damaged')
     Check-Collision $true
     Reject-Build 'stale or differs'
