@@ -41,6 +41,12 @@ namespace RelayGame
         std::size_t closing_door = 0;
     };
 
+    struct MissionRetrySpawn {
+        std::size_t completed_steps = 0;
+        glm::vec3 position{};
+        std::optional<glm::vec2> view_angles{};
+    };
+
     struct LevelSession {
         std::vector<RuntimeEnemy> enemies;
         std::vector<LevelExit> exits;
@@ -61,6 +67,7 @@ namespace RelayGame
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
         RelayCore::gameplay::CombatBuildResult combat{};
         RelayGame::MissionDefinition mission_definition{};
+        std::vector<MissionRetrySpawn> retry_spawns{};
         std::vector<RelayGame::RuntimeAudioZone> audio_zones{};
         std::vector<EnvironmentEffect> environment{};
     };

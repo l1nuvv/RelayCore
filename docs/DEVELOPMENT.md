@@ -299,6 +299,35 @@ clear, UI и presentation/teardown. Исторические GL comparison captu
 
 ## Статические модели: GLB → native product
 
+### Blender: проектные навыки
+
+Навыки установлены локально в `.agents/skills` и хранятся вместе с проектом.
+Начальная точка — [relaycore-blender](../.agents/skills/relaycore-blender/SKILL.md):
+она связывает моделирование, материалы, визуальную проверку и экспорт с правилами
+RelayCore. Состав, исходные версии и локальные адаптации записаны в
+[BLENDER_SOURCES.md](../.agents/skills/BLENDER_SOURCES.md).
+
+Основной путь — установленный Blender и его Python через CLI. MCP, Bun и отдельный
+Python-пакет `bpy` не требуются для моделирования, проверки геометрии и рендера.
+Задайте `$env:BLENDER_EXECUTABLE` для текущего процесса либо найдите `blender` в PATH;
+путь конкретного компьютера не хранится в проекте. Сначала проверьте `--version`.
+В этой установке инструменты проверены с Blender 5.2.2 LTS.
+
+```powershell
+& $env:BLENDER_EXECUTABLE --background --factory-startup --disable-autoexec `
+  --threads 2 --python-exit-code 1 `
+  --python .agents/skills/blender-asset-validation/scripts/inspect_asset.py -- `
+  --input content/models/power_cabinet.glb --output build/blender-review/metrics.json
+```
+
+Проверки и рендеры сохраняйте в `build/blender-review/<asset>/<revision>`;
+воспроизводимые исходники — по существующим соглашениям `scripts` и `content/models`.
+Сравнивайте форму с референсами, открывайте изображения с нескольких ракурсов и
+дорабатывайте конкретные дефекты. Красивый рендер Blender не подтверждает совместимость
+с игровым импортёром: ограничения следующего раздела остаются обязательными.
+
+### Поддерживаемый импорт
+
 `relaycore_model_import` компилирует статический GLB в `.rcmodel`. Поддерживаются
 triangle primitives с POSITION/NORMAL, TEXCOORD_0 для текстур, default scene,
 иерархия и transforms узлов, повторное использование meshes, зеркальные экземпляры,

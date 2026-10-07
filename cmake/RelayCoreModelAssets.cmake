@@ -19,6 +19,10 @@ set(RELAYCORE_MODEL_SOURCES
     surveillance_monitor.glb
     analog_navigation_instrument.glb
     fluorescent_fixture.glb
+    pressure_manifold.glb
+    transfer_cover_casing.glb
+    pressure_control_casing.glb
+    transfer_room_lining.glb
 )
 set(RELAYCORE_MODEL_ASSET_ROOT "${PROJECT_BINARY_DIR}/generated/model-assets")
 set(RELAYCORE_MODEL_RECEIPT_ROOT "${PROJECT_BINARY_DIR}/generated/model-receipts")
@@ -27,7 +31,8 @@ set(model_runtime_paths)
 foreach(name IN ITEMS lab_bench power_cabinet crt_terminal instrument_rack ventilation_unit
         resonance_apparatus facility_sign scientist_hazmat concrete_arch utility_pipe
         lab_notes_board safety_notice lab_accessories control_console lab_microscope
-        lab_multimeter surveillance_monitor analog_navigation_instrument fluorescent_fixture)
+        lab_multimeter surveillance_monitor analog_navigation_instrument fluorescent_fixture
+        pressure_manifold transfer_cover_casing pressure_control_casing transfer_room_lining)
     set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_${name} ON)
 endforeach()
 foreach(source IN LISTS RELAYCORE_MODEL_SOURCES)

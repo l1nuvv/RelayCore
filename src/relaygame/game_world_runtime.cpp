@@ -78,6 +78,7 @@ namespace RelayGame
         loaded_level_turrets_ = std::move(session.combat.turrets);
         loaded_level_hazards_ = std::move(session.combat.hazards);
         loaded_mission_definition_ = std::move(session.mission_definition);
+        retry_spawns_ = std::move(session.retry_spawns);
         audio_zones_ = std::move(session.audio_zones);
         environment_ = std::move(session.environment);
         ending_ = session.ending;

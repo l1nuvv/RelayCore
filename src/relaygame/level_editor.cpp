@@ -212,6 +212,7 @@ namespace RelayGame
             ),
             services.renderer().static_models()
         );
+        services.renderer().prepare_resources(staged.resource_items());
         scene_.shutdown();
         scene_ = std::move(staged);
         collision_meshes_ = std::move(meshes);

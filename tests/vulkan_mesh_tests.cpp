@@ -131,6 +131,84 @@ namespace
         return stats.total.statistics.allocationCount;
     }
 
+    void check_resource_preparation(
+        VulkanMeshRenderer& renderer,
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring
+    )
+    {
+        const auto statistics = [&] {
+            VmaTotalStatistics stats{};
+            vmaCalculateStatistics(device.allocator(), &stats);
+            return stats.total.statistics;
+        };
+        StaticModelCache models;
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/pressure_transfer.toml"));
+        const auto data = RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::legacy_gamma);
+        PerspectiveCamera camera{{.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}}};
+        camera.set_viewport(width, height);
+        uint32_t previous_allocations = 0;
+        VkDeviceSize previous_bytes = 0;
+        for (int cycle = 0; cycle < 3; ++cycle)
+        {
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(data, models);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto viewmodel = scene.prepare_shotgun_viewmodel(camera, 0);
+            std::vector<RenderItem> casters{scene.render_items().begin(), scene.render_items().end()};
+            for (auto& caster : casters)
+            {
+                caster.normal_texture = nullptr;
+                caster.metallic_roughness.reset();
+            }
+            const auto lazy = renderer.render_image(scene.render_items(), camera, width, height, viewmodel);
+            const auto lazy_stats = statistics();
+            renderer.prepare_resources(scene.resource_items());
+            const auto prepared = statistics();
+            std::cout << "pressure_resources: cycle=" << cycle << "; lazy_bytes=" << lazy_stats.allocationBytes
+                      << "; prepared_bytes=" << prepared.allocationBytes << "; allocations=" << prepared.allocationCount
+                      << '\n';
+            renderer.prepare_frame(scene.render_items(), casters, camera, width, height, viewmodel);
+            require(
+                renderer.capture_prepared_image().pixels == lazy.pixels,
+                "Resource preparation changed first-frame pixels"
+            );
+            require(
+                statistics().allocationCount == prepared.allocationCount
+                    && statistics().allocationBytes == prepared.allocationBytes,
+                "Prepared scene/viewmodel still allocated GPU resources while rendering"
+            );
+            if (cycle > 0)
+                require(
+                    prepared.allocationCount == previous_allocations && prepared.allocationBytes == previous_bytes,
+                    "Repeated scene preparation retained obsolete GPU resources"
+                );
+            previous_allocations = prepared.allocationCount;
+            previous_bytes = prepared.allocationBytes;
+            {
+                StaticColorMesh uploaded, invalid;
+                uploaded.initialize(make_color_box_mesh_data());
+                const std::array broken{RenderItem{.mesh = &uploaded}, RenderItem{.mesh = &invalid}};
+                expect_failure(
+                    [&] {
+                        renderer.prepare_resources(broken);
+                    },
+                    "initialized CPU mesh"
+                );
+            }
+            renderer.prepare_resources(scene.resource_items());
+            require(
+                statistics().allocationCount == prepared.allocationCount
+                    && statistics().allocationBytes == prepared.allocationBytes,
+                "Failed resource preparation retained abandoned GPU resources"
+            );
+            require(
+                renderer.render_image(scene.render_items(), camera, width, height, viewmodel).pixels == lazy.pixels,
+                "Failed resource preparation changed the active scene"
+            );
+        }
+    }
+
     void check_pipeline(
         VulkanMeshRenderer& renderer,
 
@@ -2014,7 +2092,8 @@ namespace
         const RenderAuthoringConfig& authoring,
         const std::filesystem::path& captures,
         VulkanSwapchain& swapchain,
-        const RelayCore::Window& window
+        const RelayCore::Window& window,
+        const bool pressure_slice_only = false
     )
     {
         StaticModelCache models{};
@@ -2027,6 +2106,8 @@ namespace
         );
         for (const auto* level_name : {"power_restoration", "pressure_transfer"})
         {
+            if (pressure_slice_only && std::string_view{level_name} != "pressure_transfer")
+                continue;
             const auto level = RelayCore::load_blockout_level(
                 RelayCore::core::asset_path(std::string("levels/") + level_name + ".toml")
             );
@@ -2043,6 +2124,8 @@ namespace
                                                   : std::array{glm::vec3{4.5F, 1.65F, 7}, glm::vec3{0, 1.65F, -3.5F}};
             for (size_t view = 0; view < positions.size(); ++view)
             {
+                if (pressure_slice_only && view != 1)
+                    continue;
                 PerspectiveCamera camera{{.position = positions[view], .target = positions[view] + glm::vec3{0, 0, 1}}};
                 camera.set_viewport(width, height);
                 scene.prepare_render_queue(camera, 0, doors, {}, usables, -1, {}, false);
@@ -2082,6 +2165,8 @@ namespace
             scene.shutdown();
         }
         renderer.set_local_lights({});
+        if (pressure_slice_only)
+            return;
 
         // An OBJ prop under a rotated/nonuniform transform also checks model matrix and normal/atlas conventions.
         PerspectiveCamera camera{{.position = {0, 1.5F, 3}, .target = {0, .5F, 0}}};
@@ -2150,9 +2235,11 @@ int main(int argc, char** argv)
     const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
+    const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
+    const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
-        && !native_hdr && !probes_only && !point_receiver_only)
+        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -2173,7 +2260,18 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (point_receiver_only)
+        if (resources_only)
+        {
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::linear,
+                RendererConfig{}
+            };
+            check_resource_preparation(renderer, device, authoring);
+        } else if (point_receiver_only)
             check_point_shadow_receiver(device, authoring, atlas, captures);
         else if (native_hdr)
             profile_views(device, vk_window, authoring, atlas, true, true);
@@ -2189,7 +2287,19 @@ int main(int argc, char** argv)
             check_irradiance(device, authoring, atlas, captures);
         else if (color_baseline)
             check_color_baseline(device, vk_window, authoring, atlas, captures);
-        else
+        else if (pressure_slice_only)
+        {
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::linear,
+                RendererConfig{}
+            };
+            VulkanSwapchain swapchain{device, vk_window, false};
+            check_world(renderer, authoring, captures, swapchain, vk_window, true);
+        } else
         {
             if (!shadows_only)
                 check_ui(device, vk_window, authoring, atlas, captures);

@@ -134,6 +134,9 @@ int main(int argc, char** argv)
     const bool mounting_views = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--mounting-views";
     });
+    const bool visual_slice = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--visual-slice";
+    });
     const std::string_view workload = transfer ? "pressure_transfer" : "bench_relay";
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
@@ -175,11 +178,26 @@ int main(int argc, char** argv)
                 saves[i].player.view_angles = angles[i];
             }
         }
-        const std::array names = mounting_views ? std::array{"service", "gallery", "notice", "fan"}
-                                                : std::array{"entry", "distance", "cover", "powered"};
-        const std::string capture_directory =
-            transfer ? (mounting_views ? "pressure-mounting-captures" : "pressure-transfer-captures")
-                     : "bench-relay-captures";
+        if (transfer && visual_slice)
+        {
+            const std::array<glm::vec3, 4> positions{{{29, .01F, 28}, {34, .01F, 31}, {37.3F, .01F, 39}, {38, .01F, 42}}
+            };
+            const std::array<glm::vec2, 4> angles{{{.94F, 0}, {1.06F, 0}, {.4F, 0}, {-2.25F, 0}}};
+            const auto powered = saves[3];
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = powered;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
+        const std::array names = visual_slice     ? std::array{"overview", "machinery", "control", "reverse"}
+                                 : mounting_views ? std::array{"service", "gallery", "notice", "fan"}
+                                                  : std::array{"entry", "distance", "cover", "powered"};
+        const std::string capture_directory = transfer ? (visual_slice     ? "pressure-visual-captures"
+                                                          : mounting_views ? "pressure-mounting-captures"
+                                                                           : "pressure-transfer-captures")
+                                                       : "bench-relay-captures";
         std::filesystem::create_directories(capture_directory);
         std::cout << "workload=" << workload
                   << "; resolution=1280x720; vsync=off; hdr=on; pipeline=hardware_srgb; shadows="

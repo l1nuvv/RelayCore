@@ -2,6 +2,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaygame/level_session_builder.h"
 
+#include <array>
 #include <cmath>
 #include <doctest/doctest.h>
 #include <filesystem>
@@ -113,6 +114,94 @@ TEST_CASE("session validation rejects non-finite entity properties")
         static_cast<void>(builder.build(level, "invalid-origin.toml")),
         doctest::Contains("non-finite transform")
     );
+}
+
+TEST_CASE("level session builder resolves mission retry entries and rejects unsafe poses")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::GameplayConfig config;
+    const RelayGame::LevelSessionBuilder builder{config};
+    RelayCore::BlockoutLevel level;
+    level.entities.push_back({.classname = "mission_step", .properties = {{"kind", "zone"}, {"retry_entry", "retry"}}});
+    CHECK_THROWS_WITH(
+        static_cast<void>(builder.build(level, "retry.toml")),
+        doctest::Contains("does not name a level_entry")
+    );
+    level.entities.push_back(
+        {.classname = "level_entry",
+         .origin = {2, .01F, 2},
+         .angles = {180, 15, 0},
+         .has_angles = true,
+         .properties = {{"targetname", "retry"}}}
+    );
+    const auto session = builder.build(level, "retry.toml");
+    REQUIRE(session.retry_spawns.size() == 1);
+    CHECK(session.retry_spawns[0].completed_steps == 1);
+    CHECK(session.retry_spawns[0].position == level.entities[1].origin);
+    REQUIRE(session.retry_spawns[0].view_angles);
+    CHECK(session.retry_spawns[0].view_angles->x == doctest::Approx(glm::radians(-90.0F)));
+    CHECK(session.retry_spawns[0].view_angles->y == doctest::Approx(glm::radians(15.0F)));
+
+    SUBCASE("empty reference")
+    {
+        level.entities[0].properties["retry_entry"] = "";
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build(level, "retry.toml")),
+            doctest::Contains("must name a level_entry")
+        );
+    }
+    SUBCASE("duplicate entry")
+    {
+        level.entities.push_back(level.entities[1]);
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build(level, "retry.toml")),
+            doctest::Contains("Duplicate entity targetname: retry")
+        );
+    }
+    SUBCASE("solid")
+    {
+        level.solids.push_back({{1, 0, 1}, {3, 2, 3}});
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build(level, "retry.toml")),
+            doctest::Contains("intersects solid geometry")
+        );
+    }
+    SUBCASE("door travel")
+    {
+        level.entities.push_back(
+            {.classname = "gameplay_entity",
+             .origin = {4, 1, 2},
+             .properties = {{"kind", "door"}, {"targetname", "gate"}, {"size", "1 2 1"}, {"move_offset", "-4 0 0"}}}
+        );
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build(level, "retry.toml")),
+            doctest::Contains("intersects door geometry")
+        );
+    }
+    SUBCASE("exit")
+    {
+        level.entities.push_back(
+            {.classname = "level_exit",
+             .origin = {2, 0, 2},
+             .properties = {{"next_map", "./next.toml"}, {"next_entry", "in"}, {"size", "2 2 2"}}}
+        );
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build(level, "retry.toml")),
+            doctest::Contains("overlaps a level_exit")
+        );
+    }
+    SUBCASE("native collision")
+    {
+        const std::array triangles{RelayCore::physics::PhysicsTriangle{{1, 0, 2}, {3, 0, 2}, {2, 3, 2}}};
+        const std::array meshes{
+            RelayCore::physics::PhysicsMesh{triangles, {RelayCore::physics::WorldObjectKind::CollisionMesh, 0}}
+        };
+        CHECK_THROWS_WITH(
+            static_cast<void>(builder.build_physics_fixture(level, "retry.toml", meshes)),
+            doctest::Contains("intersects native collision geometry")
+        );
+    }
 }
 
 TEST_CASE("level session builder applies authored spawn view angles")

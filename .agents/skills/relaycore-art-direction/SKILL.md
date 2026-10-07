@@ -9,6 +9,8 @@ Read `docs/ART_DIRECTION.md` relative to the repository root before visual decis
 
 The core direction is a believable late-1980s/1990s scientific-industrial facility first, with a restrained, engineered occult layer second. Gameplay readability governs composition and detail.
 
+When a requested asset needs external materials or models, use `docs/ASSET_SOURCES.md` for task-specific sites, search routes and adaptation guidance. Select sources to fit this art direction and the intended gameplay view.
+
 ## Apply the direction
 
 - Identify the asset category, gameplay purpose, viewing distance, detail budget, and reuse or modularity potential.
@@ -16,6 +18,8 @@ The core direction is a believable late-1980s/1990s scientific-industrial facili
 - Make ordinary construction and room function readable before adding occult elements. Occult devices and symbols should communicate a studied, repeatable function within the facility.
 - Use the document's material, technology, lighting, and signage vocabulary. Named games and the supplied board are references for principles; create original project-specific assets, labels, symbols, and layouts.
 - Scope output to the user's request. The B-17 environment proposal is a reference target, not permission to build a scene or change the roadmap.
+
+For Blender/Python production, also use `relaycore-blender` and its installed modeling, rendering and validation specialists. It owns the staged modeling process; this skill remains the visual authority.
 
 ## Modeling and composition
 

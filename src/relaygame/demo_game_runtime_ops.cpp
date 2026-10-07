@@ -166,6 +166,7 @@ namespace RelayGame::detail
             services.renderer().static_models()
         );
         prepared.runtime.prepare_level_session_activation(services, !services.renderer().ui_available());
+        services.renderer().prepare_resources(prepared.world_scene.resource_items());
         replace_level_session(state, std::move(prepared), services);
         log_level_loaded(services, state.runtime, state.world_scene);
     }
@@ -187,6 +188,7 @@ namespace RelayGame::detail
         try
         {
             staged = prepare_level_reload(services, state.runtime.level_path(), pinned_inspector);
+            staged.renderer.prepare_resources(staged.session.world_scene.resource_items());
             staged.session.runtime.prepare_level_session_activation(services, true, &staged.renderer.config.camera);
 
             services.renderer().commit_live_content_reload(std::move(staged.renderer));

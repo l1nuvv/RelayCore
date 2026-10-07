@@ -6,7 +6,30 @@
 
 Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; E-010/N4.1 дал общие world queries поверх AABB, E-011/N4.2 — изолированный Jolt fixture. E-012–E-014 выполнены 2026-10-07: collision products/staging, native movement/gameplay parity и editor collision inspection. G-012/N4.6 технически выполнен 2026-10-07 и ожидает нового игрока (`awaiting_playtest`); N4 целиком ещё не принят. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
 
-**Продолжение по поручению автора 2026-10-07:** нового игрока и другой ПК временно отложить; развивать текущую игру и движок. E-015/E-017 выполнены, G-013/G-014 технически проверены; следующий implementation ticket — G-015, затем E-018 по измеренным first-use uploads. Обе тактики G-013/G-014 работают с текущим rover, поэтому E-016 остаётся deferred; вернуться к нему только по конкретному воспроизведению в consumer. Подробности — в карточках ниже и текущем цикле `PROJECT_PLAN.md`. Открытая внешняя приёмка сохраняется, но не блокирует этот трек.
+**Продолжение по поручению автора 2026-10-07:** нового игрока и другой ПК временно отложить; развивать текущую игру и движок. E-015/E-017 выполнены, G-013/G-014/G-015 технически проверены; E-018 выполнен с актуальным before/after. Пункты D1/D2 реализованы; следующая работа стратегии — одна содержательная доводка pressure_transfer (D3) по наблюдаемой проблеме. Обе тактики работают с текущим rover, поэтому E-016 остаётся deferred; вернуться к нему только по конкретному воспроизведению в consumer. Подробности — в карточках ниже и текущем цикле `PROJECT_PLAN.md`. Открытая внешняя приёмка сохраняется, но не блокирует независимую разработку.
+
+## Актуальная стратегия и горизонты — 2026-10-07
+
+Первая визуальная итерация по отдельному поручению автора: смешанный зал
+`pressure_transfer`, четыре Blender/native asset семейства, функциональная
+облицовка укрытий, материалы и рабочее освещение. [Brief, сравнение до/после и
+проверки](art/pressure-transfer-visual-slice.md) владеют доказательствами этого
+ограниченного art pass. Gameplay/retry идентичности сохранены; статусы внешнего
+playtest и приёмки другого GPU этим не закрываются.
+
+Полный сохранённый development plan: [PROJECT_PLAN — Development strategy](PROJECT_PLAN.md#development-strategy--2026-10-07). Там находятся current-state map, bottlenecks, варианты стратегии, D1–D5 milestones/tickets/exit criteria, зависимости, technical debt, reconciliation и stop conditions. Этот roadmap остаётся единственным владельцем фактических ticket statuses/evidence; запись стратегии не запускает implementation.
+
+| Horizon | Queue / condition |
+| --- | --- |
+| Active / точка продолжения | После выполненных D1/G-015 и D2/E-018 — выбрать одну наблюдаемую проблему pressure_transfer для D3; фактические ticket statuses ниже |
+| Near-term / NOW | Одна содержательная доводка pressure_transfer по наблюдаемой проблеме; авторское наблюдение retry и встречи |
+| NEXT | Следующий компактный эпизод на existing native kit; измерить production loop и устранить одну повторную ручную операцию |
+| External acceptance | G-011–G-014/H-008/H-009 сохраняют открытые критерии; новый игрок/другой ПК — после возобновления автором; не блокируют независимый engineering track |
+| Long-term capabilities | Navigation, texture products, animation, reflections, Source 2 import — через native consumer и gates architecture/dependency references |
+| Deferred | E-016/G-010 только при воспроизведённом обходе/недостатке угроз; ECS/render graph/bindless/jobs/catalog/rewrite сейчас не входят в очередь |
+| Completed | E-003–E-014/E-015/E-017 и Vulkan migration не реализовывать повторно; история и evidence ниже |
+
+Стратегия: законченные playable iterations плюс минимальная capability под конкретный consumer. Ориентир распределения цикла — 55% gameplay/content/observations, 25% engine, 20% tools/verification. Технические routes/captures не закрывают человеческую приёмку; performance требует measured before/after. Профиль G-014 предшествует последним placement fixes карты; E-018 обновил baseline и записал сопоставимый final capture. Упаковка/публикация остаются только по прямому запросу.
 
 ## 1. Назначение и порядок использования
 
@@ -200,7 +223,7 @@ E-001 ускоряет настройку, но его задержка не з�
 
 Три трека: G — непосредственно gameplay; E — необходимые runtime/tooling capabilities; H — correctness, проверяемость, performance evidence, build и документация.
 
-Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; evidence в `VULKAN_MIGRATION_PLAN.md`. E-003–E-009 дали native model workflow, выбранные materials, HDR и baked diffuse probes. При отложенной автором человеческой проверке инженерное продолжение по поручению — E-010 → E-011 → E-012 → E-013 → E-014 → G-012; E-015/E-017 выполнены, G-013/G-014 технически проверены, далее G-015. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability. Порядковые номера таблицы сохраняют историю, зависимости карточек определяют текущий порядок.
+Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; evidence в `VULKAN_MIGRATION_PLAN.md`. E-003–E-009 дали native model workflow, выбранные materials, HDR и baked diffuse probes. При отложенной автором человеческой проверке инженерное продолжение по поручению — E-010 → E-011 → E-012 → E-013 → E-014 → G-012; E-015/E-017/E-018 выполнены, G-013/G-014/G-015 технически проверены. Следующая работа стратегии — D3, одна наблюдаемая проблема pressure_transfer. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability. Порядковые номера таблицы сохраняют историю, зависимости карточек определяют текущий порядок.
 
 | Порядок | ID | Название | Трек | Priority | Статус |
 | --- | --- | --- | --- | --- | --- |
@@ -246,8 +269,8 @@ E-001 ускоряет настройку, но его задержка не з�
 | 40 | E-016 | Обход препятствий rover под встречу G-013 | Engine/gameplay | P2 | deferred |
 | 41 | G-014 | Native-встреча в существующем эпизоде | Gameplay/authoring | P2 | awaiting_playtest |
 | 42 | E-017 | Переиспользование актуальных irradiance products | Engine/content tooling | P2 | done |
-| 43 | G-015 | Локальный retry смешанной встречи | Gameplay/runtime | P2 | ready |
-| 44 | E-018 | Подготовка GPU-ресурсов до первого игрового кадра | Engine/render | P2 | pending |
+| 43 | G-015 | Локальный retry смешанной встречи | Gameplay/runtime | P2 | awaiting_playtest |
+| 44 | E-018 | Подготовка GPU-ресурсов до первого игрового кадра | Engine/render | P2 | done |
 
 Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
 
@@ -1275,7 +1298,7 @@ $env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets)
 
 #### G-015 — локальный retry смешанной встречи
 
-**Статус / приоритет / объём:** `ready` / P2 / S–M. **Зависимость:** технически проверенный G-014. Следующий implementation ticket; в G-014 не реализован.
+**Статус / приоритет / объём:** `awaiting_playtest` / P2 / S–M. **Зависимость:** технически проверенный G-014. Реализован и технически проверен 2026-10-07; удобство retry человеком остаётся отложенным.
 
 **Основание:** `GameWorldRuntime::respawn_player_at_spawn` всегда возвращает к исходному spawn `(4;2)`, сохраняя inventory, kills и mission progress. После смерти в перепускном зале это повтор пути через уже пройденные встречи; ограничение подтверждено кодом и текущими respawn tests. Потребность — быстрый повтор боевого решения, а не новый save framework. Неприятность/длительность такого возврата человеком пока не измерены.
 
@@ -1283,15 +1306,25 @@ $env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets)
 
 **Техническая приёмка:** повтор обеих тактик, безопасная spawn pose вне native collision/дверей, смерть до/после перепуска, disk continue со смертью и живым игроком, encounter restore и session replacement согласованы. Живой continue сохраняет настоящую позицию; старые сценарии сохраняют своё поведение. Проверки — узкие mission/respawn/save, pressure routes и affected lifecycle. Время человека и удобство retry остаются отложенной приёмкой; ZIP и другой ПК не требуются.
 
+**Результат G-015, 2026-10-07:** необязательный `mission_step.retry_entry` ссылается на существующий `level_entry`. Session builder один раз разрешает pose и проверяет static/native collision, полный ход дверей и exit volumes; отсутствующая/пустая ссылка отклоняется, duplicate targetname проверяет прежняя level validation. После завершения шага входа в mixed hall `pressure_transfer` выбирает `(28;0,01;29)`, yaw к `+Z`. До этого остаётся authored spawn `(4;0,02;2)`. При смерти runtime выбирает pose из восстановленного mission progress; kills/inventory/weapons/devices/mission/enemies не откатываются. Save format не менялся. Живой disk continue и encounter restore сохраняют реальную позицию. Новая authored entry меняет fingerprint карты: сохранения прежней версии `pressure_transfer` требуют нового эпизода по существующему правилу совместимости; user progress не удалялся.
+
+Проверки: missing/empty/duplicate references, solid/door/exit/native collision; смерть до mixed hall, dead disk continue до/после перепуска, live continue, encounter/session replacement, сохранность kills и мёртвых угроз. Обе scripted тактики повторены с фактической retry pose; 120 тиков ожидания после respawn сохраняют здоровье 100. Прежний test_room respawn и bench retry прошли. Итоговые Debug mission/session/save/content и graphics — `build/msvc-debug/e018-final-debug.xml` (36/36 без failures/skips до последней узкой shadow-material правки E-018); финальная дополнительная проверка этой правки описана в E-018. Ранние ошибки fixtures (spawn Y и source/staged path) исправлены, runtime save matching не ослаблен. Человеческое время/удобство остаются открытыми.
+
 #### E-018 — подготовка GPU-ресурсов до первого игрового кадра
 
-**Статус / приоритет / объём:** `pending` / P2 / M. **Зависимость:** измеренный G-014 baseline; реализация после G-015. Отдельный engine consumer — подготовка и повтор новой игровой сессии `pressure_transfer`.
+**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** G-015 технически проверен; актуальный before/after снят 2026-10-07. Отдельный engine consumer — подготовка и повтор новой игровой сессии `pressure_transfer`.
 
 **Основание:** Tracy G-014 показывает максимальный кадр index 0 во всех восьми состояниях: около 80 мс first-use и 13–19 мс последующих сессий. Mesh/texture uploads и upload waits приходятся на этот кадр; GPU scene p99 ≤0,293 мс, queries/frame mean ≤0,00184 мс. Это существующий расход пути подготовки ресурсов, не доказанная регрессия от одной модели. Точные границы/inputs — в [отчёте G-014](profiling/G-014-2026-10-07.md).
 
 Начать с текущих PreparedWorldSceneData/activation и render-owned mesh/texture acquisition. Цель — выполнить необходимые uploads до первого игрового кадра, сохраняя явные ожидания и прежнее владение; время не скрывать и отдельно учитывать loading/transition. Не вводить глобальный asset catalog, render graph, frames-in-flight или новый job/cache framework. Постоянный residency/cache допускается только после доказанного lifetime/invalidation решения; сначала проверить более локальный перенос работы.
 
 **Техническая приёмка:** тот же optimized workload и Tracy before/after отделяют loading, первый кадр, GPU/upload/wait и warm states. Нет missing first-frame resources, stale handles, роста ресурсов при повторных session/menu/editor/failed-prepare rollback. Affected lifetime/graphics/validation checks исполняются без skips; общий startup/loading cost и цена памяти явно отражены. Не заявлять уменьшение полного времени загрузки только потому, что upload перенесён между фазами. H-008 непрерывного эпизода и другой ПК остаются отдельной приёмкой.
+
+**Результат E-018, 2026-10-07:** `WorldSceneRenderer` перечисляет resources всех chunks/props/состояний/viewmodel/FX, renderer выполняет acquisition/uploads/waits до установки сессии, editor rebuild и commit reload/HDR backend. Существующие weak CPU identities, renderer ownership, rollback и очистка expired GPU entries сохранены. Измеренный промежуточный capture обнаружил 19 лишних texture uploads: shadow-caster preparation создавала материалы, хотя opaque depth passes используют только mesh buffers. Финальный shadow preparation готовит только геометрию; новых scheduling/residency frameworks нет.
+
+Сопоставимый optimized workload: 14 161 before / 14 372 final CPU frames. В первом кадре всех восьми состояний и во всех warm frames — 0 mesh/texture uploads и 0 upload waits. Первый process first frame 122,943 → 13,638 мс; последующие session first frames 15,444–19,060 → 2,000–3,633 мс. Loading вырос: full resource set готовится раньше; total loading speedup не заявляется. VMA fixture добавляет 4,996 MiB относительно первого lazy render, затем три повтора сохраняют 323 allocations / 123 730 688 bytes без накопления. Pixel comparison и partial-failure cleanup прошли. Полные settings/intervals/GPU/loading/memory/identities — [отчёт E-018](profiling/E-018-2026-10-07.md).
+
+Проверки: Debug 36/36 targeted unit/content/graphics; после финальной shadow-material правки 6/6 affected graphics с validation. Optimized final — 14/14 pressure content/resource/shadow/lifecycle/HDR/bench/pressure без failures/skips. Check Map `valid=true`, warnings=[]; source и staged map hashes совпадают; обычная optimized игра обновлена. Дополнительный общий `graphics.vulkan_mesh` имеет прежнее расхождение `mesh-reload-0`, воспроизведённое на исходном backend из HEAD с теми же assets; baselines не ослаблялись и полный graphics suite не объявляется зелёным. Подробности и команды в отчёте. Человеческие G-011–G-015 и H-008/другой ПК остаются открытыми.
 
 #### H-008 — актуальный профиль нового маршрута
 
@@ -1311,7 +1344,7 @@ $env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets)
 
 #### Проверки и порядок следующей работы
 
-Автор 2026-10-07 поручил продолжить развитие игры и движка на текущем ПК, временно отложив нового игрока и другой компьютер. E-015/E-017 выполнены, G-013/G-014 технически проверены; следующий implementation ticket — G-015, затем E-018 по измеренным first-use uploads. E-016 нужен только по воспроизведённой потребности consumer; основание и направление в [PROJECT_PLAN](PROJECT_PLAN.md#текущий-цикл--игровая-отдача-native-базы-2026-10-07). Внешние критерии G-011/G-012/G-013/G-014/H-008/H-009 сохраняются открытыми и не блокируют этот implementation track. Возвращаться к протоколам новых игроков только после возобновления проверки автором. G-009 принята, G-010 отложена; scope S/M/L относительный, календарных обещаний нет.
+Автор 2026-10-07 поручил продолжить развитие игры и движка на текущем ПК, временно отложив нового игрока и другой компьютер. E-015/E-017/E-018 выполнены, G-013/G-014/G-015 технически проверены; следующие изменения — D3 по конкретному наблюдению pressure_transfer. E-016 нужен только по воспроизведённой потребности consumer; основание и направление в [PROJECT_PLAN](PROJECT_PLAN.md#текущий-цикл--игровая-отдача-native-базы-2026-10-07). Внешние критерии G-011/G-012/G-013/G-014/G-015/H-008/H-009 сохраняются открытыми и не блокируют независимую разработку. Возвращаться к протоколам новых игроков только после возобновления проверки автором. G-009 принята, G-010 отложена; scope S/M/L относительный, календарных обещаний нет.
 
 Для authoring начинать с `relaycore_level_check` и `validation-debug`. Для оружия/AI — ближайшие combat/enemy/input/save tests, затем content и затронутые lifecycle/graphics. Команды и существующие presets приведены в разделе 9; configure/build выполнять в VS developer environment с корректным `VCPKG_ROOT`. Ручные критерии не заменять автотестами. Каждый implementation ticket заканчивать обновлением статуса, evidence и `git diff --check`.
 

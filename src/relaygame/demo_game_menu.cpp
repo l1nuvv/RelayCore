@@ -84,6 +84,14 @@ namespace RelayGame
                 if (editor_return_)
                     return_scene.emplace(prepare_scene(editor_return_->session.runtime));
             }
+            if (!runtime_.level_path().empty())
+                backend.prepare_resources(world ? world->resource_items() : world_scene_.resource_items());
+            if (editor_.active())
+                backend.prepare_resources(editor_scene ? editor_scene->resource_items() : editor_.resource_items());
+            if (editor_return_)
+                backend.prepare_resources(
+                    return_scene ? return_scene->resource_items() : editor_return_->session.world_scene.resource_items()
+                );
             renderer.commit_live_content_reload(std::move(backend));
             if (world)
                 world_scene_ = std::move(*world);

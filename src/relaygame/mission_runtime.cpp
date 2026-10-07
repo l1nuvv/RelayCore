@@ -189,6 +189,12 @@ namespace RelayGame
             step.kind = parse_step_kind(entity);
             step.title = mission_property_or(entity, "title", "Задача");
             step.detail = mission_property_or(entity, "detail", std::string{});
+            if (const auto* entry = find_mission_property(entity, "retry_entry"))
+            {
+                if (entry->empty())
+                    throw std::runtime_error("mission_step.retry_entry must name a level_entry");
+                step.retry_entry = *entry;
+            }
 
             if (step.kind == MissionStepKind::DoorOpened || step.kind == MissionStepKind::AcquireItem
                 || step.kind == MissionStepKind::ActivateTarget || step.kind == MissionStepKind::SignalTarget)

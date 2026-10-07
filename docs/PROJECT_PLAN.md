@@ -2,9 +2,267 @@
 
 Дата исходного анализа: 2026-09-29. Текущее состояние и порядок актуализированы 2026-10-07; исторические проверки ниже сохранены отдельно.
 
-Это краткий план следующего цикла и инструкция для Codex. Основная очередь и статусы задач остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md); номера M0–M6 ниже обозначают этапы этого документа. ID G/H сохранены из roadmap. План не запускает реализацию автоматически.
+Этот документ хранит стратегию, зависимости, milestones и решения о границах разработки. Актуальный план — раздел [Development strategy](#development-strategy--2026-10-07); нижележащие N0–N8 и M0–M6 сохраняют историю прежнего планирования. Единственная implementation-очередь, фактические статусы tickets и evidence остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md). Запись плана не запускает реализацию автоматически.
+
+## Development strategy — 2026-10-07
+
+### Основание и главный вывод
+
+Стратегический анализ выполнен по чистому рабочему дереву `dev`, commit `c1118a1`. Проверены текущие source/CMake/tests, карты, asset declarations, существующие JUnit reports и runtime captures. Новые build/test/profile/playtest при анализе и записи этого плана не выполнялись. Код, assets, зависимости, версия и release artifacts не менялись.
+
+Рекомендация: **развивать законченные игровые итерации, добавляя engine capabilities только под обнаруженные препятствия**. Ближайший порядок: **G-015 → E-018 → доводка pressure_transfer → следующий компактный эпизод на переиспользуемом контенте**. Новый игрок и другой ПК остаются отложенными по прежнему поручению; внешняя приёмка сохраняется открытой и не блокирует независимую разработку.
+
+Обозначения evidence: **Confirmed** — видно в реализации или указанном отчёте; **Likely** — обоснованный вывод без прямого измерения; **Hypothesis** — требуется runtime, profiling или наблюдение игрока. Оценки стоимости и распределения времени ниже — рекомендации, не измерения.
+
+### Фактическая точка проекта
+
+| Area | Current state / evidence | Limitation / urgency |
+| --- | --- | --- |
+| Lifecycle и ownership | [Application](../src/relaycore/app/application.cpp) владеет SDL/window/renderer/audio/delegate; EngineServices заимствует доступ | Сохранять порядок shutdown и session replacement; нового service framework не нужно |
+| Simulation/input | [FixedSimulationLoop](../src/relaygame/fixed_simulation_loop.h), 120 Hz; discrete actions ждут tick; отдельный ImGui input ownership | Retry/activation проверять на границах состояний |
+| Engine/game | Игра готовит typed runtime collections и render submissions; engine не зависит от game headers | Combat primitives/GameHud специализированы, но feature blocker для массового переноса не установлен |
+| Vulkan | [VulkanDevice](../src/relaycore/render/vulkan_device.cpp), swapchain, VMA, dynamic rendering, synchronization2, timeline uploads, Slang SPIR-V | Migration завершена; API 1.3 недостаточно без требуемого swapchainMaintenance1; другой GPU ещё не принят |
+| Rendering | [WorldSceneRenderer](../src/relaygame/world_scene_renderer.cpp): opaque/overlay/transparent, shadow casters/viewmodel, chunk/frustum culling, transparency sorting | Отдельные draw submissions; measured steady-state scaling bottleneck не установлен |
+| Materials/light | [.rcmodel v3](../src/relaycore/render/model_asset.h): normal/tangents, scalar roughness/metalness; shadows, HDR/tone mapping, SH9 probes | Нет ORM/emissive maps/environment specular; probes используются не всеми игровыми картами |
+| GPU preparation | [VulkanMeshRenderer](../src/relaycore/render/vulkan_mesh_renderer.cpp) приобретает mesh/material и ждёт uploads при первом render | Подтверждённый consumer E-018; NOW |
+| Native pipeline | [20 GLB declarations](../cmake/RelayCoreModelAssets.cmake), importer, versioned products, SHA256 receipts, manifest/staging/cache/reload | Static opaque subset; embedded textures; нет universal catalog/content cache, и пока они не обязательны |
+| Physics | [WorldQuery](../src/relaycore/physics/world_query.h), [PhysicsWorld](../src/relaycore/physics/physics_world.h): AABB плюс opt-in Jolt static meshes/sweeps, independent collision product | Dynamics/CharacterVirtual отсутствуют; useful static Jolt slice уже выполнен |
+| Gameplay | Два оружия, rover/turret/hazards, interaction/mission, death/continue/finale/transitions; [pressure tests](../tests/pressure_transfer_tests.cpp) | Поздний respawn у исходного входа; самостоятельное качество нового эпизода ещё не принято |
+| AI | [Enemy runtime](../src/relaygame/enemy_runtime.cpp): LOS/range, last_seen, Idle/Chasing/Windup/Recovery/Dead | Нет обхода препятствий; текущие две тактики работают, E-016 условный |
+| Authoring/tools | [Editor](../src/relaygame/level_editor_document.h): transforms/properties/placement/browser/links/undo/preview; collision overlay/inspection, CLI checker | Save flatten-ит groups/templates; repository source, staged assets и user copy различаются |
+| Engineering | [Presets](../CMakePresets.json), [tests](../tests/CMakeLists.txt), [CI](../.github/workflows/ci.yml), ASan/clang-tidy/Tracy, release/update tools | GPU CI opt-in; существующие reports не равны новому полному зелёному baseline |
+
+Устойчивая foundation для текущего масштаба: explicit lifecycle, fixed-step/input, prepared session replacement, interaction/combat/mission/save flows, Vulkan cutover и declared native model build/staging. Transitional: сосуществование AABB/OBJ/BMP/native paths, синхронный scene submission, lazy GPU acquisition, string-based authored properties, save fingerprint и editor flattening. Это ограничения, а не автоматическая очередь rewrite.
+
+G-011–G-014 технически реализованы, но человеческая приёмка открыта. Только направления/условная работа: navigation, KTX2/shared textures, animation, dynamics, common catalog/compiler, Source 2 importer. Не предлагать заново Vulkan migration, VMA, Slang, native models, normal maps, HDR, decals, steam/sparks или frustum culling: они уже существуют в ограниченном полезном виде.
+
+### Bottlenecks и баланс engine/game
+
+1. **Player experience подтверждён слабее технической достижимости.** [G-011](playtests/G-011-2026-09-29.md) и [G-012/G-013](playtests/G-012-2026-10-07.md) сохраняют незаполненные человеческие критерии. Scripted routes не доказывают pacing, самостоятельный выбор оружия, читаемость проёма или удовольствие. Эти утверждения остаются Hypothesis.
+2. **Retry и session entry имеют конкретные издержки.** [Respawn](../src/relaygame/game_world_runtime_feedback.cpp) возвращает к исходному spawn при сохранённом progress; [G-014 profile](profiling/G-014-2026-10-07.md) фиксирует first-frame uploads/waits. Это G-015/E-018, а не новый save/renderer framework.
+3. **Повторяемость content production не измерена.** Assets/tools есть, но скорость изготовления следующей комнаты/эпизода и самая дорогая ручная операция неизвестны. Likely следующий прирост — reusable kit и локальное сокращение workflow, не universal editor/database.
+
+Проект сейчас сильнее ограничен game/content iteration, чем отсутствием engine capabilities. Рабочая стратегическая оценка — около двух третей продуктовых/content ограничений и одной трети конкретных engine/workflow ограничений; это не статистика. Native models/static collision перестали быть исходными capability blockers. AI становится blocker только на необходимом layout с воспроизводимым обходом.
+
+### Архитектурные решения
+
+Сохранять ownership Application → subsystems, заимствующий EngineServices, authored → typed session split, renderer-owned GPU resources и Jolt Pimpl. Порядок fixed step существенен: movement/focus/fire → use/triggers → doors → enemy movement/LOS → combat threats → mission/presentation. Первые consumers видят предыдущее завершённое состояние дверей, enemies — обновлённое.
+
+Scene submission завершается до UI, frame backend удерживается через UI reload/present. Это понятный lifetime contract с ограниченным CPU/GPU overlap; E-018 не требует его автоматической замены. Размер GameWorldRuntime сам по себе не доказывает structural blocker.
+
+TOML сохраняется: groups/templates, targets, volumes, entries/exits и native placement достаточны небольшим indoor episodes. Ограничения — flattening, string properties, sequential mission steps и fingerprint-based save compatibility, а не простота синтаксиса. Branching quest graph/GUID migration нужны только под реальное требование.
+
+### Assets, rendering и physics: порядок расширения
+
+```text
+GLB → importer/ModelAssetData → .rcmodel + receipt → manifest/staging
+    → StaticModelCache/immutable CPU resources → renderer-owned GPU uploads
+collision TOML → compiler → independent .rccollision + pairing/receipt
+    → staging → session preparation → PhysicsWorld/WorldQuery
+map/models/materials/grid → fingerprint/baker → .rcprobe → runtime staleness check
+```
+
+Несколько primitives/materials/transforms уже поддержаны. .rcmodel v3 читает также v1/v2. Unsupported skins/animation/morphs/alpha/double-sided/maps диагностируются. Collision не выводится неявно из render triangles. Relative product path — текущая authored asset identity; canonical path/encoding/file metadata — runtime cache key, а не content-addressed compiler cache. Reload следует за build/staging и сохраняет рабочий ресурс при failed preparation.
+
+**Минимальный следующий прирост pipeline:** reusable набор existing props/materials/collision conventions → новая комната через TOML/editor → запись ручных шагов/задержек → одно локальное исправление. E-017 уже переиспользует актуальные irradiance products; старый 202-секундный rebake не оправдывает новый cache framework.
+
+| Direction | Priority / consumer |
+| --- | --- |
+| GPU preparation | NOW: session entry/retry pressure_transfer, E-018 |
+| Lighting/shadows | Сначала authored настройка и наблюдение читаемости угроз/устройств; не новый lighting framework |
+| Decals/FX/transparency | Использовать существующие marks/steam/sparks/sorting; impact visual или native alpha — под конкретный недостаток/asset |
+| ORM/emissive/reflections | Later: один используемый asset не выражается factors/текущим освещением |
+| KTX2/shared textures | Later: compressed/offline mip/HDR/cubemap или measured memory/loading consumer |
+| Skinning/animation | Later: реальный animated enemy/character |
+| Batching/instancing/occlusion/streaming | Только measured scene submission/GPU/memory pressure; shared CPU assets уже есть, instanced GPU draws ещё нет |
+| Shader tooling | Build-time Slang/SPIR-V и rollback; reflection/checks при конкретной interface problem |
+| Render graph/bindless/GPU-driven/async transfer | Сейчас consumer не установлен |
+| Physics | Useful Jolt slice уже выполнен; следующий independent collision product под traversable geometry; dynamics только под игровое взаимодействие |
+
+### Стратегические варианты
+
+| Option | Benefit | Cost/risk | Learning/game value / delayed work |
+| --- | --- | --- | --- |
+| Game-first | Быстрый новый playable content | M–L; обходные решения и session hitch могут сохраниться | Высокая gameplay польза; GPU preparation/workflow позже |
+| Engine-foundation | Rich materials/navigation/texture/renderer capabilities | XL; высокий риск отсутствия consumer | Высокое low-level обучение; приёмка/эпизоды откладываются |
+| Content-pipeline-first | Ускорение export/build/stage/editor | L; риск автоматизировать редкую операцию | Asset/tooling обучение; combat/pacing позже |
+| **Hybrid вокруг эпизода** | Два подтверждённых исправления → content iteration → условная capability | M–L; нужны scope и stop conditions | Связывает C++/Vulkan обучение с игровым результатом |
+
+Выбран Hybrid: одновременно один content consumer и не больше одного обслуживающего capability ticket; новая система не добавляется ради количества. Техническая готовность и человеческая приёмка учитываются отдельно.
+
+### NOW / NEXT / LATER / NOT NOW
+
+**NOW:** D1/G-015 → D2/E-018 → D3/одна содержательная доводка pressure_transfer. **NEXT:** D4/следующий компактный эпизод и измеренный production loop; D5/внешняя приёмка и полный профиль после возобновления проверок. E-016, новый collision product и material slice — условные ветви по consumer.
+
+**LATER:** Recast/Detour, KTX2/shared textures, animation, reflection probes и Source 2 offline import после собственных native-content gates. **NOT NOW:** ECS, service/DI/plugin frameworks, render graph, bindless/GPU-driven/ray tracing, scripting/networking, engine-wide jobs, universal asset database, procedural generation, general dynamics, custom allocator, large rewrite.
+
+### Milestones и impact
+
+D1–D5 — обозначения milestones этого стратегического цикла, не новые ticket IDs и не дублирующие статусы. Impact 0–3 дан в порядке game / engine / iteration / learning. Scope S/M/L относительный, без календарного обещания.
+
+| Milestone | Impact | Cost | Risk | Dependency | Consumer |
+| --- | --- | --- | --- | --- | --- |
+| D1. Локальный retry | 3/1/3/2 | S–M | Medium | Технический G-014 | Смешанная встреча pressure_transfer |
+| D2. GPU preparation | 2/3/2/3 | M | Medium | D1, свежий baseline | Session/reload/transition |
+| D3. Доводка эпизода | 3/1/2/3 | M | Medium | D1; D2 желательно | Игрок pressure_transfer |
+| D4. Повторяемое производство | 3/2/3/3 | L | Medium | Локально принятый D3 | Следующая карта |
+| D5. Приёмка/hardening | 3/2/1/3 | M | Medium | Проходимый эпизод, внешняя доступность | Игрок/целевое оборудование |
+
+### D1 — безопасный локальный retry
+
+**Goal / why now:** после достижения mixed hall смерть возвращает к защищённому подходу; конкретный недостаток исходного respawn уже подтверждён. **Scope/deliverable:** G-015, минимальная authored привязка retry pose к существующим progress/entry data. **Non-goals:** полный rollback, оживление врагов, checkpoint framework, новый save format без необходимости. **Player/developer effect:** меньше повторного маршрута и быстрее проверка боя. **Dependency:** технический G-014.
+
+| Problem → Change → Expected effect → Verification |
+| --- |
+| Respawn только у входа → явный выбор безопасной pose по progress → повтор нужного участка → смерть до/после mixed hall, pose/native collision/door clearance |
+| Save/snapshot/session replacement могут расходиться с retry → согласовать consumers → живой continue сохраняет позицию, мёртвый получает корректный retry → affected mission/respawn/save/lifecycle и обе pressure routes |
+
+**Exit:** состояния согласованы, kills/inventory/devices/mission не откатываются, прежние карты сохраняют поведение. Удобство/длительность retry человеком остаются отдельным наблюдением. **Stop:** не добавлять произвольный checkpoint graph/UI.
+
+Реализация по поручению 2026-10-07: `mission_step.retry_entry` связывает завершённый шаг с существующим `level_entry`; подготовка сессии разрешает и проверяет pose. В `pressure_transfer` шаг входа в mixed hall выбирает защищённый подход `(28;0,01;29)`. Фактические проверки и отложенная человеческая приёмка — в карточке G-015 roadmap.
+
+### D2 — GPU resources до первого игрового кадра
+
+**Goal / why now:** uploads из measured first-frame path выполняются до playable frame; loading cost остаётся видимым. **Scope/deliverable:** E-018 поверх prepared scene и renderer-owned acquisition. **Non-goals:** async streaming, global residency cache, frames-in-flight rewrite, render graph/jobs. **Player/developer effect:** ровнее вход в сессию и явная preparation boundary. **Dependencies:** D1, актуальный baseline.
+
+| Problem → Change → Expected effect → Verification |
+| --- |
+| G-014 capture предшествует placement fixes → повторить тот же workload на текущих inputs → корректная исходная точка → build/map/config identity, loading/first/warm intervals |
+| mesh/material upload происходит при render → подготовить required resources до gameplay → убрать uploads из первого игрового кадра → optimized Tracy same-workload before/after и first-frame completeness |
+| Prepare/replacement может завершиться ошибкой → сохранить lifetime/rollback → нет stale handles/накопления → repeated menu/editor/reload/session, failed-prepare, affected graphics/validation без skips |
+
+**Exit:** required uploads отсутствуют в первом playable frame, visual/lifetime/rollback сохранены; loading/memory cost явно записаны. **Stop:** не менять steady-state scheduling без нового measured bottleneck; перенос затрат не называть сокращением total load time.
+
+Реализация по поручению 2026-10-07: сцена перечисляет mesh/material resources независимо от visibility и игрового состояния; renderer-owned acquisition выполняется до установки игровой/editor-сессии и commit нового backend при reload/HDR. Existing weak CPU identities и очистка expired GPU resources сохранены. Before/after и границы проверки — в [отчёте E-018](profiling/E-018-2026-10-07.md); фактический статус принадлежит roadmap.
+
+### D3 — содержательная доводка pressure_transfer
+
+**Goal / why now:** вход, три роли встреч, перепуск, выход и retry образуют понятный короткий опыт; новая native-встреча уже интегрирована. **Scope/deliverable:** одна серия наблюдений и небольшие layout/feedback/presentation changes. **Non-goals:** новая карта/оружие/enemy и увеличение времени пустыми переходами. **Player/developer effect:** читаемые решения и evidence для следующей capability. **Dependencies:** D1; D2 желательно.
+
+| Problem → Change → Expected effect → Verification |
+| --- |
+| Две scripted траектории не доказывают человеческий выбор → авторский проход с записью выбора оружия/позиции → найти реальную проблему → время, смерти, пропущенные cues, interventions |
+| Выявлено главное затруднение → изменить одну причину: sightline/cue/placement/timing → улучшить конкретное решение → повтор того же сценария и affected content/graphics |
+| Сила реакции мира неизвестна → проверить существующие свет/вентилятор/ambient/exit cues, при нужде согласовать → заметный перепуск → observation before/after, save/continue, реальное прослушивание audio |
+
+**Exit:** автор явно принимает локальную итерацию, существенная обнаруженная проблема исправлена; G-011/G-014 независимая приёмка остаётся открытой при отложенном новом игроке. **Stop:** не расширять systems после принятия выбранного опыта. HUD сейчас объясняет тактику текстом; его избыточность — Hypothesis, не повод автоматически удалять подсказку.
+
+### D4 — повторяемое производство следующего эпизода
+
+**Goal / why now:** следующий компактный episode создаётся existing kit/tools без копирования runtime logic; это проверка зрелости content workflow. **Consumer:** небольшой технический сектор с обзором цели, боковым доступом/коротким обходом, разными дистанциями боя и заметным включением оборудования перед выходом; main mission chain может остаться последовательной. **Scope/deliverables:** blockout, reused kit, 2–3 решения, полный route и production measurements. **Non-goals:** большой editor/schema rewrite и обязательные новые AI/material/physics features. **Player/developer effect:** новый опыт и доказанное reuse. **Dependency:** локально принятый D3.
+
+| Problem → Change → Expected effect → Verification |
+| --- |
+| Reuse не проверен полным новым cycle → собрать blockout из existing props/doors/triggers/enemies → gameplay без нового foundation → Check Map, route, continue/exit |
+| Authoring cost неизвестен → записать export/build/stage/placement/reload и ручные исправления → найти настоящий bottleneck → сопоставимая операция до/после |
+| Операция часто повторяется → локально исправить существующий tool → меньше ручных шагов → повтор task без workaround |
+
+Если необходимый layout требует rover обхода, сначала fixture E-016; затем минимальная navigation capability. Не открывать navmesh заранее и не ограничивать будущий дизайн прямыми коридорами бесконечно.
+
+**Exit:** проходимый новый эпизод, reused gameplay rules, нет ручной правки products, costs записаны. Ускорение заявляется только по сопоставимым измерениям. **Stop:** tooling заканчивается после устранения выбранной операции.
+
+### D5 — приёмка эпизода и measured hardening
+
+**Goal / why now:** accepted playable result с актуальными техническими границами; scripted route/captures не устанавливают самостоятельную понятность. **Scope/deliverables:** human observations, continuous optimized capture, targeted fixes и согласованный другой GPU/ПК. **Non-goals:** обязательный ZIP/публикация/performance rewrite. **Player/developer effect:** проверенный опыт и основание следующего цикла. **Dependencies:** проходимый эпизод, возобновление внешних проверок автором.
+
+| Problem → Change → Expected effect → Verification |
+| --- |
+| Нет blind first-pass evidence → existing protocol → принять/исправить readability/pacing → observations с подсказками/смертями |
+| Профиль локальных состояний не покрывает маршрут → H-008 continuous capture → реальные CPU/GPU/load/query costs → fixed settings, percentiles/spikes |
+| Compatibility только основного GPU → согласованный runtime/validation run → device/presentation и budget evidence → executed checks без skips, hardware/driver |
+
+**Exit:** критерии приняты или конкретные ограничения явно согласованы. H-009 delivery отдельно по запросу candidate/release. **Stop:** исправлять observed/measured проблемы; не превращать hardening в общую portability программу.
+
+### Dependency graph
+
+```text
+Existing Vulkan/native models/static collision
+  → G-015/local retry → E-018/GPU preparation → pressure_transfer iteration
+  → next compact episode → measured production loop → one local tooling fix
+                         ↘ required blocked layout → E-016/navigation fixture
+                         ↘ required shape → next collision product
+                         ↘ required asset semantic → one material/texture slice
+Playable episode → human acceptance when resumed → continuous profile/compatibility
+```
+
+Navigation не требуется retry/текущим двум тактикам; общий catalog не является dependency E-018.
+
+### Existing roadmap reconciliation
+
+| Existing item | Decision | Reason |
+| --- | --- | --- |
+| G-015 / E-018 | KEEP | Подтверждённые consumers; E-018 требует свежего baseline |
+| G-011–G-014 | KEEP | Открытая человеческая приёмка сохраняется |
+| H-008 | MODIFY | G-014 — partial local evidence; full route/другой ПК открыты |
+| H-009 | REORDER | После приёмки/профиля и прямого delivery request |
+| E-016 / G-010 | KEEP deferred | Нужен blocker/недостаток существующих угроз |
+| E-003–E-014 / E-015 / E-017 / VK milestones | KEEP completed | Не повторять implementation; technical gates не закрывают human acceptance |
+| Architecture C/D/E | MODIFY | Многие slices выполнены; broad production capability не объявлять целиком законченной |
+| N5 rich features | MODIFY | По одному consumer, не обязательный комплект систем |
+| N6 catalog/compiler; N7/N8 Source 2/full map | REORDER | После measured pipeline pressure/native-content gates; отдельный research consumer |
+| fastgltf/Jolt/VMA/Slang | KEEP | Реальные foundations |
+| meshoptimizer/KTX2/BLAKE3/zstd | KEEP conditional | Approved direction не означает немедленной интеграции |
+| Обязательная modern renderer rewrite | DROP | Текущий workload этого не требует |
+
+Architecture/capability reference и dependency policy остаются направлениями, не implementation queue. В roadmap отделять Active (один ticket), Near-term (2–3 milestones), Long-term capabilities (ссылки), Deferred (return condition), Completed (history/evidence). Не дублировать там все rationale и статусы в этом документе.
+
+### Meaningful technical debt
+
+| Location / symptom | When it matters | Minimal correction |
+| --- | --- | --- |
+| VulkanMeshRenderer lazy mesh/material uploads | Уже session entry | E-018 |
+| GameWorldRuntime respawn у initial spawn | Уже late encounter retry | G-015 |
+| game_world_runtime_update/player_feedback: audio occlusion/footstep surface смотрят solids/prop AABB, не общий native world | Native floors/walls дают другие surface/occlusion semantics | Перевести конкретный consumer на WorldQuery при появлении |
+| LevelEditorDocument::save flatten-ит groups/templates | Повторное редактирование modular kit | Сначала authoritative source workflow; сохранять grouping при доказанной цене потери |
+| runtime_model/save_game IDs/source/fingerprint | Требование saves через content updates | Explicit compatibility policy; stable authored IDs в owning ticket |
+| Несколько исторических точек продолжения в plans | Агент повторяет закрытую работу | Одна queue; явно отделённая история |
+
+Массовый перенос GameHud/combat, typed entity schema и file splitting не являются отдельной cleanup campaign без feature blocker.
+
+### Performance и engineering evidence
+
+[G-014](profiling/G-014-2026-10-07.md): first frame около 80 мс, следующие first-session frames 13–19 мс; scene GPU p99 ≤0,293 мс; mean queries/frame ≤0,00184 мс, views 77–85 draws. Это 1280×720/VSync off/RTX 4060 Ti local workload, не full-route budget и не measured regression от одной модели. Map hash текущего checkout отличается: placement changes произошли после capture. E-018 нужен актуальный baseline.
+
+Likely future pressure: отдельные draws/descriptors, RGBA residency, scene preparation и более крупные bakes. Theoretical сейчас: custom allocator, async transfer, bindless/meshlets/jobs. Оптимизацию выбирать по attributable measurements.
+
+При анализе прочитаны существующие Debug/optimized mounting reports по 9/9, decals по 2/2, G-014 по 8/8 без skips. Combined E-015/E-017 report содержит один failure ожидания диагностики; final tooling report 1/1 соответствует записанному исправлению. Это scoped historical evidence, не новая полная проверка. GPU CI opt-in и отдельно отклоняет skips; обычный CI не доказывает GPU execution.
+
+Наибольший ROI checks: retry/save/mission, failed preparation/rollback, resource lifetime menu/editor/reload, importer negative/backward cases, collision pairing/transforms, rendered states и реальный audio. Presets/targets брать из текущего CMake; не создавать infrastructure ради coverage. ZIP/release только по прямому запросу.
+
+### Iteration speed и learning
+
+Текущие логические стадии (не stopwatch measurements): gameplay edit/build/tests/runtime — 4; shader edit/compile-stage/reload/view — 4; native texture edit/export-product/stage/reload/view — 4–5; model export/compile/stage/place/collision-view — 5–6; map edit/validate/stage/preview-route — 4–5; collision source/compile-pair/stage/overlay/gameplay — 5. Renderer требует affected GPU/lifetime checks, importer — negative tests и representative product/runtime; full release cycle не нужен.
+
+Обучение: G-015 — state/persistence/ownership; E-018 — Vulkan upload/fence/timeline/lifetime/rollback/profiling; D3 — gameplay observation/controlled iteration; D4 — asset/tooling boundaries/reuse; E-016 при необходимости — nav geometry/path queries; texture slice — color/mips/compression/memory; D5 — CPU/GPU attribution/compatibility/evidence.
+
+Распределение ближайшего цикла: **55% gameplay/content/observations, 25% конкретные engine capabilities, 20% tools/verification/evidence**. Не обязательная дневная пропорция. После NOW ожидаются local retry, prepared GPU resources и более обоснованная встреча; после medium horizon — следующий episode на existing kit и измеренный production loop. Новые AI/KTX2/animation заранее не обещаются.
+
+### Stop conditions и отложенные направления
+
+Asset pipeline останавливается, когда assets consumer воспроизводимо собираются/валидируются/загружаются без ручной правки products. Navigation — после необходимого обхода, door/unreachable behavior и regressions. Materials — на semantics используемого asset. Editor — после выбранной repeated operation. Performance — при выполненном budget workload; перенос времени между фазами не speedup total load.
+
+| Not now | Return condition |
+| --- | --- |
+| ECS/service/DI/plugins, large rewrite | Повторяющийся structural feature blocker, не предпочтение стиля |
+| Render graph | Реальные pass/resource dependencies стали неуправляемыми |
+| Bindless/GPU-driven/instancing overhaul | Measured submission/descriptor scaling pressure |
+| Ray tracing | Конкретный visual consumer и hardware budget |
+| Scripting | Частые content changes требуют повторной C++ runtime logic/rebuild |
+| Networking | Отдельное multiplayer product decision |
+| Engine-wide jobs/custom allocator | Attributed parallel/allocation bottleneck |
+| Universal asset database | Воспроизводимая проблема dependency/reference scale |
+| Full PBR/animation/complex physics | Один используемый material/character/dynamic interaction consumer |
+| Procedural generation | Доказанная replayability/production потребность |
+
+### Три следующих действия
+
+1. G-015: regression case смерти после mixed-hall entry с сохранением kills/mission/inventory, затем безопасная authored retry pose.
+2. E-018: повторить существующий optimized `--pressure-transfer --profile` на текущей карте; отдельно loading/first/warm и identity inputs.
+3. После retry: авторский проход pressure_transfer, запись потери маршрута/выбора оружия/повторного подхода; выбрать одну confirmed gameplay problem.
 
 ## Текущий цикл — игровая отдача native-базы, 2026-10-07
+
+Этот раздел сохраняет основания и последовательность начала цикла. E-015/E-017 и технические G-013/G-014 уже выполнены; актуальный приоритет определяет Development strategy выше и единственная очередь roadmap. Формулировки о первоначальных проблемах ниже относятся к началу цикла.
 
 Автор поручил продолжить развитие игры и движка на текущем ПК, временно отложив нового игрока и другой компьютер. Эти проверки сохраняют прежние открытые критерии, но не блокируют реализацию следующего цикла. Упаковка и публикация в поручение не входят. Статусы и evidence ведутся только в [roadmap](PLAYABLE_SLICE_ROADMAP.md#e-015--surface-aware-impact-feedback-по-потребности-n5).
 
@@ -221,7 +479,9 @@ Importer остаётся tool-only. Source 2/CS2 classes и parser types не �
 
 G-001 остаётся отдельным незавершённым измерением прежнего эпизода и может выполняться независимо. G-010 возвращается только при наблюдаемом недостатке существующих угроз/геометрии. Пока blind playtest и другой GPU отложены, инженерные итерации допускаются; G-011/H-008/H-009 и полную приёмку не закрывать техническими ZIP или авторским подтверждением startup.
 
-### Ближайшая рекомендуемая итерация
+### Историческая точка продолжения после N0/N4
+
+Запись ниже предшествует продолжению E-015/E-017/G-013/G-014. Указания «сейчас нет» и «E-015 deferred» описывают тот момент и не задают текущую очередь; следующий implementation ticket указан в roadmap.
 
 **N0 / интеграционная проверка, 2026-10-07:** прежние import blockers сняты без новых source/content правок. Переиспользованы актуальные optimized products; staging и целевые targets собраны, SHA-256 20 моделей и model/collision pairing проверены. Content/native/collision **58/58**, asset-tooling **2/2**, SDL/Vulkan lifecycle и G-012 **2/2** без пропусков; Check Map valid=true, warnings=0, новые кадры просмотрены. Graphics — `validation=false`, нового профиля нет; Debug bake не завершался. Команды, reports и границы evidence — в [карточке G-012](PLAYABLE_SLICE_ROADMAP.md#g-012--короткий-игровой-участок-с-native-collision-n46). Безусловных implementation tickets с выполненными зависимостями сейчас нет; следующий критерий G-012 — новый игрок, E-015 остаётся условным.
 

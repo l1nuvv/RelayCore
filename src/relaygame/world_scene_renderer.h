@@ -63,6 +63,7 @@ namespace RelayGame
         void initialize(const PreparedWorldSceneData& scene_data, RelayCore::render::StaticModelCache& models);
 
         void shutdown() noexcept;
+        [[nodiscard]] auto resource_items() const -> std::vector<RelayCore::render::RenderItem>;
         [[nodiscard]] auto irradiance() const noexcept
             -> const std::shared_ptr<const RelayCore::render::IrradianceProbeVolume>&
         {

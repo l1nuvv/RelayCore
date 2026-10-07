@@ -480,7 +480,16 @@ namespace RelayGame
     void GameWorldRuntime::respawn_player_at_spawn() noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        player_controller_.initialize(combat_state_.spawn_position, combat_state_.spawn_view_angles);
+        auto position = combat_state_.spawn_position;
+        auto view_angles = combat_state_.spawn_view_angles;
+        const auto progress = mission_runtime_.snapshot().current_step;
+        for (const auto& retry : retry_spawns_)
+            if (progress >= retry.completed_steps)
+            {
+                position = retry.position;
+                view_angles = retry.view_angles;
+            }
+        player_controller_.initialize(position, view_angles);
         player_feedback_.reset();
         RelayCore::gameplay::respawn_player_combat_state(combat_state_.player);
         refresh_runtime_usables_and_focus();

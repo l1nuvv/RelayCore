@@ -27,6 +27,10 @@ namespace RelayGame
         prepare_color_pipeline(RelayCore::render::ColorPipelineMode pipeline, RelayCore::EngineServices& services) const
             -> WorldSceneRenderer;
         void commit_color_pipeline(WorldSceneRenderer scene) noexcept;
+        [[nodiscard]] auto resource_items() const -> std::vector<RelayCore::render::RenderItem>
+        {
+            return scene_.resource_items();
+        }
         [[nodiscard]] auto exit_requested() const noexcept -> bool
         {
             return exit_requested_;

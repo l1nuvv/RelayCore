@@ -61,6 +61,8 @@
 ## Authored content and assets
 
 - For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
+- For Blender/Python modeling, use `.agents/skills/relaycore-blender/SKILL.md` and its installed specialist skills. Review references, proportions, construction, materials and multiple rendered views; a primitive blockout is an intermediate stage unless explicitly requested as the deliverable. Project art direction and native importer constraints take precedence over generic Blender workflows.
+- For external textures, materials, HDRIs and models, follow `docs/ASSET_SOURCES.md` for source sites, task-specific search routes and adaptation checks. The owner intends a private project; do not turn licensing audits or public-release preparation into routine asset-work gates.
 
 ## Build and verification
 

@@ -351,6 +351,84 @@ namespace RelayGame
         return scene_data;
     }
 
+    auto WorldSceneRenderer::resource_items() const -> std::vector<RelayCore::render::RenderItem>
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        RelayCore::render::RenderQueue resources;
+        const auto add_mesh = [&](const auto& mesh) {
+            if (mesh.cpu_data())
+                resources.push(mesh, glm::mat4{1});
+        };
+        for (const auto* mesh :
+             {&door_mesh_,
+              &panel_mesh_,
+              &panel_housing_mesh_,
+              &scientist_thigh_mesh_,
+              &scientist_shin_mesh_,
+              &scientist_shoe_mesh_,
+              &scientist_coat_mesh_,
+              &panel_blocked_mesh_,
+              &panel_highlight_mesh_,
+              &panel_success_mesh_,
+              &panel_warning_mesh_,
+              &pickup_mesh_,
+              &pickup_highlight_mesh_,
+              &inspector_usable_mesh_,
+              &inspector_door_mesh_,
+              &inspector_trigger_mesh_,
+              &inspector_solid_mesh_,
+              &inspector_hit_mesh_,
+              &player_shot_mesh_,
+              &pellet_mesh_,
+              &turret_shot_mesh_,
+              &turret_warning_mesh_,
+              &fan_frame_mesh_,
+              &fan_rotor_mesh_,
+              &steam_mesh_,
+              &spark_mesh_})
+            add_mesh(*mesh);
+        for (const auto& mesh : decal_meshes_)
+            add_mesh(mesh);
+        for (const auto& mesh : lamp_meshes_)
+            add_mesh(mesh);
+        for (const auto& chunk : render_chunks_)
+            add_mesh(chunk.mesh);
+        const auto add_model = [&](const auto& model) {
+            if (model)
+                resources.push(model->mesh, glm::mat4{1}, RelayCore::render::RenderPass::Opaque, &model->texture);
+        };
+        for (const auto* model :
+             {&enemy_model_,
+              &destroyed_enemy_model_,
+              &power_fuse_model_,
+              &shotgun_body_model_,
+              &shotgun_pump_model_,
+              &turret_model_,
+              &destroyed_turret_model_})
+            add_model(*model);
+        for (const auto& prop : props_)
+        {
+            if (prop.asset)
+                for (const auto& part : prop.asset->parts)
+                {
+                    const auto& surface = prop.asset->materials[part.material];
+                    resources.push(
+                        prop.asset->meshes[part.mesh],
+                        glm::mat4{1},
+                        RelayCore::render::RenderPass::Opaque,
+                        &surface.base_color,
+                        true,
+                        surface.normal.cpu_data() ? &surface.normal : nullptr,
+                        surface.normal_scale,
+                        surface.metallic_roughness
+                    );
+                }
+            else
+                add_model(prop.model);
+        }
+        return {resources.items().begin(), resources.items().end()};
+    }
+
     void WorldSceneRenderer::initialize(
         const PreparedWorldSceneData& scene_data,
         RelayCore::render::StaticModelCache& models

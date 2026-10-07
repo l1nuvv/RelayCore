@@ -31,6 +31,7 @@ namespace RelayCore::render
             ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma
         );
         ~VulkanMeshRenderer() noexcept;
+        void prepare_resources(std::span<const RenderItem> items);
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 

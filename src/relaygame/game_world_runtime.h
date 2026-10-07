@@ -436,6 +436,7 @@ namespace RelayGame
         std::vector<RelayGame::RuntimeAudioZone> audio_zones_{};
         std::vector<EnvironmentEffect> environment_{};
         RelayGame::MissionDefinition loaded_mission_definition_{};
+        std::vector<MissionRetrySpawn> retry_spawns_{};
         std::vector<RelayCore::gameplay::RuntimeTurret> loaded_level_turrets_{};
         std::vector<RuntimeEnemy> enemies_;
         std::vector<RelayCore::physics::WorldCollider> enemy_blockers_;

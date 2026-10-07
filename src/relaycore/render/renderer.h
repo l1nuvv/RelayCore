@@ -62,6 +62,7 @@ namespace RelayCore
             render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma;
             std::shared_ptr<render::VulkanMeshRenderer> backend{};
             std::string atlas_source_label{};
+            void prepare_resources(std::span<const render::RenderItem> items);
         };
 
         explicit Renderer(
@@ -90,6 +91,7 @@ namespace RelayCore
         }
 
         void commit_live_content_reload(PreparedLiveContentReload staged_reload);
+        void prepare_resources(std::span<const render::RenderItem> items);
 
         void process_event(const SDL_Event& event);
 

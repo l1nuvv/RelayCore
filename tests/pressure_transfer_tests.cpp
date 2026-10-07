@@ -277,6 +277,7 @@ TEST_CASE("pressure transfer continue and retry preserve pickup device and exit 
         }
         REQUIRE_FALSE(runtime.player_combat_state().alive);
         REQUIRE(runtime.debug_advance_player_respawn(3));
+        CHECK(runtime.debug_player_position() == checkpoint.game.player.position);
         CHECK(runtime.inventory_item_ids() == checkpoint.game.world.inventory_item_ids);
         CHECK(runtime.activated_target_ids() == checkpoint.game.world.activated_target_ids);
         CHECK(runtime.selected_weapon() == checkpoint.game.world.selected_weapon);
@@ -336,6 +337,37 @@ TEST_CASE("pressure transfer native tactics survive disk continue and encounter 
             );
             runtime.restore_encounter_snapshot(checkpoint);
             check_state();
+
+            auto dead = runtime.capture_saved_game(save.played_seconds, false);
+            dead.world.player_combat.alive = false;
+            dead.world.player_combat.health = 0;
+            dead.world.player_combat.respawn_remaining_seconds = runtime.player_combat_state().respawn_delay_seconds;
+            ++dead.world.player_combat.deaths;
+            RelayGame::write_saved_game(disk, dead);
+            runtime.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path)
+            );
+            runtime.restore_saved_game(RelayGame::load_saved_game(disk));
+            REQUIRE_FALSE(runtime.player_combat_state().alive);
+            REQUIRE(runtime.debug_advance_player_respawn(3));
+            CHECK(runtime.debug_player_position() == glm::vec3{28, .01F, 29});
+            CHECK(runtime.capture_saved_game(0, false).player.view_angles == glm::vec2{glm::radians(90.0F), 0});
+            CHECK(runtime.player_combat_state().kills == route.player.kills);
+            CHECK(runtime.player_combat_state().deaths == dead.world.player_combat.deaths);
+            CHECK(runtime.inventory_item_ids() == route.inventory);
+            CHECK(runtime.activated_target_ids() == route.activated);
+            CHECK(runtime.enemies()[1].state.mode == route.session.enemies[1].state.mode);
+            CHECK(runtime.turrets()[1].destroyed == route.session.combat.turrets[1].destroyed);
+            CHECK(runtime.mission_status().current_step == static_cast<std::uint32_t>(phase == 0 ? 5 : 6));
+            if (phase == 0)
+            {
+                route.position = runtime.debug_player_position();
+                route.player = runtime.player_combat_state();
+                for (int tick = 0; tick < 120; ++tick)
+                    route.tick(false);
+                CHECK(route.player.health == 100);
+            }
         }
         route.leave();
         const auto disk = temp.path() / "completed.toml";

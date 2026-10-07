@@ -7,6 +7,8 @@ description: Produce or diagnose RelayCore assets through source export, native 
 
 Paths below are relative to the repository root. For visual decisions use `relaycore-art-direction`; this workflow owns technical delivery.
 
+For external texture/model discovery and source selection, follow `docs/ASSET_SOURCES.md`. Inspect the actual downloaded mesh/maps and adapt them to the supported native contract; a source site or game-ready label does not establish compatibility.
+
 ## Find the owning pipeline
 
 - Native models: read the static-model section of `docs/DEVELOPMENT.md`, current importer diagnostics and `cmake/RelayCoreModelAssets.cmake`. The importer supports a deliberate subset of glTF; a valid GLB is not necessarily a supported RelayCore model.

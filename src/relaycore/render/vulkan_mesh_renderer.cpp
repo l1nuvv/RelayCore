@@ -1268,6 +1268,16 @@ namespace RelayCore::render
             return *materials.emplace(key, std::move(result)).first->second;
         }
 
+        void collect_expired_resources()
+        {
+            std::erase_if(meshes, [](const auto& entry) {
+                return entry.second.source.expired();
+            });
+            std::erase_if(materials, [](const auto& entry) {
+                return entry.second->source.expired() || (entry.first.normal && entry.second->normal_source.expired());
+            });
+        }
+
         void prepare(const std::span<const RenderItem> items)
         {
             for (const auto& item : items)
@@ -1889,14 +1899,12 @@ namespace RelayCore::render
                 {float(width), float(height), scene_time, renderer_config.shadow_debug_cascades ? 1.0F : 0.0F}
             };
             frame_data.write(std::as_bytes(std::span{&frame, 1}));
-            std::erase_if(meshes, [](const auto& entry) {
-                return entry.second.source.expired();
-            });
-            std::erase_if(materials, [](const auto& entry) {
-                return entry.second->source.expired() || (entry.first.normal && entry.second->normal_source.expired());
-            });
+            collect_expired_resources();
             prepare(items);
-            prepare(shadow_casters);
+            // Opaque shadow pipelines consume geometry only.
+            for (const auto& caster : shadow_casters)
+                if (caster.mesh)
+                    static_cast<void>(mesh(*caster.mesh));
             prepare(viewmodel);
             uploads.collect();
             const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
@@ -2075,6 +2083,15 @@ namespace RelayCore::render
         reload_shaders(shader_directory);
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
+
+    void VulkanMeshRenderer::prepare_resources(const std::span<const RenderItem> items)
+    {
+        RELAYCORE_PROFILE_ZONE_N("Vulkan resource preparation");
+        state_->wait();
+        state_->collect_expired_resources();
+        state_->prepare(items);
+        state_->uploads.collect();
+    }
 
     auto VulkanMeshRenderer::shadow_preview(size_t cascade) -> uintptr_t
     {

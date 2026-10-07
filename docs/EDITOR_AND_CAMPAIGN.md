@@ -52,6 +52,10 @@ RelayCore. Точный путь показан в редакторе. Кноп�
 
 Внутренний формат: `level_entry` содержит `targetname`, `origin`, `angles`;
 `level_exit` — `origin`, `size`, `next_map`, `next_entry`, `requires_completion`.
+`mission_step.retry_entry` может назвать существующий `level_entry`: после завершения
+этого шага смерть возвращает к указанной pose, сохраняя прогресс мира. До шага действует
+исходный spawn; живой continue и encounter restore сохраняют фактическую позицию.
+Retry entry проверяется при подготовке: вне solid/native collision, хода дверей и exit volumes.
 `next_map` вида `./pump.toml` или `../sector/pump.toml` считается от папки текущей
 карты. Путь `levels/pump.toml` считается от корня assets. Старые абсолютные ссылки
 по-прежнему загружаются, но не переносятся вместе с папкой; выберите такую карту

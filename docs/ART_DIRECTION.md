@@ -2,9 +2,25 @@
 
 This is the project's visual direction reference. It guides requested art work; it does not authorize new content, gameplay, renderer features, dependencies, or pipeline changes. The active development queue remains `docs/PLAYABLE_SLICE_ROADMAP.md`.
 
+For external textures, materials, HDRIs and game models, follow [asset sources and selection](ASSET_SOURCES.md). It gives agents task-specific search routes, source sites and adaptation checks; this document remains the visual authority.
+
 ## Visual Reference Board
 
 ![Occult scientific-industrial facility style board](art/occult-facility-style-board.png)
+
+Additional owner-supplied boards (2026-10-07):
+
+- [Research complex / environment variants](art/2026-10-07%2019-50-31.png)
+- [Facility and anomaly spaces](art/relaycore-facility-anomaly-board.png)
+- [Industrial occult / analog equipment](art/relaycore-industrial-occult-board.png)
+- [Dark research complex / utility spaces](art/relaycore-dark-research-board.png)
+- [Environment, props and design systems](art/relaycore-design-systems-board.png)
+
+The supplied research-complex-1 image has identical decoded pixels to
+`2026-10-07 19-50-31.png`; retain one copy. The other boards are distinct.
+Use their service infrastructure, equipment proportions and practical light
+hierarchy alongside real industrial references. Illustrated wet reflections,
+volumetrics and containment effects do not establish runtime capabilities.
 
 Use the supplied board for material relationships, analog technology, atmosphere, and functional occult integration. Its rendered lighting is a scene reference, not lighting to bake into textures. Black Mesa branding, named-game assets, and recognizable symbols are references, not RelayCore deliverables; create original project-specific signage and motifs.
 
@@ -386,6 +402,12 @@ Before creating or modifying any visual asset, the agent must check:
 9. Does it belong to the same world as the Half-Life-style industrial base and Deadlock-inspired occult layer?
 
 If several answers are no, redesign before continuing.
+
+For finished Blender models, use `.agents/skills/relaycore-blender/SKILL.md`:
+
+- Compare primary forms and negative spaces against inspected references before surface detail.
+- Resolve profiles, thickness, joints, supports and material boundaries in the geometry. Beveled primitives, extra bolts or noisy textures alone do not establish a finished model.
+- Inspect neutral multiview renders and the intended gameplay viewing distance. Keep refinement visible and justified; do not equate game-ready geometry with an unfinished blockout.
 
 ## 18. Agent Prompt Shorthand
 

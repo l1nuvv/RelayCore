@@ -28,6 +28,7 @@ namespace RelayGame
     )
     {
         apply_player_settings(services);
+        services.renderer().prepare_resources(prepared.world_scene.resource_items());
         prepared.runtime.apply_player_settings(settings_.sensitivity, settings_.camera_motion);
         prepared.runtime.prepare_level_session_activation(services, allow_capture);
         detail::replace_level_session(

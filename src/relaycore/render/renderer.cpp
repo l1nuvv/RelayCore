@@ -149,6 +149,18 @@ namespace RelayCore
         return staged_reload;
     }
 
+    void Renderer::PreparedLiveContentReload::prepare_resources(std::span<const render::RenderItem> items)
+    {
+        if (!backend)
+            throw std::logic_error("Resource preparation requires a prepared Vulkan backend");
+        backend->prepare_resources(items);
+    }
+
+    void Renderer::prepare_resources(std::span<const render::RenderItem> items)
+    {
+        state_->backend->prepare_resources(items);
+    }
+
     void Renderer::commit_live_content_reload(PreparedLiveContentReload staged_reload)
     {
         static_assert(std::is_nothrow_move_assignable_v<render::RendererConfig>);
