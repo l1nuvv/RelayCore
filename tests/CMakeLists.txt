@@ -34,9 +34,16 @@ if(WIN32)
     add_test(NAME relaycore.tooling.model_assets
         COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/model_assets_tests.ps1"
             -Importer $<TARGET_FILE:relaycore_model_import> -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
+    add_test(NAME relaycore.tooling.collision_assets
+        COMMAND "${RELAYCORE_PWSH_EXECUTABLE}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/collision_assets_tests.ps1"
+            -Compiler $<TARGET_FILE:relaycore_collision_compile> -Importer $<TARGET_FILE:relaycore_model_import>
+            -CMake "${CMAKE_COMMAND}" -Ninja "${CMAKE_MAKE_PROGRAM}")
 endif()
 add_executable(relaycore_content_validation)
-add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp)
+add_executable(relaycore_physics_tests content_validation_main.cpp physics_world_tests.cpp collision_asset_tests.cpp)
+add_dependencies(relaycore_physics_tests relaycore_collision_fixture_assets)
+target_compile_definitions(relaycore_physics_tests PRIVATE
+    RELAYCORE_TEST_COLLISION_PRODUCT="${RELAYCORE_COLLISION_FIXTURE_ROOT}/collision/lab_bench.rccollision")
 target_link_libraries(relaycore_physics_tests PRIVATE RelayGame::runtime RelayCore::doctest_headers)
 set_target_properties(relaycore_physics_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_dependencies(relaycore_tests relaycore_physics_tests)

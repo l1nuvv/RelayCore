@@ -17,4 +17,4 @@ add_custom_command(
     VERBATIM)
 add_custom_target(relaycore_irradiance_assets DEPENDS "${probe_product}")
 file(CONFIGURE OUTPUT "${PROJECT_BINARY_DIR}/generated/runtime-assets.txt"
-    CONTENT "${model_manifest}\nlighting/native_lab.rcprobe\n" @ONLY)
+    CONTENT "${model_manifest}\n${collision_manifest}\nlighting/native_lab.rcprobe\n" @ONLY)

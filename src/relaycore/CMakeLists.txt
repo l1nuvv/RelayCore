@@ -26,6 +26,7 @@ set(RELAYCORE_ENGINE_SOURCES
     physics/player_motion.cpp
     physics/world_query.cpp
     physics/physics_world.cpp
+    physics/collision_asset.cpp
     world/world_collision.cpp
     platform/sdl_system.cpp
     platform/window.cpp
@@ -89,6 +90,7 @@ set(RELAYCORE_ENGINE_HEADERS
     gameplay/interaction_runtime.h
     physics/collision.h
     physics/physics_world.h
+    physics/collision_asset.h
     physics/player_motion.h
     physics/world_query.h
     platform/sdl_system.h
@@ -173,6 +175,7 @@ set_source_files_properties(render/vma_impl.cpp PROPERTIES
     COMPILE_DEFINITIONS "VMA_STATIC_VULKAN_FUNCTIONS=0;VMA_DYNAMIC_VULKAN_FUNCTIONS=1")
 set_source_files_properties(
     physics/world_query.cpp
+    physics/collision_asset.cpp
     physics/physics_world.cpp
     world/world_collision.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

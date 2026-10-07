@@ -1,0 +1,21 @@
+# Explicit simplified collision; retain the open space under the bench.
+version = 1
+units = "metres"
+axes = "right-handed-y-up"
+winding = "ccw"
+model = "models/lab_bench.rcmodel"
+
+[[boxes]]
+mins = [-1.2, 0.84, -0.45]
+maxs = [1.2, 0.92, 0.45]
+surface = "tile"
+
+[[boxes]]
+mins = [-1.10, 0.0, -0.37]
+maxs = [-1.0, 0.84, 0.37]
+surface = "metal"
+
+[[boxes]]
+mins = [1.0, 0.0, -0.37]
+maxs = [1.10, 0.84, 0.37]
+surface = "metal"

@@ -27,11 +27,26 @@ $authoredRoot = Join-Path $projectRoot 'assets'
 $authoredAssets = @(Get-ChildItem -LiteralPath $authoredRoot -Recurse -File)
 $shaderRoot = Join-Path $projectRoot "build/$Preset/generated/shaders"
 $runtimeShaders = @(Get-Content -LiteralPath (Join-Path $shaderRoot 'runtime-shaders.txt'))
-$runtimeModels = @(& (Join-Path $PSScriptRoot 'check-model-assets.ps1') -ProjectRoot $projectRoot `
-    -BuildRoot (Join-Path $projectRoot "build/$Preset") -RuntimeAssets (Join-Path $source 'assets'))
+$buildRoot = Join-Path $projectRoot "build/$Preset"
+& (Join-Path $PSScriptRoot 'check-model-assets.ps1') -ProjectRoot $projectRoot `
+    -BuildRoot $buildRoot -RuntimeAssets (Join-Path $source 'assets') | Out-Null
+& cmake "-DCOLLISION_PROJECT_ROOT=$projectRoot" "-DCOLLISION_BUILD_ROOT=$buildRoot" `
+    "-DCOLLISION_COMPILER=$buildRoot/relaycore_collision_compile.exe" "-DCOLLISION_RUNTIME_ASSETS=$source/assets" `
+    -P (Join-Path $projectRoot 'cmake/check_collision_assets.cmake')
+if ($LASTEXITCODE -ne 0) { throw 'Collision assets are stale. Rebuild the game.' }
+$runtimeGenerated = @(Get-Content -LiteralPath (Join-Path $buildRoot 'generated/runtime-assets.txt'))
 $stagedAssets = @(Get-ChildItem -LiteralPath (Join-Path $source 'assets') -Recurse -File)
-if ($runtimeShaders.Count -eq 0 -or $authoredAssets.Count + $runtimeShaders.Count + $runtimeModels.Count -ne $stagedAssets.Count) {
+if ($runtimeShaders.Count -eq 0 -or $authoredAssets.Count + $runtimeShaders.Count + $runtimeGenerated.Count -ne $stagedAssets.Count) {
     throw "Staged assets are stale. Build with: cmake --build --preset $buildPreset"
+}
+foreach ($relative in $runtimeGenerated) {
+    $compiled = Join-Path $buildRoot "generated/model-assets/$relative"
+    $staged = Join-Path $source "assets/$relative"
+    if (-not (Test-Path -LiteralPath $compiled -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $staged -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $compiled).Hash -ne (Get-FileHash -LiteralPath $staged).Hash) {
+        throw "Staged generated asset differs: $relative. Build with: cmake --build --preset $buildPreset"
+    }
 }
 foreach ($shader in $runtimeShaders) {
     $compiled = Join-Path $shaderRoot $shader

@@ -4,7 +4,7 @@
 
 План следующего цикла актуализирован 2026-09-28 по текущему рабочему дереву: раздел 7, блок «Следующий цикл — от полигона к новому эпизоду». Исходный baseline и журнал ниже сохранены как история. Новые задачи описывают рекомендованный порядок; этот запрос на план не запускает их реализацию.
 
-Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; по последующему поручению выполнен E-010/N4.1, общие world queries поверх AABB. E-011/N4.2 выполнен: изолированный Jolt fixture. Следующая инженерная задача — E-012/N4.3, native collision product; далее collision products, parity, диагностика и игровой участок G-012. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
+Сводный план развития после E-004 пересмотрен 2026-10-04 в [PROJECT_PLAN.md](PROJECT_PLAN.md#план-развития-после-e-004--2026-10-02): native slices N1–N3 выполнены как E-005–E-009; по последующему поручению выполнен E-010/N4.1, общие world queries поверх AABB. E-011/N4.2 выполнен: изолированный Jolt fixture. E-012/N4.3 выполнен 2026-10-07: native collision product и staging. Следующая инженерная задача — E-013/N4.4, movement/query parity; далее диагностика и игровой участок G-012. Фактические ticket statuses — в таблице ниже. Независимый G-011 playtest и другой GPU ранее отложены автором, поэтому инженерный трек может продолжаться, сохраняя открытой приёмку G-011/H-008/H-009. Наличие плана само по себе не запускает реализацию.
 
 ## 1. Назначение и порядок использования
 
@@ -235,8 +235,8 @@ E-001 ускоряет настройку, но его задержка не з�
 | 31 | E-009 / N3.2 | Baked diffuse SH9 irradiance probes | Engine/render/content | P2 | done |
 | 32 | E-010 / N4.1 | Общие world queries поверх AABB | Engine/world | P2 | done |
 | 33 | E-011 / N4.2 | Jolt static world на изолированном fixture | Engine/physics | P2 | done |
-| 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | ready |
-| 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | pending |
+| 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | done |
+| 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | ready |
 | 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | pending |
 | 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | pending |
 | 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | deferred |
@@ -1060,7 +1060,7 @@ build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe build/msvc-debug/ph
 
 #### E-012 — native collision product и build/staging, N4.3
 
-**Статус / приоритет / объём:** `ready` / P2 / M. **Зависимость:** E-011 и query/surface contract E-010 выполнены.
+**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-011 и query/surface contract E-010 выполнены. Выполнено по поручению автора 2026-10-07.
 
 Определить отдельный versioned `CollisionAsset` с collision geometry, bounds и surface mapping. Использовать authored или явно выбранный упрощённый source; не копировать render triangles автоматически. Зафиксировать units/axes, transforms, winding и отражённый/nonuniform scale. Compiler/runtime граница RelayCore-owned; если выбран cooked Jolt payload, совместимость compiler/backend входит в version/receipt и диагностируется при loading.
 
@@ -1068,9 +1068,25 @@ build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe build/msvc-debug/ph
 
 **Готово, когда:** повторный compile даёт одинаковые bytes, no-op build не перекомпилирует продукт; source/settings/compiler invalidation, removal и failed-update rollback проверены. Missing/stale/malformed geometry и material references дают actionable errors. Native fixture загружается из staged products без source/DCC/Jolt types в gameplay. Focused product/import/tooling/content checks пройдены; новый ZIP только по запросу.
 
+**Результат 2026-10-07:** независимый `physics::CollisionAsset` v1 (`.rccollision`) содержит model-local triangles, bounds, per-triangle `SurfaceMaterial` и явный native model reference. Backend-independent little-endian payload не содержит Jolt cooked state. `tools/collision_compile.cpp` принимает отдельный TOML с boxes/triangles; metres, right-handed +Y up и CCW обязательны. Affine transform запекается, nonuniform scale поддерживается, отражение меняет winding. Первый source — явно упрощённый `content/collision/lab_bench.toml`: столешница и две опоры, просвет сохранён; render triangles не копируются. Формат и workflow: [COLLISION_ASSETS.md](COLLISION_ASSETS.md).
+
+`cmake/RelayCoreCollisionAssets.cmake`, `compile_collision_asset.cmake`, `check_collision_assets.cmake` развивают существующие manifests/receipts/staging: SHA256 source, compiler executable, compile rule, declaration, paired model product и collision product. Hash validation выполняется до изменения staging; source с сохранённым timestamp отклоняется. Bad compile сохраняет product/receipt/staged files; removed declaration убирает staged product. Package preflight учитывает весь generated manifest и проверяет collision receipts. Изолированный `relaycore_collision_fixture_assets` использует тот же synchronizer без shader/bake dependencies. `LevelSessionBuilder::build_collision_fixture` загружает staged product до activation; failure оставляет активный world. Обычные карты сохраняют AABB.
+
+**Проверки:** serial MSVC Debug build успешен; physics/product/session 10/10 и importer/collision tooling 2/2 прошли, ноль failures/skips (`build/msvc-debug/e012-focused.xml`). В tooling проверены deterministic bytes, no-op timestamp, source/material/settings/compiler/declaration/model invalidation, removal, malformed/missing sources, pairing, degenerate geometry, corruption, rollback. Package asset preflight отдельно прошёл на isolated fixture, повреждённая коллизия отклонена, package directory/ZIP не создавались (`e012-package-preflight.xml`, 1/1). CLI на isolated и полном runtime staging: opening clear, 36 triangles, metal/tile hit distances 1.63/1.55 m и normal +Z. Scoped clang-format и `git diff --check` прошли; diff просмотрен.
+
+```powershell
+cmake --build --preset demo-debug --target relaycore_physics_tests relaycore_physics_fixture -j 1
+ctest --preset test-debug -R '^relaycore\.(physics\.|tooling\.(collision_assets|model_assets)$)' --output-on-failure --no-tests=error --output-junit e012-focused.xml
+ctest --preset test-debug -R '^relaycore\.tooling\.collision_assets$' --output-on-failure --no-tests=error --output-junit e012-package-preflight.xml
+build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe --collision build/msvc-debug/physics-fixture/assets
+build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe --collision build/msvc-debug/src/relaygame/assets
+```
+
+Sandbox не видел установленный MSVC/Git; успешные build/tests выполнены вне sandbox в VS developer environment. Попытки build с demo/content dependencies остановлены на длительном прежнем irradiance bake; одновременный bake удерживал DLL и помешал copy при link fixture. После выделения isolated staging и serial build focused checks успешны. Полный runtime staging проверен отдельным вызовом существующего `sync_runtime_assets.cmake` с generated/runtime-assets.txt, актуальными collision receipts и сохранённым probe product: lighting inputs не менялись. Preflight на старом Debug runtime отклонён из-за четырёх прежних вне-manifest `rc022_*_retuned_v2/v3` config/level captures; эти пользовательские generated files сохранены. Полные content/graphics, ASan/optimized, human playtest и performance не проверялись; dependency baseline/VERSION не менялись, архивы не создавались. Следующая задача — E-013; G-011/H-008/H-009 сохраняют статусы.
+
 #### E-013 — mesh-world movement/query parity и lifecycle, N4.4
 
-**Статус / приоритет / объём:** `pending` / P2 / M. **Зависимость:** E-011/E-012.
+**Статус / приоритет / объём:** `ready` / P2 / M. **Зависимость:** E-011/E-012 выполнены.
 
 Подключить mesh-world к основным consumers на одном fixture/уровне. Сначала зафиксировать текущие acceleration/friction/air movement/jump/step/ground probe/snap и fixed 120 Hz на существующих fixtures. Geometry/player collider policy описать явно; `CharacterVirtual` выбирать только если текущий movement solver требует этого и сравнение сохраняет game feel. Crouch и новое поведение склонов не являются автоматической backend parity.
 

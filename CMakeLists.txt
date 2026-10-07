@@ -217,6 +217,15 @@ add_custom_command(TARGET relaycore_model_import POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_model_import>" $<TARGET_RUNTIME_DLLS:relaycore_model_import>
     COMMAND_EXPAND_LISTS VERBATIM)
 include(cmake/RelayCoreModelAssets.cmake)
+add_executable(relaycore_collision_compile tools/collision_compile.cpp)
+target_link_libraries(relaycore_collision_compile PRIVATE RelayCore::engine RelayCore::toml_headers)
+relaycore_apply_standard_target_settings(relaycore_collision_compile)
+set_target_properties(relaycore_collision_compile PROPERTIES FOLDER "tools" UNITY_BUILD OFF)
+add_custom_command(TARGET relaycore_collision_compile POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_collision_compile>"
+        $<TARGET_RUNTIME_DLLS:relaycore_collision_compile>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(cmake/RelayCoreCollisionAssets.cmake)
 add_subdirectory(src/relaygame)
 
 if (BUILD_TESTING)

@@ -3,6 +3,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/gameplay/entity_spawn_parsing.h"
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/world/blockout_loader.h"
 #include "relaycore/world/blockout_loader_validation.h"
 #include "relaycore/world/world_collision.h"
@@ -11,6 +12,7 @@
 #include "relaygame/world_audio_zones.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <glm/trigonometric.hpp>
@@ -119,6 +121,22 @@ namespace RelayGame
                     + "' overlaps a level_exit; move the entry away from the transition volume"
                 );
         return session;
+    }
+
+    auto LevelSessionBuilder::build_collision_fixture(
+        RelayCore::BlockoutLevel level,
+        std::filesystem::path path,
+        const std::filesystem::path& collision_product,
+        std::string_view model_reference,
+        const glm::mat4& transform
+    ) const -> LevelSession
+    {
+        const auto asset = RelayCore::physics::read_collision_asset(collision_product, model_reference);
+        const auto triangles = RelayCore::physics::transform_collision_triangles(asset.triangles, transform);
+        const std::array meshes{
+            RelayCore::physics::PhysicsMesh{triangles, {RelayCore::physics::WorldObjectKind::CollisionMesh, 0}}
+        };
+        return build_physics_fixture(std::move(level), std::move(path), meshes);
     }
 
     auto LevelSessionBuilder::build_physics_fixture(

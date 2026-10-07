@@ -131,6 +131,9 @@ add_custom_target(
         COMMAND
         ${CMAKE_COMMAND}
         "-DRELAYCORE_ASSET_SOURCE=${PROJECT_SOURCE_DIR}/assets"
+        "-DCOLLISION_PROJECT_ROOT=${PROJECT_SOURCE_DIR}"
+        "-DCOLLISION_BUILD_ROOT=${PROJECT_BINARY_DIR}"
+        "-DCOLLISION_COMPILER=$<TARGET_FILE:relaycore_collision_compile>"
         "-DRELAYCORE_GENERATED_ASSETS=${RELAYCORE_MODEL_ASSET_ROOT}"
         "-DRELAYCORE_GENERATED_ASSET_MANIFEST=${PROJECT_BINARY_DIR}/generated/runtime-assets.txt"
         "-DRELAYCORE_ASSET_OUTPUT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
@@ -144,6 +147,7 @@ add_custom_target(
 add_dependencies(relaycore_demo relaycore_demo_assets)
 add_dependencies(relaycore_demo_assets relaycore_vulkan_shaders)
 add_dependencies(relaycore_demo_assets relaycore_model_assets)
+add_dependencies(relaycore_demo_assets relaycore_collision_assets)
 add_dependencies(relaycore_demo_assets relaycore_irradiance_assets)
 add_custom_command(TARGET relaycore_demo_assets POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RELAYCORE_MESH_SPIRV}
@@ -154,6 +158,7 @@ add_dependencies(relaycore_demo relaycore_vulkan_shaders)
 add_executable(relaycore_level_check EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/level_check.cpp)
 add_executable(relaycore_physics_fixture EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/physics_fixture.cpp)
 target_link_libraries(relaycore_physics_fixture PRIVATE RelayCore::engine)
+add_dependencies(relaycore_physics_fixture relaycore_collision_fixture_assets)
 relaycore_apply_standard_target_settings(relaycore_physics_fixture)
 set_target_properties(relaycore_physics_fixture PROPERTIES FOLDER "tools")
 add_custom_command(TARGET relaycore_physics_fixture POST_BUILD

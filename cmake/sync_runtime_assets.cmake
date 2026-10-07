@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 4.0)
 
+if(DEFINED COLLISION_PROJECT_ROOT)
+    include("${COLLISION_PROJECT_ROOT}/cmake/check_collision_assets.cmake")
+endif()
+
 foreach(required IN ITEMS RELAYCORE_ASSET_SOURCE RELAYCORE_ASSET_OUTPUT RELAYCORE_ASSET_MANIFEST)
     if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
         message(FATAL_ERROR "${required} is required")

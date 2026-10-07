@@ -1,3 +1,4 @@
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/world/world_collision.h"
 
 #include <array>
@@ -8,15 +9,37 @@
 
 int main(int argc, char** argv)
 {
-    if (argc > 2)
+    if (argc > 2 && !(argc == 3 && std::string_view{argv[1]} == "--collision"))
     {
-        std::cerr << "Usage: relaycore_physics_fixture [diagnostics.svg]\n";
+        std::cerr << "Usage: relaycore_physics_fixture [diagnostics.svg] | --collision runtime/assets\n";
         return 2;
     }
     try
     {
         using namespace RelayCore;
         using namespace RelayCore::physics;
+        if (argc == 3)
+        {
+            const auto asset = read_collision_asset(
+                std::filesystem::path{argv[2]} / "collision/lab_bench.rccollision",
+                "models/lab_bench.rcmodel"
+            );
+            const std::array meshes{PhysicsMesh{asset.triangles, {WorldObjectKind::CollisionMesh, 0}}};
+            const PhysicsWorld physics{{}, meshes};
+            if (physics.raycast({0, .5F, 2}, {0, 0, -1}, 4))
+                throw std::runtime_error("Staged bench opening unexpectedly blocked");
+            for (const auto origin : {glm::vec3{1.05F, .5F, 2}, glm::vec3{0, .88F, 2}})
+            {
+                const auto hit = physics.raycast(origin, {0, 0, -1}, 4);
+                if (!hit)
+                    throw std::runtime_error("Staged bench surface unexpectedly clear");
+                std::cout << "staged " << asset.model << " distance=" << hit->distance << " normal=" << hit->normal.x
+                          << ',' << hit->normal.y << ',' << hit->normal.z
+                          << " surface=" << static_cast<int>(hit->surface) << '\n';
+            }
+            std::cout << "opening clear; triangles=" << asset.triangles.size() << '\n';
+            return 0;
+        }
         const auto triangles = tool::physics_fixture_doorway();
         const std::array meshes{PhysicsMesh{triangles, {WorldObjectKind::CollisionMesh, 0}}};
         const auto boxes = build_static_world_colliders(tool::physics_fixture_level());

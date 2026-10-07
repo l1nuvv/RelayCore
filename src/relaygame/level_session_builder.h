@@ -13,6 +13,7 @@
 #include "relaygame/world_environment.h"
 
 #include <filesystem>
+#include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <optional>
@@ -78,6 +79,13 @@ namespace RelayGame
             RelayCore::BlockoutLevel level,
             std::filesystem::path path,
             std::span<const RelayCore::physics::PhysicsMesh> meshes
+        ) const -> LevelSession;
+        [[nodiscard]] auto build_collision_fixture(
+            RelayCore::BlockoutLevel level,
+            std::filesystem::path path,
+            const std::filesystem::path& collision_product,
+            std::string_view model_reference,
+            const glm::mat4& transform = glm::mat4{1}
         ) const -> LevelSession;
 
     private:
