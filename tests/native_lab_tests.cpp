@@ -116,3 +116,41 @@ TEST_CASE("native lab cabinet controls lighting and a traversable storage door")
     CHECK(restored.activated_target_ids() == runtime.activated_target_ids());
     CHECK(restored.doors().front().state == RelayCore::gameplay::DoorState::Opening);
 }
+
+TEST_CASE("B17 laboratory loads native graphics and keeps its inspection routes traversable")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::EngineConfig config;
+    const auto path = RelayCore::core::asset_path("levels/occult_lab_b17.toml");
+    const RelayGame::LevelSessionBuilder builder{config.gameplay};
+    auto session = builder.build(path);
+    REQUIRE(session.authoring_warnings.empty());
+    REQUIRE(session.physics_fixture);
+    const auto& world = *session.physics_fixture;
+    for (const char* entry : {"entrance", "observation", "containment"})
+        CHECK(RelayCore::physics::probe_ground(world, builder.build_at_entry(path, entry).spawn_position, {}));
+    auto position = session.spawn_position;
+    for (int tick = 0; tick < 600; ++tick)
+        position = RelayCore::physics::move_and_collide(world, position, {0, -.1F, 2}, 1.0F / 120, {}, true).position;
+    CHECK(position.z > 1.5F);
+    RelayCore::render::StaticModelCache cache;
+    for (const auto& prop : RelayGame::build_static_props(session.level))
+    {
+        CAPTURE(prop.model.string());
+        const auto model = cache.load(prop.model, RelayCore::render::TextureEncoding::srgb);
+        REQUIRE_FALSE(model->meshes.empty());
+        if (prop.model.stem() == "lab_notes_board" || prop.model.stem() == "safety_notice")
+            CHECK(std::ranges::any_of(model->materials, [](const auto& material) {
+                return material.base_color.cpu_data()->width > 1;
+            }));
+    }
+    RelayGame::LevelEditorDocument editor;
+    editor.reset(session.level);
+    CHECK(editor.validation_messages(path).empty());
+    RelayGame::GameWorldRuntime runtime;
+    runtime.load_level_session(config, std::move(session));
+    REQUIRE(runtime.usables().size() == 1);
+    static_cast<void>(runtime.debug_apply_usable_interaction(0));
+    CHECK(std::ranges::find(runtime.activated_target_ids(), "b17_isolated") != runtime.activated_target_ids().end());
+}

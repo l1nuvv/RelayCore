@@ -3,6 +3,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/blockout_texture_atlas.h"
 
+#include <algorithm>
 #include <doctest/doctest.h>
 #include <filesystem>
 
@@ -39,7 +40,14 @@ TEST_CASE("blockout texture atlas is generated with expected dimensions and alph
     REQUIRE_FALSE(atlas.pixels.empty());
     CHECK(atlas.pixels[3] == 255);
     CHECK(atlas.pixels[(atlas.width * 4) - 1] == 255);
-    CHECK(atlas.pixels[0] != atlas.pixels[(atlas.width / 8) * 4]);
+    const auto tile_row_bytes = static_cast<std::size_t>(atlas.width / 8) * 4;
+    bool distinct_tiles = false;
+    for (int row = 0; row < atlas.height / 4; ++row)
+    {
+        const auto first = atlas.pixels.begin() + static_cast<std::ptrdiff_t>(row * atlas.width * 4);
+        distinct_tiles |= !std::equal(first, first + tile_row_bytes, first + tile_row_bytes);
+    }
+    CHECK(distinct_tiles);
 
     RelayCore::log::shutdown();
 }

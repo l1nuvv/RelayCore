@@ -77,16 +77,23 @@ def octagonal_housing(rings, swatch):
             face((lower[i], upper[i], upper[j], lower[j]), swatch)
 
 
-# A recessed wall plate, articulated neck, armoured head, paired barrels and sensor.
+# A recessed wall plate, gimbal and spherical instrument head. Front sensor stays at the warning cue.
 box((-0.37,-0.46,-0.48), (0.37,0.35,-0.40), 1)
 box((-0.22,-0.27,-0.40), (0.22,0.02,-0.24), 2)
 box((-0.12,-0.13,-0.28), (0.12,0.13,-0.13), 1)
 mount_vertex_count = len(vertices)
-octagonal_housing([(-0.20,0.26,0.25),(-0.09,0.36,0.33),
-                   (0.25,0.36,0.33),(0.40,0.25,0.24)], 0)
-box((-0.24,0.37,-0.23), (0.24,0.405,0.23), 2)
-box((-0.27,-0.12,0.26), (0.27,0.19,0.34), 0)
-box((-0.26,0.25,0.29), (0.26,0.32,0.35), 2)
+profile = []
+for band in range(13):
+    angle = -math.pi / 2 + .015 + band * (math.pi - .03) / 12
+    profile.append((.07 + math.sin(angle) * .33, math.cos(angle) * .36, math.cos(angle) * .34))
+octagonal_housing(profile, 0)
+octagonal_housing([(.025,.365,.345),(.070,.365,.345)], 2)
+box((-0.46,-0.16,-0.17), (-0.37,0.18,0.19), 1)
+box((0.37,-0.16,-0.17), (0.46,0.18,0.19), 1)
+for x in (-.31, .31):
+    cylinder_z(x, .07, -.02, .08, .075, 2)
+    disk_z(x, .07, .082, .045, 1)
+box((-0.22,.33,-0.14), (.22,.38,.14), 2)
 cylinder_z(0.04, 0.01, 0.31, 0.46, 0.13, 1)
 cylinder_z(0.04, 0.01, 0.45, 0.49, 0.145, 2)
 disk_z(0.04, 0.01, 0.491, 0.14, 2)
@@ -130,7 +137,7 @@ row_bytes = (size * 3 + 3) & ~3
 
 
 def write_bmp(path, signal_color):
-    swatches = ((75, 85, 72), (32, 38, 39), (117, 121, 113), signal_color)
+    swatches = ((106, 103, 85), (32, 38, 35), (137, 112, 65), signal_color)
     pixels = bytearray()
     for y in range(size):
         for x in range(size):

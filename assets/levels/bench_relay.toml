@@ -1,10 +1,49 @@
 # Short maintenance bay: arm, open the bay, restore the relay, leave through the service exit.
 # Native bench collision preserves the rover lane below the worktop. Metres, +Y up.
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [-3.55,2.6,-1.5], angles = [90,0,0] },
+  { origin = [3.55,2.6,8.8], angles = [270,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [3.6,2.35,4.0], angles = [270,0,0] },
+  { origin = [3.6,2.35,7.0], angles = [270,0,0] },
+  { origin = [3.6,2.35,10.0], angles = [270,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_notes_board.rcmodel"
+origin = [-2.5,1.5,-3.87]
+
+[[entity]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+origin = [-2.8,1.10,0.87]
+angles = [180,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/crt_terminal.rcmodel"
+origin = [-1.6,0.92,-1.0]
+angles = [180,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_accessories.rcmodel"
+origin = [-3.25,0.92,-1.25]
+
 [[entity]]
 classname = "irradiance_volume"
 product = "lighting/bench_relay.rcprobe"
-mins = [-3.85,0,-3.85]
-maxs = [3.85,3.3,12.3]
+mins = [-3.85,0.3,-3.85]
+maxs = [3.85,2.1,12.3]
 dimensions = [3,2,5]
 rays = 256
 

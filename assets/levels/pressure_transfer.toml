@@ -1,6 +1,52 @@
 # Pressure transfer: equipment bay -> rover hall -> long gallery -> mixed relay room -> exit.
 # Metres, +Y up; clear rover lanes use the existing direct pursuit behavior.
 
+[[entity]]
+classname = "prop_static"
+model = "models/lab_accessories.rcmodel"
+origin = [1.35,1.04,4.22]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_microscope.rcmodel"
+origin = [2.74,1.04,4.18]
+angles = [180,0,0]
+scale = [0.8,0.8,0.8]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_notes_board.rcmodel"
+origin = [0.16,1.4,6.3]
+angles = [90,0,0]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [7.55,2.8,6], angles = [270,0,0] },
+  { origin = [30.5,2.8,18.45] },
+  { origin = [39.55,2.8,41], angles = [270,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [7.6,2.65,4], angles = [270,0,0] },
+  { origin = [7.6,2.65,7], angles = [270,0,0] },
+  { origin = [12,2.65,18.4] },
+  { origin = [15,2.65,18.4] },
+  { origin = [18,2.65,18.4] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+entries = [
+  { origin = [6.4,1.15,9.83], angles = [180,0,0] },
+  { origin = [30.5,1.15,26.16] },
+]
+
 [[solid_group]]
 boxes = [
   { origin = [4,-0.12,12], size = [8,0.24,24], material = "service_floor" },

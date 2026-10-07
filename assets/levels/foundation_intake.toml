@@ -1,4 +1,21 @@
 # Two-map foundation scenario: intake workshop.
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [3.6,2.5,-1], angles = [270,0,0] },
+  { origin = [3.6,2.5,2], angles = [270,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+origin = [-2.4,1.2,-3.82]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_notes_board.rcmodel"
+origin = [2.2,1.3,-3.82]
 [[solid_group]]
 boxes = [
   { origin = [0,-0.125,1], size = [8,0.25,10], material = "Tile" },

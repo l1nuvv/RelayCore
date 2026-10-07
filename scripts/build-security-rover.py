@@ -52,7 +52,14 @@ def wheel(x,z):
 shell([(.18,.27,.34,0),(.28,.34,.42,0),(.48,.34,.42,0),(.60,.25,.31,-.04)],0)
 shell([(.58,.13,.14,-.04),(.68,.13,.14,-.04),(.72,.10,.10,-.04)],2)
 head_start = len(vertices)
-shell([(.69,.19,.18,.01),(.75,.23,.22,.02),(.91,.20,.18,0),(.95,.15,.12,-.02)],3)
+shell([(.69,.16,.14,.01),(.74,.21,.18,.02),(.88,.21,.18,.02),(.95,.15,.12,-.02)],3)
+# Twin circular optical pickups echo the sealed protective goggles and analog instruments.
+for cx in (-.092, .092):
+    for radius, z, tile in ((.061, .208, 2), (.043, .212, 1)):
+        for side in range(16):
+            a, b = side * math.tau / 16, (side + 1) * math.tau / 16
+            triangle((cx, .83, z), (cx + math.cos(a) * radius, .83 + math.sin(a) * radius, z),
+                     (cx + math.cos(b) * radius, .83 + math.sin(b) * radius, z), tile)
 head_end = len(vertices)
 # Front collision bumper and sensor brow.
 shell([(.25,.27,.08,.39),(.36,.30,.08,.39),(.40,.27,.06,.39)],2)

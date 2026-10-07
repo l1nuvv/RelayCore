@@ -2,6 +2,45 @@
 
 [[entity]]
 classname = "prop_static"
+model = "models/control_console.rcmodel"
+origin = [-4,0,2.5]
+angles = [90,0,0]
+collision_mins = [-0.75,0,-0.5]
+collision_maxs = [0.75,1.9,0.5]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [-4.58,2.55,1.8], angles = [90,0,0] },
+  { origin = [12.0,2.55,-1.02] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [2,2.65,-4.65] },
+  { origin = [4.65,2.65,2.8], angles = [90,0,0] },
+  { origin = [12.17,2.65,8], angles = [90,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+entries = [
+  { origin = [-1.9,1.15,-4.83] },
+  { origin = [2.2,1.1,9.1], angles = [90,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_notes_board.rcmodel"
+origin = [2.75,1.45,-4.83]
+
+[[entity]]
+classname = "prop_static"
 origin = [-4, 0, -3]
 model = "models/service_cylinder.obj"
 texture = "models/service_cylinder.bmp"

@@ -1,4 +1,25 @@
 # Narrow pump gallery with a return link and a key-operated exit.
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [-1.6,2.5,0], angles = [90,0,0] },
+  { origin = [-1.6,2.5,3], angles = [90,0,0] },
+  { origin = [-1.6,2.5,7], angles = [90,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+origin = [0,2.6,9.55]
+angles = [180,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+origin = [1.82,1.15,4.6]
+angles = [270,0,0]
+
 [[solid_group]]
 boxes = [
   { origin = [0,-0.125,3], size = [4,0.25,14], material = "Concrete" },

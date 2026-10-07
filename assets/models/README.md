@@ -15,7 +15,7 @@ blender --background --factory-startup --disable-autoexec 'Stevens Model 520.ble
 ```
 
 `security_rover.obj` — оригинальная 0.95-метровая модель охранного робота для 1.2:
-скошенный корпус, четыре колеса и передняя защитная накладка, 620 треугольников.
+скошенный корпус, четыре колеса, парная круглая оптика и передняя защитная накладка, 684 треугольника.
 Диффузная текстура `security_rover.bmp` (512 × 512) создана отдельно для него;
 исходник — `security_rover_source.png`, геометрия —
 `scripts/build-security-rover.py`. Робот размещается в редакторе как
@@ -24,7 +24,7 @@ blender --background --factory-startup --disable-autoexec 'Stevens Model 520.ble
 верхний блок и два колеса отброшены. Она использует ту же диффузную текстуру и
 создаётся тем же скриптом. Мёртвый робот не участвует в столкновениях и бою.
 
-`security_turret.obj` — настенная турель: крепление, бронированный корпус, ствол
+`security_turret.obj` — настенная турель: крепление, шаровая головка на подвесе, ствол
 и отдельный датчик. Модель нормализована под размер `gameplay_entity` с `kind = "turret"`;
 передняя сторона направлена по +Z, `angles` задаёт поворот вокруг Y. Собственная
 диффузная текстура `security_turret.bmp` содержит окрашенный металл, тёмный корпус,
@@ -41,6 +41,33 @@ blender --background --factory-startup --disable-autoexec 'Stevens Model 520.ble
 открытым маховиком и спицами, 832 треугольника. Исходник геометрии:
 `scripts/build-service-cylinder.py`. Экземпляры стоят у стены стартовой комнаты
 в `power_restoration.toml` и `test_room.toml`.
+
+## Лабораторный набор B-17
+
+Исходники в `content/models`: `.blend` для редактирования и `.glb` для штатного
+импортера `.rcmodel`. Размеры в метрах; в игре +Y вверх, лицевая сторона +Z.
+`scripts/export-native-lab-glb.py` воспроизводит стол, силовой шкаф, CRT-терминал,
+приборную стойку, вентиляцию, резонансную установку, вывеску, защитный костюм,
+бетонную арку, трубы с клапаном, доску, предупреждения, принадлежности и пульт.
+Фигура учёного статична. Вооружение использует существующий Stevens 520.
+Микроскоп `lab_microscope`, мультиметр `lab_multimeter`, монитор
+`surveillance_monitor` и прибор `analog_navigation_instrument` адаптированы из
+CC0-моделей Poly Haven через `scripts/export-polyhaven-lab.py`. Источники,
+авторы и преобразования перечислены в `content/third_party/polyhaven/README.md`.
+
+```powershell
+blender --background --factory-startup --disable-autoexec --python scripts/export-native-lab-glb.py
+# Для одного изменённого исходника:
+blender --background --factory-startup --disable-autoexec --python scripts/export-native-lab-glb.py -- --model=lab_notes_board
+```
+
+Печатная графика и её воспроизведение описаны в `content/graphics/README.md`.
+Набор размещён в `occult_lab_b17.toml`, а служебные детали — на пяти игровых
+картах. Стол сохраняет существующую нативную коллизию и открытый проход снизу.
+`scripts/run-lab-b17.ps1` запускает существующую RelWithDebInfo-сборку с профилем
+B-17 и `hardware_srgb`, как в проверочных кадрах.
+Новые крупные предметы B-17 используют явно заданные AABB; настенные детали
+и мелкие принадлежности не перекрывают маршруты.
 
 ## Импорт
 

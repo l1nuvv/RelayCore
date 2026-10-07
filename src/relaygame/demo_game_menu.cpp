@@ -167,10 +167,13 @@ namespace RelayGame
                                            : runtime_.level_path().ends_with("pressure_transfer.toml");
         const bool bench_relay = screen_ == Screen::MainMenu ? new_game_level_ == "levels/bench_relay.toml"
                                                              : runtime_.level_path().ends_with("bench_relay.toml");
+        const bool occult_lab = screen_ == Screen::MainMenu ? new_game_level_ == "levels/occult_lab_b17.toml"
+                                                            : runtime_.level_path().ends_with("occult_lab_b17.toml");
         ImGui::SeparatorText(
             development_sandbox_ ? "ИСПЫТАТЕЛЬНЫЙ ПОЛИГОН"
             : pressure_transfer  ? "ПЕРЕПУСК ДАВЛЕНИЯ"
             : bench_relay        ? "РЕЛЕ МАСТЕРСКОЙ"
+            : occult_lab         ? "ЛАБОРАТОРИЯ B-17"
                                  : "КОНТУР 03 / ВОССТАНОВЛЕНИЕ"
         );
         if (screen_ == Screen::MainMenu)
@@ -192,6 +195,8 @@ namespace RelayGame
                           "откройте выход."
                     : bench_relay
                         ? "Ремонтный зал, два оружия и охрана среди рабочих столов. Включите реле и откройте выход."
+                    : occult_lab
+                        ? "Наблюдательный пост и резонансная лаборатория. Осмотрите оборудование и проверьте изолятор."
                         : "Сервисная мастерская и насосная галерея. Найдите ключ и откройте путь через оба сектора."
                 );
             ImGui::Spacing();
@@ -218,6 +223,7 @@ namespace RelayGame
                     new_game_level_.empty()                              ? "Восстановление питания"
                     : new_game_level_ == "levels/pressure_transfer.toml" ? "Перепуск давления"
                     : new_game_level_ == "levels/bench_relay.toml"       ? "Реле мастерской"
+                    : new_game_level_ == "levels/occult_lab_b17.toml"    ? "Лаборатория B-17"
                                                                          : "Два сектора"
                 ))
             {
@@ -229,6 +235,8 @@ namespace RelayGame
                     new_game_level_ = "levels/pressure_transfer.toml";
                 if (ImGui::Selectable("Реле мастерской", bench_relay))
                     new_game_level_ = "levels/bench_relay.toml";
+                if (ImGui::Selectable("Лаборатория B-17", occult_lab))
+                    new_game_level_ = "levels/occult_lab_b17.toml";
                 ImGui::EndCombo();
             }
             if (ImGui::Button(development_sandbox_ ? "Начать испытания" : "Новый эпизод", {-1, 40}))

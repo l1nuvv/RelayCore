@@ -668,7 +668,15 @@ int main(int argc, char** argv)
                     renderer.authoring_config(),
                     renderer.color_pipeline_mode()
                 );
-                require(data.props.size() == 2, "Two model instances expected in each model acceptance map");
+                require(
+                    std::ranges::count_if(
+                        data.props,
+                        [](const auto& prop) {
+                            return prop.model.filename() == "service_cylinder.obj";
+                        }
+                    ) == 2,
+                    "Two service-cylinder instances expected in each model acceptance map"
+                );
                 RelayGame::WorldSceneRenderer scene;
                 scene.initialize(data, models);
                 scene.initialize(data, models);

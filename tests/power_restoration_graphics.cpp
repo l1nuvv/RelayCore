@@ -15,6 +15,7 @@
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/game_version.h"
 #include "relaygame/level_editor.h"
+#include "relaygame/level_session_builder.h"
 #include "relaygame/usable_interaction.h"
 #include "relaygame/world_irradiance.h"
 #include "relaygame/world_scene_renderer.h"
@@ -85,7 +86,8 @@ namespace
 int main(int argc, char** argv)
 {
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
-    const bool hdr = argc > 1 && std::string_view{argv[1]} == "--hdr";
+    const bool art_review = argc > 1 && std::string_view{argv[1]} == "--art-review";
+    const bool hdr = art_review || (argc > 1 && std::string_view{argv[1]} == "--hdr");
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -99,8 +101,9 @@ int main(int argc, char** argv)
     try
     {
         RelayCore::test::ScopedTempDirectory hdr_data;
-        auto config_path = RelayCore::core::asset_path("config/engine.toml");
-        if (hdr)
+        auto config_path =
+            RelayCore::core::asset_path(art_review ? "config/occult_lab_b17.toml" : "config/engine.toml");
+        if (hdr && !art_review)
         {
             std::ifstream source(config_path);
             std::string contents{std::istreambuf_iterator<char>{source}, {}};
@@ -125,6 +128,62 @@ int main(int argc, char** argv)
         };
         renderer.initialize(window);
         renderer.on_resize(width, height);
+        if (art_review)
+        {
+            struct View {
+                const char* map;
+                const char* image;
+                glm::vec3 eye;
+                glm::vec3 target;
+            };
+            const std::array views{
+                View{"occult_lab_b17", "b17-entrance.bmp", {0, 1.65F, -8}, {0, 1.65F, -4}},
+                View{"occult_lab_b17", "b17-laboratory.bmp", {-.7F, 1.65F, -3.4F}, {2, 1.4F, 1.2F}},
+                View{"occult_lab_b17", "b17-observation.bmp", {-3.1F, 1.65F, -1.8F}, {-4.1F, 1.2F, 3.8F}},
+                View{"occult_lab_b17", "b17-instruments.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
+                View{"occult_lab_b17", "b17-sample-bench.bmp", {4.5F, 1.55F, -2.15F}, {4.5F, 1.2F, -3.55F}},
+                View{"power_restoration", "revamp-power.bmp", {0, 1.65F, -3}, {2, 1.3F, 2}},
+                View{"bench_relay", "revamp-bench.bmp", {0, 1.65F, -3}, {-2.5F, 1.3F, -1}},
+                View{"pressure_transfer", "revamp-transfer.bmp", {4, 1.65F, 1.3F}, {2, 1.2F, 4}},
+            };
+            for (const auto& view : views)
+            {
+                const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                    RelayCore::core::asset_path(std::string{"levels/"} + view.map + ".toml")
+                );
+                RelayGame::WorldSceneRenderer scene;
+                scene.initialize(
+                    RelayGame::build_prepared_world_scene_data(
+                        session.level,
+                        renderer.authoring_config(),
+                        renderer.color_pipeline_mode()
+                    ),
+                    renderer.static_models()
+                );
+                renderer.camera().set_position(view.eye);
+                renderer.camera().set_target(view.target);
+                renderer.begin_frame();
+                const auto enemies = RelayGame::build_enemies(session.level);
+                scene.render(
+                    renderer,
+                    renderer.camera(),
+                    0,
+                    session.doors,
+                    session.combat.turrets,
+                    session.usables,
+                    -1,
+                    {},
+                    false,
+                    {},
+                    {},
+                    {},
+                    enemies
+                );
+                (void) capture(renderer, std::filesystem::path{"power-captures"} / view.image);
+                scene.shutdown();
+            }
+            return 0;
+        }
         if (config.renderer.shadow_enabled)
         {
             RelayCore::render::StaticColorMesh box;
