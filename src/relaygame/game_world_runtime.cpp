@@ -548,6 +548,8 @@ namespace RelayGame
             combat_state_.pellet_traces = attack.pellet_traces;
             if (selected_weapon_ == PlayerWeapon::Shotgun)
                 combat_state_.shotgun_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
+            else
+                combat_state_.pistol_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
         }
         for (std::size_t i = 0; i < attack.ray_count; ++i)
             if (attack.rays[i].killed_turret)
@@ -699,6 +701,7 @@ namespace RelayGame
             selected_weapon_ = snapshot.selected_weapon;
             combat_state_.pellet_traces = {};
             combat_state_.shotgun_cycle_remaining_seconds = 0;
+            combat_state_.pistol_cycle_remaining_seconds = 0;
             frame_actions_.weapon_selection.reset();
             (void) player_controller_.consume_weapon_selection();
             transient_hud_event_ = {};

@@ -327,6 +327,7 @@ terminal = assembly("CRT workstation - 0.66m wide")
 ivory = material("Aged ivory ABS", (.47, .43, .33), "plastic")
 dark = material("Bakelite and rubber", (.022, .028, .025), "rubber")
 screen = material("Phosphor green CRT glass", (.035, .11, .062))
+screen.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = .23
 ink = material("Phosphor trace", (.22, .39, .22))
 steel = material("Grey green folded steel", (.14, .19, .16), "paint")
 box("Monitor foot", (0, .07, .035), (.40, .30, .07), steel, terminal)
@@ -334,7 +335,8 @@ box("Monitor pedestal", (0, .07, .12), (.16, .16, .16), ivory, terminal)
 box("Deep CRT enclosure", (0, .075, .38), (.62, .45, .43), ivory, terminal, .035)
 box("Recessed screen surround", (-.035, -.161, .405), (.49, .025, .33), dark, terminal, .025)
 box("Curved screen face", (-.035, -.178, .405), (.445, .018, .285), screen, terminal, .025)
-display = graphic_material("CRT two channel measurement", "instrument_display.png")
+display = graphic_material("CRT two channel measurement", "instruments/waveform.png")
+display.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = .23
 poster("CRT calibrated waveform", (-.035, -.189, .405), (.425, .265), display, terminal)
 label("RELAY / FIELD MONITOR", (-.035, -.177, .197), .014, dark, terminal)
 for x in (-.28, .28):
@@ -415,7 +417,7 @@ bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=.18, location=(0, 0
 specimen = bpy.context.object
 specimen.name = "Suspended resonant specimen"
 specimen.scale = (.8, .65, 1.6)
-specimen.data.materials.append(steel)
+specimen.data.materials.append(material("Resonant mineral specimen", (.32, .39, .34)))
 specimen.parent = apparatus
 cylinder("Upper specimen suspension", (0, 0, 1.89), .006, .70, brass, apparatus, sides=12)
 cylinder("Lower specimen restraint", (0, 0, .73), .006, .46, brass, apparatus, sides=12)
@@ -541,7 +543,7 @@ ivory = material("Ivory control fascia and meter scales", (.55, .53, .41), "cera
 dark = material("Bakelite switches and meter bezels", (.022, .029, .023))
 red = material("Red stop buttons", (.37, .07, .035))
 amber = material("Amber indicator lenses", (.50, .29, .055))
-display = graphic_material("Original two channel field display", "instrument_display.png")
+display = graphic_material("Electrical distribution reference", "instruments/electrical.png")
 box("Operator desk pedestal", (0, .05, .40), (1.5, .80, .80), steel, console, .022)
 box("Desk toe recess", (0, -.36, .12), (1.30, .06, .22), dark, console)
 fascia = box("Sloped control surface", (0, -.05, .96), (1.48, .90, .07), ivory, console, .012)

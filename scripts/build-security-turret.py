@@ -67,18 +67,36 @@ def disk_z(cx, cy, z, radius, swatch, sides=12):
         ))
 
 
-def octagonal_housing(rings, swatch):
-    outline = [(-1,-0.55),(-0.55,-1),(0.55,-1),(1,-0.55),
-               (1,0.55),(0.55,1),(-0.55,1),(-1,0.55)]
+def rounded_housing(rings, swatch):
+    outline = [(math.cos(i*math.tau/16),math.sin(i*math.tau/16)) for i in range(16)]
     sections = [[(x * rx, y, z * rz) for x, z in outline] for y, rx, rz in rings]
     for lower, upper in zip(sections, sections[1:]):
-        for i in range(8):
-            j = (i + 1) % 8
+        for i in range(len(outline)):
+            j = (i + 1) % len(outline)
             face((lower[i], upper[i], upper[j], lower[j]), swatch)
+
+
+def bearing_x(start, end, cy, cz, radius):
+    first = len(vertices)
+    cylinder_z(0, 0, start, end, radius, 2,16)
+    disk_z(0,0,end,radius*.9,1,16)
+    if end < start:
+        for i in range(first,len(vertices),3):
+            vertices[i],vertices[i+2] = vertices[i+2],vertices[i]
+        for i in range(first,len(vertices)):
+            p,uv,n = vertices[i]
+            vertices[i] = (p,uv,tuple(-v for v in n))
+    for i in range(first,len(vertices)):
+        (x,y,z),uv,(nx,ny,nz) = vertices[i]
+        vertices[i] = ((z,cy+y,cz-x),uv,(nz,ny,-nx))
 
 
 # A recessed wall plate, gimbal and spherical instrument head. Front sensor stays at the warning cue.
 box((-0.37,-0.46,-0.48), (0.37,0.35,-0.40), 1)
+for x in (-.29,.29):
+    for y in (-.37,.26):
+        cylinder_z(x,y,-.405,-.390,.028,2,8)
+        disk_z(x,y,-.389,.015,1,8)
 box((-0.22,-0.27,-0.40), (0.22,0.02,-0.24), 2)
 box((-0.12,-0.13,-0.28), (0.12,0.13,-0.13), 1)
 mount_vertex_count = len(vertices)
@@ -86,13 +104,12 @@ profile = []
 for band in range(13):
     angle = -math.pi / 2 + .015 + band * (math.pi - .03) / 12
     profile.append((.07 + math.sin(angle) * .33, math.cos(angle) * .36, math.cos(angle) * .34))
-octagonal_housing(profile, 0)
-octagonal_housing([(.025,.365,.345),(.070,.365,.345)], 2)
+rounded_housing(profile, 0)
+rounded_housing([(.025,.365,.345),(.070,.365,.345)], 2)
 box((-0.46,-0.16,-0.17), (-0.37,0.18,0.19), 1)
 box((0.37,-0.16,-0.17), (0.46,0.18,0.19), 1)
-for x in (-.31, .31):
-    cylinder_z(x, .07, -.02, .08, .075, 2)
-    disk_z(x, .07, .082, .045, 1)
+for side in (-1,1):
+    bearing_x(side*.30,side*.40,.07,.02,.075)
 box((-0.22,.33,-0.14), (.22,.38,.14), 2)
 cylinder_z(0.04, 0.01, 0.31, 0.46, 0.13, 1)
 cylinder_z(0.04, 0.01, 0.45, 0.49, 0.145, 2)
@@ -100,6 +117,10 @@ disk_z(0.04, 0.01, 0.491, 0.14, 2)
 disk_z(0.04, 0.01, 0.493, 0.092, 1)
 cylinder_z(-0.25, 0.24, 0.31, 0.39, 0.068, 1)
 disk_z(-0.25, 0.24, 0.392, 0.056, 3)
+cylinder_z(-0.25, 0.24, 0.375, 0.390, 0.077, 2,16)
+for x in (-.13,.17):
+    cylinder_z(x,.20,.26,.30,.018,1,8)
+    disk_z(x,.20,.301,.011,2,8)
 # The armour sits proud of the dark side brackets, never on their outer planes.
 box((-0.472,-0.06,-0.16), (-0.35,0.25,0.18), 2)
 box((0.35,-0.06,-0.16), (0.472,0.25,0.18), 2)
@@ -138,7 +159,7 @@ row_bytes = (size * 3 + 3) & ~3
 
 
 def write_bmp(path, signal_color):
-    swatches = ((106, 103, 85), (32, 38, 35), (137, 112, 65), signal_color)
+    swatches = ((103, 110, 91), (32, 38, 35), (110, 119, 113), signal_color)
     pixels = bytearray()
     for y in range(size):
         for x in range(size):

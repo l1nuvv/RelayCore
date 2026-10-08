@@ -19,7 +19,7 @@ origin = [-2.4,1.2,-3.82]
 
 [[entity]]
 classname = "prop_static"
-model = "models/lab_notes_board.rcmodel"
+model = "models/electrical_notes_board.rcmodel"
 origin = [2.2,1.3,-3.82]
 [[solid_group]]
 boxes = [
@@ -46,12 +46,18 @@ angles = [180,0,0]
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,0]
+fixture_width = 1.56
+fixture_depth = 0.26
+fixture_offset = 0.3065
 color = [0.85,0.8,0.65]
 radius = 8
 intensity = 0.7
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,4.5]
+fixture_width = 1.11
+fixture_depth = 0.26
+fixture_offset = 0.3065
 color = [0.6,0.8,0.65]
 radius = 4
 intensity = 0.6
@@ -136,3 +142,9 @@ classname = "world_effect"
 kind = "decal"
 origin = [-2.4,2.5,-3.874]
 mark = "01"
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.01, -2]
+angles = [0, 0, 0]

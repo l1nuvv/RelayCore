@@ -85,16 +85,40 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const bool character_views = argc > 1 && std::string_view{argv[1]}.starts_with("--character-views");
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
     const bool intake_views = argc > 1 && std::string_view{argv[1]}.starts_with("--intake-views");
     const bool pump_views = argc > 1 && std::string_view{argv[1]}.starts_with("--pump-views");
     const bool b17_views = argc > 1 && std::string_view{argv[1]}.starts_with("--b17-views");
-    const bool art_review =
-        intake_views || pump_views || b17_views || (argc > 1 && std::string_view{argv[1]}.starts_with("--art-review"));
+    const bool hardware_views = argc > 1 && std::string_view{argv[1]}.starts_with("--hardware-views");
+    const bool material_views = argc > 1 && std::string_view{argv[1]}.starts_with("--material-views");
+    const bool wear_views = argc > 1 && std::string_view{argv[1]}.starts_with("--wear-views");
+    const bool surface_views = argc > 1 && std::string_view{argv[1]}.starts_with("--surface-views");
+    const bool route_views = argc > 1 && std::string_view{argv[1]}.starts_with("--route-views");
+    const bool instrument_views = argc > 1 && std::string_view{argv[1]}.starts_with("--instrument-views");
+    const bool fixture_views = argc > 1 && std::string_view{argv[1]}.starts_with("--fixture-views");
+    const bool contact_views = argc > 1 && std::string_view{argv[1]}.starts_with("--contact-views");
+    const bool atmosphere_views = argc > 1 && std::string_view{argv[1]}.starts_with("--atmosphere-views");
+    const bool lighting_views = fixture_views || contact_views || atmosphere_views
+                                || (argc > 1 && std::string_view{argv[1]}.starts_with("--lighting-views"));
+    const bool lighting_sdr = lighting_views && std::string_view{argv[1]} == "--lighting-views-sdr"
+                              || (fixture_views && std::string_view{argv[1]} == "--fixture-views-sdr")
+                              || (contact_views && std::string_view{argv[1]} == "--contact-views-sdr")
+                              || (atmosphere_views && std::string_view{argv[1]} == "--atmosphere-views-sdr");
+    const bool signage_views = argc > 1 && std::string_view{argv[1]}.starts_with("--signage-views");
+    const bool art_review = character_views || intake_views || pump_views || b17_views || hardware_views
+                            || material_views || wear_views || surface_views || signage_views || route_views
+                            || instrument_views || lighting_views
+                            || (argc > 1 && std::string_view{argv[1]}.starts_with("--art-review"));
     const bool art_legacy =
         argc > 1
         && (std::string_view{argv[1]} == "--art-review-legacy" || std::string_view{argv[1]} == "--intake-views-sdr"
-            || std::string_view{argv[1]} == "--pump-views-sdr" || std::string_view{argv[1]} == "--b17-views-sdr");
+            || std::string_view{argv[1]} == "--pump-views-sdr" || std::string_view{argv[1]} == "--b17-views-sdr"
+            || std::string_view{argv[1]} == "--hardware-views-sdr"
+            || std::string_view{argv[1]} == "--material-views-sdr" || std::string_view{argv[1]} == "--wear-views-sdr"
+            || std::string_view{argv[1]} == "--surface-views-sdr" || std::string_view{argv[1]} == "--signage-views-sdr"
+            || std::string_view{argv[1]} == "--route-views-sdr" || std::string_view{argv[1]} == "--instrument-views-sdr"
+            || std::string_view{argv[1]} == "--character-views-sdr");
     const auto arguments = std::span{argv + 1, static_cast<size_t>(argc - 1)};
     const bool power_views_only = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--power-views-only";
@@ -102,7 +126,7 @@ int main(int argc, char** argv)
     const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--no-shadows";
     });
-    const bool hdr = (art_review && !art_legacy) || (argc > 1 && std::string_view{argv[1]} == "--hdr");
+    const bool hdr = (art_review && !art_legacy && !lighting_sdr) || (argc > 1 && std::string_view{argv[1]} == "--hdr");
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -117,7 +141,7 @@ int main(int argc, char** argv)
     {
         RelayCore::test::ScopedTempDirectory hdr_data;
         auto config_path = RelayCore::core::asset_path(
-            art_review && !art_legacy ? "config/occult_lab_b17.toml" : "config/engine.toml"
+            art_review && !art_legacy && !lighting_sdr ? "config/occult_lab_b17.toml" : "config/engine.toml"
         );
         if (hdr && !art_review)
         {
@@ -135,28 +159,48 @@ int main(int argc, char** argv)
         config.renderer.imgui.enabled = true;
         if (no_shadows || (argc > 1 && std::string_view{argv[1]} == "--no-directional-shadows"))
             config.renderer.shadow_enabled = false;
+        if (std::ranges::any_of(arguments, [](const char* value) {
+                return std::string_view{value} == "--no-atmosphere";
+            }))
+        {
+            config.renderer.fog_enabled = false;
+            config.renderer.postfx_vignette_strength = 0;
+            config.renderer.postfx_scanline_strength = 0;
+            config.renderer.postfx_contrast = 1;
+        }
         RelayCore::Window window{config.window};
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{
             config.renderer,
-            hdr ? RelayCore::render::ColorPipelineMode::hardware_srgb
-                : RelayCore::render::ColorPipelineMode::legacy_gamma
+            (hdr || lighting_sdr) ? RelayCore::render::ColorPipelineMode::hardware_srgb
+                                  : RelayCore::render::ColorPipelineMode::legacy_gamma
         };
         renderer.initialize(window);
         renderer.on_resize(width, height);
         if (art_review)
         {
-            const auto review_directory = std::filesystem::path{"power-captures"} / (art_legacy ? "legacy" : "hdr")
+            const auto review_directory = std::filesystem::path{"power-captures"}
+                                          / (lighting_sdr ? "sdr"
+                                             : art_legacy ? "legacy"
+                                                          : "hdr")
                                           / (no_shadows ? "no-shadows" : "shadows");
             std::filesystem::create_directories(review_directory);
             struct View {
                 const char* map;
-                const char* image;
+                std::string image;
                 glm::vec3 eye;
                 glm::vec3 target;
                 float fov = 60;
+                const char* control = nullptr;
+                int control_state = -1;
+                float door_fraction = -1;
+                float lamp_time = 2;
+                float motion_seconds = 0;
+                int actor_state = -1;
+                int capture_width = width;
+                int capture_height = height;
             };
-            const std::array views{
+            std::vector views{
                 View{"foundation_intake", "foundation-entrance.bmp", {0, 1.65F, -2}, {0, 1.35F, 2}},
                 View{"foundation_intake", "foundation-key.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
                 View{"foundation_intake", "foundation-focused.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
@@ -185,6 +229,9 @@ int main(int argc, char** argv)
                 View{"occult_lab_b17", "b17-reverse.bmp", {1, 1.65F, 3.3F}, {0, 1.6F, -5.2F}},
                 View{"occult_lab_b17", "b17-window.bmp", {-4.1F, 1.65F, 2}, {2, 1.45F, 1.2F}},
                 View{"occult_lab_b17", "b17-services.bmp", {4.1F, 1.65F, -.3F}, {3.1F, 2.65F, 2.6F}},
+                View{"occult_lab_b17", "b17-pipe-joint.bmp", {2.5F, 1.9F, 3.2F}, {2.5F, 2.65F, 4.55F}},
+                View{"occult_lab_b17", "b17-vent-mount.bmp", {-3.7F, 1.9F, -1.5F}, {-5.7F, 2.8F, -2.7F}},
+                View{"occult_lab_b17", "b17-access-return.bmp", {.2F, 1.65F, -5.5F}, {-1, 2.3F, -8.3F}},
                 View{"power_restoration", "revamp-power.bmp", {0, 1.65F, -3}, {2, 1.3F, 2}},
                 View{"power_restoration", "fix-ceiling.bmp", {-2.8F, 1.65F, -2.4F}, {-2.8F, 3.6F, -.7F}},
                 View{"power_restoration", "fix-pipe.bmp", {3, 1.65F, 2.8F}, {4.65F, 2.85F, 2.8F}},
@@ -196,15 +243,620 @@ int main(int argc, char** argv)
                 View{"bench_relay", "fix-wreck.bmp", {0, 1.45F, 5.5F}, {0, .35F, 7}},
                 View{"bench_relay", "wreck-side.bmp", {1.0F, .6F, 6.15F}, {0, .25F, 7}},
                 View{"pressure_transfer", "revamp-transfer.bmp", {4, 1.65F, 1.3F}, {2, 1.2F, 4}},
+                View{"pressure_transfer", "transfer-pipe-joint.bmp", {13.5F, 1.9F, 20}, {13.5F, 2.85F, 18.34F}},
+                View{"pressure_transfer", "hall-pipe-joint.bmp", {2, 1.9F, 14.5F}, {.34F, 2.85F, 14.5F}},
+                View{"pressure_transfer", "bay-pipe-return.bmp", {6, 1.9F, 3}, {7.66F, 2.85F, 2.5F}},
             };
+            if (hardware_views)
+            {
+                views = {
+                    View{"foundation_intake", "slide-closed.bmp", {0, 1.65F, 0}, {0, 1.45F, 3}, 60, nullptr, -1, 0},
+                    View{"foundation_intake", "slide-mid.bmp", {0, 1.65F, 0}, {0, 1.45F, 3}, 60, nullptr, -1, .5F},
+                    View{"foundation_intake", "slide-open.bmp", {0, 1.65F, 0}, {0, 1.45F, 3}, 60, nullptr, -1, 1},
+                    View{"foundation_intake", "slide-reverse.bmp", {0, 1.65F, 5}, {0, 1.45F, 3}, 60, nullptr, -1, .5F},
+                    View{"foundation_pump", "lift-closed.bmp", {0, 1.65F, 3.3F}, {0, 1.45F, 6}, 60, nullptr, -1, 0},
+                    View{"foundation_pump", "lift-mid.bmp", {0, 1.65F, 3.3F}, {0, 1.45F, 6}, 60, nullptr, -1, .5F},
+                    View{"foundation_pump", "lift-open.bmp", {0, 1.65F, 3.3F}, {0, 1.45F, 6}, 60, nullptr, -1, 1},
+                    View{"foundation_pump", "lift-reverse.bmp", {0, 1.65F, 8}, {0, 1.45F, 6}, 60, nullptr, -1, .5F},
+                    View{
+                        "power_restoration",
+                        "side-door-closed.bmp",
+                        {2.5F, 1.65F, 8},
+                        {5, 1.45F, 8},
+                        60,
+                        nullptr,
+                        -1,
+                        0
+                    },
+                    View{
+                        "power_restoration",
+                        "side-door-mid.bmp",
+                        {2.5F, 1.65F, 8},
+                        {5, 1.45F, 8},
+                        60,
+                        nullptr,
+                        -1,
+                        .5F
+                    },
+                    View{
+                        "power_restoration",
+                        "side-door-open.bmp",
+                        {2.5F, 1.65F, 8},
+                        {5, 1.45F, 8},
+                        60,
+                        nullptr,
+                        -1,
+                        1
+                    },
+                    View{
+                        "power_restoration",
+                        "side-door-reverse.bmp",
+                        {7.5F, 1.65F, 8},
+                        {5, 1.45F, 8},
+                        60,
+                        nullptr,
+                        -1,
+                        .5F
+                    },
+                };
+                for (const auto& control : {
+                         View{
+                             "foundation_intake",
+                             "panel-door",
+                             {.7F, 1.5F, 1.3F},
+                             {1.3F, 1.3F, 2.8F},
+                             45,
+                             "intake_button"
+                         },
+                         View{
+                             "occult_lab_b17",
+                             "panel-isolator",
+                             {3.9F, 1.65F, 2.3F},
+                             {4.65F, 1.45F, 3.68F},
+                             45,
+                             "b17_isolator"
+                         },
+                         View{
+                             "foundation_pump",
+                             "panel-start",
+                             {-1.3F, 1.65F, 1.5F},
+                             {-2.7F, 1.4F, 1.5F},
+                             45,
+                             "pump_control"
+                         },
+                         View{
+                             "power_restoration",
+                             "panel-instrument",
+                             {23.1F, 1.65F, 34},
+                             {24.56F, 1.5F, 34},
+                             45,
+                             "bus_relay"
+                         },
+                     })
+                    for (int state = 0; state < 6; ++state)
+                    {
+                        auto view = control;
+                        view.image += "-" + std::to_string(state) + ".bmp";
+                        view.control_state = state;
+                        views.push_back(std::move(view));
+                    }
+            }
+            if (material_views)
+                views = {
+                    View{"cooling_loop", "material-cooling-entry.bmp", {0, 1.65F, 2}, {1, 1.4F, 12}},
+                    View{"cooling_loop", "material-cooling-reverse.bmp", {4.5F, 1.65F, 25}, {0, 1.4F, 15}},
+                    View{"cooling_loop", "material-cooling-wall.bmp", {6.1F, 1.25F, 5}, {6.9F, 1.1F, 5}},
+                    View{"occult_lab_b17", "material-b17-wall.bmp", {4.9F, 1.2F, 1}, {5.8F, 1.1F, 1}},
+                    View{"occult_lab_b17", "material-b17-gasket.bmp", {-2.8F, 1.5F, 2.0F}, {-2, 1.4F, 2}},
+                    View{"occult_lab_b17", "material-b17-services.bmp", {4.15F, 2.3F, .3F}, {4.15F, 2.84F, 1.2F}},
+                    View{"occult_lab_b17", "material-b17-earth.bmp", {2, .7F, 3.8F}, {2, .03F, 4.55F}},
+                    View{"foundation_pump", "material-pump-near.bmp", {-.1F, 1.9F, 1.1F}, {1.6F, 2.55F, 2.6F}},
+                    View{"foundation_pump", "material-pump-shadow.bmp", {0, 1.3F, 4.2F}, {1.6F, 1.1F, 2.6F}},
+                    View{"foundation_intake", "material-intake-near.bmp", {-2, 1.4F, -1.2F}, {-2, 1.2F, 0}},
+                    View{"bench_relay", "material-bench-route.bmp", {0, 1.65F, 0}, {-2.4F, 1.3F, 5}},
+                    View{"occult_lab_b17", "material-b17-floor.bmp", {0, 1.65F, -3}, {2, .2F, 0}},
+                };
+            if (wear_views)
+                views = {
+                    View{"power_restoration", "wear-cabinet.bmp", {-3.4F, 1.65F, .8F}, {-4.15F, 1.4F, 3.2F}, 55},
+                    View{"power_restoration", "wear-access.bmp", {14.8F, 1.65F, 19.4F}, {14.3F, 1.4F, 21.7F}, 55},
+                    View{
+                        "power_restoration",
+                        "wear-threshold.bmp",
+                        {3.3F, 1.65F, 3.7F},
+                        {3.5F, .1F, 5},
+                        60,
+                        nullptr,
+                        -1,
+                        1
+                    },
+                    View{"power_restoration", "wear-leak.bmp", {6.0F, 2.1F, 7.7F}, {5.4F, 2.4F, 7.2F}, 45},
+                    View{"power_restoration", "wear-drips.bmp", {6.6F, 1.5F, 8}, {5.45F, .02F, 7.2F}, 50},
+                    View{"foundation_intake", "wear-slide.bmp", {0, 1.4F, 1.4F}, {0, 1.0F, 3}, 60, nullptr, -1, 0},
+                    View{
+                        "foundation_intake",
+                        "wear-slide-reverse.bmp",
+                        {0, 1.4F, 4.6F},
+                        {0, 1.0F, 3},
+                        60,
+                        nullptr,
+                        -1,
+                        0
+                    },
+                    View{"foundation_pump", "wear-lift.bmp", {0, 1.4F, 4.4F}, {0, .8F, 6}, 60, nullptr, -1, 0},
+                    View{"bench_relay", "wear-workshop.bmp", {0, 1.65F, 0}, {-2.4F, 1.3F, 5}},
+                };
+            if (instrument_views)
+                views = {
+                    View{"occult_lab_b17", "instrument-camera-mount.bmp", {.5F, 1.65F, -1.2F}, {-.7F, 1.1F, -3.4F}, 60},
+                    View{"occult_lab_b17", "instrument-camera-source.bmp", {-.7F, 1.65F, -3.4F}, {2, 1.4F, 1.2F}, 60},
+                    View{
+                        "foundation_intake",
+                        "instrument-intake-electrical.bmp",
+                        {2.2F, 1.9F, -1.0F},
+                        {2.2F, 1.9F, -3.8F},
+                        60
+                    },
+                    View{"foundation_pump", "instrument-pump-pressure.bmp", {-.6F, 1.9F, -1}, {-2.858F, 1.9F, -1}, 60},
+                    View{
+                        "bench_relay",
+                        "instrument-bench-electrical.bmp",
+                        {-2.5F, 2.0F, -1.0F},
+                        {-2.5F, 2.0F, -3.87F},
+                        60
+                    },
+                    View{"power_restoration", "instrument-pump-cooling.bmp", {13.1F, 1.3F, 5}, {11.12F, 1.1F, 5}, 60},
+                    View{
+                        "occult_lab_b17",
+                        "instrument-waveform-1m.bmp",
+                        {-3.55F, 1.40F, .735F},
+                        {-4.511F, 1.325F, .735F},
+                        60
+                    },
+                    View{
+                        "occult_lab_b17",
+                        "instrument-waveform-3m.bmp",
+                        {-1.55F, 1.65F, -.2F},
+                        {-4.511F, 1.325F, .735F},
+                        60
+                    },
+                    View{
+                        "occult_lab_b17",
+                        "instrument-surveillance-1m.bmp",
+                        {4.4F, 1.30F, -2.40F},
+                        {4.4F, 1.23F, -3.78F},
+                        60
+                    },
+                    View{
+                        "occult_lab_b17",
+                        "instrument-surveillance-3m.bmp",
+                        {4.4F, 1.65F, -.78F},
+                        {4.4F, 1.23F, -3.78F},
+                        60
+                    },
+                    View{
+                        "power_restoration",
+                        "instrument-electrical-1m.bmp",
+                        {-2.82F, 1.65F, 2.5F},
+                        {-4.182F, 1.59F, 2.5F},
+                        60
+                    },
+                    View{
+                        "power_restoration",
+                        "instrument-electrical-3m.bmp",
+                        {-.82F, 1.65F, 2.5F},
+                        {-4.182F, 1.59F, 2.5F},
+                        60
+                    },
+                    View{"pressure_transfer", "instrument-pressure-1m.bmp", {38.24F, .70F, 40}, {39.36F, .55F, 40}, 70},
+                    View{
+                        "pressure_transfer",
+                        "instrument-pressure-3m.bmp",
+                        {36.36F, 1.65F, 40},
+                        {39.36F, 1.25F, 40},
+                        60
+                    },
+                    View{"cooling_loop", "instrument-cooling-1m.bmp", {5.24F, .70F, 23}, {6.36F, .55F, 23}, 70},
+                    View{"cooling_loop", "instrument-cooling-3m.bmp", {3.36F, 1.65F, 23}, {6.36F, 1.25F, 23}, 60},
+                };
+            if (signage_views)
+                views = {
+                    View{"pressure_transfer", "signage-pressure-wall.bmp", {36, 2, 29.1F}, {36, 2, 26.135F}, 50},
+                    View{"cooling_loop", "signage-cooling-wall.bmp", {0, 2, 3.1F}, {0, 2, .135F}, 50},
+                    View{"power_restoration", "signage-power-wall.bmp", {0, 2, -1.8F}, {0, 2, -4.8F}, 50},
+                    View{
+                        "occult_lab_b17",
+                        "signage-research-board.bmp",
+                        {4.4F, 2.025F, -2.3F},
+                        {4.4F, 2.025F, -4.80F},
+                        42
+                    },
+                    View{
+                        "pressure_transfer",
+                        "signage-pressure-procedure.bmp",
+                        {2.5F, 2.05F, 4},
+                        {.1175F, 2.05F, 4},
+                        42
+                    },
+                    View{
+                        "pressure_transfer",
+                        "signage-pressure-safety.bmp",
+                        {33.5F, 1.7F, 28.5F},
+                        {33.5F, 1.7F, 26.1125F},
+                        36
+                    },
+                    View{"cooling_loop", "signage-cooling-procedure.bmp", {3, 1.98F, 2.5F}, {3, 1.98F, .1175F}, 42},
+                    View{"cooling_loop", "signage-cooling-safety.bmp", {-4.5F, 1.7F, 5}, {-6.88F, 1.7F, 5}, 36},
+                    View{
+                        "power_restoration",
+                        "signage-power-procedure.bmp",
+                        {2.75F, 1.98F, -2.4F},
+                        {2.75F, 1.98F, -4.83F},
+                        42
+                    },
+                    View{
+                        "power_restoration",
+                        "signage-power-safety.bmp",
+                        {-1.9F, 1.7F, -2.4F},
+                        {-1.9F, 1.7F, -4.83F},
+                        36
+                    },
+                };
+            if (surface_views)
+                views = {
+                    View{"occult_lab_b17", "b17-window.bmp", {-4.1F, 1.65F, 2}, {2, 1.45F, 1.2F}},
+                    View{"occult_lab_b17", "b17-observation.bmp", {-3.1F, 1.65F, -1.8F}, {-4.1F, 1.2F, 3.8F}},
+                    View{"occult_lab_b17", "scientist-front.bmp", {-2.13F, .95F, 3.39F}, {-3, .95F, 3.8F}, 100},
+                    View{"occult_lab_b17", "scientist-side.bmp", {-3.5F, 1.3F, 2.1F}, {-3, .95F, 3.8F}},
+                    View{"occult_lab_b17", "b17-crt-front.bmp", {-3.6F, 1.4F, .7F}, {-4.7F, 1.32F, .7F}, 45},
+                    View{"occult_lab_b17", "b17-crt-oblique.bmp", {-3.6F, 1.55F, 1.4F}, {-4.7F, 1.32F, .7F}, 45},
+                    View{"occult_lab_b17", "b17-monitor-front.bmp", {4.4F, 1.4F, -2.5F}, {4.4F, 1.23F, -3.6F}, 45},
+                    View{"occult_lab_b17", "b17-monitor-oblique.bmp", {3.65F, 1.5F, -2.6F}, {4.4F, 1.23F, -3.6F}, 45},
+                };
+            if (route_views)
+                views = {
+                    View{"pressure_transfer", "route-pressure-forward.bmp", {34, 1.65F, 30}, {33.5F, 2.4F, 26.19F}, 65},
+                    View{"pressure_transfer", "route-pressure-return.bmp", {29, 1.65F, 32}, {26.19F, 2.5F, 29.3F}, 65},
+                    View{"cooling_loop", "route-cooling-approach.bmp", {-4.4F, 1.65F, 9}, {-6.83F, 2.5F, 11.5F}, 65},
+                    View{"cooling_loop", "route-cooling-isolate.bmp", {-4.6F, 1.65F, 16}, {-6.83F, 2.5F, 18.5F}, 65},
+                    View{"cooling_loop", "route-cooling-start.bmp", {4.5F, 1.65F, 21}, {6.83F, 2.65F, 21.4F}, 65},
+                    View{"cooling_loop", "route-cooling-exit.bmp", {3, 1.65F, 23}, {3.4F, 2.5F, 25.8F}, 65},
+                    View{"cooling_loop", "route-cooling-return.bmp", {-4.5F, 1.65F, 24}, {-4.3F, 2.5F, 20.19F}, 65},
+                    View{"power_restoration", "route-power-intake.bmp", {1, 1.65F, -2}, {4.82F, 2.2F, -2.6F}, 65},
+                    View{"power_restoration", "route-power-airlock.bmp", {1.2F, 1.65F, 1}, {2.9F, 2.5F, 4.75F}, 65},
+                    View{"power_restoration", "route-power-return.bmp", {4.4F, 1.65F, 8}, {2.18F, 1.8F, 8}, 65},
+                    View{"power_restoration", "route-power-pump.bmp", {13, 1.65F, 4.5F}, {11.18F, 2.2F, 4.8F}, 65},
+                    View{"power_restoration", "route-power-junction.bmp", {12, 1.65F, 10}, {13.81F, 2.4F, 11.5F}, 65},
+                    View{
+                        "power_restoration",
+                        "route-power-switchgear.bmp",
+                        {12.1F, 1.65F, 11.5F},
+                        {13.81F, 2.2F, 13.3F},
+                        65
+                    },
+                    View{"power_restoration", "route-power-reverse.bmp", {13, 1.65F, 20}, {13, 3.1F, 22.82F}, 65},
+                };
+            if (route_views)
+            {
+                const auto standby_views = views;
+                for (auto view : standby_views)
+                {
+                    view.image.insert(6, "powered-");
+                    views.push_back(std::move(view));
+                }
+            }
+            if (lighting_views)
+            {
+                views = {
+                    View{"foundation_intake", "light-intake.bmp", {0, 1.65F, -2}, {0, 1.35F, 2}},
+                    View{"foundation_intake", "light-key.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
+                    View{"foundation_intake", "light-intake-return.bmp", {0, 1.65F, 4.9F}, {0, 1.65F, -1}},
+                    View{"foundation_pump", "light-pump.bmp", {0, 1.65F, -1}, {0, 1.65F, 4}},
+                    View{"foundation_pump", "light-pump-control.bmp", {-2.4F, 1.65F, 2.5F}, {-2.7F, 1.4F, 1.5F}},
+                    View{"foundation_pump", "light-pump-exit.bmp", {.7F, 1.65F, 4.2F}, {1.6F, 1.55F, 5.4F}},
+                    View{"bench_relay", "light-bench.bmp", {0, 1.65F, -3}, {-2.5F, 1.3F, -1}},
+                    View{"bench_relay", "light-bench-combat.bmp", {0, 1.65F, 3}, {0, 1.1F, 7}},
+                    View{"bench_relay", "light-bench-exit.bmp", {0, 1.65F, 10}, {0, 1.45F, 14}},
+                    View{"power_restoration", "light-power-intake.bmp", {0, 1.65F, -3}, {2, 1.3F, 2}},
+                    View{"power_restoration", "light-power-service.bmp", {6, 1.65F, 0}, {10, 1.4F, 0}},
+                    View{"power_restoration", "light-power-pump.bmp", {13, 1.65F, 1}, {12.4F, 1.4F, 5}},
+                    View{"power_restoration", "light-power-switchgear.bmp", {12, 1.65F, 16}, {13.5F, 1.45F, 21}},
+                    View{"power_restoration", "light-power-maintenance.bmp", {13, 1.65F, 26}, {13, 1.4F, 33}},
+                    View{"power_restoration", "light-power-bus.bmp", {19, 1.65F, 34}, {24, 1.5F, 34}},
+                    View{"power_restoration", "light-power-filter.bmp", {7.5F, 1.65F, 15}, {7.5F, 1.4F, 19}},
+                    View{"power_restoration", "light-power-return.bmp", {4.4F, 1.65F, 8}, {2.18F, 1.8F, 8}},
+                    View{"pressure_transfer", "light-pressure-bay.bmp", {4, 1.65F, 1.3F}, {2, 1.2F, 4}},
+                    View{"pressure_transfer", "light-pressure-gallery.bmp", {4, 1.65F, 11}, {4, 1.4F, 17}},
+                    View{"pressure_transfer", "light-pressure-hall.bmp", {10, 1.65F, 22}, {18, 1.4F, 22}},
+                    View{"pressure_transfer", "light-pressure-junction.bmp", {25, 1.65F, 22}, {28, 1.4F, 29}},
+                    View{"pressure_transfer", "light-pressure-mixed.bmp", {31, 1.65F, 30}, {38, 1.3F, 36}},
+                    View{"pressure_transfer", "light-pressure-control.bmp", {36.36F, 1.65F, 40}, {39.36F, 1.25F, 40}},
+                    View{"pressure_transfer", "light-pressure-exit.bmp", {28, 1.65F, 40}, {28, 1.4F, 44}},
+                    View{"cooling_loop", "light-cooling-entry.bmp", {0, 1.65F, 2}, {1, 1.4F, 12}},
+                    View{"cooling_loop", "light-cooling-isolate.bmp", {-4.6F, 1.65F, 16}, {-6.83F, 1.5F, 18.5F}},
+                    View{"cooling_loop", "light-cooling-start.bmp", {3.36F, 1.65F, 23}, {6.36F, 1.25F, 23}},
+                    View{"cooling_loop", "light-cooling-exit.bmp", {0, 1.65F, 23}, {0, 1.4F, 28}},
+                    View{"cooling_loop", "light-cooling-return.bmp", {4.5F, 1.65F, 25}, {0, 1.4F, 15}},
+                    View{"occult_lab_b17", "light-b17-entry.bmp", {0, 1.65F, -8}, {0, 1.65F, -4}},
+                    View{"occult_lab_b17", "light-b17-lab.bmp", {-.7F, 1.65F, -3.4F}, {2, 1.4F, 1.2F}},
+                    View{"occult_lab_b17", "light-b17-scientist.bmp", {-1, 1.65F, 2.9F}, {-3, 1.2F, 3.8F}},
+                    View{"occult_lab_b17", "light-b17-control.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
+                    View{"occult_lab_b17", "light-b17-return.bmp", {1, 1.65F, 3.3F}, {0, 1.6F, -5.2F}},
+                    View{"power_restoration", "light-power-service-torch.bmp", {6, 1.65F, 0}, {10, 1.4F, 0}},
+                    View{"power_restoration", "light-power-maintenance-torch.bmp", {13, 1.65F, 26}, {13, 1.4F, 33}},
+                };
+                if (fixture_views)
+                {
+                    views.clear();
+                    for (const auto* map :
+                         {"foundation_intake",
+                          "foundation_pump",
+                          "bench_relay",
+                          "power_restoration",
+                          "pressure_transfer",
+                          "cooling_loop",
+                          "occult_lab_b17"})
+                    {
+                        const auto level = RelayCore::load_blockout_level(
+                            RelayCore::core::asset_path(std::string{"levels/"} + map + ".toml")
+                        );
+                        std::size_t index = 0;
+                        for (const auto& effect : RelayGame::build_world_environment(level))
+                            if (effect.kind == RelayGame::EnvironmentKind::Lamp)
+                            {
+                                const auto target = effect.origin + glm::vec3{0, effect.fixture_offset, 0};
+                                auto eye = glm::vec3{effect.origin.x, 1.65F, effect.origin.z + .9F};
+                                if (std::string_view{map} == "power_restoration" && index == 11)
+                                    eye.z = effect.origin.z - .9F;
+                                views.push_back(View{
+                                    map,
+                                    "light-fixture-" + std::string{map} + "-" + std::to_string(index++) + ".bmp",
+                                    eye,
+                                    target
+                                });
+                            }
+                    }
+                }
+                const auto standby_views = views;
+                for (auto view : standby_views)
+                    if (std::string_view{view.map} != "foundation_intake"
+                        && std::string_view{view.map} != "occult_lab_b17")
+                    {
+                        view.image.insert(6, "powered-");
+                        views.push_back(std::move(view));
+                    }
+            }
+            if (fixture_views)
+            {
+                const auto steady_views = views;
+                for (auto view : steady_views)
+                    if (view.image == "light-fixture-pressure_transfer-6.bmp"
+                        || view.image == "light-fixture-power_restoration-15.bmp"
+                        || view.image == "light-fixture-cooling_loop-3.bmp")
+                    {
+                        view.image.insert(6, "flicker-");
+                        view.lamp_time = .1F;
+                        views.push_back(std::move(view));
+                    }
+                RelayGame::WorldSceneRenderer fixture_scene;
+                fixture_scene.initialize(
+                    {.color_pipeline_mode = renderer.color_pipeline_mode()},
+                    renderer.static_models()
+                );
+                renderer.camera().set_position({0, 0, 0});
+                renderer.camera().set_target({0, 2, .1F});
+                std::array effects{RelayGame::EnvironmentEffect{
+                    .kind = RelayGame::EnvironmentKind::Lamp,
+                    .origin = {0, 2, 0},
+                    .fixture_offset = 0,
+                    .fixture_width = 1.2F,
+                    .fixture_depth = .28F
+                }};
+                const auto draw_fixture = [&](float strength, const char* name) {
+                    effects[0].strength = strength;
+                    renderer.begin_frame();
+                    fixture_scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false, {}, {}, effects);
+                    static_cast<void>(capture(renderer, review_directory / name));
+                    const auto pixels = read_rgb(renderer);
+                    double sum = 0;
+                    for (int y = height / 2 - 5; y < height / 2 + 5; ++y)
+                        for (int x = width / 2 - 5; x < width / 2 + 5; ++x)
+                            for (int channel = 0; channel < 3; ++channel)
+                                sum += pixels[static_cast<std::size_t>((y * width + x) * 3 + channel)];
+                    return sum / 300;
+                };
+                const auto off = draw_fixture(0, "fixture-off.bmp");
+                const auto on = draw_fixture(1, "fixture-on.bmp");
+                const auto off_again = draw_fixture(0, "fixture-off-again.bmp");
+                if (on < off + 2 || off > on * .25 || std::abs(off_again - off) > .01)
+                    throw std::runtime_error("Lamp face did not switch cleanly between emissive and unlit states");
+                fixture_scene.shutdown();
+            }
+            if (contact_views)
+                views = {
+                    View{"bench_relay", "light-contact-bench.bmp", {-.2F, 1.05F, -2.8F}, {-2.5F, .25F, -1}},
+                    View{"bench_relay", "light-contact-rover-0.bmp", {0, 1.2F, 4}, {0, .3F, 7}},
+                    View{
+                        "bench_relay",
+                        "light-contact-rover-1.bmp",
+                        {0, 1.2F, 4},
+                        {0, .3F, 7},
+                        60,
+                        nullptr,
+                        -1,
+                        -1,
+                        2,
+                        .25F
+                    },
+                    View{
+                        "bench_relay",
+                        "light-contact-rover-2.bmp",
+                        {0, 1.2F, 4},
+                        {0, .3F, 7},
+                        60,
+                        nullptr,
+                        -1,
+                        -1,
+                        2,
+                        .5F
+                    },
+                    View{
+                        "power_restoration",
+                        "light-contact-door-closed.bmp",
+                        {1.5F, 1.3F, 3},
+                        {2.9F, .6F, 5},
+                        60,
+                        nullptr,
+                        -1,
+                        0
+                    },
+                    View{
+                        "power_restoration",
+                        "light-contact-door-mid.bmp",
+                        {1.5F, 1.3F, 3},
+                        {2.9F, .6F, 5},
+                        60,
+                        nullptr,
+                        -1,
+                        .5F
+                    },
+                    View{
+                        "power_restoration",
+                        "light-contact-door-open.bmp",
+                        {1.5F, 1.3F, 3},
+                        {2.9F, .6F, 5},
+                        60,
+                        nullptr,
+                        -1,
+                        1
+                    },
+                    View{"power_restoration", "light-contact-switchgear.bmp", {12, 1.3F, 17}, {14.3F, .25F, 22}},
+                    View{"pressure_transfer", "light-contact-cover.bmp", {12, 1.2F, 20}, {14, .2F, 21.5F}},
+                    View{"pressure_transfer", "light-contact-wall.bmp", {3, 1.3F, 5}, {.4F, .3F, 4}},
+                    View{"foundation_intake", "light-contact-pipe.bmp", {1, 1.65F, -2}, {3.6F, 2.5F, -1}},
+                    View{"foundation_pump", "light-contact-turret.bmp", {-.2F, 1.4F, 3.9F}, {1.6F, 1.1F, 5.7644F}},
+                    View{"occult_lab_b17", "light-contact-scientist.bmp", {-3.7F, .95F, 2.4F}, {-3, .25F, 3.8F}},
+                    View{"occult_lab_b17", "light-contact-apparatus.bmp", {0, 1.1F, .1F}, {2, .2F, 1.2F}},
+                    View{"occult_lab_b17", "light-contact-services.bmp", {4.1F, 1.65F, -.3F}, {3.1F, 2.65F, 2.6F}},
+                };
+            if (atmosphere_views)
+            {
+                views = {
+                    View{"foundation_intake", "light-atmos-intake.bmp", {0, 1.65F, -2}, {0, 1.35F, 2}},
+                    View{"foundation_pump", "light-atmos-pump.bmp", {0, 1.65F, -1}, {0, 1.4F, 8}},
+                    View{"bench_relay", "light-atmos-bench.bmp", {0, 1.65F, -3}, {0, 1.4F, 14}},
+                    View{"power_restoration", "light-atmos-service.bmp", {6, 1.65F, 0}, {13, 1.4F, 0}},
+                    View{"power_restoration", "light-atmos-long-0.bmp", {13, 1.65F, 11}, {13, 1.4F, 34}},
+                    View{"power_restoration", "light-atmos-long-1.bmp", {13, 1.65F, 12}, {13, 1.4F, 34}},
+                    View{"power_restoration", "light-atmos-long-2.bmp", {13, 1.65F, 13}, {13, 1.4F, 34}},
+                    View{"power_restoration", "light-atmos-return.bmp", {13, 1.65F, 34}, {13, 1.4F, 11}},
+                    View{"pressure_transfer", "light-atmos-gallery.bmp", {9, 1.65F, 22}, {28, 1.4F, 22}},
+                    View{"pressure_transfer", "light-atmos-focus.bmp", {31, 1.65F, 30}, {38, 1.5F, 36}},
+                    View{"pressure_transfer", "light-atmos-loop.bmp", {36.5F, 1.65F, 35.5F}, {39.3F, 2.4F, 35.5F}},
+                    View{"pressure_transfer", "light-atmos-exit.bmp", {28, 1.65F, 40}, {28, 1.4F, 51}},
+                    View{"cooling_loop", "light-atmos-cooling.bmp", {-4.4F, 1.65F, 3}, {-4.4F, 1.4F, 25}},
+                    View{"cooling_loop", "light-atmos-cooling-return.bmp", {4.5F, 1.65F, 25}, {0, 1.4F, 3}},
+                    View{"occult_lab_b17", "light-atmos-b17-focus.bmp", {-.7F, 1.65F, -3.4F}, {2, 1.4F, 1.2F}},
+                    View{"occult_lab_b17", "light-atmos-b17-sample.bmp", {.4F, 1.65F, -.4F}, {2, 1.25F, 1.2F}},
+                    View{"occult_lab_b17", "light-atmos-b17-window.bmp", {-4.1F, 1.65F, 2}, {2, 1.45F, 1.2F}},
+                    View{"occult_lab_b17", "light-atmos-b17-instruments.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
+                };
+                const auto standby = views;
+                for (auto view : standby)
+                    if (std::string_view{view.map} != "occult_lab_b17"
+                        && std::string_view{view.map} != "foundation_intake")
+                    {
+                        view.image.insert(6, "powered-");
+                        view.door_fraction = 1;
+                        views.push_back(std::move(view));
+                    }
+            }
+            if (character_views)
+            {
+                views.clear();
+                const std::array pickups{
+                    View{"bench_relay", "vis36-shotgun", {-2.1F, 1.65F, -2.0F}, {-2.5F, 1.0F, -1}, 70, "bay_shotgun"},
+                    View{
+                        "power_restoration",
+                        "vis36-fuse",
+                        {-2.6F, 1.65F, -1.6F},
+                        {-3.6F, 1.03F, -.5F},
+                        70,
+                        "spare_fuse"
+                    },
+                    View{"foundation_intake", "vis36-key", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}, 70, "intake_key"}
+                };
+                for (auto view : pickups)
+                {
+                    const auto name = view.image;
+                    for (const int state : {0, 1, 5})
+                    {
+                        view.control_state = state;
+                        view.image = name + "-" + std::to_string(state) + ".bmp";
+                        views.push_back(view);
+                    }
+                    view.control_state = 0;
+                    view.capture_width = 800;
+                    view.capture_height = 600;
+                    for (const float fov : {50.0F, 90.0F})
+                    {
+                        view.fov = fov;
+                        view.image = name + "-4x3-" + std::to_string(int(fov)) + ".bmp";
+                        views.push_back(view);
+                    }
+                }
+                for (const int state : {0, 1, 2, 3})
+                {
+                    auto rover = View{
+                        "bench_relay",
+                        "vis37-rover-" + std::to_string(state) + ".bmp",
+                        {0, 1.2F, 2.5F},
+                        {0, .5F, 5.8F},
+                        60
+                    };
+                    rover.actor_state = state;
+                    views.push_back(rover);
+                    auto turret = View{
+                        "foundation_pump",
+                        "vis37-turret-" + std::to_string(state) + ".bmp",
+                        {.7F, 1.65F, 4.2F},
+                        {1.6F, 1.55F, 5.2F},
+                        60
+                    };
+                    turret.actor_state = state;
+                    views.push_back(turret);
+                }
+                views.push_back(
+                    View{"pressure_transfer", "vis36-pressure-contact.bmp", {2, 1.65F, 2.8F}, {2, 1.05F, 4}, 70}
+                );
+                views.push_back(
+                    View{"cooling_loop", "vis36-cooling-contact.bmp", {-3.1F, 1.65F, 2.6F}, {-4.5F, 1.05F, 3.5F}, 70}
+                );
+                views.push_back(View{"bench_relay", "vis37-rover-side.bmp", {2, 1.2F, 5.8F}, {0, .5F, 5.8F}, 60});
+                views.back().actor_state = 0;
+                views.push_back(View{"occult_lab_b17", "vis38-front.bmp", {-2.13F, .95F, 3.39F}, {-3, .95F, 3.8F}, 100}
+                );
+                views.push_back(View{"occult_lab_b17", "vis38-side.bmp", {-3.5F, 1.3F, 2.1F}, {-3, .95F, 3.8F}, 60});
+                views.push_back(View{"occult_lab_b17", "vis38-back.bmp", {-3.6F, 1.65F, 4.15F}, {-3, 1.25F, 3.8F}, 90});
+            }
             std::vector<unsigned char> intake_key_pixels;
             std::vector<unsigned char> pump_standby_pixels;
             std::vector<unsigned char> pump_running_pixels;
             std::vector<unsigned char> b17_instrument_pixels;
+            std::vector<unsigned char> previous_control_pixels;
+            std::vector<unsigned char> pickup_idle_pixels;
+            std::array<std::vector<unsigned char>, 2> actor_pixels;
+            std::uint32_t pickup_idle_draws = 0;
+            std::vector<unsigned char> previous_door_pixels;
+            std::vector<unsigned char> contact_rover_pixels;
+            std::vector<std::pair<std::string, double>> lighting_brightness;
+            std::size_t captured_views = 0;
             for (const auto& view : views)
             {
                 const std::string_view map{view.map};
-                if ((map == "foundation_intake") != intake_views || (map == "foundation_pump") != pump_views)
+                if (!character_views && !hardware_views && !material_views && !wear_views && !surface_views
+                    && !instrument_views && !lighting_views
+                    && ((map == "foundation_intake") != intake_views || (map == "foundation_pump") != pump_views))
                     continue;
                 if (b17_views && map != "occult_lab_b17")
                     continue;
@@ -228,15 +880,119 @@ int main(int argc, char** argv)
                 std::cout << view.image << " load_ms=" << milliseconds(loaded - start)
                           << " prepare_ms=" << milliseconds(prepared_at - loaded)
                           << " initialize_ms=" << milliseconds(initialized - prepared_at) << '\n';
+                if (character_views)
+                    renderer.on_resize(view.capture_width, view.capture_height);
                 renderer.camera().set_position(view.eye);
                 renderer.camera().set_target(view.target);
                 renderer.camera().apply_projection_config({.vertical_fov_radians = glm::radians(view.fov)});
+                if (lighting_views)
+                    renderer.set_spot_light(
+                        {.position = view.eye,
+                         .direction = glm::normalize(view.target - view.eye),
+                         .enabled = view.image.ends_with("-torch.bmp")}
+                    );
                 renderer.begin_frame();
                 auto enemies = RelayGame::build_enemies(session.level);
+                if (contact_views && view.image.starts_with("light-contact-rover-") && enemies.empty())
+                    throw std::runtime_error("Contact review has no moving enemy");
+                if (contact_views && view.motion_seconds > 0)
+                    for (auto& enemy : enemies)
+                    {
+                        enemy.state.mode = RelayGame::EnemyMode::Chasing;
+                        enemy.state.position.z -= enemy.move_speed * view.motion_seconds;
+                    }
                 auto view_usables = session.usables;
                 auto view_doors = session.doors;
                 auto view_turrets = session.combat.turrets;
+                if (character_views && view.actor_state >= 0)
+                {
+                    for (auto& enemy : enemies)
+                    {
+                        enemy.state.position = {0, .01F, 5.8F};
+                        enemy.state.yaw = 180;
+                        enemy.state.mode = view.actor_state == 3   ? RelayGame::EnemyMode::Dead
+                                           : view.actor_state == 2 ? RelayGame::EnemyMode::Recovery
+                                           : view.actor_state == 1 ? RelayGame::EnemyMode::Windup
+                                                                   : RelayGame::EnemyMode::Idle;
+                        enemy.state.timer = .30F;
+                    }
+                    for (auto& turret : view_turrets)
+                    {
+                        turret.enabled = true;
+                        turret.warming_up = view.actor_state == 1;
+                        turret.warmup_remaining_seconds = .30F;
+                        turret.destroyed = view.actor_state == 3;
+                        if (view.actor_state == 2)
+                            turret.shot_trace = {turret.origin, view.eye, .08F};
+                    }
+                }
                 std::vector<std::string> view_targets;
+                std::vector<RelayGame::EnvironmentEffect> route_environment;
+                if (route_views)
+                {
+                    if (view.image.starts_with("route-powered-"))
+                    {
+                        view_targets = {"transfer_running", "facility_power", "cooling_running"};
+                        for (auto& door : view_doors)
+                            door.open_fraction = 1;
+                    }
+                    route_environment = RelayGame::build_world_environment(session.level);
+                    RelayGame::update_world_environment(route_environment, view_targets, 2.0F);
+                }
+                if (lighting_views)
+                {
+                    if (view.image.starts_with("light-powered-"))
+                        view_targets = {
+                            "pump_running",
+                            "relay_running",
+                            "facility_power",
+                            "cooling_running",
+                            "cooling_access",
+                            "transfer_running",
+                            "sector_airlock"
+                        };
+                    route_environment = RelayGame::build_world_environment(session.level);
+                    RelayGame::update_world_environment(route_environment, view_targets, 0);
+                    RelayGame::update_world_environment(route_environment, view_targets, view.lamp_time);
+                    for (const auto& effect : route_environment)
+                        if (effect.kind == RelayGame::EnvironmentKind::Lamp)
+                        {
+                            const bool active =
+                                (effect.required_target.empty()
+                                 || std::ranges::find(view_targets, effect.required_target) != view_targets.end())
+                                && (effect.stop_target.empty()
+                                    || std::ranges::find(view_targets, effect.stop_target) == view_targets.end());
+                            if ((active && !effect.damaged && effect.strength < .99F)
+                                || (!active && effect.strength != 0))
+                                throw std::runtime_error("Lighting review lamp did not settle: " + view.image);
+                        }
+                }
+                int hardware_focus = -1;
+                if (view.door_fraction >= 0)
+                    for (auto& door : view_doors)
+                        door.open_fraction = view.door_fraction;
+                if (view.control)
+                {
+                    const auto found =
+                        std::ranges::find(view_usables, view.control, &RelayCore::gameplay::RuntimeUsable::name);
+                    if (found == view_usables.end())
+                        throw std::runtime_error("Hardware review control missing: " + std::string{view.control});
+                    found->enabled = true;
+                    found->consumed = false;
+                    found->locked = view.control_state == 2;
+                    found->requirement_met = true;
+                    found->feedback_remaining_seconds =
+                        view.control_state == 3 || view.control_state == 4 ? 1.0F : 0.0F;
+                    found->feedback_style = view.control_state == 3 ? RelayCore::gameplay::UsableFeedbackStyle::Warning
+                                                                    : RelayCore::gameplay::UsableFeedbackStyle::Success;
+                    if (view.control_state == 1)
+                        hardware_focus = static_cast<int>(found - view_usables.begin());
+                    if (view.control_state == 5)
+                    {
+                        found->consumed = true;
+                        found->enabled = false;
+                    }
+                }
                 if (std::string_view{view.image} == "b17-isolated.bmp")
                 {
                     std::vector<std::string> inventory, signaled;
@@ -327,7 +1083,7 @@ int main(int argc, char** argv)
                 scene.render(
                     renderer,
                     renderer.camera(),
-                    0,
+                    view.motion_seconds,
                     view_doors,
                     view_turrets,
                     view_usables,
@@ -336,15 +1092,71 @@ int main(int argc, char** argv)
                               std::ranges::find(view_usables, "intake_key", &RelayCore::gameplay::RuntimeUsable::name)
                               - view_usables.begin()
                           )
-                        : -1,
+                        : hardware_focus,
                     {},
                     false,
                     view_targets,
                     {},
-                    {},
+                    route_environment,
                     enemies
                 );
-                (void) capture(renderer, review_directory / view.image);
+                const auto brightness =
+                    capture(renderer, review_directory / view.image, view.capture_width, view.capture_height);
+                if (contact_views && view.image.starts_with("light-contact-rover-"))
+                {
+                    auto pixels = read_rgb(renderer);
+                    if (pixels == contact_rover_pixels)
+                        throw std::runtime_error("Moving enemy did not change the contact review frame");
+                    contact_rover_pixels = std::move(pixels);
+                }
+                if (lighting_views)
+                {
+                    if (view.image.ends_with("-torch.bmp"))
+                    {
+                        auto unlit_image = view.image;
+                        unlit_image.replace(unlit_image.size() - 10, 10, ".bmp");
+                        const auto unlit =
+                            std::ranges::find(lighting_brightness, unlit_image, &std::pair<std::string, double>::first);
+                        if (unlit == lighting_brightness.end() || brightness <= unlit->second + .5)
+                            throw std::runtime_error("Flashlight did not reveal the service passage: " + view.image);
+                    }
+                    lighting_brightness.emplace_back(view.image, brightness);
+                }
+                if (character_views && view.actor_state >= 0 && !view.image.ends_with("side.bmp"))
+                {
+                    auto& previous = actor_pixels[view.image.starts_with("vis37-rover-") ? 0 : 1];
+                    auto pixels = read_rgb(renderer);
+                    if (view.actor_state > 0 && pixels == previous)
+                        throw std::runtime_error("Security states rendered identically: " + view.image);
+                    previous = std::move(pixels);
+                }
+                ++captured_views;
+                if (view.control)
+                {
+                    const auto pixels = read_rgb(renderer);
+                    if (view.control_state > 0 && view.control_state < 5 && pixels == previous_control_pixels)
+                        throw std::runtime_error("Panel feedback states rendered identically: " + view.image);
+                    if (!character_views && view.control_state == 5 && pixels != previous_control_pixels)
+                        throw std::runtime_error(
+                            "Consumed panel did not retain its success presentation: " + view.image
+                        );
+                    if (character_views && view.control_state == 0)
+                    {
+                        pickup_idle_pixels = pixels;
+                        pickup_idle_draws = scene.diagnostics().usable_draw_calls;
+                    }
+                    if (character_views && view.control_state == 5
+                        && (pixels == pickup_idle_pixels || scene.diagnostics().usable_draw_calls >= pickup_idle_draws))
+                        throw std::runtime_error("Collected pickup remained visible: " + view.image);
+                    previous_control_pixels = pixels;
+                }
+                if (view.door_fraction >= 0 && !view.image.ends_with("reverse.bmp"))
+                {
+                    const auto pixels = read_rgb(renderer);
+                    if (view.door_fraction > 0 && pixels == previous_door_pixels)
+                        throw std::runtime_error("Door travel did not change its rendered view: " + view.image);
+                    previous_door_pixels = pixels;
+                }
                 if (std::string_view{view.image} == "b17-instruments.bmp")
                     b17_instrument_pixels = read_rgb(renderer);
                 else if (std::string_view{view.image} == "b17-isolated.bmp"
@@ -375,6 +1187,8 @@ int main(int argc, char** argv)
                 }
                 scene.shutdown();
             }
+            if ((character_views || instrument_views || lighting_views) && captured_views != views.size())
+                throw std::runtime_error("Art review skipped an authored view");
             return 0;
         }
         if (config.renderer.shadow_enabled)

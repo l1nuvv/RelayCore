@@ -50,6 +50,37 @@ def wheel(x,z):
             a,b=rings[k][i],rings[k][(i+1)%12]
             triangle(center,b,a,2) if k==0 else triangle(center,a,b,2)
 
+def hardware_box(center,size,tile,angle=0):
+    points=[]
+    for x,y,z in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),
+                  (-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]:
+        x,y,z=x*size[0]/2,y*size[1]/2,z*size[2]/2
+        points.append((center[0]+x,center[1]+y*math.cos(angle)-z*math.sin(angle),
+                       center[2]+y*math.sin(angle)+z*math.cos(angle)))
+    for face in [(0,3,2,1),(4,5,6,7),(0,1,5,4),(3,7,6,2),(0,4,7,3),(1,2,6,5)]:
+        quad(*(points[i] for i in face),tile)
+
+def hardware_cylinder(a,b,radius,tile,sides=12):
+    direction=[b[i]-a[i] for i in range(3)]
+    length=math.sqrt(sum(x*x for x in direction));direction=[x/length for x in direction]
+    reference=(0,1,0) if abs(direction[1])<.9 else (1,0,0)
+    tangent=[direction[1]*reference[2]-direction[2]*reference[1],
+             direction[2]*reference[0]-direction[0]*reference[2],
+             direction[0]*reference[1]-direction[1]*reference[0]]
+    length=math.sqrt(sum(x*x for x in tangent));tangent=[x/length for x in tangent]
+    bitangent=[direction[1]*tangent[2]-direction[2]*tangent[1],
+               direction[2]*tangent[0]-direction[0]*tangent[2],
+               direction[0]*tangent[1]-direction[1]*tangent[0]]
+    rings=[[(p[axis]+radius*(math.cos(i*math.tau/sides)*tangent[axis]
+                          +math.sin(i*math.tau/sides)*bitangent[axis]))
+            for axis in range(3)] for p in (a,b) for i in range(sides)]
+    for i in range(sides):
+        j=(i+1)%sides
+        quad(rings[i],rings[j],rings[sides+j],rings[sides+i],tile)
+        triangle(a,rings[j],rings[i],tile)
+        triangle(b,rings[sides+i],rings[sides+j],tile)
+
+
 shell([(.18,.27,.34,0),(.28,.34,.42,0),(.48,.34,.42,0),(.60,.25,.31,-.04)],0)
 shell([(.58,.13,.14,-.04),(.68,.13,.14,-.04),(.72,.10,.10,-.04)],2)
 head_start = len(vertices)
@@ -61,15 +92,35 @@ for cx in (-.092, .092):
             a, b = side * math.tau / 16, (side + 1) * math.tau / 16
             triangle((cx, .83, z), (cx + math.cos(a) * radius, .83 + math.sin(a) * radius, z),
                      (cx + math.cos(b) * radius, .83 + math.sin(b) * radius, z), tile)
+# Short lens barrels and a lateral bearing make the sensor head mechanically readable.
+for cx in (-.092,.092):
+    hardware_cylinder((cx,.83,.175),(cx,.83,.206),.061,1,16)
+for side in (-1,1):
+    hardware_cylinder((side*.18,.765,.015),(side*.218,.765,.015),.045,2,16)
 head_end = len(vertices)
 # Front collision bumper and sensor brow.
-shell([(.25,.27,.08,.39),(.36,.30,.08,.39),(.40,.27,.06,.39)],2)
-shell([(.78,.15,.035,.20),(.85,.15,.035,.20)],1)
+shell([(.25,.27,.07,.35),(.36,.30,.07,.35),(.40,.27,.06,.35)],2)
+shell([(.90,.15,.035,.20),(.935,.15,.035,.20)],1)
+# Live drive hardware uses the same axle, hub and service-cover vocabulary as the wreck.
+for z in (-.22,.22):
+    hardware_cylinder((-.32,.21,z),(.32,.21,z),.028,2)
+for side in (-1,1):
+    hardware_box((side*.341,.405,-.06),(.008,.12,.29),1)
+    hardware_box((side*.347,.405,-.06),(.008,.10,.265),0)
+for x in (-.22,.22):
+    for z in (-.27,.23):
+        hardware_cylinder((x,.58,z),(x,.594,z),.010,2,8)
 wheel_starts = []
+wheel_ends = []
 for x in [-.32,.32]:
-    for z in [-.25,.25]:
+    for z in [-.22,.22]:
         wheel_starts.append(len(vertices))
         wheel(x,z)
+        side=-1 if x<0 else 1
+        outer=x+side*.086
+        hardware_cylinder((outer,.21,z),(outer+side*.007,.21,z),.070,2,16)
+        hardware_cylinder((outer+side*.007,.21,z),(outer+side*.012,.21,z),.031,1,12)
+        wheel_ends.append(len(vertices))
 
 def write_obj(path, mesh, label):
     with path.open('w', encoding='ascii') as f:
@@ -130,41 +181,11 @@ def append_part(begin, end, transform, dark=False):
 
 append_part(head_start, head_end, broken_head)
 for index, begin in enumerate(wheel_starts):
-    end = wheel_starts[index+1] if index+1 < len(wheel_starts) else len(live)
+    end = wheel_ends[index]
     if index == 3:
-        append_part(begin, end, lambda p: (p[0]*.8+.09, p[1]*.85, p[2]*.8+.08))
+        append_part(begin, end, lambda p: (p[0]*.8+.09, p[1]*.85, p[2]*.8+.104))
     else:
-        append_part(begin, end, lambda p: (p[0]*.8, p[1]*.90, p[2]*.8))
-
-def hardware_box(center,size,tile,angle=0):
-    points=[]
-    for x,y,z in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),
-                  (-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]:
-        x,y,z=x*size[0]/2,y*size[1]/2,z*size[2]/2
-        points.append((center[0]+x,center[1]+y*math.cos(angle)-z*math.sin(angle),
-                       center[2]+y*math.sin(angle)+z*math.cos(angle)))
-    for face in [(0,3,2,1),(4,5,6,7),(0,1,5,4),(3,7,6,2),(0,4,7,3),(1,2,6,5)]:
-        quad(*(points[i] for i in face),tile)
-
-def hardware_cylinder(a,b,radius,tile,sides=12):
-    direction=[b[i]-a[i] for i in range(3)]
-    length=math.sqrt(sum(x*x for x in direction));direction=[x/length for x in direction]
-    reference=(0,1,0) if abs(direction[1])<.9 else (1,0,0)
-    tangent=[direction[1]*reference[2]-direction[2]*reference[1],
-             direction[2]*reference[0]-direction[0]*reference[2],
-             direction[0]*reference[1]-direction[1]*reference[0]]
-    length=math.sqrt(sum(x*x for x in tangent));tangent=[x/length for x in tangent]
-    bitangent=[direction[1]*tangent[2]-direction[2]*tangent[1],
-               direction[2]*tangent[0]-direction[0]*tangent[2],
-               direction[0]*tangent[1]-direction[1]*tangent[0]]
-    rings=[[(p[axis]+radius*(math.cos(i*math.tau/sides)*tangent[axis]
-                          +math.sin(i*math.tau/sides)*bitangent[axis]))
-            for axis in range(3)] for p in (a,b) for i in range(sides)]
-    for i in range(sides):
-        j=(i+1)%sides
-        quad(rings[i],rings[j],rings[sides+j],rings[sides+i],tile)
-        triangle(a,rings[j],rings[i],tile)
-        triangle(b,rings[sides+i],rings[sides+j],tile)
+        append_part(begin, end, lambda p: (p[0]*.8, p[1]*.90, p[2]*.8+(-.024 if index%2==0 else .024)))
 
 for z in (-.2,.2):
     hardware_cylinder((-.26,.189,z),(.26,.189,z),.022,2)

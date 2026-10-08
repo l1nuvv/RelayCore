@@ -9,6 +9,11 @@ classname = "prop_static"
 model = "models/cooling_service.rcmodel"
 origin = [0,0,0]
 
+[[entity]]
+classname = "prop_static"
+model = "models/cooling_lab_notes_board.rcmodel"
+origin = [3,1.45,0.1175]
+
 [[solid_group]]
 boxes = [
   { origin = [0,-0.12,15], size = [14,0.24,30], material = "service_floor" },
@@ -54,7 +59,7 @@ entries = [
 
 [[entity]]
 classname = "prop_static"
-model = "models/pressure_control_casing.rcmodel"
+model = "models/cooling_control_casing.rcmodel"
 origin = [6.65,0,23]
 angles = [270,0,0]
 
@@ -101,7 +106,7 @@ entries = [
 
 [[entity_group]]
 classname = "prop_static"
-model = "models/safety_notice.rcmodel"
+model = "models/cooling_safety_notice.rcmodel"
 entries = [
   { origin = [-6.88,1.15,5], angles = [90,0,0] },
   { origin = [2.8,1.15,20.11] },
@@ -111,6 +116,7 @@ entries = [
 classname = "gameplay_entity"
 kind = "pickup"
 targetname = "cooling_shotgun"
+pickup_surface_y = 1.036
 origin = [-4.5,1.105,3.5]
 size = [1.08,0.21,0.14]
 item_id = "weapon_shotgun"
@@ -155,6 +161,7 @@ activation_policy = "open_only"
 classname = "gameplay_entity"
 kind = "terminal"
 targetname = "cooling_isolator"
+panel_style = "isolator"
 target = "cooling_access"
 action = "activate_target"
 chain_target = "cooling_control"
@@ -170,6 +177,7 @@ success_message = "Утечка изолирована. Аварийная пе�
 classname = "gameplay_entity"
 kind = "terminal"
 targetname = "cooling_control"
+panel_style = "start"
 target = "cooling_running"
 action = "activate_target"
 chain_target = "cooling_exit_reader"
@@ -233,13 +241,13 @@ close_door = "cooling_exit"
 [[entity_group]]
 classname = "render_light"
 entries = [
-  { origin = [0,3.3,4], color = [0.58,0.57,0.46], radius = 9, intensity = 1.25 },
-  { origin = [-4,3.3,12], color = [0.48,0.52,0.48], radius = 8, intensity = 1.2 },
-  { origin = [4.3,3.3,15], color = [0.48,0.52,0.48], radius = 9, intensity = 1.2 },
-  { origin = [-5,2.8,18.5], color = [0.68,0.43,0.22], radius = 6, intensity = 1.3, state = "damaged", stop_target = "cooling_access" },
-  { origin = [5,3.3,23], color = [0.58,0.48,0.32], radius = 6, intensity = 0.65 },
-  { origin = [0,3.3,23], color = [0.48,0.62,0.58], radius = 9, intensity = 1.5, required_target = "cooling_running" },
-  { origin = [0,3.3,28], color = [0.32,0.52,0.38], radius = 7, intensity = 1.4, required_target = "cooling_running" },
+  { origin = [0,3.3,4], color = [0.67,0.64,0.54], radius = 9, intensity = 1.15, fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
+  { origin = [-4,3.3,12], color = [0.60,0.64,0.59], radius = 8, intensity = 1.25, fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
+  { origin = [4.3,3.3,15], color = [0.60,0.64,0.59], radius = 9, intensity = 1.25, fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
+  { origin = [-5,2.8,18.5], color = [0.68,0.43,0.22], radius = 4.5, intensity = 1.15, state = "damaged", stop_target = "cooling_access", fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.8690 },
+  { origin = [5,3.3,23], color = [0.72,0.66,0.52], radius = 5, intensity = 1.15, fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
+  { origin = [0,3.3,23], color = [0.62,0.70,0.65], radius = 9, intensity = 1.3, required_target = "cooling_running", fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
+  { origin = [0,3.3,28], color = [0.55,0.68,0.60], radius = 7, intensity = 1.25, required_target = "cooling_running", fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.3690 },
 ]
 
 [[entity]]
@@ -267,9 +275,9 @@ required_target = "cooling_running"
 classname = "world_effect"
 kind = "decal"
 entries = [
-  { origin = [-6.899,2.6,18.5], angles = [90,0,0], mark = "01" },
-  { origin = [6.899,2.6,23], angles = [270,0,0], mark = "02" },
-  { origin = [3,2.6,25.899], angles = [180,0,0], mark = "03" },
+  { origin = [-6.822,2.65,17.55], scale = 0.65, angles = [90,0,0], mark = "01" },
+  { origin = [6.822,2.8,20.65], scale = 0.65, angles = [270,0,0], mark = "02" },
+  { origin = [4.15,2.65,25.792], scale = 0.65, angles = [180,0,0], mark = "03" },
 ]
 
 [[entity]]
@@ -289,3 +297,39 @@ loop = "audio/ambient_airlock_hum.wav"
 volume = 0.18
 priority = 10
 required_target = "cooling_running"
+
+# VIS-25: painted occult intrusion; no backing or gameplay collision.
+[[entity]]
+classname = "prop_static"
+model = "models/blood_pentagram.rcmodel"
+origin = [0,1.15,0.135]
+
+# VIS-26: retained route glyphs mounted on local physical carriers.
+[[entity]]
+classname = "prop_static"
+model = "models/cooling_route_signage.rcmodel"
+origin = [0,0,0]
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.01, 28.5]
+size = [2,2.5,1.2]
+next_map = "levels/occult_lab_b17.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.01, 2]
+angles = [0, 0, 0]
+
+# VIS-30: practical housings for the existing local lights.
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [-5,3.8,18.5] },
+  { origin = [5,3.8,23] },
+]

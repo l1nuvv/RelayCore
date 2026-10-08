@@ -42,12 +42,45 @@ TEST_CASE("pressure transfer wall equipment and lights meet their supporting sur
                    && glm::all(glm::lessThanEqual(point, solid.maxs + glm::vec3{.002F}));
         });
     };
+    std::vector<std::array<glm::vec3, 3>> sign_triangles;
+    for (const auto& prop : RelayGame::build_static_props(route.session.level))
+        if (prop.model.stem() == "pressure_route_signage")
+        {
+            const auto model = RelayCore::render::read_model_asset(prop.model);
+            for (const auto& part : model.parts)
+            {
+                const auto& mesh = model.meshes[part.mesh].geometry;
+                for (std::size_t i = 0; i < mesh.indices.size(); i += 3)
+                {
+                    std::array<glm::vec3, 3> triangle;
+                    for (std::size_t j = 0; j < 3; ++j)
+                        triangle[j] = glm::vec3{
+                            prop.transform * part.transform * glm::vec4{mesh.vertices[mesh.indices[i + j]].position, 1}
+                        };
+                    sign_triangles.push_back(triangle);
+                }
+            }
+        }
+    REQUIRE_FALSE(sign_triangles.empty());
+    const auto sign_supports = [&](glm::vec3 point) {
+        return std::ranges::any_of(sign_triangles, [&](const auto& t) {
+            const auto normal = glm::normalize(glm::cross(t[1] - t[0], t[2] - t[0]));
+            const auto distance = glm::dot(point - t[0], normal);
+            if (std::abs(distance) > .02F)
+                return false;
+            const auto projected = point - normal * distance;
+            for (std::size_t i = 0; i < 3; ++i)
+                if (glm::dot(glm::cross(t[(i + 1) % 3] - t[i], projected - t[i]), normal) < -1e-6F)
+                    return false;
+            return true;
+        });
+    };
     int mounted = 0;
     for (const auto& prop : RelayGame::build_static_props(route.session.level))
     {
         const auto name = prop.model.stem().string();
-        if (name != "ventilation_unit" && name != "utility_pipe" && name != "safety_notice"
-            && name != "lab_notes_board")
+        if (name != "ventilation_unit" && name != "utility_pipe" && name != "pressure_safety_notice"
+            && name != "pressure_lab_notes_board")
             continue;
         CAPTURE(name);
         CAPTURE(prop.authored_entity_index);
@@ -96,9 +129,13 @@ TEST_CASE("pressure transfer wall equipment and lights meet their supporting sur
             CAPTURE(effect.mark);
             auto transform = glm::translate(glm::mat4{1}, effect.origin);
             transform = glm::rotate(transform, glm::radians(effect.angles.x), glm::vec3{0, 1, 0});
+            transform = glm::scale(transform, glm::vec3{effect.scale});
             for (const float x : {-.42F, .42F})
                 for (const float y : {-.35F, .35F})
-                    CHECK(supported(glm::vec3{transform * glm::vec4{x, y, -.001F, 1}}));
+                {
+                    const auto point = glm::vec3{transform * glm::vec4{x, y, -.001F, 1}};
+                    CHECK((supported(point) || sign_supports(point)));
+                }
         }
     }
 }
@@ -338,6 +375,49 @@ TEST_CASE("pressure transfer mixed cover blocks turret fire while rover keeps ap
             CHECK(route.player.health < 100);
         }
     }
+}
+
+TEST_CASE("pistol viewmodel cycle follows successful shots and survives weapon switching without false recoil")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::EngineConfig config;
+    RelayGame::GameWorldRuntime runtime;
+    runtime.load_level_session(config, RelayGame::LevelSessionBuilder{config.gameplay}.build(map_path()));
+    auto snapshot = runtime.capture_runtime_snapshot();
+    snapshot.inventory_item_ids.push_back("weapon_shotgun");
+    REQUIRE(runtime.restore_runtime_snapshot(snapshot).restored);
+    const auto fire = [&] {
+        return runtime.debug_apply_player_fire({4, 1.65F, 2}, {0, 0, -1}).fired;
+    };
+    REQUIRE(fire());
+    CHECK(
+        runtime.pistol_cycle_remaining_seconds() == doctest::Approx(runtime.player_combat_state().weapon_refire_seconds)
+    );
+    runtime.debug_tick_combat(.04F);
+    const auto remaining = runtime.pistol_cycle_remaining_seconds();
+    CHECK(remaining > 0);
+    CHECK_FALSE(fire());
+    CHECK(runtime.pistol_cycle_remaining_seconds() == remaining);
+    REQUIRE(runtime.select_weapon(RelayGame::PlayerWeapon::Shotgun));
+    runtime.debug_tick_combat(1);
+    REQUIRE(fire());
+    CHECK(runtime.shotgun_cycle_remaining_seconds() == doctest::Approx(.85F));
+    runtime.debug_tick_combat(.18F);
+    CHECK(runtime.shotgun_cycle_remaining_seconds() == doctest::Approx(.67F));
+    CHECK_FALSE(fire());
+    CHECK(runtime.shotgun_cycle_remaining_seconds() == doctest::Approx(.67F));
+    REQUIRE(runtime.select_weapon(RelayGame::PlayerWeapon::Precise));
+    CHECK(runtime.pistol_cycle_remaining_seconds() == 0);
+    CHECK(runtime.player_combat_state().weapon_cooldown_remaining_seconds > 0);
+    CHECK_FALSE(fire());
+    runtime.debug_tick_combat(1);
+    CHECK(runtime.shotgun_cycle_remaining_seconds() == 0);
+    REQUIRE(fire());
+    snapshot = runtime.capture_runtime_snapshot();
+    REQUIRE(runtime.restore_runtime_snapshot(snapshot).restored);
+    CHECK(runtime.pistol_cycle_remaining_seconds() == 0);
+    CHECK(runtime.shotgun_cycle_remaining_seconds() == 0);
 }
 
 TEST_CASE("pressure transfer continue and retry preserve pickup device and exit progression")

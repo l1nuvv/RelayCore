@@ -160,6 +160,10 @@ namespace RelayGame
         {
             return combat_state_.shotgun_cycle_remaining_seconds;
         }
+        [[nodiscard]] auto pistol_cycle_remaining_seconds() const noexcept -> float
+        {
+            return combat_state_.pistol_cycle_remaining_seconds;
+        }
 
         [[nodiscard]] auto scientist_pose() const noexcept -> ScientistPose;
 
@@ -257,6 +261,7 @@ namespace RelayGame
             RelayCore::gameplay::PlayerCombatState player{};
             std::array<RelayCore::gameplay::CombatShotTrace, 7> pellet_traces{};
             float shotgun_cycle_remaining_seconds = 0;
+            float pistol_cycle_remaining_seconds = 0;
             std::vector<RelayCore::gameplay::RuntimeTurret> turrets{};
             std::vector<RelayCore::gameplay::RuntimeHazardVolume> hazards{};
             std::string fire_binding_label{"Mouse1"};

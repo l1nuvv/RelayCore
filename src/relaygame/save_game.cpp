@@ -300,6 +300,9 @@ namespace RelayGame
             std::ranges::sort(properties);
             for (const auto& [key, value] : properties)
             {
+                // Render presentation does not change saved gameplay state.
+                if (key == "panel_style" || key == "pickup_surface_y")
+                    continue;
                 bytes(key);
                 bytes(value);
             }

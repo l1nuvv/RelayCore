@@ -1,4 +1,16 @@
 set(RELAYCORE_MODEL_SOURCES
+    shotgun_world.glb
+    shotgun_view_body.glb
+    shotgun_view_pump.glb
+    pistol_frame.glb
+    pistol_slide.glb
+    b17_observation_camera.glb
+    electrical_notes_board.glb
+    pressure_notes_board.glb
+    cooling_notes_board.glb
+    pressure_route_signage.glb
+    cooling_route_signage.glb
+    power_route_signage.glb
     service_cylinder.glb
     lab_bench.glb
     power_cabinet.glb
@@ -12,6 +24,14 @@ set(RELAYCORE_MODEL_SOURCES
     utility_pipe.glb
     lab_notes_board.glb
     safety_notice.glb
+    pressure_lab_notes_board.glb
+    pressure_safety_notice.glb
+    cooling_lab_notes_board.glb
+    cooling_safety_notice.glb
+    power_lab_notes_board.glb
+    power_safety_notice.glb
+    blood_pentagram.glb
+    occult_research_board.glb
     lab_accessories.glb
     control_console.glb
     lab_microscope.glb
@@ -22,6 +42,7 @@ set(RELAYCORE_MODEL_SOURCES
     pressure_manifold.glb
     transfer_cover_casing.glb
     pressure_control_casing.glb
+    cooling_control_casing.glb
     transfer_room_lining.glb
     equipment_bay_lining.glb
     equipment_bay_furniture.glb
@@ -42,20 +63,31 @@ set(RELAYCORE_MODEL_SOURCES
     foundation_pump_machine.glb
     foundation_pump_room.glb
     b17_services.glb
+    b17_lining.glb
+    door_lift.glb
+    door_slide.glb
+    panel_door.glb
+    panel_isolator.glb
+    panel_start.glb
+    panel_instrument.glb
 )
 set(RELAYCORE_MODEL_ASSET_ROOT "${PROJECT_BINARY_DIR}/generated/model-assets")
 set(RELAYCORE_MODEL_RECEIPT_ROOT "${PROJECT_BINARY_DIR}/generated/model-receipts")
 set(model_products)
 set(model_runtime_paths)
-foreach(name IN ITEMS lab_bench power_cabinet crt_terminal instrument_rack ventilation_unit
+foreach(name IN ITEMS b17_observation_camera electrical_notes_board pressure_notes_board cooling_notes_board pressure_route_signage cooling_route_signage power_route_signage lab_bench power_cabinet crt_terminal instrument_rack ventilation_unit
         resonance_apparatus facility_sign scientist_hazmat concrete_arch utility_pipe
+        blood_pentagram occult_research_board
+        pressure_lab_notes_board pressure_safety_notice cooling_lab_notes_board cooling_safety_notice power_lab_notes_board power_safety_notice
         lab_notes_board safety_notice lab_accessories control_console lab_microscope
         lab_multimeter surveillance_monitor analog_navigation_instrument fluorescent_fixture
-        pressure_manifold transfer_cover_casing pressure_control_casing transfer_room_lining
+        pressure_manifold transfer_cover_casing pressure_control_casing cooling_control_casing transfer_room_lining
         equipment_bay_lining equipment_bay_furniture service_hall_lining isolation_gallery_lining
         transfer_exit_lining power_intake power_service power_switchgear power_maintenance
         power_filtration power_pump bench_workshop cooling_exchanger cooling_service
-        foundation_intake service_key foundation_pump_machine foundation_pump_room b17_services)
+        foundation_intake service_key foundation_pump_machine foundation_pump_room b17_services b17_lining
+        door_lift door_slide panel_door panel_isolator panel_start panel_instrument pistol_frame pistol_slide
+        shotgun_view_body shotgun_view_pump shotgun_world)
     set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_${name} ON)
 endforeach()
 foreach(source IN LISTS RELAYCORE_MODEL_SOURCES)

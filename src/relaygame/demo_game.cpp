@@ -286,13 +286,22 @@ namespace RelayGame
             &runtime_.player_combat_state(),
             runtime_.player_pellet_traces()
         );
-        if ((screen_ == Screen::Playing || screen_ == Screen::Paused) && runtime_.player_combat_state().alive
-            && runtime_.selected_weapon() == PlayerWeapon::Shotgun)
-            world_scene_.render_shotgun_viewmodel(
-                services.renderer(),
-                services.camera(),
-                runtime_.shotgun_cycle_remaining_seconds()
-            );
+        if ((screen_ == Screen::Playing || screen_ == Screen::Paused) && runtime_.player_combat_state().alive)
+        {
+            if (runtime_.selected_weapon() == PlayerWeapon::Shotgun)
+                world_scene_.render_shotgun_viewmodel(
+                    services.renderer(),
+                    services.camera(),
+                    runtime_.shotgun_cycle_remaining_seconds()
+                );
+            else
+                world_scene_.render_pistol_viewmodel(
+                    services.renderer(),
+                    services.camera(),
+                    runtime_.pistol_cycle_remaining_seconds(),
+                    runtime_.player_combat_state().weapon_refire_seconds
+                );
+        }
         services.renderer().set_world_diagnostics(world_scene_.diagnostics());
         services.renderer().finish_scene();
         signal_update_ready();

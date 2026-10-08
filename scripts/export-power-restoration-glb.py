@@ -6,6 +6,7 @@ Runtime coordinates are used below; all six placements have origin [0,0,0].
 """
 from pathlib import Path
 from math import pi, sin, cos
+from random import Random
 import importlib.util
 import sys
 import tomllib
@@ -32,20 +33,34 @@ def materials():
     bpy.context.scene.unit_settings.system = "METRIC"
     # The shared texture writer stores palette values as sRGB PNG bytes;
     # untextured Principled factors below are linear.
-    return {
+    palette = {
         "wall": h.material("power_plaster", (.48, .47, .425), .94,
-                           texture="content/third_party/polyhaven/pressure_transfer/concrete_wall_001_diff_1k.jpg"),
-        "paint": h.material("power_sage_enamel", (.42, .48, .44), .72,
-                            sheet="content/graphics/prop_materials_source.png", cell=0),
-        "steel": h.material("power_galvanized", (.55, .58, .57), .60, .65,
-                            sheet="content/graphics/prop_materials_source.png", cell=7),
+                           texture="content/third_party/polyhaven/pressure_transfer/concrete_wall_001_diff_1k.jpg",
+                           variation=.35),
+        "paint": h.material("power_sage_enamel", (.42, .48, .44), .63,
+                            sheet="content/graphics/prop_materials_source.png", cell=0, variation=.12),
+        "steel": h.material("power_galvanized", (.55, .58, .57), .48, .80,
+                            sheet="content/graphics/prop_materials_source.png", cell=2, variation=.18),
         "dark": h.material("power_blackened_steel", (.045, .055, .052), .78, .25),
         "ivory": h.material("power_instrument_ivory", (.70, .67, .56), .79),
-        "blue": h.material("power_pump_bluegray", (.38, .47, .50), .68,
-                           sheet="content/graphics/prop_materials_source.png", cell=0),
+        "blue": h.material("power_pump_bluegray", (.38, .47, .50), .63,
+                           sheet="content/graphics/prop_materials_source.png", cell=0, variation=.12),
         "ochre": h.material("power_isolation_ochre", (.48, .29, .08), .75),
         "red": h.material("power_valve_red", (.34, .065, .04), .68),
+        "wear": h.material("power_exposed_service_steel", (.52, .55, .53), .76, .20),
+        "scuff": h.material("power_rubber_transfer", (.17, .18, .17), .92),
+        "rust": h.material("power_local_oxide", (.50, .31, .18), .94,
+                           sheet="content/graphics/prop_materials_source.png", cell=3),
+        "primer": h.material("power_breached_primer", (.20, .18, .135), .91),
+        "crack": h.material("power_fractured_coating", (.045, .052, .046), .97),
+        "deposit": h.material("power_dry_leak_deposit", (.16, .17, .145), .98),
     }
+    palette["wall"]["uv_metres"] = 2.8
+    for kind in ("paint", "blue"):
+        h.surface_normal(palette[kind], .6, .10)
+    h.surface_normal(palette["steel"], .4, .035)
+    h.surface_normal(palette["rust"], .18, .07)
+    return palette
 
 
 def zone(x, z):
@@ -97,6 +112,11 @@ def portal(x, z, width, m, axis="z", title=None):
         pos = (x+side*(width/2+.05), 1.45, z) if axis == "z" else (x, 1.45, z+side*(width/2+.05))
         B("Portal folded jamb", pos, (.10, 2.9, .28) if axis == "z" else (.28, 2.9, .10), m["steel"])
     B("Portal lintel", (x, 2.96, z), (width+.2, .13, .28) if axis == "z" else (.28, .13, width+.2), m["paint"])
+    # Heel pivots beside the threshold, rather than a repeated dirt border.
+    for dx, dz, length in ((-.32, -.43, .16), (.21, .62, .12), (.43, .81, .08)):
+        center = (x+dx, .003, z+dz) if axis == "z" else (x+dz, .003, z+dx)
+        u, v = ((.009, 0, .004), (.025, 0, -length)) if axis == "z" else ((length, 0, .025), (.004, 0, -.009))
+        h.wear_patch("Threshold heel scuff", center, u, v, m["scuff"], int((x+z)*100)+int(dz*100))
     if title:
         for side in (-1, 1):
             pos = (x, 3.27, z+side*.16) if axis == "z" else (x+side*.16, 3.27, z)
@@ -107,12 +127,61 @@ def cabinet(x, z, width, depth, height, m, title):
     B("Switchboard folded housing", (x, height/2, z), (width+.03, height+.02, depth+.025), m["paint"])
     B("Switchboard plinth", (x, .09, z), (width+.045, .18, depth+.045), m["dark"])
     front = z-depth/2-.055
-    B("Removable access panel", (x, 1.43, front), (width-.15, height-.46, .025), m["steel"])
+    B("Door perimeter gasket", (x, height/2+.03, front+.008), (width-.12, height-.43, .025), m["dark"], .003)
+    B("Removable access panel", (x, height/2+.03, front-.006), (width-.15, height-.46, .025), m["steel"])
     for dx in (-width/2+.09, width/2-.09):
         B("Folded vertical rail", (x+dx, height/2, front-.025), (.035, height-.15, .035), m["dark"])
     for y in (.32, .40, .48):
         B("Ventilation slot", (x, y, front-.018), (width-.30, .025, .012), m["dark"], .002)
-    B("Service latch", (x+width*.27, 1.12, front-.035), (.045, .20, .045), m["dark"])
+    latch_x, latch_y = x+width*.27, height*.53
+    B("Latch escutcheon", (latch_x, latch_y, front-.025), (.10, .36, .026), m["paint"], .004)
+    for y in (latch_y-.13, latch_y+.13):
+        B("Pull handle mounting foot", (latch_x, y, front-.054), (.075, .06, .075), m["dark"], .006)
+    B("Raised service pull", (latch_x, latch_y, front-.086), (.075, .30, .045), m["dark"], .008)
+    seed = int((x*31+z)*100)
+    for dx, dy, length in ((-.008, .032, .045), (.012, -.018, .033)):
+        h.wear_patch("Pull hand contact", (latch_x+dx, latch_y+dy, front-.1095),
+                     (.006, 0, 0), (0, -length, 0), m["wear"], seed+int(dy*100))
+    for dx, dy in ((-.035, -.10), (.028, .09)):
+        h.wear_patch("Latch tool scrape", (latch_x+dx, latch_y+dy, front-.039),
+                     (.012, 0, 0), (0, -.034, 0), m["wear"], seed+int(dy*100))
+    for dx, y in ((-width/2+.16, .38), (width/2-.15, height-.38)):
+        h.wear_patch("Access screw tool slip", (x+dx, y+.025, front-.0195),
+                     (.028, .013, 0), (.008, -.009, 0), m["wear"], seed+int(y*100))
+    # Opening the hatch chips the lower painted return; water collects at screws.
+    rng = Random(seed)
+    for i in range(22):
+        dx = rng.uniform(-width*.40, width*.39)
+        dy = rng.uniform(.19, .24)
+        flake = rng.uniform(.012, .025)
+        h.wear_patch("Chipped lower enclosure return", (x+dx, dy, front+.0415),
+                     (flake, 0, 0), (0, -flake*.7, 0), m["primer"], seed+i)
+        if i % 3 == 0:
+            h.wear_patch("Exposed return steel", (x+dx, dy, front+.041),
+                         (flake*.6, 0, 0), (0, -flake*.35, 0), m["wear"], seed+i)
+    for dx, y in ((-width/2+.15, .38), (width/2-.15, height-.38)):
+        for i in range(12):
+            angle = rng.uniform(0, 2*pi)
+            radius = rng.uniform(.017, .045)
+            flake = rng.uniform(.009, .018)
+            h.wear_patch("Hatch fastener corrosion", (x+dx+radius*cos(angle), y+radius*sin(angle), front-.020),
+                         (flake, 0, 0), (0, -flake*.65, 0), m["rust"], seed+50+i)
+        for i in range(5):
+            h.wear_patch("Fastener rust run", (x+dx+.008*sin(i*1.7), y-.055-i*.032, front-.0205),
+                         (.017-i*.002, 0, 0), (0, -.028, 0), m["rust"], seed+80+i)
+    for i in range(12):
+        h.wear_patch("Latch escutcheon flaked paint", (latch_x+rng.uniform(-.038, .038),
+                     latch_y+rng.uniform(-.155, -.105), front-.039),
+                     (.007, 0, 0), (0, -.012, 0), m["primer"] if i % 3 else m["rust"], seed+100+i)
+    h.surface_crack("Lower return fractured paint", [(x+.08, .255, front+.041), (x+.12, .24, front+.041),
+                    (x+.105, .217, front+.041), (x+.16, .188, front+.041)], (0, 0, -1), .003, m["crack"])
+    for y in (.38, height-.38):
+        hinge_x = x-width/2+.10
+        B("Hinge door leaf", (hinge_x+.035, y, front-.025), (.10, .12, .025), m["paint"], .003)
+        rod("Hinge barrel", (hinge_x, y-.075, front-.040), (hinge_x, y+.075, front-.040), .024, m["steel"], 24)
+        for screw_x in (x-width/2+.15, x+width/2-.15):
+            rod("Access panel captive screw", (screw_x, y, front-.016), (screw_x, y, front-.034), .013, m["dark"], 8)
+    B("Folded enclosure top lip", (x, height+.015, z), (width+.05, .03, depth+.045), m["paint"], .004)
     sign(title, (x, height-.20, front-.027), width-.14, m)
     for side in (-1, 1):
         side_x = x+side*(width/2+.025)
@@ -138,6 +207,11 @@ def intake(m):
     cabinet(-4.2, 3.9, .9, 1.3, 2.8, m, "INTAKE / A-01")
     portal(0, 4.8, 3.0, m, title="SECTOR AIRLOCK")
     portal(5, 0, 2.8, m, "x", "01 / SERVICE")
+    h.surface_crack("Traffic fracture at tiled threshold", [(3.92, .003, 4.94), (3.77, .003, 4.81),
+                    (3.72, .003, 4.62), (3.55, .003, 4.50), (3.49, .003, 4.28)],
+                    (0, 1, 0), .004, m["crack"])
+    h.surface_crack("Threshold fracture branch", [(3.77, .003, 4.81), (3.60, .003, 4.84),
+                    (3.51, .003, 4.73)], (0, 1, 0), .0025, m["crack"])
     sign("COOLING RESEARCH / INTAKE", (0, 2.72, -4.82), 3.25, m, "+z")
     sign("AIRLOCK RELEASE", (2.1, 1.99, 4.78), 1.4, m)
     rod("Console cable riser", (-4.75, .45, 2.5), (-4.75, 3.22, 2.5), .025, m["steel"])
@@ -151,7 +225,7 @@ def service(m):
         B("Cable tray saddle", (13.77, 3.12, z), (.18, .16, .08), m["steel"])
     for x in (13.65, 13.80):
         rod("Overhead cable tray rail", (x, 3.13, 1), (x, 3.13, 14.8), .028, m["dark"], 12)
-    portal(12.5, 15, 3, m, title="02 / SWITCHGEAR")
+    portal(12.5, 15, 3, m, title="03 / SWITCHGEAR")
     sign("< PUMP / SWITCHGEAR >", (13.81, 2.45, 8), 2.42, m, "-x")
     sign("INTAKE / AIRLOCK  >", (11.18, 2.25, 2.1), 2.18, m, "+x")
     portal(3.5, 5, 2, m, title="RETURN / INTAKE")
@@ -163,7 +237,7 @@ def service(m):
 def switchgear(m):
     for i, x in enumerate((10, 11.4, 14.3, 15.7)):
         cabinet(x, 22.3, 1.15, .9, 2.8, m, "SW-%02d" % (i+1))
-    sign("02 / SECTOR DISTRIBUTION", (13, 3.15, 22.82), 3.4, m)
+    sign("03 / SECTOR DISTRIBUTION", (13, 3.15, 22.82), 3.4, m)
     sign("RESERVE BUS  >", (16.82, 2.3, 20.7), 1.8, m, "-x")
     sign("MAIN BREAKER", (14.3, 2.18, 21.77), 1.03, m)
     for x in (10, 11.4, 14.3, 15.7):
@@ -236,6 +310,21 @@ def pump(m):
     rod("Pressure gauge face", (6.82, 2.69, 9.03), (6.824, 2.69, 9.03), .107, m["ivory"], 48)
     rod("Pressure gauge needle", (6.83, 2.65, 9.07), (6.83, 2.75, 8.98), .006, m["dark"], 8)
     rod("Leaking union", (5.37, 2.4, 7.2), (5.45, 2.4, 7.2), .13, m["dark"])
+    # Fit oxide to the lower union shell; the takeoff is in an open portal.
+    vertices = []
+    for i in range(13):
+        angle = pi*(.58+.74*i/12)
+        for x in (5.377+.004*sin(i*2.1), 5.419+.006*cos(i*1.7)):
+            vertices.append((x, -(7.2+.1308*sin(angle)), 2.4+.1308*cos(angle)))
+    h.mesh_object("Union lower-shell corrosion", vertices,
+                  [(2*i, 2*i+2, 2*i+3, 2*i+1) for i in range(12)], m["rust"])
+    rng = Random(2350)
+    for i in range(18):
+        angle = rng.uniform(0, 2*pi)
+        radius = rng.uniform(.07, .17)
+        flake = rng.uniform(.006, .019)
+        h.wear_patch("Old union drip residue", (5.43+radius*cos(angle), .004, 7.2+radius*sin(angle)),
+                     (flake, 0, 0), (0, 0, -flake*.65), m["deposit"], 2350+i)
     B("Cooling control backplate", (7, 1.42, 5.42), (1.14, 1.40, .045), m["steel"])
     sign("P-02 / COOLING START", (7, 2.43, 5.44), 2.15, m, "+z")
     rod("Control cable", (7, 2.8, 5.32), (7, 3.15, 5.32), .025, m["dark"])

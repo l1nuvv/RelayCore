@@ -236,6 +236,15 @@ TEST_CASE("save compatibility follows geometry and entity properties")
     const auto fingerprint = RelayGame::fingerprint_level(level);
     level.entities[0].properties = {{"second", "two"}, {"first", "one"}};
     CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["panel_style"] = "isolator";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["panel_style"] = "start";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["pickup_surface_y"] = "0.92";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["first"] = "changed";
+    CHECK(RelayGame::fingerprint_level(level) != fingerprint);
+    level.entities[0].properties["first"] = "one";
     level.entities[0].origin.x = 2;
     CHECK(RelayGame::fingerprint_level(level) != fingerprint);
     level.entities[0].origin.x = 0;

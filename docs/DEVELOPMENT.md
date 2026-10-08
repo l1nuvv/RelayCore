@@ -101,6 +101,19 @@ Assets по умолчанию находятся рядом с executable; `REL
 репозитория. Исполняемый файл называется `RelayCore.exe`. Не выбирайте
 `relaycore_demo_assets`: этот target собирает и синхронизирует ресурсы, но не запускает игру.
 
+### Видимые элементы светильников
+
+`render_light.fixture_width` / `fixture_depth` задают размер светящейся плоскости
+в метрах, `fixture_offset` — её высоту относительно источника, `angles[0]` —
+поворот вокруг +Y. Корпус остаётся отдельной статической моделью или authored solid.
+Плоскость смотрит вниз; её размеры и высота должны соответствовать внутреннему
+проёму корпуса. `fixture_width = 0` оставляет источник без плоскости (например,
+локальный свет от аппаратуры B-17). Без явной ширины сохраняется прежний режим:
+0.56 × 0.18 м для switched/damaged ламп, без плоскости для обычного источника.
+Видимый элемент использует ту же `strength`, что и освещение, включая startup,
+`required_target`, `stop_target` и damaged flicker; нулевой уровень не emissive.
+Не оставлять на том же месте безусловный `LightStrip` solid.
+
 ### Узкие проверки
 
 Проверки коммита и автоматизации выпуска входят в CTest; для узкой диагностики их можно запускать непосредственно:
@@ -327,6 +340,17 @@ Python-пакет `bpy` не требуются для моделировани�
 с игровым импортёром: ограничения следующего раздела остаются обязательными.
 
 ### Поддерживаемый импорт
+
+Общие интерактивные корпуса VIS-17/18 воспроизводятся через
+`scripts/export-interactive-hardware-glb.py`: `door_lift`, `door_slide` и четыре
+`panel_*` модели. Полотно нормализовано в исходный движущийся AABB, направляющие
+находятся вне swept depth. У `gameplay_entity` с `kind = panel/button/terminal/console`
+необязательный render-only `panel_style` принимает `door`, `isolator`, `start`,
+`instrument`; остальные значения вызывают диагностику. По умолчанию panel/button
+использует door, terminal/console — instrument. Позиция кнопки, feedback, focus,
+collision и действия задаются прежними игровыми данными.
+`panel_style` исключён из level fingerprint, чтобы смена корпуса сохраняла
+совместимость прогресса; gameplay properties и геометрия по-прежнему проверяются.
 
 `relaycore_model_import` компилирует статический GLB в `.rcmodel`. Поддерживаются
 triangle primitives с POSITION/NORMAL, TEXCOORD_0 для текстур, default scene,
@@ -555,3 +579,14 @@ Environment specular/probe bake/import ещё не добавлены: это с
 предметов, заданий и других игровых объектов; геометрия остаётся в файлах карт.
 
 Unit/content/graphics tests и episode profile используют staged runtime assets с native моделями и собранными SPIR-V; при ручном запуске задайте `RELAYCORE_ASSET_ROOT` на `build/<preset>/src/relaygame/assets`. CTest делает это автоматически. Изолированный mesh workload использует свой build-time SPIR-V path, но для native моделей также получает staged assets.
+
+### Pickup presentation (VIS-36)
+
+`gameplay_entity` with `kind = pickup` may specify a finite `pickup_surface_y`
+world height for the existing shotgun/fuse presentation. This is the visible
+support plane, separate from the interaction `origin`/`size`. The renderer rests
+the bare shotgun on its side and the fuse on its end-cap radius, 2 mm above that
+plane. When absent, the bottom of the authored visual bounds is the support.
+The field is excluded from save fingerprints, like `panel_style`; collision,
+focus bounds, reach and consumed state retain their existing owners. Bench,
+cooling, pressure and power placements use their actual authored worktop heights.

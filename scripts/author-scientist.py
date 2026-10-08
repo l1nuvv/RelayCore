@@ -2,7 +2,7 @@
 import gzip
 import random
 from collections import defaultdict
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 scientist = assembly("Laboratory technician - cotton coat and fitted PPE")
 cloth = material("Ivory cotton twill", (.66, .65, .60))
@@ -136,8 +136,8 @@ for side in (-1, 1):
     shoulder = joint("joint-l-shoulder" if side > 0 else "joint-r-shoulder")
     old_elbow = joint("joint-l-elbow" if side > 0 else "joint-r-elbow")
     old_wrist = joint("joint-l-hand" if side > 0 else "joint-r-hand")
-    elbow = Vector((side*.285,.005,1.18))
-    wrist = Vector((side*.315,-.035,.965))
+    elbow = Vector((side*.285, -.035 if side > 0 else .005, 1.21 if side > 0 else 1.18))
+    wrist = Vector((.23,-.22,1.15) if side > 0 else (-.315,-.035,.965))
     rotation = (old_wrist-old_elbow).rotation_difference(wrist-elbow)
     direction = (old_wrist-old_elbow).normalized()
     hand_faces = [f for f in groups["body"]
@@ -147,7 +147,7 @@ for side in (-1, 1):
     vertices = []
     sleeve_sections = [(Vector((side*.145,0,1.435)),.076),
                        (Vector((side*.185,0,1.425)),.084),
-                       (shoulder.lerp(elbow,.30),.088),
+                       (shoulder.lerp(elbow,.30),.079),
                        (shoulder.lerp(elbow,.65),.075),(elbow+Vector((0,0,.025)),.071),
                        (elbow,.070),(elbow.lerp(wrist,.18),.068),
                        (elbow.lerp(wrist,.40),.064),(elbow.lerp(wrist,.66),.058),
@@ -175,7 +175,7 @@ for side in (-1, 1):
     shaped_mesh("Glove gauntlet inside coat cuff",vertices,
                 [(r*32+i,r*32+(i+1)%32,(r+1)*32+(i+1)%32,(r+1)*32+i) for r in range(3) for i in range(32)],rubber,.002)
     cx = side*.14
-    boot_sections = [(.009,cx,-.060,.060,.143,0),(.032,cx,-.060,.060,.143,0),
+    boot_sections = [(0,cx,-.060,.060,.143,0),(.032,cx,-.060,.060,.143,0),
                      (.045,cx,-.060,.058,.139,0),(.075,cx,-.062,.057,.134,0),
                      (.105,cx,-.040,.055,.105,0),(.14,cx,-.005,.049,.063,0),
                      (.18,cx,.005,.049,.051,0),(.205,cx,.005,.050,.051,0)]
@@ -184,6 +184,7 @@ for side in (-1, 1):
     for z,y in ((.105,-.145),(.12,-.115),(.14,-.080)):
         ribbon("Boot lace",[(cx-.023,y,z),(cx+.023,y,z+.007)],.003,rubber,(0,0,1))
 
+head_parts = set(bpy.context.scene.objects)
 # The real face and ears remain visible around PPE, rather than a fabric-covered head.
 head = anatomy("Anatomical head and continuous neck",[f for f in groups["body"]
                if max(positions[i].z for i in f)>1.50],skin)
@@ -242,6 +243,20 @@ for side in (-1,1):
             (side*.088,-.020,1.638),(side*.062,.046,1.65),(0,.065,1.65)]
     ribbon("Respirator cheek strap",points,.012,rubber,(0,0,1))
 
+head_pose = (Matrix.Translation((0,0,1.51)) @ Matrix.Rotation(.10,4,'X')
+             @ Matrix.Rotation(.06,4,'Z') @ Matrix.Translation((0,0,-1.51)))
+for obj in set(bpy.context.scene.objects) - head_parts:
+    if obj.type == "MESH" and not obj.name.startswith(("Folded coat lapel", "Coat collar", "Coat patch", "Pocket mouth")):
+        obj.matrix_world = head_pose @ obj.matrix_world
+
+# Seams follow the coat pattern, including a short rear walking vent.
+ribbon("Back coat centre seam",[(0,cy+ry+.002,z) for z,cx,cy,rx,ry,f in coat_sections[3:11]],.003,seam)
+for side in (-1,1):
+    ribbon("Rear walking vent edge",[(side*.008,.166,.65),(side*.008,.164,.72),
+           (side*.005,.158,.83)],.004,seam)
+for z in (1.19,1.29,1.39):
+    cylinder("Coat fastening",(.012,-.149,z),.006,.003,metal,scientist,(pi/2,0,0),12)
+
 # The apron follows the coat front and hangs freely below the waist.
 vertices=[]
 for row in range(19):
@@ -255,10 +270,21 @@ for row in range(19):
 shaped_mesh("Cut rubber laboratory apron",vertices,
             [(r*17+i,r*17+i+1,(r+1)*17+i+1,(r+1)*17+i) for r in range(18) for i in range(16)],rubber,.003)
 for side in (-1,1):
+    ribbon("Apron bound edge",[vertices[row*17+(0 if side<0 else 16)] for row in range(19)],.006,rubber)
+for side in (-1,1):
     ribbon("Apron shoulder strap",[(side*.082,-.159,1.32),(side*.088,-.150,1.38),
            (side*.093,-.123,1.45),(side*.088,-.090,1.487),
            (side*.085,-.025,1.510),(side*.085,.050,1.485),
            (side*.075,.092,1.45),(0,.115,1.40)],.021,rubber)
 points=[(.211*cos(i*2*pi/64),.003+.145*sin(i*2*pi/64),1.06) for i in range(65)]
 ribbon("Apron waist belt",points,.023,rubber,(0,0,1))
+
+board = material("Worn brown fibre clipboard",(.12,.079,.042))
+paper = material("Ivory inspection sheet",(.72,.70,.61))
+ink = material("Graphite inspection marks",(.085,.10,.085))
+box("Supported inspection clipboard",(.095,-.320,1.18),(.23,.014,.30),board,scientist,.007)
+box("Inspection sheet",(.089,-.328,1.19),(.204,.0015,.255),paper,scientist,.001)
+box("Spring paper clip",(.095,-.334,1.313),(.063,.009,.024),metal,scientist,.003)
+for row in range(8):
+    box("Recorded measurement",(.065,-.3295,1.275-row*.026),(.13 if row%3 else .08,.001,.002),ink,scientist,0)
 export("scientist_hazmat")

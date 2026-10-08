@@ -13,6 +13,29 @@
 #include "scoped_test_logger.h"
 #include "world_query_fixture.h"
 
+TEST_CASE("world shotgun retains supplied geometry and shares native viewmodel materials")
+{
+    using namespace RelayCore::render;
+    const auto world = read_model_asset(RelayCore::core::asset_path("models/shotgun_world.rcmodel"));
+    const auto body = read_model_asset(RelayCore::core::asset_path("models/shotgun_view_body.rcmodel"));
+    const auto pump = read_model_asset(RelayCore::core::asset_path("models/shotgun_view_pump.rcmodel"));
+    std::size_t triangles = 0;
+    for (const auto& part : world.parts)
+        triangles += world.meshes[part.mesh].geometry.indices.size() / 3;
+    CHECK(triangles == 1586);
+    REQUIRE(world.materials.size() == 4);
+    for (const auto& surface : world.materials)
+    {
+        const auto same_surface = [&](const auto& candidate) {
+            return surface.base_color.width == candidate.base_color.width
+                   && surface.base_color.height == candidate.base_color.height
+                   && surface.base_color.pixels == candidate.base_color.pixels
+                   && surface.metallic_roughness == candidate.metallic_roughness;
+        };
+        CHECK((std::ranges::any_of(body.materials, same_surface) || std::ranges::any_of(pump.materials, same_surface)));
+    }
+}
+
 TEST_CASE("native lab shares model resources and preserves transformed props through editor save")
 {
     RelayCore::test::ScopedTempDirectory temp;
@@ -140,7 +163,8 @@ TEST_CASE("B17 laboratory loads native graphics and keeps its inspection routes 
         CAPTURE(prop.model.string());
         const auto model = cache.load(prop.model, RelayCore::render::TextureEncoding::srgb);
         REQUIRE_FALSE(model->meshes.empty());
-        if (prop.model.stem() == "lab_notes_board" || prop.model.stem() == "safety_notice")
+        if (prop.model.stem() == "lab_notes_board" || prop.model.stem() == "occult_research_board"
+            || prop.model.stem() == "safety_notice")
             CHECK(std::ranges::any_of(model->materials, [](const auto& material) {
                 return material.base_color.cpu_data()->width > 1;
             }));

@@ -44,12 +44,18 @@ item_id = "service_key"
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,1]
+fixture_width = 1.09
+fixture_depth = 0.26
+fixture_offset = 0.0265
 color = [0.55,0.7,0.85]
 radius = 7
 intensity = 1.5
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,7]
+fixture_width = 1.09
+fixture_depth = 0.26
+fixture_offset = 0.0265
 color = [0.55,0.8,0.65]
 radius = 6
 intensity = 1.5
@@ -89,6 +95,7 @@ success_message = "Насосы работают. Служебный выход 
 classname = "gameplay_entity"
 kind = "terminal"
 targetname = "pump_control"
+panel_style = "start"
 target = "pump_running"
 action = "activate_target"
 chain_target = "pump_button"
@@ -194,3 +201,26 @@ classname = "episode_end"
 origin = [0,1.65,8]
 angles = [180,0,0]
 close_door = "pump_door"
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.01, 8.5]
+size = [2,2.5,1.2]
+next_map = "levels/bench_relay.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.01, -1]
+angles = [0, 0, 0]
+
+# Local pump pressure reference; the adjacent live gauges retain their readings.
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_notes_board.rcmodel"
+origin = [-2.858,1.35,-1]
+angles = [90,0,0]
+scale = [0.85,0.85,0.85]

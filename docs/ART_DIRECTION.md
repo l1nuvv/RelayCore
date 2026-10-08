@@ -26,20 +26,40 @@ Use the supplied board for material relationships, analog technology, atmosphere
 
 Gameplay readability, routes, sightlines, cover, and interaction cues take priority over decorative atmosphere. Match current asset formats, scale, shader capabilities, and export conventions; this document does not establish new technical requirements.
 
+## Owner direction — 2026-10-08
+
+The full owner-supplied moodboards define the art direction. Their mixture is
+intentional: twentieth-century scientific/industrial interiors and analog
+equipment coexist with urban Art Deco architecture, statues, skulls, candles,
+blood, pentagrams, sigils, ritual spaces and infernal imagery. Late-1980s/1990s
+laboratory technology is one strand of this setting, not the limit of its visual
+references or historical range. The Deadlock-like urban and occult strand has
+equal authority when choosing environment motifs and props.
+
+Occult elements may be overt, ritual, unsettling or unexplained, as well as
+studied and engineered. They do not each need an equipment function to justify
+their presence. Composition, construction and gameplay readability still govern
+placement and density. Consult the relevant moodboard panels before making art
+decisions; do not reduce them to generic sci-fi or laboratory references.
+
+This direction supersedes narrower exclusions below. The current approved
+examples are a large blood-red wall pentagram and a separate unfinished
+red-marker decipherment board; the latter depicts scientists studying the former.
+
 ## 1. Core Visual Direction
 
 **Primary direction:**  
-**1990s scientific / industrial sci-fi facility + urban occult aesthetics.**
+**Twentieth-century scientific / industrial spaces + urban Art Deco + overt occult aesthetics.**
 
-The visual foundation should feel like a believable late-1980s to 1990s research complex: functional, institutional, industrial, slightly outdated, and built for engineers and scientists rather than for visual spectacle.
+The research complex uses believable late-1980s to 1990s equipment within a broader twentieth-century world. Institutional and industrial construction mixes with Art Deco, religious and ritual forms represented in the supplied moodboards.
 
-The occult layer is not a separate fantasy world placed on top of the facility. It is treated as a real, studied, engineered phenomenon that has become part of the laboratory's infrastructure.
+Occult forces are real within the setting. Some are studied and engineered into the facility; others appear through rituals, blood, symbols, artifacts and infernal intrusions that the scientists have not fully understood.
 
 The intended shorthand is:
 
-> **90s scientific / industrial facility first, Deadlock-like occult layer second.**
+> **Grounded twentieth-century science and industry mixed with Deadlock-like urban, ritual and infernal imagery.**
 
-The environment should never read as modern clean sci-fi, cyberpunk, medieval fantasy, or generic demonic horror.
+The environment combines grounded twentieth-century construction with the specific urban, ritual and infernal imagery of the supplied references.
 
 ## 2. High-Level References
 
@@ -245,13 +265,12 @@ Good:
 - occult diagrams printed as official technical schematics.
 
 Bad:
-- random pentagrams everywhere;
-- skull piles with no functional reason;
+- indiscriminate repetition that weakens focal points;
+- props whose placement obscures the route or interaction;
 - medieval altars inside ordinary laboratories;
-- generic demonic flesh;
-- gothic cathedral architecture in scientific spaces.
+- arbitrary architectural mixtures that obscure the intended composition.
 
-The occult layer must look systematic, researched and repeatable.
+The occult layer can show both systematic research and unresolved ritual or infernal phenomena.
 
 ## 10. Signage and Graphic Design
 
@@ -289,6 +308,47 @@ Example warnings:
 - VERIFY SIGIL CONTINUITY BEFORE ENERGIZING
 
 Avoid decorative fantasy fonts.
+
+## Камеры и применение приборной графики (VIS-27)
+
+Кадр наблюдения должен иметь физическую камеру в исходной оптической точке,
+с тем же направлением и полем зрения; сохранять эту pose рядом с графикой.
+Для архивного кадра явно указывать архивный статус. Размещать приборы и схемы
+по назначению на всех игровых картах, где используется соответствующее
+оборудование; не ограничивать новый язык приборов одной лабораторией.
+Не переносить чужие номера секторов вместе с общей схемой.
+
+## Язык учреждения и терминология (VIS-28)
+
+Игровые меню, задачи, подсказки взаимодействия и сообщения результата — на русском.
+Заводские маркировки, эмалевые указатели и печатные процедуры учреждения могут
+оставаться английскими: это намеренный слой оснащения, а не обещание полной
+локализации мира. Новая главная подпись на приборе — русская; международные
+единицы, обозначения цепей и аппаратуры сохраняются. Не переводить латинскую
+букву B в B-17 и не менять targetname/save IDs ради языка.
+
+Обязательное действие игрок узнаёт из русской подсказки у доступного устройства
+и сообщения о следующем шаге. Английский текст и мелкая схема не могут быть
+единственным источником цели, опасности или условия разблокировки. Номер пульта
+совпадает в мире и русской подсказке; пиктограмма объясняет тип опасности.
+
+| World wording / ID | Русский термин и смысл |
+| --- | --- |
+| PRESSURE TRANSFER / PT-03 | Перепуск давления; код агрегата, а не третий шаг маршрута |
+| SERVICE HALL / ISOLATION GALLERY / BYPASS | Служебный зал / изоляционная галерея / обходной зал |
+| COOLING LOOP / CL-02 | Контур охлаждения; код контура, а не номер выхода |
+| 01 ISOLATE / 02 COOLING START / 03 EXIT | Изолировать утечку / запустить контур охлаждения / открыть выход; последовательность cooling_loop |
+| POWER RESTORATION / SWITCHGEAR 03 | Восстановление питания / комната с электрощитами 03 |
+| F-01 / P-02 / F-04 | Предохранитель / насос / фильтр; идентификаторы оборудования, не порядковые шаги процедуры |
+| RESERVE BUS / PURGE FILTER | Резервное питание / промыть фильтр |
+| B-17 / C2 / R0 | Лаборатория / измерительный канал / эталонный канал |
+| V, Hz, ms/div, bar, °C, Δp | Напряжение, частота, развёртка, давление, температура, перепад давления |
+
+Давление и охлаждение показывают печатные схемы с единицами; показания читаются
+на стрелочных приборах. CRT с электрической схемой — справочная мнемосхема,
+не индикация текущего питания. Монитор наблюдения показывает явно подписанный
+архивный кадр. Осциллограмма обозначена как образец. Текущие состояния устройств
+принадлежат существующим лампам, кнопкам и русским игровым сообщениям.
 
 ## 11. Technology Level
 
@@ -379,21 +439,18 @@ Do not drift toward:
 - neon city aesthetics;
 - glossy futuristic panels;
 - excessive greebling;
-- Doom-like demonic flesh;
 - medieval occult fantasy;
-- gothic cathedral environments;
 - generic abandoned asylum horror;
 - steampunk;
-- full Art Deco;
 - generic SCP concrete corridors without identity;
 - random horror clutter.
 
 ## 17. AI / Blender Agent Rules
 
 Before creating or modifying any visual asset, the agent must check:
-1. Could this plausibly exist in a late-1980s / 1990s research facility?
-2. Is the base form functional before occult details are added?
-3. Are occult elements integrated into function rather than decoration?
+1. Does this belong to the supplied moodboards' twentieth-century industrial, urban or occult world?
+2. Are construction and the role of the prop or space understandable?
+3. Do the occult elements serve the composition, ritual context, research or environmental story?
 4. Does the asset reuse the established material vocabulary?
 5. Does it avoid modern clean sci-fi conventions?
 6. Is the silhouette readable?
@@ -412,10 +469,10 @@ For finished Blender models, use `.agents/skills/relaycore-blender/SKILL.md`:
 ## 18. Agent Prompt Shorthand
 
 > Create the asset for a grounded late-1980s/1990s scientific-industrial research facility.
-> Base visual language: Half-Life 1 / Black Mesa-style laboratories and infrastructure.
+> Base visual language: Half-Life / Black Mesa industrial infrastructure with the moodboards' broader twentieth-century urban and Art Deco architecture.
 > Occult layer: Deadlock-inspired occult technology, ritual geometry, brass/copper devices, sigils and practical supernatural machinery.
 > The facility must look functional and believable first.
-> Avoid modern clean sci-fi, cyberpunk, excessive greebling, medieval fantasy and generic demonic horror.
+> Use the moodboards' sigils, blood, candles, skulls, statues and infernal motifs alongside the grounded infrastructure; keep placement intentional and routes readable.
 > Use simple modular geometry, practical construction, restrained materials and strong readable silhouettes.
 
 ## 19. First Environment Target

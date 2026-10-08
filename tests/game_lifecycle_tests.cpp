@@ -446,8 +446,124 @@ namespace
 #endif
 } // namespace
 
+namespace
+{
+    auto test_campaign_route() -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 640;
+            config.window.height = 480;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = true;
+            config.audio.enabled = false;
+            config.gameplay.level_path = "levels/power_restoration.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(640, 480);
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            const auto player_dir = directory.path() / "player";
+            const auto progress = player_dir / "progress.toml";
+            const RelayGame::LevelSessionBuilder builder{config.gameplay};
+            RelayGame::GameWorldRuntime seed;
+            seed.load_level_session(config, builder.build());
+            auto initial = seed.capture_saved_game(42, true);
+            initial.world.player_combat.health = 73;
+            initial.world.inventory_item_ids = {"power_fuse", "service_key", "weapon_shotgun"};
+            initial.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+            RelayGame::write_saved_game(progress, initial);
+            const std::array maps{
+                "power_restoration",
+                "foundation_intake",
+                "foundation_pump",
+                "bench_relay",
+                "pressure_transfer",
+                "cooling_loop",
+                "occult_lab_b17"
+            };
+            const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            RelayGame::DemoGame game{player_dir};
+            game.on_startup(services);
+            game.begin_episode(true, services);
+            for (std::size_t i = 0; i < maps.size(); ++i)
+            {
+                const auto current = RelayGame::load_saved_game(progress);
+                require(std::filesystem::path(current.world.level_path).stem() == maps[i], "Wrong campaign chapter");
+                require(current.visited_levels.size() == i, "Campaign history lost a chapter");
+                require(current.world.player_combat.health == 73, "Chapter transition lost health");
+                require(
+                    current.world.inventory_item_ids == initial.world.inventory_item_ids,
+                    "Chapter transition lost inventory"
+                );
+                require(
+                    current.world.selected_weapon == RelayGame::PlayerWeapon::Shotgun,
+                    "Chapter transition lost weapon"
+                );
+                require(current.flashlight && current.played_seconds >= 42, "Chapter transition lost player state");
+                require(!game.has_custom_ui(), "Intermediate chapter unexpectedly finished the campaign");
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                const auto image = std::string{"campaign-"} + maps[i] + ".bmp";
+                capture_frame(renderer, image.c_str());
+                const auto session = builder.build(current.world.level_path);
+                if (i + 1 < maps.size())
+                {
+                    const auto next = std::ranges::find_if(session.exits, [](const auto& exit) {
+                        return exit.requires_completion;
+                    });
+                    require(next != session.exits.end(), "Campaign chapter has no forward exit");
+                    game.transition_to(*next, services);
+                    game.on_update(frame, services);
+                    require(
+                        std::filesystem::path(RelayGame::load_saved_game(progress).world.level_path).stem()
+                            == maps[i + 1],
+                        "Arrival immediately bounced into a different chapter"
+                    );
+                    game.return_to_menu(services);
+                    game.on_shutdown(services);
+                    game.on_startup(services);
+                    game.begin_episode(true, services);
+                    require(!game.has_custom_ui(), "Continue failed after a campaign transition");
+                }
+            }
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+            auto final_save = RelayGame::load_saved_game(progress);
+            const auto final_session = builder.build(final_save.world.level_path);
+            final_save.world
+                .mission = {true, true, static_cast<std::uint32_t>(final_session.mission_definition.steps.size())};
+            RelayGame::write_saved_game(progress, final_save);
+            game.on_startup(services);
+            game.begin_episode(true, services);
+            require(game.has_custom_ui(), "The final B-17 chapter did not finish the campaign");
+            game.on_shutdown(services);
+            std::cout << "campaign_route=passed (seven chapters, six transitions, disk continue, carried player state, "
+                         "final completion)\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
+    }
+} // namespace
+
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--campaign-route")
+        return test_campaign_route();
     if (argc == 2 && std::string_view{argv[1]} == "--hdr-settings")
         return test_hdr_settings();
 #ifdef _WIN32
@@ -548,6 +664,7 @@ int main(int argc, char** argv)
             const auto expected =
                 material == RelayCore::SurfaceMaterial::Metal ? "impact_metal.wav" : "impact_hard.wav";
             require(impacts.player_combat_state().shots_fired == 1, "Impact fixture did not fire from input");
+            require(impacts.pistol_cycle_remaining_seconds() > 0, "Successful SDL shot did not animate the pistol");
             require(
                 renderer.audio_diagnostics().one_shot_count == before + 2
                     && std::filesystem::path{renderer.audio_diagnostics().last_one_shot_path}.filename() == expected,

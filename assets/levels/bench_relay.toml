@@ -24,7 +24,7 @@ entries = [
 
 [[entity]]
 classname = "prop_static"
-model = "models/lab_notes_board.rcmodel"
+model = "models/electrical_notes_board.rcmodel"
 origin = [-2.5,1.5,-3.87]
 
 [[entity]]
@@ -67,9 +67,6 @@ boxes = [
   { origin = [-2.75,1.7,12.5], size = [2.5,3.4,0.2], material = "WallPanel" },
   { origin = [2.75,1.7,12.5], size = [2.5,3.4,0.2], material = "WallPanel" },
   { origin = [0,3,12.5], size = [3,0.8,0.2], material = "Beam" },
-  { origin = [0,3.3,-1.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
-  { origin = [0,3.3,5.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
-  { origin = [0,3.3,10.5], size = [1.8,0.08,0.32], material = "LightStrip", tint = [0.5,0.53,0.48] },
   { origin = [3.82,2.8,5.5], size = [0.08,0.08,18], material = "Metal" },
   { origin = [0,2.65,12.35], size = [2.8,0.1,0.06], material = "Trim", tint = [0.65,0.57,0.32] },
 ]
@@ -107,6 +104,7 @@ collision_material = "Metal"
 classname = "gameplay_entity"
 kind = "pickup"
 targetname = "bay_shotgun"
+pickup_surface_y = 0.92
 origin = [-2.5,1.045,-1]
 size = [1.08,0.21,0.14]
 item_id = "weapon_shotgun"
@@ -164,6 +162,7 @@ fire_interval = 1.5
 classname = "gameplay_entity"
 kind = "terminal"
 targetname = "relay_control"
+panel_style = "start"
 action = "activate_target"
 target = "relay_running"
 chain_target = "exit_reader"
@@ -225,10 +224,10 @@ close_door = "bay_exit"
 [[entity_group]]
 classname = "render_light"
 entries = [
-  { origin = [0,3.1,-1.5], color = [0.45,0.48,0.43], radius = 7, intensity = 1.2 },
-  { origin = [0,3.1,5.5], color = [0.45,0.48,0.43], radius = 8, intensity = 1.2 },
-  { origin = [0,3.1,10.5], color = [0.45,0.48,0.43], radius = 7, intensity = 1.2 },
-  { origin = [0,2.8,14], color = [0.35,0.48,0.38], radius = 4, intensity = 1, required_target = "relay_running" },
+  { origin = [0,3.1,-1.5], color = [0.64,0.68,0.62], radius = 7, intensity = 1.25, fixture_width = 1.78, fixture_depth = 0.3, fixture_offset = 0.1590 },
+  { origin = [0,3.1,5.5], color = [0.58,0.64,0.60], radius = 8, intensity = 1.45, fixture_width = 1.78, fixture_depth = 0.3, fixture_offset = 0.1590 },
+  { origin = [0,3.1,10.5], color = [0.62,0.67,0.61], radius = 7, intensity = 1.25, fixture_width = 1.78, fixture_depth = 0.3, fixture_offset = 0.1590 },
+  { origin = [0,2.8,14], color = [0.58,0.70,0.62], radius = 4, intensity = 1.25, required_target = "relay_running", fixture_width = 1.18, fixture_depth = 0.28, fixture_offset = 0.4290 },
 ]
 
 [[entity]]
@@ -246,3 +245,26 @@ size = [8,3.4,8]
 loop = "audio/ambient_airlock_hum.wav"
 volume = 0.15
 required_target = "relay_running"
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.01, 14]
+size = [2,2.5,1.2]
+next_map = "levels/pressure_transfer.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.02, -3]
+angles = [0, 0, 0]
+
+# VIS-30: practical housings for the existing local lights.
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [0,3.36,14] },
+]

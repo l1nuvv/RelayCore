@@ -105,7 +105,7 @@ namespace RelayGame
         {
             CpuColorMeshData lamp;
             const float value = 0.055F + static_cast<float>(i) / 15 * 0.88F;
-            rect(lamp, 0, 0, 0.56F, 0.18F, color({value * 0.95F, value, value * 0.91F}), emissive_material);
+            rect(lamp, 0, 0, 1, 1, color({value * 0.95F, value, value * 0.91F}), i == 0 ? 22 : emissive_material);
             lamp_meshes_[static_cast<std::size_t>(i)].initialize(lamp);
         }
         const auto paint = color({0.72F, 0.65F, 0.37F});
@@ -185,10 +185,12 @@ namespace RelayGame
                     break;
                 }
                 case EnvironmentKind::Lamp:
-                    if (!effect.required_target.empty() || effect.damaged)
+                    if (effect.fixture_width > 0)
                     {
                         model = glm::translate(glm::mat4{1}, effect.origin + glm::vec3{0, effect.fixture_offset, 0});
+                        model = glm::rotate(model, glm::radians(effect.angles.x), {0, 1, 0});
                         model = glm::rotate(model, 1.5707963F, {1, 0, 0});
+                        model = glm::scale(model, glm::vec3{effect.fixture_width, effect.fixture_depth, 1});
                         draw(lamp_meshes_[static_cast<std::size_t>(effect.strength * 15)], model);
                     }
                     break;

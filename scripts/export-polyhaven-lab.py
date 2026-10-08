@@ -77,14 +77,14 @@ for original in list(bpy.data.materials):
 
 display = None
 if asset == "television_02":
-    display = bpy.data.materials.new("B17 two-channel monitor")
+    display = bpy.data.materials.new("B17 archived observation monitor")
     display.use_nodes = True
     display.use_backface_culling = True
     shader = display.node_tree.nodes.get("Principled BSDF")
     shader.inputs["Base Color"].default_value = (1, 1, 1, 1)
     shader.inputs["Roughness"].default_value = .22
     texture = display.node_tree.nodes.new("ShaderNodeTexImage")
-    texture.image = bpy.data.images.load(str(root / "content/graphics/instrument_display.png"))
+    texture.image = bpy.data.images.load(str(root / "content/graphics/instruments/surveillance.png"))
     display.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
 
 objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]

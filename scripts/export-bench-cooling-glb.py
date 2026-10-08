@@ -116,6 +116,15 @@ def exchanger(m):
 
 
 def service(m):
+    # Fitted finish sits just inside the four original room walls.
+    for axis, coordinate in (("x", -6.888), ("x", 6.888), ("z", .112), ("z", 29.888)):
+        length = 29.8 if axis == "x" else 13.8
+        position = lambda y: (coordinate, y, 15) if axis == "x" else (0, y, coordinate)
+        size = lambda depth, height: (depth, height, length) if axis == "x" else (length, height, depth)
+        B("Cooling sealed plaster", position(2.45), size(.024, 2.70), m["wall"], .001)
+        B("Cooling protective enamel", position(.55), size(.030, 1.10), m["paint"], .002)
+        B("Cooling folded dado cap", position(1.115), size(.042, .030), m["steel"], .002)
+        B("Cooling coved skirting", position(.075), size(.048, .15), m["dark"], .003)
     # Supply and return bridge above both aisles to wall sleeves. Clearance below
     # the pipes exceeds the existing player/rover envelopes and sightlines.
     for side, height, text in ((-1, 3.18, "SUPPLY"), (1, 3.48, "RETURN")):

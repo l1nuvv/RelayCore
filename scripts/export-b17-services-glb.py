@@ -96,9 +96,22 @@ def services(m):
     for z in (1.35, 2.5, 3.7, 4.45):
         B("Bonding conductor clamp", (1, .031, z), (.09, .038, .055), m["steel"], .003)
     # Existing utility pipes receive wall terminations instead of open ends.
-    for x in (-.5, 5.5):
-        rod("Service pipe wall return", (x, 2.65, 4.55), (x, 2.65, 4.87), .075, m["steel"])
-        rod("Service pipe wall flange", (x, 2.65, 4.79), (x, 2.65, 4.85), .13, m["sage"])
+    for x, direction in ((-.5, -1), (5.5, 1)):
+        points = [(x+direction*.25*sin(i*pi/16), 2.65,
+                   4.55+.25*(1-cos(i*pi/16))) for i in range(9)]
+        cable("Service swept pipe return", points, m["steel"], .085)
+        rod("Service pipe wall flange", (x+direction*.25, 2.65, 4.78), (x+direction*.25, 2.65, 4.85), .13, m["sage"])
+    rod("Rear pipe inter-module coupling", (2.375, 2.65, 4.55), (2.625, 2.65, 4.55), .107, m["steel"])
+    for z, direction in ((-8.5, -1), (-5.5, 1)):
+        points = [(-1.23-.20*(1-cos(i*pi/16)), 2.65,
+                   z+direction*.20*sin(i*pi/16)) for i in range(9)]
+        cable("Access pipe wall elbow", points, m["steel"], .085)
+        rod("Access pipe wall flange", (-1.46, 2.65, z+direction*.20), (-1.40, 2.65, z+direction*.20), .13, m["sage"])
+    for x, z, direction in ((-5.55, -2.7, -1), (5.55, 2.2, 1)):
+        B("Vent wall throat", (x+direction*.29, 2.8, z), (.18, .48, 1.22), m["rubber"], .004)
+        B("Vent wall flange", (x+direction*.25, 2.8, z), (.035, .64, 1.46), m["steel"], .005)
+        for dz in (-.54, .54):
+            B("Vent support shoe", (x+direction*.29, 2.46, z+dz), (.18, .06, .09), m["steel"], .003)
     for x in (0, 2, 4):
         B("Pipe mounting shoe", (x, 2.65, 4.82), (.16, .34, .08), m["steel"], .003)
         rod("Pipe standoff", (x, 2.65, 4.55), (x, 2.65, 4.82), .018, m["steel"])
@@ -167,13 +180,17 @@ if __name__ == "__main__":
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.unit_settings.system = "METRIC"
     m = {
-        "sage": h.material("b17_services_sage", (.25, .31, .27), .70),
-        "steel": h.material("b17_services_galvanized", (.34, .38, .37), .55, .65),
+        "sage": h.material("b17_services_sage", (.25, .31, .27), .63),
+        "steel": h.material("b17_services_galvanized", (.34, .38, .37), .48, .80),
         "rubber": h.material("b17_services_rubber", (.018, .025, .023), .86),
-        "ivory": h.material("b17_services_ivory", (.63, .61, .51), .76),
-        "brass": h.material("b17_services_bonded_copper", (.42, .25, .08), .55, .65),
+        "ivory": h.material("b17_services_ivory", (.63, .61, .51), .36),
+        "brass": h.material("b17_services_bonded_copper", (.42, .25, .08), .42, .80),
         "specimen": h.material("b17_prepared_specimen", (.12, .19, .16), .35, .25),
     }
+    h.surface_normal(m["sage"], .6, .10)
+    h.surface_normal(m["steel"], .4, .035)
+    h.surface_normal(m["rubber"], .3, .055)
+    h.surface_normal(m["brass"], .4, .02)
     window(m)
     services(m)
     workstations(m)

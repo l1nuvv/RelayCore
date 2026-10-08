@@ -1,5 +1,11 @@
 # B-17: corridor, glazed observation bay and a working resonance laboratory. Metres, +Y up.
 [[entity]]
+classname = "prop_static"
+targetname = "b17_fitted_lining"
+model = "models/b17_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
 classname = "irradiance_volume"
 product = "lighting/occult_lab_b17.rcprobe"
 mins = [-4.2,0.35,-4.45]
@@ -45,13 +51,8 @@ boxes = [
   { origin = [-2,1.61,2.8], size = [0.14,1.2,0.06], material = "Metal" },
   { origin = [-2,1.61,4.78], size = [0.14,1.2,0.08], material = "Metal" },
   # Suspended fluorescent fixtures and exposed utility services.
-  { origin = [-4,3.27,0], size = [0.32,0.04,2.1], material = "LightStrip", tint = [0.56,0.59,0.52] },
-  { origin = [2,3.27,-2], size = [2.1,0.04,0.32], material = "LightStrip", tint = [0.56,0.59,0.52] },
-  { origin = [3.8,3.27,3.4], size = [1.8,0.04,0.32], material = "LightStrip", tint = [0.56,0.59,0.52] },
-  { origin = [0,3.27,-7], size = [0.30,0.04,1.6], material = "LightStrip", tint = [0.52,0.55,0.48] },
   { origin = [3.9,3.15,-3.15], size = [0.025,0.55,0.025], material = "Metal" },
   { origin = [4.9,3.15,-3.15], size = [0.025,0.55,0.025], material = "Metal" },
-  { origin = [4.4,2.79,-3.15], size = [1.15,0.025,0.20], material = "LightStrip", tint = [0.76,0.70,0.59] },
   { origin = [5.65,2.9,0], size = [0.10,0.10,9.5], material = "Metal", tint = [0.62,0.54,0.38] },
   { origin = [5.65,2.66,0], size = [0.07,0.07,9.5], material = "Metal", tint = [0.45,0.48,0.42] },
   { origin = [0,3.02,4.64], size = [11.3,0.14,0.22], material = "Metal" },
@@ -167,13 +168,13 @@ collision_material = "Metal"
 [[entity_group]]
 classname = "render_light"
 color = [0.72,0.75,0.66]
-intensity = 1.8
+intensity = 1.25
 radius = 6
 entries = [
-  { origin = [0,3.05,-7], radius = 4 },
-  { origin = [-4,3.05,0] },
-  { origin = [2,3.05,-2] },
-  { origin = [3.8,3.05,3.4] },
+  { origin = [0,3.05,-7], radius = 4, fixture_width = 1.58, fixture_depth = 0.29, fixture_offset = 0.2190, angles = [90,0,0] },
+  { origin = [-4,3.05,0], fixture_width = 2.08, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [90,0,0] },
+  { origin = [2,3.05,-2], fixture_width = 2.08, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [0,0,0] },
+  { origin = [3.8,3.05,3.4], fixture_width = 1.78, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [0,0,0] },
 ]
 
 [[entity_group]]
@@ -198,7 +199,6 @@ classname = "prop_static"
 model = "models/lab_notes_board.rcmodel"
 entries = [
   { targetname = "observation_notes", origin = [-4.2,1.45,4.80], angles = [180,0,0] },
-  { targetname = "sample_notes", origin = [4.4,1.50,-4.80] },
 ]
 
 [[entity_group]]
@@ -220,6 +220,9 @@ entries = [
 [[entity]]
 classname = "render_light"
 origin = [2,1.35,1.2]
+fixture_width = 0
+fixture_depth = 0.18
+fixture_offset = 0.0000
 color = [0.42,0.28,0.11]
 radius = 2.5
 intensity = 0.85
@@ -227,20 +230,29 @@ intensity = 0.85
 [[entity]]
 classname = "render_light"
 origin = [4.4,2.70,-3.10]
+fixture_width = 1.14
+fixture_depth = 0.19
+fixture_offset = 0.0890
 color = [0.85,0.78,0.64]
 radius = 3.2
-intensity = 1.35
+intensity = 1.0
 
 [[entity]]
 classname = "render_light"
 origin = [-2.65,2.21,3.15]
+fixture_width = 0.16
+fixture_depth = 0.12
+fixture_offset = 0.0465
 color = [0.80,0.78,0.68]
 radius = 2.8
-intensity = 1.45
+intensity = 1.1
 
 [[entity]]
 classname = "render_light"
 origin = [2,2.65,0.15]
+fixture_width = 0.74
+fixture_depth = 0.27
+fixture_offset = 0.1390
 color = [0.73,0.76,0.70]
 radius = 2.8
 intensity = 0.85
@@ -267,6 +279,7 @@ angles = [180,0,0]
 classname = "gameplay_entity"
 kind = "terminal"
 targetname = "b17_isolator"
+panel_style = "isolator"
 origin = [4.65,1.45,3.68]
 size = [0.30,0.34,0.10]
 mount_axis = "-z"
@@ -305,4 +318,24 @@ entries = [
 classname = "prop_static"
 targetname = "b17_fitted_services"
 model = "models/b17_services.rcmodel"
+origin = [0,0,0]
+
+# Unfinished red-marker glyph research beside the sampling workstation.
+[[entity]]
+classname = "prop_static"
+targetname = "sample_notes"
+model = "models/occult_research_board.rcmodel"
+origin = [4.4,1.50,-4.80]
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.02, -8]
+angles = [0, 0, 0]
+
+# Lens position/orientation is authored in content/graphics/instruments/observation_camera.json.
+[[entity]]
+classname = "prop_static"
+targetname = "b17_observation_camera_02"
+model = "models/b17_observation_camera.rcmodel"
 origin = [0,0,0]

@@ -200,7 +200,8 @@ namespace RelayGame
                     development_sandbox_
                         ? "Движение, устройства, стрельбище и арена. F7 — сброс карты; F9/F10 — повтор встречи."
                     : new_game_level_.empty()
-                        ? "Обесточенный сектор. Запасной предохранитель. Один путь к исследовательскому блоку."
+                        ? "Весь комплекс: питание, два сектора, мастерская, перепуск давления, охлаждение и "
+                          "лаборатория B-17. Главы связаны переходами; прогресс сохраняется."
                     : new_game_level_ == "levels/pressure_transfer.toml"
                         ? "Перепускной сектор. Два оружия, служебный зал и длинная галерея. Запустите перепуск и "
                           "откройте выход."
@@ -233,8 +234,8 @@ namespace RelayGame
                 );
             if (!development_sandbox_
                 && ImGui::BeginCombo(
-                    "Сценарий новой игры",
-                    new_game_level_.empty()                              ? "Восстановление питания"
+                    "Начать прохождение##new_game_scenario",
+                    new_game_level_.empty()                              ? "Кампания — весь комплекс"
                     : new_game_level_ == "levels/pressure_transfer.toml" ? "Перепуск давления"
                     : cooling_loop                                       ? "Контур охлаждения"
                     : new_game_level_ == "levels/bench_relay.toml"       ? "Реле мастерской"
@@ -242,7 +243,7 @@ namespace RelayGame
                                                                          : "Два сектора"
                 ))
             {
-                if (ImGui::Selectable("Восстановление питания", new_game_level_.empty()))
+                if (ImGui::Selectable("Кампания — весь комплекс", new_game_level_.empty()))
                     new_game_level_.clear();
                 if (ImGui::Selectable("Два сектора", new_game_level_ == "levels/foundation_intake.toml"))
                     new_game_level_ = "levels/foundation_intake.toml";
@@ -256,7 +257,7 @@ namespace RelayGame
                     new_game_level_ = "levels/occult_lab_b17.toml";
                 ImGui::EndCombo();
             }
-            if (ImGui::Button(development_sandbox_ ? "Начать испытания" : "Новый эпизод", {-1, 40}))
+            if (ImGui::Button(development_sandbox_ ? "Начать испытания" : "Начать прохождение", {-1, 40}))
             {
                 if (save_file_exists_)
                     confirm_new_game_ = true;

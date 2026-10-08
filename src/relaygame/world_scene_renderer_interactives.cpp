@@ -171,6 +171,66 @@ namespace RelayGame
 
     } // namespace
 
+    void WorldSceneRenderer::render_pistol_viewmodel(
+        RelayCore::Renderer& renderer,
+        const RelayCore::render::PerspectiveCamera& camera,
+        const float cycle_remaining_seconds,
+        const float refire_seconds
+    )
+    {
+        const auto items = prepare_pistol_viewmodel(camera, cycle_remaining_seconds, refire_seconds);
+        for (const auto& item : items)
+            record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(*item.mesh));
+        renderer.draw_viewmodel(items);
+    }
+
+    auto WorldSceneRenderer::prepare_pistol_viewmodel(
+        const RelayCore::render::PerspectiveCamera& camera,
+        const float cycle_remaining_seconds,
+        const float refire_seconds
+    ) -> std::span<const RelayCore::render::RenderItem>
+    {
+        const float elapsed = refire_seconds - cycle_remaining_seconds;
+        const float recoil =
+            cycle_remaining_seconds > 0
+                ? std::sin(glm::pi<float>() * glm::clamp(elapsed / glm::min(refire_seconds, .18F), 0.0F, 1.0F))
+                : 0;
+        const float slide =
+            cycle_remaining_seconds > 0
+                ? .028F * std::sin(glm::pi<float>() * glm::clamp(elapsed / glm::min(refire_seconds, .10F), 0.0F, 1.0F))
+                : 0;
+        glm::mat4 basis{1};
+        basis[0] = glm::vec4{camera.right(), 0};
+        basis[1] = glm::vec4{camera.up(), 0};
+        basis[2] = glm::vec4{-camera.forward(), 0};
+        basis[3] = glm::vec4{camera.position(), 1};
+        auto model = glm::translate(basis, {.12F, -.13F + recoil * .012F, -.34F + recoil * .020F});
+        // The resting bore converges on the eye ray at 12 m; hitscan stays at the eye.
+        model = glm::rotate(model, std::atan(.12F / 11.66F), glm::vec3{0, 1, 0});
+        model = glm::rotate(model, std::atan(.083F / 11.66F) + recoil * .13F, glm::vec3{1, 0, 0});
+        pistol_viewmodel_.clear();
+        for (std::size_t index = 0; index < pistol_models_.size(); ++index)
+        {
+            const auto& asset = *pistol_models_[index];
+            const auto part_model = index == 1 ? glm::translate(model, {0, 0, slide}) : model;
+            for (const auto& part : asset.parts)
+            {
+                const auto& surface = asset.materials[part.material];
+                pistol_viewmodel_.push(
+                    asset.meshes[part.mesh],
+                    part_model * part.transform,
+                    RelayCore::render::RenderPass::Opaque,
+                    &surface.base_color,
+                    false,
+                    surface.normal.cpu_data() ? &surface.normal : nullptr,
+                    surface.normal_scale,
+                    surface.metallic_roughness
+                );
+            }
+        }
+        return pistol_viewmodel_.items();
+    }
+
     void WorldSceneRenderer::render_shotgun_viewmodel(
         RelayCore::Renderer& renderer,
         const RelayCore::render::PerspectiveCamera& camera,
@@ -186,7 +246,7 @@ namespace RelayGame
     auto WorldSceneRenderer::prepare_shotgun_viewmodel(
         const RelayCore::render::PerspectiveCamera& camera,
         float cycle_remaining_seconds
-    ) -> std::array<RelayCore::render::RenderItem, 2>
+    ) -> std::span<const RelayCore::render::RenderItem>
     {
         const float elapsed = .85F - cycle_remaining_seconds;
         const float recoil =
@@ -199,26 +259,60 @@ namespace RelayGame
         basis[1] = glm::vec4{camera.up(), 0};
         basis[2] = glm::vec4{-camera.forward(), 0};
         basis[3] = glm::vec4{camera.position(), 1};
-        auto model = glm::translate(basis, {.28F, -.22F + recoil * .018F, -.65F + recoil * .025F});
-        model = glm::rotate(model, .15F, glm::vec3{0, 1, 0});
-        model = glm::rotate(model, recoil * .04F, glm::vec3{1, 0, 0});
-        const std::array items{
-            RelayCore::render::RenderItem{
-                &shotgun_body_model_->mesh,
-                model,
-                RelayCore::render::RenderPass::Opaque,
-                &shotgun_body_model_->texture,
-                false
-            },
-            RelayCore::render::RenderItem{
-                &shotgun_pump_model_->mesh,
-                glm::translate(model, {0, 0, pump}),
-                RelayCore::render::RenderPass::Opaque,
-                &shotgun_pump_model_->texture,
-                false
+        auto model = glm::translate(basis, {.19F, -.18F + recoil * .008F, -.60F + recoil * .035F});
+        // The bore converges on the eye ray at 12 m, independently of the hitscan origin.
+        model = glm::rotate(model, std::atan(.19F / 11.4F), glm::vec3{0, 1, 0});
+        model = glm::rotate(model, std::atan(.19645F / 11.4F) + recoil * .055F, glm::vec3{1, 0, 0});
+        shotgun_viewmodel_.clear();
+        for (std::size_t index = 0; index < shotgun_view_models_.size(); ++index)
+        {
+            const auto& asset = *shotgun_view_models_[index];
+            const auto part_model = index == 1 ? glm::translate(model, {0, 0, pump}) : model;
+            for (const auto& part : asset.parts)
+            {
+                const auto& surface = asset.materials[part.material];
+                shotgun_viewmodel_.push(
+                    asset.meshes[part.mesh],
+                    part_model * part.transform,
+                    RelayCore::render::RenderPass::Opaque,
+                    &surface.base_color,
+                    false,
+                    surface.normal.cpu_data() ? &surface.normal : nullptr,
+                    surface.normal_scale,
+                    surface.metallic_roughness
+                );
             }
-        };
-        return items;
+        }
+        return shotgun_viewmodel_.items();
+    }
+
+    void WorldSceneRenderer::queue_interactive_model(
+        const RelayCore::render::ModelAsset& asset,
+        const glm::mat4& model,
+        const bool visible
+    )
+    {
+        for (const auto& part : asset.parts)
+        {
+            const auto& mesh = asset.meshes[part.mesh];
+            if (!visible)
+            {
+                shadow_casters_.push(mesh, model * part.transform);
+                continue;
+            }
+            const auto& surface = asset.materials[part.material];
+            record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(mesh));
+            render_queue_.push(
+                mesh,
+                model * part.transform,
+                RelayCore::render::RenderPass::Opaque,
+                &surface.base_color,
+                true,
+                surface.normal.cpu_data() ? &surface.normal : nullptr,
+                surface.normal_scale,
+                surface.metallic_roughness
+            );
+        }
     }
 
     void WorldSceneRenderer::render_doors(
@@ -230,15 +324,63 @@ namespace RelayGame
         for (const RelayCore::gameplay::RuntimeDoor& door : doors)
         {
             const RelayCore::physics::Aabb bounds = RelayCore::gameplay::current_door_bounds(door);
-            if (!aabb_intersects_planes(frustum_planes_, bounds.mins, bounds.maxs))
-            {
-                shadow_casters_.push(door_mesh_, make_aabb_model_matrix(bounds));
-                continue;
-            }
+            const auto size = bounds.maxs - bounds.mins;
+            const bool faces_x = size.x < size.z;
+            const bool lift =
+                std::abs(door.open_offset.y) >= std::max(std::abs(door.open_offset.x), std::abs(door.open_offset.z));
+            auto model = glm::translate(glm::mat4{1}, (bounds.mins + bounds.maxs) * .5F);
+            if (faces_x)
+                model = glm::rotate(model, -glm::half_pi<float>(), glm::vec3{0, 1, 0});
+            model = glm::scale(model, faces_x ? glm::vec3{size.z, size.y, size.x} : size);
+            const bool visible = aabb_intersects_planes(frustum_planes_, bounds.mins, bounds.maxs);
+            if (visible)
+                ++diagnostics_.door_draw_calls;
+            queue_interactive_model(*door_models_[lift ? 0 : 1], model, visible);
 
-            ++diagnostics_.door_draw_calls;
-            record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(door_mesh_));
-            render_queue_.push(door_mesh_, make_aabb_model_matrix(bounds), RelayCore::render::RenderPass::Opaque);
+            // Frame returns sit beyond both depth faces of the entire swept leaf.
+            // The opening and the moving collision AABB remain exactly authored.
+            const auto sweep_min = glm::min(door.closed_bounds.mins, door.closed_bounds.mins + door.open_offset);
+            const auto sweep_max = glm::max(door.closed_bounds.maxs, door.closed_bounds.maxs + door.open_offset);
+            const auto frame_box = [&](const glm::vec3& center, const glm::vec3& extent) {
+                const auto transform = make_centered_box_model_matrix(center, extent * .5F);
+                if (aabb_intersects_planes(frustum_planes_, center - extent * .5F, center + extent * .5F))
+                {
+                    record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(door_guide_mesh_));
+                    render_queue_.push(door_guide_mesh_, transform, RelayCore::render::RenderPass::Opaque);
+                } else
+                    shadow_casters_.push(door_guide_mesh_, transform);
+            };
+            const int width_axis = faces_x ? 2 : 0;
+            const int depth_axis = faces_x ? 0 : 2;
+            const auto closed_center = (door.closed_bounds.mins + door.closed_bounds.maxs) * .5F;
+            for (const float side : {-1.0F, 1.0F})
+            {
+                auto rail_center = (sweep_min + sweep_max) * .5F;
+                rail_center[depth_axis] = side < 0 ? sweep_min[depth_axis] - .045F : sweep_max[depth_axis] + .045F;
+                auto rail_size = glm::vec3{.06F};
+                if (lift)
+                {
+                    rail_size.y = sweep_max.y - sweep_min.y + .08F;
+                    for (const float edge : {-1.0F, 1.0F})
+                    {
+                        rail_center[width_axis] = closed_center[width_axis] + edge * (size[width_axis] * .5F + .035F);
+                        frame_box(rail_center, rail_size);
+                    }
+                } else
+                {
+                    rail_size[width_axis] = sweep_max[width_axis] - sweep_min[width_axis] + .16F;
+                    rail_size.y = .10F;
+                    rail_center.y = sweep_max.y + .055F;
+                    frame_box(rail_center, rail_size);
+                }
+                auto drive_center = rail_center;
+                drive_center[width_axis] = (sweep_min[width_axis] + sweep_max[width_axis]) * .5F;
+                drive_center.y = door.closed_bounds.maxs.y + .14F;
+                auto drive_size = glm::vec3{.12F};
+                drive_size[width_axis] = .48F;
+                drive_size[depth_axis] = .07F;
+                frame_box(drive_center, drive_size);
+            }
         }
     }
 
@@ -291,15 +433,19 @@ namespace RelayGame
                                        : (usable.locked || !usable.requirement_met) ? panel_blocked_mesh_
                                        : focused                                    ? panel_highlight_mesh_
                                                                                     : panel_mesh_;
+                const auto presentation =
+                    usable.authored_entity_index >= 0
+                            && static_cast<std::size_t>(usable.authored_entity_index) < panel_presentations_.size()
+                        ? panel_presentations_[static_cast<std::size_t>(usable.authored_entity_index)]
+                        : PanelPresentation::Door;
+                const auto& housing = *panel_models_[static_cast<std::size_t>(presentation)];
+                queue_interactive_model(housing, model, camera_visible);
                 if (!camera_visible)
                 {
-                    shadow_casters_.push(panel_housing_mesh_, model);
                     shadow_casters_.push(actuator, model);
                     continue;
                 }
                 ++diagnostics_.usable_draw_calls;
-                record_render_draw(RenderPass::Opaque, mesh_triangle_count(panel_housing_mesh_));
-                render_queue_.push(panel_housing_mesh_, model, RenderPass::Opaque);
                 record_render_draw(RenderPass::Opaque, mesh_triangle_count(actuator));
                 render_queue_.push(actuator, model, RenderPass::Opaque);
                 if (feedback)
@@ -312,19 +458,36 @@ namespace RelayGame
                 }
             } else
             {
-                const auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
+                auto bounds = expanded_pickup_visual_bounds(usable.visual_bounds);
                 glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
                 const bool is_power_fuse = usable.item_id == "power_fuse";
                 const bool is_shotgun = usable.item_id == shotgun_item_id;
                 const bool is_service_key = usable.item_id == "service_key";
+                const auto entity_index = static_cast<std::size_t>(usable.authored_entity_index);
+                const auto surface_y = entity_index < pickup_surfaces_.size()
+                                           ? pickup_surfaces_[entity_index].value_or(bounds.mins.y)
+                                           : bounds.mins.y;
                 if (is_shotgun)
                 {
-                    const auto center = (glm::min(shotgun_body_model_->mins, shotgun_pump_model_->mins)
-                                         + glm::max(shotgun_body_model_->maxs, shotgun_pump_model_->maxs))
-                                        * .5F;
-                    pickup_model = glm::translate(glm::mat4{1}, (bounds.mins + bounds.maxs) * .5F);
-                    pickup_model = glm::rotate(pickup_model, glm::half_pi<float>(), glm::vec3{0, 1, 0});
+                    const auto center = (shotgun_world_model_->mins + shotgun_world_model_->maxs) * .5F;
+                    auto rotation = glm::rotate(glm::mat4{1}, glm::half_pi<float>(), glm::vec3{0, 1, 0});
+                    rotation = glm::rotate(rotation, glm::half_pi<float>(), glm::vec3{0, 0, 1});
+                    const auto half = (shotgun_world_model_->maxs - shotgun_world_model_->mins) * .5F;
+                    const auto rotated_half = glm::abs(glm::vec3{rotation[0]}) * half.x
+                                              + glm::abs(glm::vec3{rotation[1]}) * half.y
+                                              + glm::abs(glm::vec3{rotation[2]}) * half.z;
+                    auto origin = (bounds.mins + bounds.maxs) * .5F;
+                    origin.y = surface_y + rotated_half.y + .002F;
+                    bounds = {origin - rotated_half, origin + rotated_half};
+                    pickup_model = glm::translate(glm::mat4{1}, origin) * rotation;
                     pickup_model = glm::translate(pickup_model, -center);
+                } else if (is_power_fuse)
+                {
+                    const auto size = bounds.maxs - bounds.mins;
+                    auto origin = (bounds.mins + bounds.maxs) * .5F;
+                    origin.y = surface_y + .002F - power_fuse_model_->mins.y * size.y;
+                    pickup_model = glm::scale(glm::translate(glm::mat4{1}, origin), size);
+                    bounds = {origin + power_fuse_model_->mins * size, origin + power_fuse_model_->maxs * size};
                 }
                 if (!camera_visible)
                 {
@@ -334,8 +497,7 @@ namespace RelayGame
                             shadow_casters_.push(service_key_model_->meshes[part.mesh], pickup_model * part.transform);
                     } else if (is_shotgun)
                     {
-                        shadow_casters_.push(shotgun_body_model_->mesh, pickup_model);
-                        shadow_casters_.push(shotgun_pump_model_->mesh, pickup_model);
+                        queue_interactive_model(*shotgun_world_model_, pickup_model, false);
                     } else if (is_power_fuse)
                         shadow_casters_.push(power_fuse_model_->mesh, pickup_model);
                     else
@@ -345,29 +507,10 @@ namespace RelayGame
                 ++diagnostics_.usable_draw_calls;
                 if (is_service_key)
                 {
-                    for (const auto& part : service_key_model_->parts)
-                    {
-                        const auto& mesh = service_key_model_->meshes[part.mesh];
-                        const auto& surface = service_key_model_->materials[part.material];
-                        record_render_draw(RenderPass::Opaque, mesh_triangle_count(mesh));
-                        render_queue_.push(
-                            mesh,
-                            pickup_model * part.transform,
-                            RenderPass::Opaque,
-                            &surface.base_color,
-                            true,
-                            surface.normal.cpu_data() ? &surface.normal : nullptr,
-                            surface.normal_scale,
-                            surface.metallic_roughness
-                        );
-                    }
+                    queue_interactive_model(*service_key_model_, pickup_model, true);
                 } else if (is_shotgun)
                 {
-                    for (const auto& part : {shotgun_body_model_, shotgun_pump_model_})
-                    {
-                        record_render_draw(RenderPass::Opaque, mesh_triangle_count(part->mesh));
-                        render_queue_.push(part->mesh, pickup_model, RenderPass::Opaque, &part->texture);
-                    }
+                    queue_interactive_model(*shotgun_world_model_, pickup_model, true);
                 } else if (is_power_fuse)
                 {
                     record_render_draw(
@@ -383,7 +526,7 @@ namespace RelayGame
                 }
                 if (focused && highlight_visible)
                 {
-                    if (is_service_key)
+                    if (is_service_key || is_shotgun || is_power_fuse)
                     {
                         const auto frame =
                             expand_aabb(bounds, {0.02F + focus_pulse * 0.01F, 0, 0.02F + focus_pulse * 0.01F});

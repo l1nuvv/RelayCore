@@ -32,6 +32,8 @@ namespace RelayGame
         const float step = std::max(dt, 0.0F);
         combat_state_.shotgun_cycle_remaining_seconds =
             std::max(0.0F, combat_state_.shotgun_cycle_remaining_seconds - step);
+        combat_state_.pistol_cycle_remaining_seconds =
+            std::max(0.0F, combat_state_.pistol_cycle_remaining_seconds - step);
         for (auto& trace : combat_state_.pellet_traces)
             trace.remaining_seconds = std::max(0.0F, trace.remaining_seconds - step);
     }
@@ -213,6 +215,8 @@ namespace RelayGame
         combat_state_.pellet_traces = attack.pellet_traces;
         if (selected_weapon_ == PlayerWeapon::Shotgun)
             combat_state_.shotgun_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
+        else
+            combat_state_.pistol_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
         play_gameplay_audio(
             services,
             selected_weapon_ == PlayerWeapon::Shotgun ? audio_cues_.shotgun_fire : audio_cues_.weapon_fire

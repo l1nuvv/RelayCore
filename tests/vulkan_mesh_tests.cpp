@@ -147,6 +147,214 @@ namespace
         return stats.total.statistics.allocationCount;
     }
 
+    void check_pistol_viewmodel(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/pressure_transfer.toml"));
+        for (const bool hdr : {false, true})
+        {
+            RendererConfig config{};
+            config.hdr_enabled = hdr;
+            StaticModelCache models;
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb),
+                models
+            );
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            };
+            renderer.prepare_resources(scene.resource_items());
+            for (const float fov : {50.0F, 70.0F, 90.0F})
+                for (const auto size : {glm::ivec2{640, 360}, glm::ivec2{800, 600}})
+                {
+                    PerspectiveCamera camera{
+                        {.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}, .vertical_fov_radians = glm::radians(fov)}
+                    };
+                    camera.set_viewport(size.x, size.y);
+                    scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+                    renderer.set_local_lights(scene.local_lights());
+                    const auto base = renderer.render_image(scene.render_items(), camera, size.x, size.y);
+                    const auto prefix = std::string{"pistol-"} + (hdr ? "hdr-" : "sdr-") + std::to_string(int(fov))
+                                        + "-" + std::to_string(size.x);
+                    std::vector<std::uint8_t> idle;
+                    for (const float elapsed : {0.0F, .04F, .09F, .18F, .24F})
+                    {
+                        const auto weapon = scene.prepare_pistol_viewmodel(camera, .24F - elapsed, .24F);
+                        require(!weapon.empty(), "Pistol asset produced no render parts");
+                        const auto image = renderer.render_image(scene.render_items(), camera, size.x, size.y, weapon);
+                        save(image, captures / (prefix + "-" + std::to_string(int(elapsed * 1000)) + ".bmp"));
+                        require(image.pixels != base.pixels, "Pistol is invisible at a supported FOV/window size");
+                        for (int y = size.y / 2 - 8; y <= size.y / 2 + 8; ++y)
+                            for (int x = size.x / 2 - 8; x <= size.x / 2 + 8; ++x)
+                                for (int c = 0; c < 3; ++c)
+                                {
+                                    const auto pixel = (y * size.x + x) * 4 + c;
+                                    require(image.pixels[pixel] == base.pixels[pixel], "Pistol obscures the reticle");
+                                }
+                        if (elapsed == 0)
+                        {
+                            idle = image.pixels;
+                            const auto muzzle = glm::vec3{weapon[0].model_matrix * glm::vec4{0, .047F, -.172F, 1}};
+                            const auto bore =
+                                glm::normalize(glm::vec3{weapon[0].model_matrix * glm::vec4{0, 0, -1, 0}});
+                            const auto target = camera.position() + camera.forward() * 12.0F;
+                            const auto travel =
+                                glm::dot(target - muzzle, camera.forward()) / glm::dot(bore, camera.forward());
+                            require(
+                                glm::distance(muzzle + bore * travel, target) < .002F,
+                                "Pistol bore misses the eye ray"
+                            );
+                        } else if (elapsed >= .18F)
+                            require(image.pixels == idle, "Pistol did not recover to its idle pose");
+                        else
+                            require(image.pixels != idle, "Successful shot has no visible pistol cycle");
+                    }
+                    // One target resize may allocate; both weapon assets must already be uploaded.
+                    const auto prepared = allocation_count(device);
+                    const auto shotgun = scene.prepare_shotgun_viewmodel(camera, 0);
+                    static_cast<void>(renderer.render_image(scene.render_items(), camera, size.x, size.y, shotgun));
+                    const auto pistol = scene.prepare_pistol_viewmodel(camera, 0, .24F);
+                    static_cast<void>(renderer.render_image(scene.render_items(), camera, size.x, size.y, pistol));
+                    require(allocation_count(device) == prepared, "Weapon switch lazily uploaded a viewmodel");
+                }
+            scene.shutdown();
+        }
+        std::cout
+            << "pistol_viewmodel=passed; HDR/SDR, 3 FOVs, 2 sizes, 5 poses, reticle and prepared weapon switching\n";
+    }
+
+    void check_shotgun_viewmodel(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/pressure_transfer.toml"));
+        for (const bool hdr : {false, true})
+        {
+            RendererConfig config{};
+            config.hdr_enabled = hdr;
+            StaticModelCache models;
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb),
+                models
+            );
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            };
+            renderer.prepare_resources(scene.resource_items());
+            for (const float fov : {50.0F, 70.0F, 90.0F})
+                for (const auto size : {glm::ivec2{640, 360}, glm::ivec2{800, 600}})
+                {
+                    PerspectiveCamera camera{
+                        {.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}, .vertical_fov_radians = glm::radians(fov)}
+                    };
+                    camera.set_viewport(size.x, size.y);
+                    scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+                    renderer.set_local_lights(scene.local_lights());
+                    const auto base = renderer.render_image(scene.render_items(), camera, size.x, size.y);
+                    const auto prefix = std::string{"shotgun-"} + (hdr ? "hdr-" : "sdr-") + std::to_string(int(fov))
+                                        + "-" + std::to_string(size.x);
+                    std::vector<std::uint8_t> idle;
+                    std::vector<glm::mat4> idle_models;
+                    for (const float elapsed : {0.0F, .07F, .18F, .45F, .72F, .85F})
+                    {
+                        const auto weapon = scene.prepare_shotgun_viewmodel(camera, .85F - elapsed);
+                        require(!weapon.empty(), "Shotgun asset produced no render parts");
+                        const auto image = renderer.render_image(scene.render_items(), camera, size.x, size.y, weapon);
+                        save(image, captures / (prefix + "-" + std::to_string(int(elapsed * 1000)) + ".bmp"));
+                        require(image.pixels != base.pixels, "Shotgun is invisible at a supported FOV/window size");
+                        for (int y = size.y / 2 - 8; y <= size.y / 2 + 8; ++y)
+                            for (int x = size.x / 2 - 8; x <= size.x / 2 + 8; ++x)
+                                for (int c = 0; c < 3; ++c)
+                                {
+                                    const auto pixel = (y * size.x + x) * 4 + c;
+                                    require(image.pixels[pixel] == base.pixels[pixel], "Shotgun obscures the reticle");
+                                }
+                        if (elapsed == 0)
+                        {
+                            idle = image.pixels;
+                            for (const auto& item : weapon)
+                                idle_models.push_back(item.model_matrix);
+                            const auto muzzle = glm::vec3{weapon[0].model_matrix * glm::vec4{0, -.01645F, -.678F, 1}};
+                            const auto bore =
+                                glm::normalize(glm::vec3{weapon[0].model_matrix * glm::vec4{0, 0, -1, 0}});
+                            const auto target = camera.position() + camera.forward() * 12.0F;
+                            const auto travel =
+                                glm::dot(target - muzzle, camera.forward()) / glm::dot(bore, camera.forward());
+                            require(
+                                glm::distance(muzzle + bore * travel, target) < .002F,
+                                "Shotgun bore misses the eye ray"
+                            );
+                        } else if (elapsed >= .72F)
+                            require(image.pixels == idle, "Shotgun did not recover to its idle pose");
+                        else if (elapsed != .18F)
+                            require(image.pixels != idle, "Shotgun recoil/pump cycle is invisible");
+                        if (elapsed == .45F)
+                        {
+                            std::size_t stationary = 0, moving = 0;
+                            for (std::size_t i = 0; i < weapon.size(); ++i)
+                            {
+                                const auto delta =
+                                    glm::vec3{(glm::inverse(idle_models[i]) * weapon[i].model_matrix)[3]};
+                                if (glm::length(delta) < .0001F)
+                                    ++stationary;
+                                else
+                                {
+                                    require(
+                                        glm::distance(delta, glm::vec3{0, 0, .07F}) < .0001F,
+                                        "Pump left its longitudinal guide"
+                                    );
+                                    ++moving;
+                                }
+                            }
+                            require(stationary > 0 && moving > 0, "Shotgun body and pump lost independent motion");
+                        }
+                    }
+                    const auto prepared = allocation_count(device);
+                    const auto pistol = scene.prepare_pistol_viewmodel(camera, 0, .24F);
+                    static_cast<void>(renderer.render_image(scene.render_items(), camera, size.x, size.y, pistol));
+                    const auto shotgun = scene.prepare_shotgun_viewmodel(camera, 0);
+                    static_cast<void>(renderer.render_image(scene.render_items(), camera, size.x, size.y, shotgun));
+                    require(allocation_count(device) == prepared, "Weapon switch lazily uploaded a viewmodel");
+                    if (fov == 70 && size.x == 640)
+                    {
+                        renderer.set_local_lights({});
+                        const auto dim_base = renderer.render_image(scene.render_items(), camera, size.x, size.y);
+                        const auto dim = renderer.render_image(scene.render_items(), camera, size.x, size.y, shotgun);
+                        require(dim.pixels != dim_base.pixels, "Shotgun disappeared without local lights");
+                        save(dim, captures / (prefix + "-no-local.bmp"));
+                        renderer.set_spot_light(
+                            {.position = camera.position(), .direction = camera.forward(), .enabled = true}
+                        );
+                        const auto lit = renderer.render_image(scene.render_items(), camera, size.x, size.y, shotgun);
+                        save(lit, captures / (prefix + "-flashlight.bmp"));
+                        renderer.set_spot_light({});
+                    }
+                }
+        }
+        std::cout << "shotgun_viewmodel=passed; HDR/SDR, 3 FOVs, 2 sizes, 6 poses, reticle and prepared switching\n";
+    }
+
     void check_resource_preparation(
         VulkanMeshRenderer& renderer,
         const VulkanDevice& device,
@@ -2293,6 +2501,25 @@ namespace
                 "ImGui DPI viewport/scissor is incorrect"
             );
             save(clipped, captures / ("ui-scissor-" + std::to_string(cycle) + ".bmp"));
+            auto atmosphere = config;
+            atmosphere.fog_start = 0;
+            atmosphere.fog_end = 1;
+            atmosphere.postfx_vignette_strength = .9F;
+            atmosphere.postfx_scanline_strength = .8F;
+            atmosphere.postfx_contrast = 1.5F;
+            atmosphere.postfx_saturation = .1F;
+            renderer.set_config(atmosphere);
+            const auto graded_ui = renderer.render_image({}, camera, w * 2, h * 2, {}, draw);
+            const auto ui_offset = size_t(30 * (w * 2) + 30) * 4;
+            require(
+                std::equal(
+                    clipped.pixels.begin() + ui_offset,
+                    clipped.pixels.begin() + ui_offset + 4,
+                    graded_ui.pixels.begin() + ui_offset
+                ),
+                "Scene atmosphere changed an opaque HUD pixel"
+            );
+            renderer.set_config(config);
             overlay.shutdown();
             const auto without = renderer.render_image(scene.render_items(), camera, w, h, weapon);
             require(without.pixels == base.pixels, "UI teardown changed core scene rendering");
@@ -2457,6 +2684,8 @@ int main(int argc, char** argv)
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
+    const bool pistol_only = argc == 2 && std::string_view{argv[1]} == "--pistol-viewmodel";
+    const bool shotgun_only = argc == 2 && std::string_view{argv[1]} == "--shotgun-viewmodel";
     const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
     const bool power_slice_only = argc == 2 && std::string_view{argv[1]} == "--power-restoration-slice";
     const bool ui_only = argc == 2 && std::string_view{argv[1]} == "--ui-only";
@@ -2464,7 +2693,7 @@ int main(int argc, char** argv)
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
         && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only
-        && !pipeline_only && !power_slice_only)
+        && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -2485,7 +2714,11 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (pipeline_only)
+        if (pistol_only)
+            check_pistol_viewmodel(device, authoring, atlas, captures);
+        else if (shotgun_only)
+            check_shotgun_viewmodel(device, authoring, atlas, captures);
+        else if (pipeline_only)
             check_mesh_pipeline(device, atlas, captures);
         else if (ui_only)
             check_ui(device, vk_window, authoring, atlas, captures);

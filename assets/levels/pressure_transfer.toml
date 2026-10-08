@@ -107,7 +107,7 @@ scale = [0.8,0.8,0.8]
 
 [[entity]]
 classname = "prop_static"
-model = "models/lab_notes_board.rcmodel"
+model = "models/pressure_lab_notes_board.rcmodel"
 origin = [0.1175,1.55,4]
 angles = [90,0,0]
 
@@ -136,7 +136,7 @@ entries = [
 
 [[entity_group]]
 classname = "prop_static"
-model = "models/safety_notice.rcmodel"
+model = "models/pressure_safety_notice.rcmodel"
 entries = [
   { origin = [7.3,1.15,9.8875], angles = [180,0,0] },
   { origin = [33.5,1.15,26.1125] },
@@ -156,8 +156,6 @@ boxes = [
   { origin = [2,0.5,4], size = [1.8,1,0.8], material = "metal" },
   { origin = [2,0.99,4], size = [1.9,0.08,0.9], material = "Platform" },
   { origin = [0.25,1.1,7], size = [0.3,2.2,1.5], material = "metal" },
-  { origin = [4,3.74,5], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
-  { origin = [4,3.74,16], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
 
   { origin = [20,-0.12,22], size = [24,0.24,8], material = "maintenance_floor" },
   { origin = [20,3.9,22], size = [24,0.2,8], material = "Ceiling" },
@@ -167,8 +165,6 @@ boxes = [
   { origin = [18,1.9,26], size = [20,3.8,0.2], material = "WallPanel" },
   { origin = [14,1.1,21.5], size = [2,2.2,2], material = "metal" },
   { origin = [22,1.1,24.5], size = [2,2.2,1.6], material = "WallPanel" },
-  { origin = [16,3.74,22], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
-  { origin = [27,3.74,22], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
   { origin = [30,1.2,22.5744], size = [1.2,2.4,0.4], material = "metal" },
 
   { origin = [32,-0.12,35], size = [16,0.24,18], material = "filtration_floor" },
@@ -184,9 +180,6 @@ boxes = [
   { origin = [36.5,1.1,37], size = [2,2.2,1.6], material = "WallPanel" },
   { origin = [39.65,1,40], size = [0.5,2,2], material = "metal" },
   { origin = [36,1.2,41.5744], size = [1.2,2.4,0.4], material = "metal" },
-  { origin = [28,3.74,29], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.68,0.72,0.70] },
-  { origin = [36,3.74,40], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.68,0.72,0.70] },
-  { origin = [38,3.74,35.5], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.68,0.48,0.24] },
 
   { origin = [28,-0.12,48], size = [4,0.24,8], material = "service_floor" },
   { origin = [28,3.9,48], size = [4,0.2,8], material = "Ceiling" },
@@ -204,6 +197,7 @@ angles = [0,0,0]
 classname = "gameplay_entity"
 kind = "pickup"
 targetname = "transfer_shotgun"
+pickup_surface_y = 1.039
 origin = [2,1.105,4]
 size = [1.08,0.21,0.14]
 item_id = "weapon_shotgun"
@@ -287,6 +281,7 @@ origin = [39.34,1.4,40]
 size = [0.12,0.5,0.38]
 mount_axis = "-x"
 targetname = "transfer_control"
+panel_style = "start"
 target = "transfer_running"
 action = "activate_target"
 chain_target = "exit_reader"
@@ -377,14 +372,14 @@ close_door = "transfer_exit"
 [[entity_group]]
 classname = "render_light"
 entries = [
-  { origin = [4,3.3,5], color = [0.58,0.64,0.64], radius = 9, intensity = 1.35 },
-  { origin = [4,3.3,16], color = [0.58,0.64,0.64], radius = 9, intensity = 1.35 },
-  { origin = [16,3.3,22], color = [0.58,0.64,0.64], radius = 10, intensity = 1.3 },
-  { origin = [27,3.3,22], color = [0.58,0.64,0.64], radius = 9, intensity = 1.3 },
-  { origin = [28,3.3,29], color = [0.58,0.64,0.64], radius = 10, intensity = 1.15 },
-  { origin = [36,3.3,40], color = [0.58,0.64,0.64], radius = 10, intensity = 1.25 },
-  { origin = [38,3.3,35.5], color = [0.64,0.43,0.22], radius = 6, intensity = 1.6, state = "damaged", stop_target = "transfer_running" },
-  { origin = [28,3.3,48], color = [0.58,0.64,0.64], radius = 7, intensity = 1.1, fixture_offset = 0.379, required_target = "transfer_running" },
+  { origin = [4,3.3,5], color = [0.67,0.72,0.70], radius = 9, intensity = 1.35, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [4,3.3,16], color = [0.67,0.72,0.70], radius = 9, intensity = 1.35, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [16,3.3,22], color = [0.67,0.72,0.70], radius = 10, intensity = 1.3, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [27,3.3,22], color = [0.67,0.72,0.70], radius = 9, intensity = 1.3, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [28,3.3,29], color = [0.67,0.72,0.70], radius = 10, intensity = 1.25, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [36,3.3,40], color = [0.67,0.72,0.70], radius = 10, intensity = 1.4, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [38,3.3,35.5], color = [0.64,0.43,0.22], radius = 4.5, intensity = 1.25, state = "damaged", stop_target = "transfer_running", fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [28,3.3,48], color = [0.67,0.72,0.70], radius = 7, intensity = 1.25, required_target = "transfer_running", fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
 ]
 
 [[entity]]
@@ -423,5 +418,32 @@ required_target = "transfer_running"
 classname = "world_effect"
 kind = "decal"
 entries = [
-  { origin = [33.5,2.65,26.101], angles = [0,0,0], mark = "03" },
+  { origin = [32.75,2.65,26.198], scale = 0.65, angles = [0,0,0], mark = "03" },
 ]
+
+# VIS-25: painted occult intrusion; no backing or gameplay collision.
+[[entity]]
+classname = "prop_static"
+model = "models/blood_pentagram.rcmodel"
+origin = [36,1.15,26.135]
+
+# VIS-26: retained route glyphs mounted on local physical carriers.
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_route_signage.rcmodel"
+origin = [0,0,0]
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [28, 0.01, 49]
+size = [2,2.5,1.2]
+next_map = "levels/cooling_loop.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [4, 0.02, 2]
+angles = [0, 0, 0]

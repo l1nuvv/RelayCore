@@ -47,6 +47,11 @@ namespace RelayGame
                 if (state != "working" && state != "damaged")
                     throw std::runtime_error("render_light.state must be working or damaged");
                 effect.damaged = state == "damaged";
+                effect.fixture_width =
+                    number("fixture_width", !effect.required_target.empty() || effect.damaged ? .56F : 0);
+                effect.fixture_depth = number("fixture_depth", 0.18F);
+                if (effect.fixture_width < 0 || effect.fixture_depth <= 0)
+                    throw std::runtime_error("render_light: fixture_width must be >= 0 and fixture_depth > 0");
             } else
             {
                 const auto kind = property("kind");

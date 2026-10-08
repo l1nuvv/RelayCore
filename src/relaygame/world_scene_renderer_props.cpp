@@ -143,21 +143,6 @@ namespace RelayGame
             }
             mesh.initialize(data);
         };
-        CpuColorMeshData housing;
-        box(housing, {0, 0, -0.025F}, {1, 1, 0.10F}, {0.23F, 0.26F, 0.24F});
-        box(housing, {0, 0, 0.033F}, {0.87F, 0.90F, 0.025F}, {0.49F, 0.51F, 0.46F});
-        disk(housing, {0, -0.11F, 0.049F}, 0.30F, 0.025F, {0.12F, 0.14F, 0.13F});
-        disk(housing, {0, -0.11F, 0.074F}, 0.255F, 0.014F, {0.64F, 0.62F, 0.53F});
-        box(housing, {0, 0.30F, 0.05F}, {0.44F, 0.13F, 0.02F}, {0.09F, 0.11F, 0.10F});
-        for (const float x : {-0.36F, 0.36F})
-        {
-            for (const float y : {-0.39F, 0.39F})
-            {
-                disk(housing, {x, y, 0.05F}, 0.034F, 0.008F, {0.65F, 0.65F, 0.60F});
-                box(housing, {x, y, 0.06F}, {0.042F, 0.009F, 0.004F}, {0.12F, 0.13F, 0.12F});
-            }
-        }
-        upload(panel_housing_mesh_, std::move(housing));
         const auto actuator = [&](RelayCore::render::StaticColorMesh& mesh, glm::vec3 color, bool pressed = false) {
             CpuColorMeshData data;
             disk(data, {0, -0.11F, pressed ? 0.069F : 0.086F}, 0.22F, 0.033F, color);
@@ -184,6 +169,21 @@ namespace RelayGame
         for (auto& vertex : turret_warning.vertices)
             vertex.material_kind = static_cast<float>(RelayCore::SurfaceMaterial::LightStrip);
         upload(turret_warning_mesh_, std::move(turret_warning));
+        for (std::size_t index = 0; index < rover_signal_meshes_.size(); ++index)
+        {
+            CpuColorMeshData signal;
+            for (const float x : {-.092F, .092F})
+                disk(
+                    signal,
+                    {x, .83F, .215F},
+                    .041F,
+                    .002F,
+                    index == 0 ? glm::vec3{1.0F, .65F, .12F} : glm::vec3{.90F, .16F, .07F}
+                );
+            for (auto& vertex : signal.vertices)
+                vertex.material_kind = static_cast<float>(RelayCore::SurfaceMaterial::LightStrip);
+            upload(rover_signal_meshes_[index], std::move(signal));
+        }
         CpuColorMeshData thigh;
         loft(
             thigh,

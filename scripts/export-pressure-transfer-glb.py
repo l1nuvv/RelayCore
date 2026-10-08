@@ -5,7 +5,10 @@ Run with -- --model=<name> to regenerate only one product.
 """
 from pathlib import Path
 from math import sin, cos, pi
+from random import Random
 import sys
+import json
+import struct
 
 import bpy
 import bmesh
@@ -19,7 +22,7 @@ GRAPHICS.mkdir(parents=True, exist_ok=True)
 SELECTED = {arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--model=")}
 
 
-def material(name, color, roughness, metallic=0, sheet=None, cell=0, texture=None):
+def material(name, color, roughness, metallic=0, sheet=None, cell=0, texture=None, variation=1):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     mat.use_backface_culling = True
@@ -40,6 +43,7 @@ def material(name, color, roughness, metallic=0, sheet=None, cell=0, texture=Non
         # Retain the source's restrained surface variation, with one coherent palette.
         luminance = tile[:, :, :3].mean(axis=2)
         modulation = np.clip(luminance / max(float(luminance.mean()), .001), .80, 1.18)
+        modulation = 1 + (modulation - 1) * variation
         tile[:, :, :3] = modulation[:, :, None] * np.array(color)
         tile[:, :, 3] = 1
         height, width = tile.shape[:2]
@@ -52,6 +56,35 @@ def material(name, color, roughness, metallic=0, sheet=None, cell=0, texture=Non
         tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
         tex.image = image
         mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    return mat
+
+
+def surface_normal(mat, metres, strength):
+    """Periodic manufactured grain; RGB is linear glTF +Y tangent space."""
+    edge = 256
+    height = np.random.default_rng(20261008).normal(size=(edge, edge))
+    height = (height + np.roll(height, 1, 0) + np.roll(height, -1, 0)
+              + np.roll(height, 1, 1) + np.roll(height, -1, 1)) / 5
+    dx = (np.roll(height, -1, 1) - np.roll(height, 1, 1)) * strength
+    dy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * strength
+    normal = np.stack((-dx, -dy, np.ones_like(height)), axis=2)
+    normal /= np.linalg.norm(normal, axis=2)[:, :, None]
+    pixels = np.ones((edge, edge, 4), dtype=np.float32)
+    pixels[:, :, :3] = normal * .5 + .5
+    image = bpy.data.images.new(mat.name + " normal", width=edge, height=edge)
+    image.colorspace_settings.name = "Non-Color"
+    image.pixels.foreach_set(pixels.ravel())
+    image.filepath_raw = str(GRAPHICS / (mat.name + "_normal.png"))
+    image.file_format = "PNG"
+    image.save()
+    image.pack()
+    nodes = mat.node_tree.nodes
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    mapped = nodes.new("ShaderNodeNormalMap")
+    mat.node_tree.links.new(texture.outputs["Color"], mapped.inputs["Color"])
+    mat.node_tree.links.new(mapped.outputs["Normal"], nodes.get("Principled BSDF").inputs["Normal"])
+    mat["uv_metres"] = metres
     return mat
 
 
@@ -84,6 +117,31 @@ def mesh_object(name, vertices, faces, mat):
     bpy.context.collection.objects.link(obj)
     mesh.materials.append(mat)
     return obj
+
+
+def wear_patch(name, center, u, v, mat, seed):
+    """Opaque fitted surface mark; u cross v points away from its receiver."""
+    rng = Random(seed)
+    center, u, v = Vector(center), Vector(u), Vector(v)
+    points = [center]
+    for i in range(16):
+        angle = 2*pi*i/16
+        radius = rng.uniform(.65, 1)
+        points.append(center + radius*(u*cos(angle) + v*sin(angle)))
+    # Runtime +Y up -> Blender +Z up, as in bay_box.
+    return mesh_object(name, [(p.x, -p.z, p.y) for p in points],
+                       [(0, i+1, (i+1) % 16+1) for i in range(16)], mat)
+
+
+def surface_crack(name, points, normal, width, mat):
+    points, normal = [Vector(p) for p in points], Vector(normal)
+    vertices = []
+    for i, point in enumerate(points):
+        tangent = points[min(i+1, len(points)-1)]-points[max(i-1, 0)]
+        side = tangent.cross(normal).normalized()*width/2
+        vertices.extend((point-side, point+side))
+    return mesh_object(name, [(p.x, -p.z, p.y) for p in vertices],
+                       [(2*i, 2*i+1, 2*i+3, 2*i+2) for i in range(len(points)-1)], mat)
 
 
 def box(name, pos, size, mat, bevel=.008):
@@ -227,6 +285,71 @@ def label(text, pos, size, mat):
     return bpy.context.object
 
 
+def repair_exported_tangents(path):
+    # MikkTSpace can give zero corner weights on metre-long, millimetre-wide
+    # bevel triangles. Recover their basis from the exported geometry and UVs
+    # in double precision, without changing geometry or the metre UV scale.
+    data = bytearray(path.read_bytes())
+    json_size = struct.unpack_from("<I", data, 12)[0]
+    document = json.loads(data[20:20 + json_size])
+    binary_start = 28 + json_size
+
+    def accessor(index):
+        entry = document["accessors"][index]
+        view = document["bufferViews"][entry["bufferView"]]
+        dtype = {5126: "<f4", 5125: "<u4", 5123: "<u2"}[entry["componentType"]]
+        width = {"VEC4": 4, "VEC3": 3, "VEC2": 2, "SCALAR": 1}[entry["type"]]
+        offset = binary_start + view.get("byteOffset", 0) + entry.get("byteOffset", 0)
+        stride = view.get("byteStride", np.dtype(dtype).itemsize * width)
+        return np.ndarray((entry["count"], width), dtype=dtype, buffer=data,
+                          offset=offset, strides=(stride, np.dtype(dtype).itemsize))
+
+    repaired = 0
+    for mesh in document["meshes"]:
+        for primitive in mesh["primitives"]:
+            attributes = primitive["attributes"]
+            if "TANGENT" not in attributes:
+                continue
+            tangents = accessor(attributes["TANGENT"])
+            normals = accessor(attributes["NORMAL"]).astype(np.float64)
+            normals /= np.linalg.norm(normals, axis=1)[:, None]
+            invalid = ((np.abs(np.linalg.norm(tangents[:, :3], axis=1) - 1) >= .01)
+                       | (np.abs(np.sum(normals * tangents[:, :3], axis=1)) >= .01))
+            positions = accessor(attributes["POSITION"]).astype(np.float64)
+            uv = accessor(attributes["TEXCOORD_0"]).astype(np.float64)
+            for triangle in accessor(primitive["indices"]).reshape(-1, 3):
+                if not invalid[triangle].any():
+                    continue
+                a, b, c = triangle
+                edge1, edge2 = positions[b] - positions[a], positions[c] - positions[a]
+                delta1, delta2 = uv[b] - uv[a], uv[c] - uv[a]
+                determinant = delta1[0] * delta2[1] - delta1[1] * delta2[0]
+                if abs(determinant) < 1e-15:
+                    raise ValueError(f"{path}: degenerate UV triangle cannot supply a tangent")
+                tangent = (edge1 * delta2[1] - edge2 * delta1[1]) / determinant
+                # Blender flips exported V while retaining its +Y normal image
+                # convention and bitangent sign. Match its unaffected corners.
+                bitangent = -(edge2 * delta1[0] - edge1 * delta2[0]) / determinant
+                for index in triangle:
+                    if not invalid[index]:
+                        continue
+                    normal = normals[index]
+                    direction = tangent - normal * np.dot(normal, tangent)
+                    length = np.linalg.norm(direction)
+                    if length < 1e-12:
+                        raise ValueError(f"{path}: degenerate surface cannot supply a tangent")
+                    direction /= length
+                    sign = -1 if np.dot(np.cross(normal, direction), bitangent) < 0 else 1
+                    tangents[index] = (*direction, sign)
+                    invalid[index] = False
+                    repaired += 1
+            if invalid.any():
+                raise ValueError(f"{path}: unreferenced invalid tangent")
+    if repaired:
+        path.write_bytes(data)
+        print(f"Recovered {repaired} degenerate exported tangents: {path.name}")
+
+
 def export(name):
     # UV0 is explicit world-scale projection; all graph inputs are native-supported.
     groups = {}
@@ -268,14 +391,17 @@ def export(name):
             axis = max(range(3), key=lambda a: abs(normal[a]))
             axes = ((1, 2), (0, 2), (0, 1))[axis]
             for index, point in zip(face.loop_indices, points):
-                metres = 1.5 if mat.name == "transfer_quiet_concrete" else 2
+                metres = mat.get("uv_metres", 1.5 if mat.name == "transfer_quiet_concrete" else 2)
                 uv.data[index].uv = (point[axes[0]] / metres, point[axes[1]] / metres)
     bpy.context.preferences.filepaths.save_version = 0
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / (name + ".blend")))
     bpy.ops.export_scene.gltf(filepath=str(OUT / (name + ".glb")), export_format="GLB",
                               export_yup=True, export_normals=True, export_texcoords=True,
-                              export_tangents=False, export_animations=False, export_skins=False,
+                              export_tangents=any("uv_metres" in mat for mat in groups),
+                              export_animations=False, export_skins=False,
                               export_cameras=False, export_lights=False, export_extras=False)
+    if any("uv_metres" in mat for mat in groups):
+        repair_exported_tangents(OUT / (name + ".glb"))
 
 
 def manifold(m):
@@ -297,9 +423,15 @@ def manifold(m):
     box("Bonded instrument backplate", (0, -.06, 2.45), (.68, .10, .79), m["dark"])
     for x in (-.20, .20):
         gauge("Differential reference", x, -.21, 2.55, m, x > 0)
+    for x, side in ((-.9, -1), (.9, 1)):
+        sweep("Differential impulse takeoff", [(x, -.42, 2.24), (x, -.58, 2.24),
+                                               (side*.34, -.58, 2.24),
+                                               (side*.34, -.30, 2.24),
+                                               (side*.20, -.15, 2.31)], .014, m["brass"])
+        rod("Impulse union", (side*.20, -.15, 2.30), (side*.20, -.15, 2.36), .025, m["steel"], 12)
     sweep("Brass differential loop", [(-.20, -.15, 2.31), (-.20, -.15, 2.10),
                                       (.20, -.15, 2.10), (.20, -.15, 2.31)], .017, m["brass"])
-    label("DIFFERENTIAL", (0, -.118, 2.78), .073, m["ivory"])
+    label("DIFFERENTIAL / P1-P2", (0, -.118, 2.78), .048, m["ivory"])
     box("System nameplate", (0, -.05, 3.35), (3.5, .08, .26), m["ivory"])
     label("PRESSURE BYPASS", (0, -.095, 3.29), .18, m["dark"])
 
@@ -443,6 +575,13 @@ def equipment_bay(m):
     rod("Gate reader feed", (7.78, -.14, 3.36), (7.78, -9.80, 3.36), .025, m["steel"], 12)
     rod("Reader lintel feed", (7.78, -9.80, 3.36), (6.1, -9.80, 3.36), .025, m["steel"], 12)
     rod("Reader cable drop", (6.1, -9.80, 3.36), (6.1, -9.80, 1.66), .025, m["steel"], 12)
+    # Module origins are 3 m apart; join the recessed flanges at their seam.
+    rod("Bay pipe coupling", (7.66, -5.375, 2.85), (7.66, -5.625, 2.85), .107, m["steel"], 32)
+    for end, direction in ((2.5, -1), (8.5, 1)):
+        points = [(7.66 + .23*(1-cos(i*pi/16)),
+                   -(end + direction*.23*sin(i*pi/16)), 2.85) for i in range(9)]
+        sweep("Bay pipe wall elbow", points, .085, m["steel"], 24)
+        bay_box("Bay pipe wall sleeve", (7.886, 2.85, end+direction*.23), (.04, .25, .25), m["dark"])
 
 
 def bay_furniture(m):
@@ -564,6 +703,8 @@ def service_hall(m):
     bay_box("Hall direction plate", (4.7, 2.65, 23.855), (3.8, .43, .04), m["ivory"])
     bay_label("<  02 / ISOLATION GALLERY", (4.7, 2.57, 23.83), .18, m["dark"], "-z")
     # Reused west-wall pipe modules terminate in sleeved wall returns.
+    for seam in (14.5, 17.5):
+        rod("Hall inter-module coupling", (.34, -(seam-.125), 2.85), (.34, -(seam+.125), 2.85), .107, m["steel"], 32)
     for end, direction in ((11.5, -1), (20.5, 1)):
         points = [(.34 - .23 * (1 - cos(i * pi / 16)),
                    -(end + direction * .23 * sin(i * pi / 16)), 2.85) for i in range(9)]
@@ -609,6 +750,8 @@ def gallery(m):
                    -(18.34 - .23 * (1 - cos(i * pi / 16))), 2.85) for i in range(9)]
         sweep("Gallery pipe wall return", points, .085, m["steel"], 24)
         bay_box("Gallery pipe wall sleeve", (end + direction * .23, 2.85, 18.114), (.24, .24, .035), m["dark"])
+    for seam in (13.5, 16.5):
+        rod("Gallery inter-module coupling", (seam-.125, -18.34, 2.85), (seam+.125, -18.34, 2.85), .107, m["steel"], 32)
     # Skin the original 1.2 x 2.4 x .4 turret backing; keep its LOS envelope.
     for x in (29.387, 30.613):
         bay_box("Turret backing folded cheek", (x, 1.2, 22.5744), (.026, 2.4, .42), m["paint"])
