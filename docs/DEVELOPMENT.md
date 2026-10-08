@@ -456,7 +456,7 @@ ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|
 ./relaycore_vulkan_mesh_tests.exe --metallic-roughness
 ```
 
-## Native HDR profile — N3.1
+## HDR scene rendering with SDR output — N3.1
 
 В игровом меню и паузе: «Настройки» → «Режим изображения» → SDR / HDR.
 Выбор применяется сразу и сохраняется вместе с настройками игрока; перезапуск
@@ -464,14 +464,15 @@ ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|
 При включении HDR меню само выбирает hardware_srgb и подготавливает сцены игры,
 редактора и сохранённой editor-return сессии; аргументы запуска не нужны.
 При возврате в SDR восстанавливается цветовой путь, выбранный при запуске, и
-отключается tone mapping. Игра, редактор и editor-return сцены подготавливаются
+отключается отдельный FP16/fullscreen pass. Игра, редактор и editor-return сцены подготавливаются
 заново при смене color pipeline. Явный startup hardware_srgb также сохраняется.
 Ошибка подготовки сохраняет рабочий режим и отображается в меню.
 
 `assets/config/native_lab_hdr.toml` явно включает `render.hdr_enabled = true` и
-`exposure_ev = 0`. HDR требует `--color-pipeline hardware_srgb`; с `legacy_gamma`
-startup завершается понятной ошибкой. Default `engine.toml` сохраняет SDR и прежний
-цветовой путь. Exposure задаётся в stops: +1 удваивает linear radiance; допустимы
+`exposure_ev = 0`. HDR требует `hardware_srgb` (теперь default запуска); с `legacy_gamma`
+startup завершается понятной ошибкой. Default `engine.toml` сохраняет SDR;
+обычный запуск теперь выбирает `hardware_srgb`, а `--color-pipeline legacy_gamma`
+остаётся явным режимом совместимости. Exposure задаётся в stops: +1 удваивает linear radiance; допустимы
 finite значения [-10,10]. Это ручная экспозиция, auto-exposure не добавлен.
 
 ```powershell
@@ -480,23 +481,43 @@ finite значения [-10,10]. Это ручная экспозиция, auto
 
 World/transparent/viewmodel пишутся в `R16G16B16A16_SFLOAT`; lighting/emissive не
 обрезаются до 1. Прозрачность смешивается в linear space. Отдельный fullscreen pass
-применяет exposure, поканальный Reinhard `x/(1+x)` и существующий postfx в display
-brightness space (contrast/saturation/grain), затем возвращает linear RGB и пишет
+применяет exposure и тот же highlight shoulder, что линейный SDR, затем
+существующий postfx в display brightness space (contrast/saturation/grain),
+затем возвращает linear RGB и пишет
 в sRGB attachment над RGBA8 UNORM storage. UI загружается после tone mapping через
 UNORM view в прежних display-space semantics; exposure/postfx не затрагивают его.
 Readback/presentation используют encoded RGBA8 без второй sRGB-конверсии. HDR здесь
 относится к scene radiance; swapchain/display остаётся SDR.
+
+SDR сохраняет свой lighting path, но плавно сжимает значения выше 0.65 до postfx,
+вместо обрезания lighting до 1: яркие поверхности сохраняют градации и детали.
+Общий shoulder оставляет значения до 0.65 неизменными, непрерывно по значению и
+производной сжимает более яркие значения к 1. HDR больше не добавляет ACES toe и
+скрытый множитель 0.6, затемнявшие слабые сигналы; exposure 0 остаётся штатным.
+В SDR classic hardware-sRGB и MR postfx также работают после linear → sRGB,
+с обратным преобразованием перед sRGB attachment. Legacy classic сохраняет
+encoded lighting и UNORM attachment; его арифметика не служит linear reference.
 
 Ambient и `local_light_gain` — скалярные коэффициенты освещения, а не sRGB-цвета;
 они одинаковы в SDR/HDR. Их прежнее HDR-only декодирование удалено: оно затемняло
 поверхности вне прямого света. Postfx contrast применяется после linear → display
 conversion, чтобы не обрезать слабую linear radiance. `graphics.hdr_pipeline`
 проверяет тёмные значения и diffuse hemisphere для classic/MR материалов.
-`graphics.hdr_settings` сравнивает enabled/disabled shadows при одинаковой камере;
+`graphics.vulkan_color_baseline` проверяет разделение ярких SDR-значений выше 1,
+`graphics.hdr_pipeline` — разделение теней/полутонов и ярких diffuse-значений.
+`graphics.hdr_settings` запускает эпизод и сравнивает enabled/disabled shadows
+при одинаковой камере; пустое изображение без заметного влияния теней считается ошибкой.
 HDR должен сохранять минимум половину суммарного hardware-sRGB SDR shadow contrast.
 Legacy SDR записывается отдельно, его lighting arithmetic отличается.
 Captures: `hdr-settings-shadow-{SDR,HDR,hardware-SDR}.bmp`,
 `hdr-settings-{door,fan,ceiling}.bmp` в test working directory.
+
+Путь вывода во всех режимах — `B8G8R8A8_UNORM`/`R8G8B8A8_UNORM` с
+`VK_COLOR_SPACE_SRGB_NONLINEAR_KHR`. HDR10/PQ/scRGB presentation, BT.2020 и HDR
+metadata отсутствуют. Включение Windows HDR оставляет RelayCore SDR-приложением;
+DWM выполняет системное преобразование и SDR white mapping. Дополнительная
+компенсация white level в renderer не нужна. См. [Microsoft Advanced Color](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range)
+и [численный аудит цветового пути](color_pipeline_baseline.md#vulkan-sdrhdr-audit--2026-10-08).
 
 HDR format attachment/blend/sampling support проверяется при startup. Изменение
 `hdr_enabled` требует prepared backend reload; exposure можно обновлять через

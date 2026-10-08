@@ -1,4 +1,14 @@
 # Cooling loop: sheltered service aisle or exposed firing lane, then isolate and restart.
+[[entity]]
+classname = "prop_static"
+model = "models/cooling_exchanger.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/cooling_service.rcmodel"
+origin = [0,0,0]
+
 [[solid_group]]
 boxes = [
   { origin = [0,-0.12,15], size = [14,0.24,30], material = "service_floor" },
@@ -39,9 +49,6 @@ angles = [90,0,0]
 classname = "prop_static"
 model = "models/transfer_cover_casing.rcmodel"
 entries = [
-  { origin = [0,0,9.666667], scale = [1.333333,1,1.666667] },
-  { origin = [0,0,13], scale = [1.333333,1,1.666667] },
-  { origin = [0,0,16.333333], scale = [1.333333,1,1.666667] },
   { origin = [4.3,0,10] },
 ]
 
@@ -175,7 +182,7 @@ use_radius = 1.8
 single_use = true
 label = "Запустить контур охлаждения — пульт 02"
 locked_message = "Сначала изолируйте утечку пультом 01 в сервисном проходе."
-success_message = "Контур работает. Вентиляция и свет выхода включены. Пульт дальней двери разблокирован."
+success_message = "Контур работает. Вентиляция и свет выхода включены. Пульт 03 у дальней двери разблокирован."
 
 [[entity]]
 classname = "gameplay_entity"
@@ -199,7 +206,7 @@ locked = true
 signal_action = "unlock"
 use_radius = 1.8
 single_use = true
-label = "Открыть выход из охлаждающего сектора"
+label = "Открыть выход из охлаждающего сектора — пульт 03"
 locked_message = "Выход заблокирован до запуска контура. Пульт 02 — на правой стене."
 success_message = "Выход открыт. Пройдите в отсек с работающей вентиляцией."
 
@@ -208,7 +215,7 @@ classname = "mission_step"
 entries = [
   { kind = "activate_target", target = "cooling_access", retry_entry = "isolated_retry", title = "Изолировать утечку", detail = "Пульт 01 — на левой стене за центральным агрегатом. Аварийная перегородка закрывает доступ к пусковому посту." },
   { kind = "activate_target", target = "cooling_running", title = "Запустить охлаждение", detail = "Пройдите через аварийную перегородку. Пульт 02 — на правой стене пускового поста." },
-  { kind = "door_open", target = "cooling_exit", title = "Открыть служебный выход", detail = "Работающий контур разблокировал пульт справа от дальней двери." },
+  { kind = "door_open", target = "cooling_exit", title = "Открыть служебный выход", detail = "Работающий контур разблокировал пульт 03 справа от дальней двери." },
   { kind = "zone", origin = [0,0.01,28.5], size = [3.6,2.5,2], title = "Покинуть сектор", detail = "Пройдите через открытую дверь к вентиляционной установке." },
 ]
 

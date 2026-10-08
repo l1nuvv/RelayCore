@@ -86,9 +86,19 @@ namespace
 int main(int argc, char** argv)
 {
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
-    const bool art_review = argc > 1 && std::string_view{argv[1]}.starts_with("--art-review");
-    const bool art_legacy = argc > 1 && std::string_view{argv[1]} == "--art-review-legacy";
+    const bool intake_views = argc > 1 && std::string_view{argv[1]}.starts_with("--intake-views");
+    const bool pump_views = argc > 1 && std::string_view{argv[1]}.starts_with("--pump-views");
+    const bool b17_views = argc > 1 && std::string_view{argv[1]}.starts_with("--b17-views");
+    const bool art_review =
+        intake_views || pump_views || b17_views || (argc > 1 && std::string_view{argv[1]}.starts_with("--art-review"));
+    const bool art_legacy =
+        argc > 1
+        && (std::string_view{argv[1]} == "--art-review-legacy" || std::string_view{argv[1]} == "--intake-views-sdr"
+            || std::string_view{argv[1]} == "--pump-views-sdr" || std::string_view{argv[1]} == "--b17-views-sdr");
     const auto arguments = std::span{argv + 1, static_cast<size_t>(argc - 1)};
+    const bool power_views_only = std::ranges::any_of(arguments, [](const char* value) {
+        return std::string_view{value} == "--power-views-only";
+    });
     const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--no-shadows";
     });
@@ -147,11 +157,34 @@ int main(int argc, char** argv)
                 float fov = 60;
             };
             const std::array views{
+                View{"foundation_intake", "foundation-entrance.bmp", {0, 1.65F, -2}, {0, 1.35F, 2}},
+                View{"foundation_intake", "foundation-key.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
+                View{"foundation_intake", "foundation-focused.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
+                View{"foundation_intake", "foundation-collected.bmp", {-.9F, 1.65F, -1.2F}, {-2, 1, 0}},
+                View{"foundation_intake", "foundation-open.bmp", {0, 1.65F, 1}, {0, 1.65F, 4.5F}},
+                View{"foundation_intake", "foundation-reverse.bmp", {0, 1.65F, 4.9F}, {0, 1.65F, -1}},
+                View{"foundation_intake", "foundation-ceiling-shadow.bmp", {-1, 1.65F, .8F}, {-3.4F, 2.5F, .8F}},
+                View{"foundation_intake", "foundation-pipe-shadow.bmp", {1, 1.65F, -2}, {3.6F, 2.5F, -1}},
+                View{"foundation_pump", "pump-turret.bmp", {.7F, 1.65F, 4.2F}, {1.6F, 1.55F, 5.4F}},
+                View{"foundation_pump", "pump-turret-dead.bmp", {.7F, 1.65F, 4.2F}, {1.6F, 1.55F, 5.4F}},
+                View{"foundation_pump", "pump-button-side.bmp", {-2.4F, 1.65F, 5.45F}, {-1.4F, 1.3F, 5.85F}},
+                View{"foundation_pump", "pump-terminal-side.bmp", {-2.4F, 1.65F, 2.5F}, {-2.7F, 1.4F, 1.5F}},
+                View{"foundation_pump", "pump-arrival.bmp", {0, 1.65F, -1}, {0, 1.65F, 4}},
+                View{"foundation_pump", "pump-machine.bmp", {-.2F, 1.65F, .5F}, {1.6F, 1.6F, 2.6F}},
+                View{"foundation_pump", "pump-machinery-detail.bmp", {-.1F, 1.9F, 1.1F}, {1.6F, 2.55F, 2.6F}},
+                View{"foundation_pump", "pump-standby.bmp", {0, 1.65F, 4.3F}, {0, 1.65F, 8}},
+                View{"foundation_pump", "pump-running.bmp", {0, 1.65F, 4.3F}, {0, 1.65F, 8}},
+                View{"foundation_pump", "pump-open.bmp", {0, 1.65F, 4.3F}, {0, 1.65F, 8}},
+                View{"foundation_pump", "pump-reverse.bmp", {0, 1.65F, 8.8F}, {0, 1.65F, -1}},
                 View{"occult_lab_b17", "b17-entrance.bmp", {0, 1.65F, -8}, {0, 1.65F, -4}},
                 View{"occult_lab_b17", "b17-laboratory.bmp", {-.7F, 1.65F, -3.4F}, {2, 1.4F, 1.2F}},
                 View{"occult_lab_b17", "b17-observation.bmp", {-3.1F, 1.65F, -1.8F}, {-4.1F, 1.2F, 3.8F}},
                 View{"occult_lab_b17", "b17-instruments.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
+                View{"occult_lab_b17", "b17-isolated.bmp", {2, 1.65F, 2.9F}, {4.25F, 1.3F, 4.3F}},
                 View{"occult_lab_b17", "b17-sample-bench.bmp", {4.5F, 1.55F, -2.15F}, {4.5F, 1.2F, -3.55F}},
+                View{"occult_lab_b17", "b17-reverse.bmp", {1, 1.65F, 3.3F}, {0, 1.6F, -5.2F}},
+                View{"occult_lab_b17", "b17-window.bmp", {-4.1F, 1.65F, 2}, {2, 1.45F, 1.2F}},
+                View{"occult_lab_b17", "b17-services.bmp", {4.1F, 1.65F, -.3F}, {3.1F, 2.65F, 2.6F}},
                 View{"power_restoration", "revamp-power.bmp", {0, 1.65F, -3}, {2, 1.3F, 2}},
                 View{"power_restoration", "fix-ceiling.bmp", {-2.8F, 1.65F, -2.4F}, {-2.8F, 3.6F, -.7F}},
                 View{"power_restoration", "fix-pipe.bmp", {3, 1.65F, 2.8F}, {4.65F, 2.85F, 2.8F}},
@@ -164,8 +197,17 @@ int main(int argc, char** argv)
                 View{"bench_relay", "wreck-side.bmp", {1.0F, .6F, 6.15F}, {0, .25F, 7}},
                 View{"pressure_transfer", "revamp-transfer.bmp", {4, 1.65F, 1.3F}, {2, 1.2F, 4}},
             };
+            std::vector<unsigned char> intake_key_pixels;
+            std::vector<unsigned char> pump_standby_pixels;
+            std::vector<unsigned char> pump_running_pixels;
+            std::vector<unsigned char> b17_instrument_pixels;
             for (const auto& view : views)
             {
+                const std::string_view map{view.map};
+                if ((map == "foundation_intake") != intake_views || (map == "foundation_pump") != pump_views)
+                    continue;
+                if (b17_views && map != "occult_lab_b17")
+                    continue;
                 const auto start = std::chrono::steady_clock::now();
                 const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
                     RelayCore::core::asset_path(std::string{"levels/"} + view.map + ".toml")
@@ -191,6 +233,90 @@ int main(int argc, char** argv)
                 renderer.camera().apply_projection_config({.vertical_fov_radians = glm::radians(view.fov)});
                 renderer.begin_frame();
                 auto enemies = RelayGame::build_enemies(session.level);
+                auto view_usables = session.usables;
+                auto view_doors = session.doors;
+                auto view_turrets = session.combat.turrets;
+                std::vector<std::string> view_targets;
+                if (std::string_view{view.image} == "b17-isolated.bmp")
+                {
+                    std::vector<std::string> inventory, signaled;
+                    const auto found =
+                        std::ranges::find(view_usables, "b17_isolator", &RelayCore::gameplay::RuntimeUsable::name);
+                    if (found == view_usables.end()
+                        || !RelayGame::apply_usable_interaction(
+                                *found,
+                                view_doors,
+                                view_usables,
+                                inventory,
+                                view_targets,
+                                signaled
+                        )
+                                .primary_applied)
+                        throw std::runtime_error("B17 inspection interaction failed");
+                }
+                if (pump_views
+                    && (std::string_view{view.image} == "pump-running.bmp"
+                        || std::string_view{view.image} == "pump-open.bmp"
+                        || std::string_view{view.image} == "pump-reverse.bmp"))
+                {
+                    std::vector<std::string> inventory{"service_key"};
+                    std::vector<std::string> signaled;
+                    const auto use = [&](std::string_view name) {
+                        const auto found =
+                            std::ranges::find(view_usables, name, &RelayCore::gameplay::RuntimeUsable::name);
+                        if (found == view_usables.end()
+                            || !RelayGame::apply_usable_interaction(
+                                    *found,
+                                    view_doors,
+                                    view_usables,
+                                    inventory,
+                                    view_targets,
+                                    signaled
+                            )
+                                    .primary_applied)
+                            throw std::runtime_error("Pump inspection interaction failed");
+                    };
+                    use("pump_control");
+                    if (std::string_view{view.image} != "pump-running.bmp")
+                    {
+                        use("pump_button");
+                        static_cast<void>(RelayCore::gameplay::update_doors(2.0F, {}, view_doors));
+                    }
+                }
+                if (std::string_view{view.image} == "pump-turret-dead.bmp")
+                    for (auto& turret : view_turrets)
+                    {
+                        turret.health = 0;
+                        turret.destroyed = true;
+                    }
+                if (intake_views
+                    && (std::string_view{view.image} == "foundation-collected.bmp"
+                        || std::string_view{view.image} == "foundation-open.bmp"
+                        || std::string_view{view.image} == "foundation-reverse.bmp"))
+                {
+                    std::vector<std::string> inventory, activated, signaled;
+                    const auto use = [&](std::string_view name) {
+                        const auto found =
+                            std::ranges::find(view_usables, name, &RelayCore::gameplay::RuntimeUsable::name);
+                        if (found == view_usables.end()
+                            || !RelayGame::apply_usable_interaction(
+                                    *found,
+                                    view_doors,
+                                    view_usables,
+                                    inventory,
+                                    activated,
+                                    signaled
+                            )
+                                    .primary_applied)
+                            throw std::runtime_error("Foundation inspection interaction failed");
+                    };
+                    use("intake_key");
+                    if (std::string_view{view.image} != "foundation-collected.bmp")
+                    {
+                        use("intake_button");
+                        static_cast<void>(RelayCore::gameplay::update_doors(2.0F, {}, view_doors));
+                    }
+                }
                 if (std::string_view{view.image} == "fix-wreck.bmp" || std::string_view{view.image} == "wreck-side.bmp")
                     for (auto& enemy : enemies)
                     {
@@ -202,18 +328,51 @@ int main(int argc, char** argv)
                     renderer,
                     renderer.camera(),
                     0,
-                    session.doors,
-                    session.combat.turrets,
-                    session.usables,
-                    -1,
+                    view_doors,
+                    view_turrets,
+                    view_usables,
+                    intake_views && std::string_view{view.image} == "foundation-focused.bmp"
+                        ? static_cast<int>(
+                              std::ranges::find(view_usables, "intake_key", &RelayCore::gameplay::RuntimeUsable::name)
+                              - view_usables.begin()
+                          )
+                        : -1,
                     {},
                     false,
-                    {},
+                    view_targets,
                     {},
                     {},
                     enemies
                 );
                 (void) capture(renderer, review_directory / view.image);
+                if (std::string_view{view.image} == "b17-instruments.bmp")
+                    b17_instrument_pixels = read_rgb(renderer);
+                else if (std::string_view{view.image} == "b17-isolated.bmp"
+                         && read_rgb(renderer) == b17_instrument_pixels)
+                    throw std::runtime_error("B17 isolation did not change its rendered control state");
+                if (pump_views)
+                {
+                    const auto pixels = read_rgb(renderer);
+                    if (std::string_view{view.image} == "pump-standby.bmp")
+                        pump_standby_pixels = pixels;
+                    else if (std::string_view{view.image} == "pump-running.bmp")
+                    {
+                        if (pixels == pump_standby_pixels)
+                            throw std::runtime_error("Pump startup did not change its rendered view");
+                        pump_running_pixels = pixels;
+                    } else if (std::string_view{view.image} == "pump-open.bmp" && pixels == pump_running_pixels)
+                        throw std::runtime_error("Pump exit opening did not change its rendered view");
+                }
+                if (intake_views)
+                {
+                    const auto pixels = read_rgb(renderer);
+                    if (std::string_view{view.image} == "foundation-key.bmp")
+                        intake_key_pixels = pixels;
+                    else if ((std::string_view{view.image} == "foundation-collected.bmp"
+                              || std::string_view{view.image} == "foundation-focused.bmp")
+                             && pixels == intake_key_pixels)
+                        throw std::runtime_error("Foundation pickup collection/focus did not change its rendered view");
+                }
                 scene.shutdown();
             }
             return 0;
@@ -595,6 +754,11 @@ int main(int argc, char** argv)
         (void) render("switch-room-close-left.bmp", {12.0F, 1.65F, 19.0F}, {14.3F, 1.5F, 22.0F});
         (void) render("switch-room-close-right.bmp", {15.5F, 1.65F, 19.0F}, {14.3F, 1.5F, 22.0F});
         (void) render("pump-before.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
+        (void) render("pump-state-standby.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
+        (void) render("pump-drive-side.bmp", {8.8F, 1.65F, 9.5F}, {6.4F, 2.1F, 9.5F});
+        (void) render("pump-control.bmp", {8.5F, 1.65F, 7}, {7, 1.7F, 5.44F});
+        (void) render("pump-leak.bmp", {7.2F, 1.65F, 7.2F}, {5.4F, 2.4F, 7.2F});
+        (void) render("intake-reverse-before.bmp", {3.5F, 1.65F, 2.8F}, {-3.6F, 1.1F, -.5F});
         (void) render("pump-fan-mount.bmp", {8.0F, 1.65F, 8.5F}, {10.0F, 2.55F, 10.77F});
         RelayGame::update_world_environment(environment, activated, 1.25F);
         (void) render("sparks.bmp", {13.2F, 1.65F, 20.0F}, {14.05F, 1.68F, 21.60F});
@@ -616,6 +780,7 @@ int main(int argc, char** argv)
         (void
         ) render("maintenance-wreck.bmp", {15.5F, 1.65F, 34.0F}, {21.5F, 0.5F, 34.0F}, {}, nullptr, destroyed_enemies);
         (void) render("reserve-bus.bmp", {22.0F, 1.65F, 34.0F}, {24.85F, 1.5F, 34.0F});
+        (void) render("maintenance-reverse.bmp", {16, 1.65F, 36}, {13, 1.65F, 29});
         if (!use("bus_relay").chain_applied || !use("power_breaker").chain_applied)
         {
             throw std::runtime_error("Power restoration interaction failed");
@@ -629,11 +794,16 @@ int main(int argc, char** argv)
             throw std::runtime_error("Restoring power must visibly illuminate the sector");
         }
         (void) render("switch-room-after.bmp", {12.5F, 1.65F, 16.0F}, {14.3F, 1.5F, 22.0F});
+        (void) render("service-return.bmp", {12.5F, 1.65F, 13}, {12.5F, 1.65F, 0});
+        (void) render("switch-room-reverse.bmp", {15, 1.65F, 21}, {12.5F, 1.65F, 14});
+        (void) render("pump-state-powered.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
         (void) render("filter-passage.bmp", {7.8F, 1.65F, 13.0F}, {7.8F, 1.65F, 22.0F});
         (void) render("filter-turret.bmp", {7.5F, 1.65F, 26.0F}, {7.5F, 1.55F, 30.7F}, combat.turrets);
         (void) render("filter-panel.bmp", {3.4F, 1.65F, 28.3F}, {3.0F, 1.45F, 30.62F}, combat.turrets);
         if (!use("filter_purge").chain_applied)
             throw std::runtime_error("Filter purge must release the cooling control");
+        RelayGame::update_world_environment(environment, activated, 2);
+        (void) render("pump-state-flushed.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
         if (!use("cooling_control").chain_applied)
         {
             throw std::runtime_error("Cooling must release the airlock interlock");
@@ -642,6 +812,8 @@ int main(int argc, char** argv)
         RelayGame::update_world_environment(environment, activated, 0);
         for (int i = 0; i < 360; ++i)
             RelayGame::update_world_environment(environment, activated, 1.0F / 60);
+        (void) render("pump-state-running.bmp", {10.0F, 1.65F, 8.0F}, {6.5F, 2.5F, 8.6F});
+        (void) render("filter-return.bmp", {7.8F, 1.65F, 21}, {7.8F, 1.65F, 11});
         for (const auto& effect : environment)
         {
             if (effect.kind == RelayGame::EnvironmentKind::Fan && effect.strength < 0.97F)
@@ -706,6 +878,11 @@ int main(int argc, char** argv)
         scientist.forward = {1, 0, 0};
         (void) render("scientist-turned.bmp", eye, {0.25F, 0, -3.5F});
         std::cout << "power_restoration=passed; mean brightness " << before << " -> " << after << '\n';
+        if (power_views_only)
+        {
+            scene.shutdown();
+            return 0;
+        }
         config.audio.master_volume = 0;
         RelayCore::AudioSystem audio{config.audio};
         audio.initialize();

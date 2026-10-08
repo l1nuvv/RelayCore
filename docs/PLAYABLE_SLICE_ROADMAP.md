@@ -17,6 +17,69 @@
 ограниченного art pass. Gameplay/retry идентичности сохранены; статусы внешнего
 playtest и приёмки другого GPU этим не закрываются.
 
+Продолжение визуального обновления по поручению автора 2026-10-08: входной
+equipment bay `pressure_transfer` получил два Blender/native семейства, материалы,
+обрамление двери и согласованный светильник. [Сравнение и проверки](art/pressure-transfer-visual-slice.md#completed-entry-bay-pass):
+14/14 выбранных проверок, после финальной поправки мебели 13/13 затронутых;
+Check Map без warnings, Debug/optimized staging и receipts проверены. Игровые
+идентичности сохранены; человеческая приёмка остаётся открытой.
+
+VIS-01 и VIS-02 технически выполнены по прямому поручению автора 2026-10-08:
+галерея и служебный зал `pressure_transfer` получили согласованную отделку,
+облицовку двух укрытий и опоры турели, порталы, коммуникации и указатели.
+[Результат и same-camera evidence](art/pressure-transfer-visual-slice.md#vis-01--vis-02--gallery-and-service-hall-2026-10-08):
+14/14 выбранных проверок, после финальной поправки торца 13/13 затронутых;
+Check Map без warnings, 28 receipts/products/staged hashes в Debug/optimized
+совпали. Геометрия физических solids и игровые identities сохранены; исправлены
+две противоречивые подсказки направления. Внешняя приёмка остаётся открытой;
+VIS-03/VIS-04 этим объёмом не закрываются.
+
+Продолжение по прямому поручению автора 2026-10-08: VIS-03 оформляет выход
+`pressure_transfer`; VIS-04 проверяет непрерывность отделки и обратные виды.
+[Исходники, сравнение и проверки](art/pressure-transfer-visual-slice.md#vis-03--vis-04--exit-and-continuous-route-junctions-2026-10-08).
+
+| Задача | Статус | Результат / оставшаяся приёмка |
+| --- | --- | --- |
+| VIS-03 | `done` | Выходная облицовка, двусторонняя рама, EXIT/sector/reader signage и корпус светильника; свет и видимый emitter зависят от `transfer_running`. Игровые solids/entities/mission сохранены; scripted exit/trigger проходят |
+| VIS-04 | `awaiting_playtest` | Проверены фиксированные виды стыков до/после перепуска и открытая дверь; исправлены обратная отделка входа в зал 03, порог, потолок и высота dado. Техническая проверка завершена; непрерывный маршрут и субъективная приёмка человеком остаются открытыми |
+| VIS-05 | `done` | Вход `power_restoration`: отделка, стол предохранителя, шкаф, порталы и указатели; кадры до/после, оба состояния питания и обратный вид проверены; [исходники и evidence](art/power-restoration-visual-slice.md) |
+| VIS-06 | `done` | Служебные крылья, оформленные электрощиты, резервное питание, фильтрация и обратные указатели; исходные solids/взаимодействия/различия полов сохранены; route/retry/snapshot regressions проходят |
+| VIS-07 | `done` | Насосная: привод, двигатель, муфта, манометр и связанные трубы/узел утечки; одинаковая камера standby/power/flush/cooling и шесть нейтральных видов; исходные steam/fan/button/door states сохранены |
+| VIS-08 | `done` | `bench_relay`: штукатурка/dado, потолочная сетка, рамы, корпуса светильников, шкаф-укрытие и указатели. Открытые `lab_bench` и native collision сохранены; rover/low-ray и обе тактики проходят; [сравнения и evidence](art/bench-cooling-visual-slice.md) |
+| VIS-09 | `done` | `cooling_loop`: три растянутых casing заменены единым теплообменным банком с оребрением, коллекторами, обслуживаемыми торцами и overhead supply/return; оформлены стол и isolation post. Исходные solids/обход/бой/состояния сохранены; signage завершён отдельно в VIS-10 |
+| VIS-10 | `done` | Cooling-specific таблички закрывают прежние pressure/transfer/bypass-подписи; 01 — ISOLATE, 02 — COOLING START, 03 — EXIT RELEASE согласованы с HUD/подсказками. Shared корпуса и игровая логика сохранены; [сравнение и проверки](art/bench-cooling-visual-slice.md#vis-10--cooling-signage-2026-10-08) |
+| VIS-11 | `awaiting_playtest` | Автор принял ключ и исчезающую рамку; после тисков и инструмента сектор 01 читается лучше. По повторному отзыву устранён ложный pickup из шага задания, снижен пересвет, подняты корпуса светильников для устранения полосы тени, исправлены размеры и крепление пускового пульта и дверных кнопок. Debug/optimized обновлены; восемь профильных проверок проходят, HDR/SDR и контакт панелей проверены; [отзывы, сравнения и evidence](art/foundation-intake-visual-slice.md). Требуется повторная визуальная приёмка автора; теснота насосной остаётся отдельным замечанием |
+| VIS-12 | `done` | Автор принял визуальную итерацию: шкаф с насосом читается, детали закреплены, визуальных конфликтов нет, указатели понятны. Применение ключа понятно из-за отсутствия альтернатив — это наблюдение о линейности, а не подтверждение качества навигации. 7/7 технических проверок, HDR/SDR без skips, Check Map без warnings, Debug/optimized staging проверены; [сравнение, evidence и отзыв](art/foundation-pump-visual-slice.md). Теснота и линейность комнаты остаются вопросами level design; последние правки VIS-11 этим отзывом не приняты |
+| VIS-13 | `done` | B-17: наблюдательное стекло с рамой/уплотнениями, рабочие группы и образцы, подключённые кабели/трубы и крепления, свет лицевой стороны учёного и установки; существующие apparatus/приборы/мебель переиспользованы. Solids/colliders/entries/mission сохранены. Debug/optimized staging, 5/5 профильных проверок и повторные 3/3 после правки контактов; HDR/SDR без skips, отдельный Debug capture с Vulkan validation, Check Map без warnings. Автор принял ревамп визуально 2026-10-08; пересвет SDR остаётся открытым замечанием к обработке изображения. [Сравнение, исходники, отзыв и границы](art/b17-visual-slice.md) |
+
+VIS-05–07 технически выполнены по прямому поручению автора 2026-10-08: шесть
+Blender/native семейств, 12/12 content/tooling checks, SDR/HDR graphics 2/2 без
+skip, отдельный power mesh gate 1/1 с четырьмя просмотренными обновлёнными
+эталонами. Последняя доводка соединений повторно проверена в обоих color modes.
+Check Map без warnings; 35 receipts/products/staged paths проверены в Debug и
+optimized, шесть новых products идентичны. Непрерывный человеческий проход и
+субъективная визуальная приёмка остаются открытыми; прежние внешние gates этим
+не закрываются.
+
+VIS-08–09 технически выполнены по прямому поручению автора 2026-10-08:
+три Blender/native семейства; 10/10 content/tooling и 2/2 graphics без skip,
+повторная cooling graphics-проверка после локальной правки также прошла.
+Check Map обеих карт без warnings; все 38 model receipts/staged paths проверены
+в Debug и optimized, три новых native products идентичны. Исходная игровая
+геометрия и данные сравниваются с сохранёнными исходными картами; просмотрены
+фиксированные прямые/обратные виды и шесть нейтральных видов банка.
+[Исходники, сравнения, команды и границы](art/bench-cooling-visual-slice.md).
+Непрерывный человеческий проход и субъективная визуальная приёмка остаются
+открытыми; на этом этапе VIS-10, внешний playtest, другой GPU и performance gates
+не закрывались.
+
+VIS-10 затем выполнен по отдельному поручению автора 2026-10-08: 4/4 cooling
+content и 1/1 graphics с Vulkan validation, без skips; Check Map без warnings.
+Просмотрены четыре одинаковых ракурса до/после; после исправления крепления
+коллектора надпись не перекрывается ресиверами. Обновлённый `cooling_service`
+проверен fresh import и staged hashes в Debug/optimized; три shared GLB идентичны
+исходным. Из данных карты изменены только три текста; gameplay gates сохранены.
+
 Полный сохранённый development plan: [PROJECT_PLAN — Development strategy](PROJECT_PLAN.md#development-strategy--2026-10-07). Там находятся current-state map, bottlenecks, варианты стратегии, D1–D5 milestones/tickets/exit criteria, зависимости, technical debt, reconciliation и stop conditions. Этот roadmap остаётся единственным владельцем фактических ticket statuses/evidence; запись стратегии не запускает implementation.
 
 | Horizon | Queue / condition |
@@ -247,7 +310,7 @@ E-001 ускоряет настройку, но его задержка не з�
 | 18 | G-009 | Второе оружие с отдельной боевой ролью | Gameplay/runtime | P2 | done |
 | 19 | G-010 | Один новый противник по результатам испытаний | Gameplay/runtime | P2 | deferred |
 | 20 | G-011 | Следующий короткий игровой эпизод | Gameplay/authoring | P2 | awaiting_playtest |
-| 21 | H-008 | Профиль нового игрового маршрута | Engine Health | P2 | pending |
+| 21 | H-008 | Профиль нового игрового маршрута | Engine Health | P2 | in_progress |
 | 22 | H-009 | Проверяемый кандидат следующего эпизода | Engine Health/delivery | P2 | pending |
 | 23 | VK-014 | Ревью архитектуры после Vulkan cutover | Engine Health/rendering | P2 | done |
 | 24 | VK-F01 | Диагностические строки Vulkan mesh backend | Engine Health/rendering | P3 | done |
@@ -1332,7 +1395,9 @@ $env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets)
 
 #### H-008 — актуальный профиль нового маршрута
 
-**Статус / приоритет / объём:** `pending` / P2 / S–M. **Зависимость:** проходимый G-011. Раннее исследование допустимо при воспроизводимой задержке.
+**Статус / приоритет / объём:** `in_progress` / P2 / S–M. **Зависимость:** проходимый G-011. Раннее исследование допустимо при воспроизводимой задержке.
+
+**Локальный baseline 2026-10-08:** после коммита `fc88baa` снят optimized Tracy обновлённого G-016 `pressure_transfer`: восемь повторяемых состояний, 12 421 CPU frame zones, p99 без первого кадра 1,570–2,112 мс. В игровых кадрах нет mesh/texture uploads и upload waits; первый кадр процесса — 13,008 мс. CPU update, GPU, scene fences и world queries разобраны отдельно в [отчёте](profiling/H-008-2026-10-08.md). Это локальная часть H-008: непрерывный маршрут, звук, согласованный FPS budget и слабый ПК ещё не проверены; человеческая приёмка и другой ПК остаются отложенными. Оптимизация не выполнялась.
 
 Снять непрерывный optimized Tracy capture прохода и отдельные повторяемые состояния тяжёлой встречи/освещения, cold/first-use и warm run. Зафиксировать hardware/driver, разрешение, pipeline, VSync, точную сборку/inputs и настройки. Отделить simulation/render CPU, GPU и present/waits; учитывать first-use uploads, draw count и world-query cost. Сравнить обычное движение, бой и повтор встречи; записать frame-time median/p95/p99, пики и условия воспроизведения. После G-012 профиль нового workload ведётся отдельно; entrance baseline и прежняя карта не заменяют его.
 
@@ -1371,6 +1436,8 @@ $env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets)
 **Следующий шаг:** первый самостоятельный проход «Контура охлаждения» по краткому brief из отчёта; записать выбор пути/оружия, смерти, время, понимание изоляции и запуска. Не выдавать скриптовый маршрут за человеческую приёмку. G-016 и внешние GPU-критерии сохраняются открытыми.
 
 #### Проверки и порядок следующей работы
+
+Дополнение 2026-10-08: автор подтвердил недоступность непрерывного прохода, прослушивания и слабого ПК и поручил продолжить независимую техническую работу D5. Эти проверки остаются отложенными; текущая инженерная итерация — воспроизведение и исправление `mesh-reload-0` без изменения игровых световых настроек или ослабления эталонов.
 
 Дополнение 2026-10-08: по явному выбору автора приёмка G-016 отложена, реализован G-017/D4. Предыдущая последовательность ниже сохранена как основание отложенной приёмки.
 
@@ -1566,6 +1633,9 @@ Vulkan migration и production asset/physics/navigation foundations больше
 | 2026-10-07 | E-013 / N4.4 | done; E-014 ready | Opt-in native collision placements, прежний box movement и mesh sweeps, общий gameplay query path. Debug: 120 unit, 31 physics, 33 content passed; финальный native/lifecycle 4/4, probe reuse 1/1. ASan physics 31/31; evidence/ограничения в карточке. ZIP, human playtest и performance не выполнялись. |
 
 | 2026-10-08 | G-016 | awaiting_playtest — HUD/турели, бой/атмосфера pressure_transfer и цепочка «Двух секторов» технически доведены | Debug content 47/47, affected graphics/lifecycle 5/5, optimized affected content 13/13; обе сборки и Check Map успешны. Игровые кадры просмотрены, два эталона явно обновлены. Повторный слепой проход обоих сценариев, слуховая оценка и авторская приёмка остаются открытыми; протокол и runtime hashes записаны. ZIP не создавался. |
+| 2026-10-08 | H-008 — локальная часть D5 | in_progress — актуальный optimized baseline после G-016 | Target build и workload/capture exit 0; 12 421 CPU frames, восемь состояний, GPU/query/fence разбор, 0 игровых uploads/waits. [Evidence](profiling/H-008-2026-10-08.md). Непрерывный проход, звук, FPS budget и слабый ПК остаются открытыми. |
+| 2026-10-08 | D5 — mesh reload/pass regression | Выбранный synthetic fixture исправлен; D5 остаётся открыт | `graphics.mesh_pipeline` 1/1 с validation, три reload и 11 pass comparisons без color differences; frozen lighting inputs восстановлены из `d57f8d3`, samples/tolerances/runtime не менялись. Общий mesh test проходит этот блок и падает дальше на `power_restoration-0`; [команды, причина и границы](PROJECT_PLAN.md#d5--приёмка-эпизода-и-measured-hardening). Отложенные человеческие/GPU проверки не закрыты. |
+| 2026-10-08 | D5 — power world baseline | Четыре power comparisons исправлены; D5 остаётся открыт | Старые inputs проходят старые samples на текущем renderer; art-pass изменения установлены по map/config/atlas. Просмотрены и явно обновлены четыре power samples; финальный rebuilt test с validation даёт нулевые различия и останавливается дальше на `pressure_transfer-0`. [Causal run, hashes и команды](PROJECT_PLAN.md#d5--приёмка-эпизода-и-measured-hardening). Допуски и runtime не менялись; непрерывный проход/звук/слабый ПК отложены. |
 
 После каждой выполненной задачи добавлять короткую запись и обновлять единую таблицу статусов в разделе 6. Не копировать сюда полные логи. Для `awaiting_playtest` явно написать, какой человек/сценарий/ПК ещё нужен; для `done` перечислить реально выполненные проверки.
 

@@ -73,7 +73,7 @@ TEST_CASE("pressure transfer wall equipment and lights meet their supporting sur
         CHECK(supported(rear));
         ++mounted;
     }
-    CHECK(mounted == 11);
+    CHECK(mounted == 14);
     for (const auto& turret : route.session.combat.turrets)
     {
         CHECK(turret.yaw == 180);

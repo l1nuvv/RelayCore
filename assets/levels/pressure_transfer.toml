@@ -3,6 +3,45 @@
 
 [[entity]]
 classname = "prop_static"
+model = "models/equipment_bay_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/equipment_bay_furniture.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/service_hall_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/isolation_gallery_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_exit_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [14,0,21.5]
+angles = [270,0,0]
+scale = [0.833333,1,1]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [22,0,24.5]
+angles = [270,0,0]
+scale = [0.666667,1,1]
+
+[[entity]]
+classname = "prop_static"
 model = "models/transfer_room_lining.rcmodel"
 origin = [24,0,26]
 
@@ -36,9 +75,14 @@ collision_material = "Metal"
 classname = "prop_static"
 model = "models/fluorescent_fixture.rcmodel"
 entries = [
+  { origin = [4,3.8,5] },
+  { origin = [4,3.8,16] },
+  { origin = [16,3.8,22] },
+  { origin = [27,3.8,22] },
   { origin = [28,3.8,29] },
   { origin = [36,3.8,40] },
   { origin = [38,3.8,35.5] },
+  { origin = [28,3.8,48] },
 ]
 
 [[entity]]
@@ -64,7 +108,7 @@ scale = [0.8,0.8,0.8]
 [[entity]]
 classname = "prop_static"
 model = "models/lab_notes_board.rcmodel"
-origin = [0.1175,1.4,6.3]
+origin = [0.1175,1.55,4]
 angles = [90,0,0]
 
 [[entity_group]]
@@ -82,6 +126,9 @@ model = "models/utility_pipe.rcmodel"
 entries = [
   { origin = [7.66,2.65,4], angles = [270,0,0] },
   { origin = [7.66,2.65,7], angles = [270,0,0] },
+  { origin = [0.34,2.65,13], angles = [90,0,0] },
+  { origin = [0.34,2.65,16], angles = [90,0,0] },
+  { origin = [0.34,2.65,19], angles = [90,0,0] },
   { origin = [12,2.65,18.34] },
   { origin = [15,2.65,18.34] },
   { origin = [18,2.65,18.34] },
@@ -109,8 +156,8 @@ boxes = [
   { origin = [2,0.5,4], size = [1.8,1,0.8], material = "metal" },
   { origin = [2,0.99,4], size = [1.9,0.08,0.9], material = "Platform" },
   { origin = [0.25,1.1,7], size = [0.3,2.2,1.5], material = "metal" },
-  { origin = [4,3.74,5], size = [2,0.12,0.3], material = "LightStrip", tint = [0.6,0.58,0.48] },
-  { origin = [4,3.74,16], size = [2,0.12,0.3], material = "LightStrip", tint = [0.6,0.58,0.48] },
+  { origin = [4,3.74,5], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
+  { origin = [4,3.74,16], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
 
   { origin = [20,-0.12,22], size = [24,0.24,8], material = "maintenance_floor" },
   { origin = [20,3.9,22], size = [24,0.2,8], material = "Ceiling" },
@@ -120,8 +167,8 @@ boxes = [
   { origin = [18,1.9,26], size = [20,3.8,0.2], material = "WallPanel" },
   { origin = [14,1.1,21.5], size = [2,2.2,2], material = "metal" },
   { origin = [22,1.1,24.5], size = [2,2.2,1.6], material = "WallPanel" },
-  { origin = [16,3.74,22], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
-  { origin = [27,3.74,22], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
+  { origin = [16,3.74,22], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
+  { origin = [27,3.74,22], size = [1.23,0.12,0.25], material = "LightStrip", tint = [0.88,0.80,0.99] },
   { origin = [30,1.2,22.5744], size = [1.2,2.4,0.4], material = "metal" },
 
   { origin = [32,-0.12,35], size = [16,0.24,18], material = "filtration_floor" },
@@ -146,7 +193,6 @@ boxes = [
   { origin = [26,1.9,48], size = [0.2,3.8,8], material = "WallPanel" },
   { origin = [30,1.9,48], size = [0.2,3.8,8], material = "WallPanel" },
   { origin = [28,1.9,52], size = [4,3.8,0.2], material = "concrete" },
-  { origin = [28,3.74,48], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.42,0.58,0.48] },
 ]
 
 [[entity]]
@@ -314,9 +360,9 @@ classname = "mission_step"
 entries = [
   { kind = "pickup_item", target = "weapon_shotgun", title = "Взять дробовик", detail = "Возьмите оружие со стола слева. Клавиши 1/2 выбирают оружие." },
   { kind = "door_open", target = "service_gate", title = "Открыть служебный зал", detail = "Пульт справа от двери. За дверью — охранный робот; оставьте место для отхода." },
-  { kind = "zone", origin = [11,0.01,22], size = [4,2.5,7], title = "Пройти в перепускную галерею", detail = "В конце служебного зала поверните направо. Длинную галерею контролирует турель." },
+  { kind = "zone", origin = [11,0.01,22], size = [4,2.5,7], title = "Пройти в перепускную галерею", detail = "В конце служебного зала войдите в галерею по указателю 02. Длинную галерею контролирует турель." },
   { kind = "door_open", target = "gallery_gate", title = "Снять блокировку зала 03", detail = "Пульт на левой стене галереи, между защитными блоками. Турель контролирует центральный проход." },
-  { kind = "zone", origin = [30,0.01,28], size = [4,2.5,3], retry_entry = "mixed_retry", title = "Дойти до перепускного зала", detail = "Зал 03 открыт. В конце галереи поверните налево; обходите опору турели." },
+  { kind = "zone", origin = [30,0.01,28], size = [4,2.5,3], retry_entry = "mixed_retry", title = "Дойти до перепускного зала", detail = "Зал 03 открыт. В конце галереи войдите в него по указателю; обходите опору турели." },
   { kind = "activate_target", target = "transfer_running", title = "Включить перепуск давления", detail = "Робот проходит под верстаком; высокий шкаф закрывает огонь турели. Пульт — на правой стене." },
   { kind = "door_open", target = "transfer_exit", title = "Открыть выход", detail = "Перепуск разблокировал пульт на дальней стене рядом с дверью." },
   { kind = "zone", origin = [28,0.01,49], size = [3.6,2.5,2], title = "Войти в технический сектор", detail = "Пройдите через открытую дверь до конца коридора." },
@@ -331,14 +377,14 @@ close_door = "transfer_exit"
 [[entity_group]]
 classname = "render_light"
 entries = [
-  { origin = [4,3.3,5], color = [0.48,0.46,0.38], radius = 9, intensity = 1.2 },
-  { origin = [4,3.3,16], color = [0.48,0.46,0.38], radius = 9, intensity = 1.2 },
-  { origin = [16,3.3,22], color = [0.4,0.43,0.38], radius = 10, intensity = 1.3 },
-  { origin = [27,3.3,22], color = [0.4,0.43,0.38], radius = 9, intensity = 1.3 },
+  { origin = [4,3.3,5], color = [0.58,0.64,0.64], radius = 9, intensity = 1.35 },
+  { origin = [4,3.3,16], color = [0.58,0.64,0.64], radius = 9, intensity = 1.35 },
+  { origin = [16,3.3,22], color = [0.58,0.64,0.64], radius = 10, intensity = 1.3 },
+  { origin = [27,3.3,22], color = [0.58,0.64,0.64], radius = 9, intensity = 1.3 },
   { origin = [28,3.3,29], color = [0.58,0.64,0.64], radius = 10, intensity = 1.15 },
   { origin = [36,3.3,40], color = [0.58,0.64,0.64], radius = 10, intensity = 1.25 },
   { origin = [38,3.3,35.5], color = [0.64,0.43,0.22], radius = 6, intensity = 1.6, state = "damaged", stop_target = "transfer_running" },
-  { origin = [28,3.3,48], color = [0.32,0.46,0.36], radius = 7, intensity = 1.1, fixture_offset = 0.379, required_target = "transfer_running" },
+  { origin = [28,3.3,48], color = [0.58,0.64,0.64], radius = 7, intensity = 1.1, fixture_offset = 0.379, required_target = "transfer_running" },
 ]
 
 [[entity]]
@@ -377,7 +423,5 @@ required_target = "transfer_running"
 classname = "world_effect"
 kind = "decal"
 entries = [
-  { origin = [6.1,2.6,9.899], angles = [180,0,0], mark = "01" },
-  { origin = [8.101,2.1,24.7], angles = [90,0,0], mark = "02" },
   { origin = [33.5,2.65,26.101], angles = [0,0,0], mark = "03" },
 ]

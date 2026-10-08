@@ -42,6 +42,22 @@ namespace
         if (!condition)
             throw std::runtime_error(message);
     }
+
+    auto display_reference(glm::vec3 color, const bool linear, const float contrast = 1) -> glm::vec3
+    {
+        for (int c = 0; c < 3; ++c)
+        {
+            if (color[c] > .65F)
+                color[c] = .65F + (color[c] - .65F) / (1 + (color[c] - .65F) / .35F);
+            if (linear)
+                color[c] = color[c] <= .0031308F ? color[c] * 12.92F : 1.055F * std::pow(color[c], 1 / 2.4F) - .055F;
+        }
+        const float luminance = glm::dot(color, glm::vec3{.2126F, .7152F, .0722F});
+        const float t = glm::clamp((luminance - .18F) / .6F, 0.0F, 1.0F);
+        color = (color - .5F) * contrast + .5F;
+        color *= glm::mix(glm::vec3{.97F, .99F, 1.01F}, glm::vec3{1.01F, 1, .98F}, t * t * (3 - 2 * t));
+        return glm::clamp(color, glm::vec3{0}, glm::vec3{1});
+    }
     template<typename F>
     void expect_failure(F&& operation, const std::string_view expected)
     {
@@ -209,12 +225,7 @@ namespace
         }
     }
 
-    void check_pipeline(
-        VulkanMeshRenderer& renderer,
-
-        const std::filesystem::path& captures,
-        const VulkanDevice& device
-    )
+    void check_pipeline(VulkanMeshRenderer& renderer, const std::filesystem::path& captures, const VulkanDevice& device)
     {
         PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
         camera.set_viewport(width, height);
@@ -425,6 +436,27 @@ namespace
         smooth.push(back, transform(-2, 5));
         smooth.push(smooth_glass, glm::scale(glm::mat4{1}, glm::vec3{2, .5F, 3}), RenderPass::Transparent, &white);
         check(smooth, "passes-smooth-glass-transform");
+    }
+
+    void check_mesh_pipeline(
+        const VulkanDevice& device,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        const auto authoring = load_render_authoring_config(
+            std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "render_authoring.toml"
+        );
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::linear,
+            RendererConfig{}
+        };
+        check_pipeline(renderer, captures, device);
+        check_passes(renderer, captures);
     }
 
     void check_lighting(
@@ -974,6 +1006,24 @@ namespace
             const auto image = renderer.render_image(queue.items(), camera, width, height);
             check_pixel(image, convert(gray), "Vulkan target does not obey UNORM/sRGB encoding");
             save(image, captures / (std::string("color-baseline-") + color_pipeline_mode_name(mode) + ".bmp"));
+            for (const float value : {0.0F, .18F, .5F, 1.0F})
+            {
+                auto reference_data = data;
+                for (auto& vertex : reference_data.vertices)
+                {
+                    vertex.color = glm::vec3{value};
+                    vertex.material_kind = float(RelayCore::surface_material_count() + 2);
+                }
+                StaticColorMesh reference_mesh;
+                reference_mesh.initialize(reference_data);
+                RenderQueue reference_queue;
+                reference_queue.push(reference_mesh, glm::mat4{1});
+                check_pixel(
+                    renderer.render_image(reference_queue.items(), camera, width, height),
+                    convert(glm::vec3{value}),
+                    "Unlit SDR reference received missing/double sRGB encoding"
+                );
+            }
             const auto cleared = renderer.render_image({}, camera, width, height);
             check_pixel(
                 cleared,
@@ -1037,7 +1087,7 @@ namespace
                 const float value = texture_encoding == TextureEncoding::srgb ? decode(128 / 255.0F) : 128 / 255.0F;
                 check_pixel(
                     texture_renderer.render_image(textured_queue.items(), camera, width, height),
-                    convert(glm::vec3{value + .05F}),
+                    glm::clamp(convert(glm::vec3{value}) + .05F, glm::vec3{0}, glm::vec3{1}),
                     "Vulkan sampled texture decode or overlay lift changed"
                 );
                 Texture2D filtered;
@@ -1051,10 +1101,101 @@ namespace
                                           : 128 / 255.0F;
                 check_pixel(
                     texture_renderer.render_image(filtered_queue.items(), camera, width, height),
-                    convert(glm::vec3{average + .05F}),
+                    glm::clamp(convert(glm::vec3{average}) + .05F, glm::vec3{0}, glm::vec3{1}),
                     "Vulkan texture filtering must decode sRGB before interpolation"
                 );
             }
+            config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+            config.postfx_contrast = config.postfx_saturation = 1;
+            texture_renderer.set_config(config);
+            Texture2D white;
+            white.initialize_rgba(1, 1, std::array<uint8_t, 4>{255, 255, 255, 255}, encoding);
+            bool transfer_correct = true;
+            for (const float contrast : {1.0F, 1.2F})
+            {
+                config.postfx_contrast = contrast;
+                texture_renderer.set_config(config);
+                for (const float gray_value : {0.0F, .002F, .0031308F, .04F, .18F, .5F})
+                {
+                    for (auto& vertex : data.vertices)
+                        vertex.color = glm::vec3{gray_value};
+                    StaticColorMesh ramp;
+                    ramp.initialize(data);
+                    RenderQueue ramp_queue;
+                    ramp_queue.push(ramp, glm::mat4{1}, RenderPass::Opaque, &white);
+                    const auto ramp_image = texture_renderer.render_image(ramp_queue.items(), camera, width, height);
+                    const float display = mode == ColorPipelineMode::hardware_srgb ? encode(gray_value) : gray_value;
+                    const float t = glm::clamp((display - .18F) / .6F, 0.0F, 1.0F);
+                    const float green_grade = .99F + .01F * t * t * (3 - 2 * t);
+                    const auto reference =
+                        std::lround(glm::clamp(((display - .5F) * contrast + .5F) * green_grade, 0.0F, 1.0F) * 255);
+                    const int actual = ramp_image.pixels[(height / 2 * width + width / 2) * 4 + 1];
+                    std::cout << "sdr_reference: mode=" << color_pipeline_mode_name(mode) << " input=" << gray_value
+                              << " contrast=" << contrast << " actual=" << actual << " expected=" << reference << '\n';
+                    transfer_correct &= std::abs(actual - reference) <= 1;
+                }
+            }
+            require(transfer_correct, "SDR postfx must operate on display brightness, with exactly one sRGB encoding");
+            config.postfx_contrast = 1;
+            texture_renderer.set_config(config);
+            {
+                auto light_authoring = neutral;
+                light_authoring.lighting.ambient_floor = light_authoring.lighting.ambient_zenith = 0;
+                light_authoring.lighting.ambient_min = light_authoring.lighting.ambient_max = 0;
+                light_authoring.lighting.local_light_wrap = light_authoring.lighting.local_light_gain = 1;
+                light_authoring.lighting.local_light_fill = 0;
+                VulkanMeshRenderer light_renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    light_authoring,
+                    atlas,
+                    encoding,
+                    config,
+                    mode
+                };
+                const auto light_color = visual_rgb_for_pipeline(glm::vec3{.5F}, mode);
+                const std::array lights{
+                    LocalLight{{0, 0, 1}, light_color, 100},
+                    LocalLight{{0, 0, 1}, light_color, 100}
+                };
+                light_renderer.set_local_lights(lights);
+                for (auto& vertex : data.vertices)
+                    vertex.color = glm::vec3{1};
+                StaticColorMesh receiver;
+                receiver.initialize(data);
+                RenderQueue receiver_queue;
+                receiver_queue.push(receiver, glm::mat4{1}, RenderPass::Opaque, &white);
+                const auto light_image = light_renderer.render_image(receiver_queue.items(), camera, width, height);
+                const auto reference = display_reference(
+                    light_color * (2 * .99F * .99F * (3 - 2 * .99F)),
+                    mode == ColorPipelineMode::hardware_srgb
+                );
+                check_pixel(
+                    light_image,
+                    reference,
+                    "Local lights must accumulate in the selected pipeline's color space"
+                );
+                std::cout << "light_accumulation: mode=" << color_pipeline_mode_name(mode) << " two_srgb_half_lights="
+                          << int(light_image.pixels[(height / 2 * width + width / 2) * 4 + 1]) << '\n';
+            }
+            for (auto& v : data.vertices)
+                v.color = {.6F, 1, 2};
+            StaticColorMesh highlights;
+            highlights.initialize(data);
+            RenderQueue highlight_queue;
+            highlight_queue.push(highlights, glm::mat4{1}, RenderPass::Opaque, &white);
+            const auto highlight_image = texture_renderer.render_image(highlight_queue.items(), camera, width, height);
+            const auto center = size_t((height / 2) * width + width / 2) * 4;
+            require(
+                highlight_image.pixels[center] + 5 < highlight_image.pixels[center + 1]
+                    && highlight_image.pixels[center + 1] + 5 < highlight_image.pixels[center + 2]
+                    && highlight_image.pixels[center + 2] < 250,
+                "SDR clipped distinct bright surface values instead of retaining highlight detail"
+            );
+            save(
+                highlight_image,
+                captures / (std::string{"sdr-highlights-"} + color_pipeline_mode_name(mode) + ".bmp")
+            );
         }
         std::cout << "vulkan_color_baseline=passed (UNORM/sRGB, texture decode, clear, UI, presentation)\n";
     }
@@ -1421,18 +1562,19 @@ namespace
             for (float metallic : {0.0F, 1.0F})
             {
                 const auto image = render({.5F, metallic});
-                // Normal incidence: D=16/pi, visibility=1/4, Fresnel=F0; include the fixed dark-side RGB grade.
+                // Normal incidence: D=16/pi, visibility=1/4, Fresnel=F0.
+                glm::vec3 radiance{};
                 for (int c = 0; c < 3; ++c)
                 {
                     const auto base = srgb_channel_to_linear(bytes[c] / 255.0F);
                     const float f0 = metallic == 0 ? .04F : base;
-                    const auto linear = ((1 - f0) * (1 - metallic) * base + 4 * f0) / 3.14159265F
-                                        * srgb_channel_to_linear(.5F)
-                                        * (c == 0   ? .97F
-                                           : c == 1 ? .99F
-                                                    : 1.01F);
-                    const auto visual =
-                        linear <= .0031308F ? linear * 12.92F : 1.055F * std::pow(linear, 1.0F / 2.4F) - .055F;
+                    radiance[c] =
+                        ((1 - f0) * (1 - metallic) * base + 4 * f0) / 3.14159265F * srgb_channel_to_linear(.5F);
+                }
+                const auto reference = display_reference(radiance, true);
+                for (int c = 0; c < 3; ++c)
+                {
+                    const auto visual = reference[c];
                     if (std::abs(int(image.pixels[center + c]) - int(std::lround(visual * 255))) > 2)
                         throw std::runtime_error(
                             std::string("Metallic/roughness reference failed: mode=") + color_pipeline_mode_name(mode)
@@ -1679,16 +1821,7 @@ namespace
         PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
         camera.set_viewport(width, height);
         const auto expected = [](glm::vec3 source, float ev, float contrast = 1) {
-            const auto exposed = source * std::exp2(ev);
-            auto mapped = exposed / (1.0F + exposed);
-            for (int c = 0; c < 3; ++c)
-                mapped[c] =
-                    mapped[c] <= .0031308F ? mapped[c] * 12.92F : 1.055F * std::pow(mapped[c], 1.0F / 2.4F) - .055F;
-            const float luminance = glm::dot(mapped, glm::vec3{.2126F, .7152F, .0722F});
-            const float t = glm::clamp((luminance - .18F) / .6F, 0.0F, 1.0F);
-            mapped = (mapped - .5F) * contrast + .5F;
-            mapped *= glm::mix(glm::vec3{.97F, .99F, 1.01F}, glm::vec3{1.01F, 1, .98F}, t * t * (3 - 2 * t));
-            return glm::clamp(mapped, glm::vec3{0}, glm::vec3{1});
+            return display_reference(source * std::exp2(ev), true, contrast);
         };
         const auto check_center = [&](const CpuRgbaTextureData& image, glm::vec3 reference) {
             const auto center = (image.height / 2 * image.width + image.width / 2) * 4;
@@ -1710,6 +1843,34 @@ namespace
         }
         config.exposure_ev = 0;
         renderer.set_config(config);
+        {
+            int previous = -1;
+            bool shadows_preserved = true;
+            for (const float gray : {0.0F, .002F, .0031308F, .04F, .18F, .5F, 1.0F, 2.0F})
+            {
+                auto ramp_data = quad;
+                for (auto& vertex : ramp_data.vertices)
+                    vertex.color = glm::vec3{gray};
+                StaticColorMesh ramp;
+                ramp.initialize(ramp_data);
+                RenderQueue ramp_queue;
+                ramp_queue.push(ramp, glm::mat4{1});
+                const auto image = renderer.render_image(ramp_queue.items(), camera, width, height);
+                const int value = image.pixels[(height / 2 * width + width / 2) * 4 + 1];
+                require(value > previous && value < 250, "HDR lost tonal separation or clipped diffuse highlights");
+                if (gray <= .5F)
+                {
+                    const float display = gray <= .0031308F ? gray * 12.92F : 1.055F * std::pow(gray, 1 / 2.4F) - .055F;
+                    const float t = glm::clamp((display - .18F) / .6F, 0.0F, 1.0F);
+                    const auto reference = std::lround(display * (.99F + .01F * t * t * (3 - 2 * t)) * 255);
+                    std::cout << "hdr_reference: linear=" << gray << " actual=" << value << " expected=" << reference
+                              << '\n';
+                    shadows_preserved &= std::abs(value - reference) <= 2;
+                }
+                previous = value;
+            }
+            require(shadows_preserved, "HDR tone mapping changed shadows/midtones at zero exposure");
+        }
         {
             auto dark_data = quad;
             const glm::vec3 dark{.002F, .004F, .008F};
@@ -1772,6 +1933,55 @@ namespace
                 ambient_renderer.render_image(mr_ambient.items(), camera, width, height),
                 expected(glm::vec3{.048F}, 0)
             );
+            auto sdr_config = ambient_config;
+            sdr_config.hdr_enabled = false;
+            VulkanMeshRenderer sdr_renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                hemisphere,
+                atlas,
+                TextureEncoding::srgb,
+                sdr_config,
+                ColorPipelineMode::hardware_srgb
+            };
+            for (const float contrast : {1.0F, 1.2F})
+            {
+                ambient_config.postfx_contrast = sdr_config.postfx_contrast = contrast;
+                ambient_renderer.set_config(ambient_config);
+                sdr_renderer.set_config(sdr_config);
+                for (const float value : {0.0F, .004F, .08F, .36F, 1.0F, 2.0F, 4.0F})
+                {
+                    for (auto& vertex : dark_data.vertices)
+                        vertex.color = glm::vec3{value};
+                    StaticColorMesh ramp;
+                    ramp.initialize(dark_data);
+                    for (const bool mr : {false, true})
+                    {
+                        RenderQueue ramp_queue;
+                        ramp_queue.push(
+                            ramp,
+                            glm::mat4{1},
+                            RenderPass::Opaque,
+                            &white_diffuse,
+                            false,
+                            nullptr,
+                            1,
+                            mr ? std::optional{MetallicRoughness{1, 0}} : std::nullopt
+                        );
+                        const auto sdr = sdr_renderer.render_image(ramp_queue.items(), camera, width, height);
+                        const auto hdr = ambient_renderer.render_image(ramp_queue.items(), camera, width, height);
+                        const auto center = (height / 2 * width + width / 2) * 4;
+                        std::cout << "sdr_hdr_reference: input=" << value << " mr=" << mr << " contrast=" << contrast
+                                  << " sdr=" << int(sdr.pixels[center + 1]) << " hdr=" << int(hdr.pixels[center + 1])
+                                  << '\n';
+                        for (int c = 0; c < 3; ++c)
+                            require(
+                                std::abs(int(sdr.pixels[center + c]) - int(hdr.pixels[center + c])) <= 2,
+                                "HDR toggle changed linear ambient response or SDR display mapping"
+                            );
+                    }
+                }
+            }
         }
         check_center(
             renderer.render_image({}, camera, width, height),
@@ -2101,7 +2311,8 @@ namespace
         const std::filesystem::path& captures,
         VulkanSwapchain& swapchain,
         const RelayCore::Window& window,
-        const bool pressure_slice_only = false
+        const bool pressure_slice_only = false,
+        const bool power_slice_only = false
     )
     {
         StaticModelCache models{};
@@ -2115,6 +2326,8 @@ namespace
         for (const auto* level_name : {"power_restoration", "pressure_transfer"})
         {
             if (pressure_slice_only && std::string_view{level_name} != "pressure_transfer")
+                continue;
+            if (power_slice_only && std::string_view{level_name} != "power_restoration")
                 continue;
             const auto level = RelayCore::load_blockout_level(
                 RelayCore::core::asset_path(std::string("levels/") + level_name + ".toml")
@@ -2173,7 +2386,7 @@ namespace
             scene.shutdown();
         }
         renderer.set_local_lights({});
-        if (pressure_slice_only)
+        if (pressure_slice_only || power_slice_only)
             return;
 
         // An OBJ prop under a rotated/nonuniform transform also checks model matrix and normal/atlas conventions.
@@ -2245,10 +2458,13 @@ int main(int argc, char** argv)
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
     const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
+    const bool power_slice_only = argc == 2 && std::string_view{argv[1]} == "--power-restoration-slice";
     const bool ui_only = argc == 2 && std::string_view{argv[1]} == "--ui-only";
+    const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !hdr_only
-        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only)
+        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only
+        && !pipeline_only && !power_slice_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -2269,7 +2485,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (ui_only)
+        if (pipeline_only)
+            check_mesh_pipeline(device, atlas, captures);
+        else if (ui_only)
             check_ui(device, vk_window, authoring, atlas, captures);
         else if (resources_only)
         {
@@ -2298,7 +2516,7 @@ int main(int argc, char** argv)
             check_irradiance(device, authoring, atlas, captures);
         else if (color_baseline)
             check_color_baseline(device, vk_window, authoring, atlas, captures);
-        else if (pressure_slice_only)
+        else if (pressure_slice_only || power_slice_only)
         {
             VulkanMeshRenderer renderer{
                 device,
@@ -2309,7 +2527,7 @@ int main(int argc, char** argv)
                 RendererConfig{}
             };
             VulkanSwapchain swapchain{device, vk_window, false};
-            check_world(renderer, authoring, captures, swapchain, vk_window, true);
+            check_world(renderer, authoring, captures, swapchain, vk_window, pressure_slice_only, power_slice_only);
         } else
         {
             if (!shadows_only)
@@ -2340,6 +2558,7 @@ int main(int argc, char** argv)
             }
             if (!shadows_only)
             {
+                check_mesh_pipeline(device, atlas, captures);
                 VulkanMeshRenderer renderer{
                     device,
                     RELAYCORE_TEST_SPIRV_DIRECTORY,
@@ -2349,8 +2568,6 @@ int main(int argc, char** argv)
                     RendererConfig{}
                 };
                 VulkanSwapchain swapchain{device, vk_window, false};
-                check_pipeline(renderer, captures, device);
-                check_passes(renderer, captures);
                 check_world(renderer, authoring, captures, swapchain, vk_window);
             }
             if (!shadows_only)

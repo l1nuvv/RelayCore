@@ -14,12 +14,6 @@ model = "models/ventilation_unit.rcmodel"
 origin = [0,2.6,9.55]
 angles = [180,0,0]
 
-[[entity]]
-classname = "prop_static"
-model = "models/safety_notice.rcmodel"
-origin = [2.82,1.15,4.6]
-angles = [270,0,0]
-
 [[solid_group]]
 boxes = [
   { origin = [0,-0.125,3], size = [6,0.25,14], material = "Concrete" },
@@ -32,7 +26,7 @@ boxes = [
   { origin = [2,1.7,6], size = [2,3.4,0.25], material = "Wall" },
   { origin = [0,3.15,6], size = [2,0.5,0.25], material = "Wall" },
   { origin = [1.6,1.1,2.6], size = [1.6,2.2,1.6], material = "metal" },
-  { origin = [1.6,1.2,5.7744], size = [0.8,2.4,0.4], material = "metal" },
+  { origin = [1.6,1.2,5.7644], size = [0.8,2.4,0.4], material = "metal" },
   { origin = [-2.8,1,1.5], size = [0.15,2,1.3], material = "metal" },
 ]
 [[entity]]
@@ -81,7 +75,7 @@ classname = "gameplay_entity"
 kind = "panel"
 targetname = "pump_button"
 target = "pump_door"
-origin = [-1.4,1.3,5.75]
+origin = [-1.4,1.3,5.885]
 size = [0.3,0.5,0.15]
 mount_axis = "-z"
 locked = true
@@ -98,8 +92,8 @@ targetname = "pump_control"
 target = "pump_running"
 action = "activate_target"
 chain_target = "pump_button"
-origin = [-2.665,1.4,1.5]
-size = [0.12,0.5,0.38]
+origin = [-2.725,1.4,1.5]
+size = [0.38,0.5,0.12]
 mount_axis = "+x"
 required_item = "service_key"
 required_item_name = "Сервисный ключ"
@@ -160,9 +154,13 @@ fire_interval = 1.3
 
 [[entity]]
 classname = "prop_static"
-model = "models/transfer_cover_casing.rcmodel"
+model = "models/foundation_pump_machine.rcmodel"
 origin = [1.6,0,2.6]
-scale = [0.666667,1,0.8]
+
+[[entity]]
+classname = "prop_static"
+model = "models/foundation_pump_room.rcmodel"
+origin = [0,0,0]
 
 [[entity]]
 classname = "audio_zone"

@@ -1,3 +1,21 @@
+float3 linear_to_srgb(float3 color)
+{
+    return select(color <= 0.0031308, color * 12.92, 1.055 * pow(max(color, 0), 1.0 / 2.4) - 0.055);
+}
+
+float3 srgb_to_linear(float3 color)
+{
+    return select(color <= 0.04045, color / 12.92, pow((color + 0.055) / 1.055, 2.4));
+}
+
+float3 sdr_highlight_rolloff(float3 color)
+{
+    // Preserve the existing SDR response below the shoulder, including shadows and midtones.
+    // At 0.65 the value and slope are continuous; the remaining 0.35 tends to display white.
+    float3 highlight = max(color - 0.65, 0);
+    return min(color, 0.65) + highlight / (1 + highlight / 0.35);
+}
+
 float hash12(float2 p)
 {
     float3 p3=frac(float3(p.x,p.y,p.x)*0.1031);

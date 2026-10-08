@@ -1,5 +1,166 @@
 # RC-022a/RC-022b colour-pipeline baseline
 
+## Vulkan SDR/HDR audit — 2026-10-08
+
+This section describes the current Vulkan runtime; the OpenGL sections below
+are historical evidence. The reported HDR switch is the RelayCore menu setting.
+
+### Root causes and correction
+
+Ordinary startup selected `legacy_gamma`. Enabling menu HDR also selected
+`hardware_srgb`, changing lighting arithmetic as well as enabling the FP16 tone
+pass. Classic legacy lighting adds encoded colours: a white receiver with two
+sRGB 0.5 lights produces green byte **210**, versus **175** with linear
+accumulation, including the existing SDR shoulder/display grade. Ordinary
+startup now selects `hardware_srgb`. Explicit `--color-pipeline legacy_gamma`
+remains available; direct renderer/fixture defaults retain compatibility.
+
+The starting working tree already replaced pre-fog/postfx
+`saturate(lighting + emissive)` with an SDR shoulder. That clipping discarded
+bright-surface distinctions. This audit retains that prior change and its
+0.6/1/2 highlight-separation test rather than claiming it as new work.
+
+The starting HDR shader used an ACES fit with a hidden 0.6 scale. Its toe
+darkened shadows and midtones at exposure zero. HDR now uses the existing SDR
+shoulder on exposed linear radiance: identity through 0.65, then
+`0.65 + h / (1 + h / 0.35)`, with `h = x - 0.65`. Value and first derivative are
+continuous; the upper branch approaches 1. Reusing the existing SDR response
+and remaining 0.35 headroom avoids adding exposure/gamma/shadow compensation.
+Exposure still multiplies radiance by `2^EV` before mapping.
+
+SDR classic hardware-sRGB and MR also applied display postfx directly to linear
+RGB. Contrast around 0.5 consequently used the wrong mid-grey; saturation/grade
+and grain saw the wrong domain. These paths now encode before display postfx,
+then decode for an SRGB attachment, which encodes once. Legacy MR writes the
+encoded result directly to UNORM. Classic legacy retains encoded arithmetic.
+Shared transfer/mapping functions are in `scene_postfx.slang`; UI is unchanged.
+
+Independent low-signal tests failed before correction. GPU green bytes with
+vignette/grain/scanlines disabled, saturation 1 and retained display grade:
+
+| Input/path | Before | Corrected/reference |
+| --- | ---: | ---: |
+| HDR linear 0.002, EV 0, contrast 1 | 1 | 7 |
+| HDR linear 0.04, EV 0, contrast 1 | 31 | 56 |
+| HDR linear 0.18, EV 0, contrast 1 | 104 | 117 |
+| HDR linear 0.5, EV 0, contrast 1 | 177 | 187 |
+| SDR linear 0.04, contrast 1.2 | 0 | 42 |
+| SDR linear 0.18, contrast 1.2 | 95 | 115 |
+
+Separate unlit references check exact piecewise transfer at 0, 0.18, 0.5 and 1.
+Paired classic/MR ambient tests cover near-black through radiance above 1 at
+contrast 1/1.2; linear SDR and HDR agree within two bytes. Authored contrast can
+still clip after mapping; that is distinct from pre-tone-map clipping.
+
+### Actual path and formats
+
+| Stage | Legacy classic | Hardware-sRGB / FP16 scene mode |
+| --- | --- | --- |
+| Source colours | Authored visual sRGB and encoded bitmap bytes [0,1] | Same sources; CPU decodes authored RGB, retaining linear tint/brightness scalars and values above 1 |
+| Sampling | RGBA8 UNORM returns normalized encoded bytes; compatibility filtering in that domain | RGBA8 SRGB decodes RGB before filtering/mip generation; alpha linear. Normals use UNORM in both modes |
+| Native vertices | Linear product colours encoded for compatibility by `StaticModelCache` | Linear product colours retained; native material factors applied linearly |
+| Material/light/fog | Encoded classic arithmetic; MR explicitly decodes sampled colours/light/fog and shades linearly | Linear RGB with sRGB/BT.709 primaries, potentially above 1. Ambient/gain scalars are not sRGB-decoded |
+| SDR mapping/target | Classic encoded shoulder/postfx, MR linear shoulder then display postfx; RGBA8 UNORM | Linear shoulder, sRGB display postfx, decode for SRGB view over mutable RGBA8 UNORM storage |
+| FP16 scene/tone pass | Rejected with hardware-sRGB diagnostic | RGBA16F linear scene/transparency/viewmodel; exposure/shoulder then display postfx; linear output to SRGB attachment |
+| UI | UNORM view over encoded scene, display-space straight-alpha composition | Same view/composition after mapping, unaffected by exposure/postfx |
+| Readback/blit | Encoded RGBA8 bytes; UNORM source | Same, without another sRGB conversion |
+| Swapchain | BGRA8/RGBA8 UNORM + `VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` | Identical SDR contract, including menu HDR |
+| OS/display | SDR desktop or SDR content converted by Advanced Color | Same; scene HDR does not imply native HDR presentation |
+
+Owners: `authored_color.cpp`, `static_model.cpp`, `vulkan_resources.cpp`,
+`vulkan_uploads.cpp`, `mesh.slang`, `tone_mapping.slang`,
+`VulkanMeshRenderer::display_format/scene_format/record_ui`,
+`VulkanSwapchain::recreate` and its UNORM blit. No confirmed double encoding,
+incorrect colour-texture decode, UI encoding or swapchain/content mismatch was
+found; texture filtering, clear, raw transfer and UI checks cover those boundaries.
+
+Native HDR output is **absent**: no HDR surface negotiation, ST2084/PQ,
+extended-linear scRGB swapchain, BT.2020 conversion, native display tone mapping,
+peak-luminance policy or HDR metadata. Menu HDR maps scene radiance to SDR.
+Windows HDR On would still be SDR through DWM. As described by
+[Microsoft Advanced Color](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range),
+DWM converts app colour spaces to linear scRGB composition and supplies SDR
+white mapping. No duplicate app-side white compensation or assumed display
+peak luminance was introduced.
+
+### Verification and limitations
+
+Changed files for this audit (pre-existing unrelated working-tree edits retained):
+
+| Files | Purpose |
+| --- | --- |
+| `src/relaycore/app/startup_options.h` | Linear colour pipeline for normal executable startup |
+| `assets/shaders/vulkan/{mesh,tone_mapping,scene_postfx}.slang` | Shared shoulder/transfer functions and consistent display-space postfx |
+| `tests/{startup_options_tests,vulkan_mesh_tests}.cpp` | Default-mode, independent low-signal/raw-transfer and paired lighting regressions |
+| `tests/graphics-baselines/power_restoration-{0,1}{,-shotgun}.rcgb` | Four reviewed MR-postfx reference updates |
+| `tests/graphics-baselines/README.md`, `docs/DEVELOPMENT.md`, this document | Evidence, current SDR/HDR semantics and remaining display acceptance |
+
+Windows, RTX 4060 Ti, GPU Vulkan API 1.4.329, driver 32.0.15.9649; existing
+`msvc-debug` tree with core/synchronization validation ON. Local dxdiag identifies
+two SDR displays and an HDR-capable MAG 273Q X24 in **WCG**, not HDR, with
+`DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709` (`build/color-audit/dxdiag.txt`).
+No Windows colour setting was changed.
+
+| Windows HDR | Pipeline | Executed |
+| --- | --- | --- |
+| Off/current SDR-WCG desktop | legacy | Transfer, decode/filtering, highlights, UI, presentation and compatibility lighting |
+| Off/current SDR-WCG desktop | hardware | Same plus paired classic/MR SDR/FP16 lighting, menu/reload and HDR episode |
+| On | legacy/hardware | Not executed; controlled HDR-desktop acceptance remains open |
+| Native HDR | any | Not implemented; no native luminance/capture claim |
+
+Commands actually run from an x64 VS developer environment with
+`VCPKG_ROOT=C:\Program Files\Microsoft Visual Studio\18\Community\VC\vcpkg`:
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests --parallel 2
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_game_lifecycle --parallel 2
+cmake --build --preset graphics-debug --target relaycore_vulkan_mesh_tests relaycore_tests relaycore_demo --parallel 2
+ctest --preset test-debug -R '^relaycore\.(startup options|authored visual sRGB|surface composition|linear surface composition)' --output-on-failure --no-tests=error --output-junit color-audit-unit.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_color_baseline|hdr_pipeline)$' --output-on-failure --no-tests=error --test-output-size-passed 25000 --output-junit color-audit-final-numeric.xml
+ctest --preset graphics-debug -R '^graphics\.(vulkan_presentation|mesh_pipeline|game_hud|irradiance_probes|hdr_settings|hdr_episode)$' --output-on-failure --no-tests=error --test-output-size-passed 10000 --test-output-size-failed 6000 --output-junit color-audit-integration.xml
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path 'build/msvc-debug/src/relaygame/assets').Path
+./build/msvc-debug/tests/relaycore_vulkan_mesh_tests.exe --metallic-roughness
+ctest --preset graphics-debug -R '^graphics\.(vulkan_color_baseline|hdr_pipeline|power_restoration_slice)$' --output-on-failure --no-tests=error --test-output-size-passed 25000 --output-junit color-audit-final-affected.xml
+git diff --check
+```
+
+Unit selection: 12/12 passed. Final affected selection: 3/3 passed
+(`color-audit-final-affected.xml`). Integration selection: 6/6 passed, zero skipped,
+no unexpected Vulkan validation output. Analytical MR checks passed in both
+pipelines. Builds passed; pre-existing C4834 warnings in
+`pipeline_authoring_overlay_tests.cpp` remain. Sandbox blocked MSVC PDB IPC
+(C1902) and OBJ canonical paths; relevant builds/desktop runs completed outside
+it, with explicit user approval after automatic-review timeouts.
+
+Only four `power_restoration-{0,1}{,-shotgun}.rcgb` samples were reviewed and
+updated after numeric evidence and an original-SPIR-V control using identical
+current assets. The control passes the old power samples; corrected shaders
+change MR display postfx. Previously crushed near-black tiles become nonzero,
+which the comparator calls a coverage change. Normal alpha/placement/culling
+and pass gates remain. Old samples and shader evidence are under
+`build/color-audit/{before,after}`. No other baseline or tolerance changed.
+
+The full mesh test already failed on `pressure_transfer-0` before the audit
+(mask delta 0.0881, mean RGB delta 57.64). With corrected shaders its RGB mismatch
+remains (41.27); that authored-content baseline is outside this correction.
+The repeated full-mesh result is in `color-audit-final.xml`; that earlier report
+also contains a subsequently corrected unlit-fixture failure. Final numeric/power
+results are the separate affected report above.
+The full historical suite is not claimed green. Same-camera SDR captures in
+`build/msvc-debug/tests/` were inspected: corrected HDR preserves door/wall
+detail and closely matches hardware-SDR. Shadow totals are 725402 versus
+725542. These are SDR render-target captures, not HDR luminance measurements.
+
+For final physical-display acceptance, enable Windows HDR on the target monitor,
+hold SDR content brightness fixed, rerun the colour/HDR/presentation selection,
+and launch `RelayCore.exe --color-pipeline hardware_srgb`. In the same power-room
+view switch SDR/HDR and inspect near-black door detail, wall/floor highlights,
+saturation and unchanged menu brightness; repeat with explicit legacy mode.
+Record active monitor, HDR state and SDR white setting. Interpret app readback
+separately from Windows HDR screenshots. That Windows-HDR acceptance remains open.
+
+## Historical OpenGL baseline
+
 RC-022a records the current gamma-space behaviour; it does not migrate RelayCore to sRGB. In particular, it does not request an sRGB default framebuffer, enable `GL_FRAMEBUFFER_SRGB`, add shader conversions, or retune authored colours.
 
 ## Current contract

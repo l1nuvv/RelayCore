@@ -1,5 +1,17 @@
 # Exploration slice: intake -> switch room -> pump -> return passage -> airlock.
 
+# VIS-05--07 visual shells; authored solids below retain physical ownership.
+[[entity_group]]
+classname = "prop_static"
+entries = [
+  { model = "models/power_intake.rcmodel", origin = [0,0,0] },
+  { model = "models/power_service.rcmodel", origin = [0,0,0] },
+  { model = "models/power_switchgear.rcmodel", origin = [0,0,0] },
+  { model = "models/power_maintenance.rcmodel", origin = [0,0,0] },
+  { model = "models/power_filtration.rcmodel", origin = [0,0,0] },
+  { model = "models/power_pump.rcmodel", origin = [0,0,0] },
+]
+
 [[entity]]
 classname = "prop_static"
 model = "models/control_console.rcmodel"

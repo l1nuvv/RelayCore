@@ -763,7 +763,7 @@ namespace RelayCore::render
                              : "Shadow spot D24"
                 );
             }
-            point_shadows = std::make_unique<ShadowImage>(device, VkExtent2D{256, 256}, 48);
+            point_shadows = std::make_unique<ShadowImage>(device, VkExtent2D{512, 512}, 48);
             point_shadows->initialize(
                 VK_FORMAT_X8_D24_UNORM_PACK32,
                 "Shadow point faces D24 (eight lights, six faces)"

@@ -100,8 +100,9 @@ disk_z(0.04, 0.01, 0.491, 0.14, 2)
 disk_z(0.04, 0.01, 0.493, 0.092, 1)
 cylinder_z(-0.25, 0.24, 0.31, 0.39, 0.068, 1)
 disk_z(-0.25, 0.24, 0.392, 0.056, 3)
-box((-0.46,-0.06,-0.16), (-0.35,0.25,0.18), 2)
-box((0.35,-0.06,-0.16), (0.46,0.25,0.18), 2)
+# The armour sits proud of the dark side brackets, never on their outer planes.
+box((-0.472,-0.06,-0.16), (-0.35,0.25,0.18), 2)
+box((0.35,-0.06,-0.16), (0.472,0.25,0.18), 2)
 
 def write_obj(path, damaged):
     angle = math.radians(55 if damaged else 0)

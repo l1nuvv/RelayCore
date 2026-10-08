@@ -222,8 +222,15 @@ namespace RelayGame
         }
         validate_mesh_spawn(session, session.spawn_position, "player spawn");
 
+        // Mission conditions share kind names with interactions, but are not
+        // world objects. Keep entity indices stable for runtime/save bindings.
+        RelayCore::BlockoutLevel interaction_level;
+        interaction_level.entities = session.level.entities;
+        for (auto& entity : interaction_level.entities)
+            if (entity.classname == "mission_step")
+                entity.properties.erase("kind");
         RelayCore::gameplay::build_runtime_interactions(
-            session.level,
+            interaction_level,
             session.doors,
             session.triggers,
             session.usables

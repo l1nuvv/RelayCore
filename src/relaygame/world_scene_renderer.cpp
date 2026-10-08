@@ -406,14 +406,13 @@ namespace RelayGame
               &turret_model_,
               &destroyed_turret_model_})
             add_model(*model);
-        for (const auto& prop : props_)
-        {
-            if (prop.asset)
-                for (const auto& part : prop.asset->parts)
+        const auto add_asset = [&](const auto& asset) {
+            if (asset)
+                for (const auto& part : asset->parts)
                 {
-                    const auto& surface = prop.asset->materials[part.material];
+                    const auto& surface = asset->materials[part.material];
                     resources.push(
-                        prop.asset->meshes[part.mesh],
+                        asset->meshes[part.mesh],
                         glm::mat4{1},
                         RelayCore::render::RenderPass::Opaque,
                         &surface.base_color,
@@ -423,6 +422,12 @@ namespace RelayGame
                         surface.metallic_roughness
                     );
                 }
+        };
+        add_asset(service_key_model_);
+        for (const auto& prop : props_)
+        {
+            if (prop.asset)
+                add_asset(prop.asset);
             else
                 add_model(prop.model);
         }
@@ -439,6 +444,7 @@ namespace RelayGame
         enemy_model_.reset();
         destroyed_enemy_model_.reset();
         power_fuse_model_.reset();
+        service_key_model_.reset();
         turret_model_.reset();
         destroyed_turret_model_.reset();
         if (scene_data.has_enemies)
@@ -464,6 +470,10 @@ namespace RelayGame
             scene_data.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb
                 ? RelayCore::render::TextureEncoding::srgb
                 : RelayCore::render::TextureEncoding::linear
+        );
+        service_key_model_ = models.load(
+            RelayCore::core::asset_path("models/service_key.rcmodel"),
+            RelayCore::render::TextureEncoding::srgb
         );
         power_fuse_model_ = models.load(
             RelayCore::core::asset_path("models/power_fuse.obj"),
@@ -612,6 +622,7 @@ namespace RelayGame
         power_fuse_model_.reset();
         shotgun_body_model_.reset();
         shotgun_pump_model_.reset();
+        service_key_model_.reset();
         turret_model_.reset();
         destroyed_turret_model_.reset();
 

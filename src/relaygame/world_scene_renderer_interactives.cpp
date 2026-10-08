@@ -316,6 +316,7 @@ namespace RelayGame
                 glm::mat4 pickup_model = make_aabb_model_matrix(bounds);
                 const bool is_power_fuse = usable.item_id == "power_fuse";
                 const bool is_shotgun = usable.item_id == shotgun_item_id;
+                const bool is_service_key = usable.item_id == "service_key";
                 if (is_shotgun)
                 {
                     const auto center = (glm::min(shotgun_body_model_->mins, shotgun_pump_model_->mins)
@@ -327,7 +328,11 @@ namespace RelayGame
                 }
                 if (!camera_visible)
                 {
-                    if (is_shotgun)
+                    if (is_service_key)
+                    {
+                        for (const auto& part : service_key_model_->parts)
+                            shadow_casters_.push(service_key_model_->meshes[part.mesh], pickup_model * part.transform);
+                    } else if (is_shotgun)
                     {
                         shadow_casters_.push(shotgun_body_model_->mesh, pickup_model);
                         shadow_casters_.push(shotgun_pump_model_->mesh, pickup_model);
@@ -338,7 +343,25 @@ namespace RelayGame
                     continue;
                 }
                 ++diagnostics_.usable_draw_calls;
-                if (is_shotgun)
+                if (is_service_key)
+                {
+                    for (const auto& part : service_key_model_->parts)
+                    {
+                        const auto& mesh = service_key_model_->meshes[part.mesh];
+                        const auto& surface = service_key_model_->materials[part.material];
+                        record_render_draw(RenderPass::Opaque, mesh_triangle_count(mesh));
+                        render_queue_.push(
+                            mesh,
+                            pickup_model * part.transform,
+                            RenderPass::Opaque,
+                            &surface.base_color,
+                            true,
+                            surface.normal.cpu_data() ? &surface.normal : nullptr,
+                            surface.normal_scale,
+                            surface.metallic_roughness
+                        );
+                    }
+                } else if (is_shotgun)
                 {
                     for (const auto& part : {shotgun_body_model_, shotgun_pump_model_})
                     {
@@ -360,6 +383,31 @@ namespace RelayGame
                 }
                 if (focused && highlight_visible)
                 {
+                    if (is_service_key)
+                    {
+                        const auto frame =
+                            expand_aabb(bounds, {0.02F + focus_pulse * 0.01F, 0, 0.02F + focus_pulse * 0.01F});
+                        const auto frame_size = frame.maxs - frame.mins;
+                        const auto center = (frame.mins + frame.maxs) * .5F;
+                        for (const int axis : {0, 2})
+                            for (const float side : {-1.0F, 1.0F})
+                            {
+                                auto bar_center = center;
+                                bar_center.y = bounds.mins.y + .012F;
+                                bar_center[axis] += side * frame_size[axis] * .5F;
+                                auto bar_size = frame_size;
+                                bar_size.y = .008F;
+                                bar_size[axis] = .008F;
+                                ++diagnostics_.highlight_draw_calls;
+                                record_render_draw(RenderPass::Overlay, mesh_triangle_count(pickup_highlight_mesh_));
+                                render_queue_.push(
+                                    pickup_highlight_mesh_,
+                                    glm::scale(glm::translate(glm::mat4{1}, bar_center), bar_size),
+                                    RenderPass::Overlay
+                                );
+                            }
+                        continue;
+                    }
                     ++diagnostics_.highlight_draw_calls;
                     record_render_draw(RenderPass::Overlay, mesh_triangle_count(pickup_highlight_mesh_));
                     render_queue_.push(

@@ -118,6 +118,8 @@ namespace
                 event.key.scancode = code;
                 game.on_event(event, services);
             };
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
             const auto scene_image = [&] {
                 renderer.begin_frame();
                 game.on_render(frame, services);
@@ -161,6 +163,7 @@ namespace
                 require(captured, "Shadow comparison capture failed");
                 std::cout << name << " shadows: pixels=" << pixels << "; max=" << maximum << "; total=" << total
                           << '\n';
+                require(pixels > 100 && maximum > 10, "Shadow comparison did not render a shadowed scene");
                 return total;
             };
 
@@ -334,6 +337,8 @@ namespace
                 RelayCore::render::ColorPipelineMode::hardware_srgb
             ));
             game.on_startup(services);
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
             (void) draw();
             const auto hardware_sdr = scene_image();
             require(

@@ -1,5 +1,10 @@
 # Short maintenance bay: arm, open the bay, restore the relay, leave through the service exit.
 # Native bench collision preserves the rover lane below the worktop. Metres, +Y up.
+[[entity]]
+classname = "prop_static"
+model = "models/bench_workshop.rcmodel"
+origin = [0,0,0]
+
 [[entity_group]]
 classname = "prop_static"
 model = "models/ventilation_unit.rcmodel"

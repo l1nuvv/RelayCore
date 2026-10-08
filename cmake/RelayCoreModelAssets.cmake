@@ -23,6 +23,25 @@ set(RELAYCORE_MODEL_SOURCES
     transfer_cover_casing.glb
     pressure_control_casing.glb
     transfer_room_lining.glb
+    equipment_bay_lining.glb
+    equipment_bay_furniture.glb
+    service_hall_lining.glb
+    isolation_gallery_lining.glb
+    transfer_exit_lining.glb
+    power_intake.glb
+    power_service.glb
+    power_switchgear.glb
+    power_maintenance.glb
+    power_filtration.glb
+    power_pump.glb
+    bench_workshop.glb
+    cooling_exchanger.glb
+    cooling_service.glb
+    foundation_intake.glb
+    service_key.glb
+    foundation_pump_machine.glb
+    foundation_pump_room.glb
+    b17_services.glb
 )
 set(RELAYCORE_MODEL_ASSET_ROOT "${PROJECT_BINARY_DIR}/generated/model-assets")
 set(RELAYCORE_MODEL_RECEIPT_ROOT "${PROJECT_BINARY_DIR}/generated/model-receipts")
@@ -32,7 +51,11 @@ foreach(name IN ITEMS lab_bench power_cabinet crt_terminal instrument_rack venti
         resonance_apparatus facility_sign scientist_hazmat concrete_arch utility_pipe
         lab_notes_board safety_notice lab_accessories control_console lab_microscope
         lab_multimeter surveillance_monitor analog_navigation_instrument fluorescent_fixture
-        pressure_manifold transfer_cover_casing pressure_control_casing transfer_room_lining)
+        pressure_manifold transfer_cover_casing pressure_control_casing transfer_room_lining
+        equipment_bay_lining equipment_bay_furniture service_hall_lining isolation_gallery_lining
+        transfer_exit_lining power_intake power_service power_switchgear power_maintenance
+        power_filtration power_pump bench_workshop cooling_exchanger cooling_service
+        foundation_intake service_key foundation_pump_machine foundation_pump_room b17_services)
     set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_${name} ON)
 endforeach()
 foreach(source IN LISTS RELAYCORE_MODEL_SOURCES)

@@ -17,6 +17,15 @@ TEST_CASE("two sectors route carries the key starts the pumps and preserves cont
     const RelayCore::core::EngineConfig config;
     const RelayGame::LevelSessionBuilder builder{config.gameplay};
     auto session = builder.build(RelayCore::core::asset_path("levels/foundation_intake.toml"));
+    REQUIRE(
+        std::ranges::count(
+            session.usables,
+            RelayCore::gameplay::UsableVisualKind::Pickup,
+            &RelayCore::gameplay::RuntimeUsable::visual_kind
+        )
+        == 1
+    );
+    REQUIRE(session.usables.size() == 2);
     RelayGame::MissionRuntime mission;
     mission.reset(session.mission_definition);
     auto position = session.spawn_position;
@@ -210,6 +219,34 @@ TEST_CASE("two sectors route carries the key starts the pumps and preserves cont
     continue_at_pump();
 }
 
+TEST_CASE("foundation control housings meet their mounting surfaces")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    for (const auto* map : {"levels/foundation_intake.toml", "levels/foundation_pump.toml"})
+    {
+        const auto session = RelayGame::LevelSessionBuilder{{}}.build(RelayCore::core::asset_path(map));
+        const RelayCore::physics::WorldQuery world{session.world_colliders};
+        for (const auto& usable : session.usables)
+        {
+            if (usable.visual_kind != RelayCore::gameplay::UsableVisualKind::Panel)
+                continue;
+            CAPTURE(map);
+            CAPTURE(usable.name);
+            const glm::vec3 normal = usable.panel_mount_axis == RelayCore::gameplay::PanelMountAxis::PositiveX
+                                         ? glm::vec3{1, 0, 0}
+                                         : glm::vec3{0, 0, -1};
+            const auto center = (usable.visual_bounds.mins + usable.visual_bounds.maxs) * .5F;
+            // The rendered housing extends 75 mm behind its model origin.
+            const auto rear = center - normal * .075F;
+            const auto contact = world.raycast(rear + normal * .02F, -normal, .04F);
+            REQUIRE(contact.has_value());
+            CHECK(contact->distance >= .01F);
+            CHECK(contact->distance <= .03F);
+        }
+    }
+}
+
 TEST_CASE("pump shelter blocks turret fire while the rover retains a clear approach")
 {
     RelayCore::test::ScopedTempDirectory temp;
@@ -221,8 +258,8 @@ TEST_CASE("pump shelter blocks turret fire while the rover retains a clear appro
     const auto origin = session.combat.turrets[0].origin;
     const auto rear = origin + glm::vec3{0, 0, .78F * .48F};
     CHECK(std::ranges::any_of(session.level.solids, [&](const auto& solid) {
-        return glm::all(glm::greaterThanEqual(rear, solid.mins - glm::vec3{.002F}))
-               && glm::all(glm::lessThanEqual(rear, solid.maxs + glm::vec3{.002F}));
+        return glm::all(glm::greaterThanEqual(rear, solid.mins + glm::vec3{.005F}))
+               && glm::all(glm::lessThanEqual(rear, solid.maxs - glm::vec3{.005F}));
     }));
     const auto blocked = [&](glm::vec3 position) {
         const auto delta = origin - position;

@@ -210,18 +210,20 @@ float local_visibility(int index,float3 lightVector,float distanceToLight,float 
     float bias=0.025+0.045*(1-max(dot(normal,direction),0.0));
     float3 tangent=normalize(cross(ray,abs(ray.y)>0.9 ? float3(1,0,0) : float3(0,1,0)));
     float3 bitangent=cross(ray,tangent);
+    uint shadowWidth, shadowHeight, shadowLayers;
+    shadowPoints.GetDimensions(shadowWidth,shadowHeight,shadowLayers);
     float visibility=0;
-    for (int tap=0;tap<4;++tap)
+    for (int tap=0;tap<9;++tap)
     {
-        float2 offset=float2(tap==0 || tap==2 ? -1 : 1,tap<2 ? -1 : 1);
-        float3 sampleRay=normalize(ray+(tangent*offset.x+bitangent*offset.y)*(2.0/256));
+        float2 offset=float2(tap%3-1,tap/3-1);
+        float3 sampleRay=normalize(ray+(tangent*offset.x+bitangent*offset.y)*(2.0/shadowWidth));
         // Each PCF ray intersects a different point on the geometric receiver plane.
         // Comparing every tap to the centre distance self-shadows grazing surfaces.
         float planeCosine=dot(receiverPlaneNormal,sampleRay);
         float sampleDistance=abs(planeCosine)>0.0001
             ? distanceToLight*dot(receiverPlaneNormal,ray)/planeCosine : distanceToLight;
         float receiver=(sampleDistance-bias)/radius;
-        visibility+=receiver<=point_depth(sampleRay,index) ? 0.25 : 0;
+        visibility+=receiver<=point_depth(sampleRay,index) ? 1.0/9 : 0;
     }
     return visibility;
 }
@@ -313,12 +315,7 @@ float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 rec
 float3 mr_linear(float3 color)
 {
     if (surfaceData.parameters.w != 0) return color;
-    return select(color <= 0.04045, color / 12.92, pow((color + 0.055) / 1.055, 2.4));
-}
-float3 mr_visual(float3 color)
-{
-    if (surfaceData.parameters.w != 0) return color;
-    return select(color <= 0.0031308, color * 12.92, 1.055 * pow(color, 1.0 / 2.4) - 0.055);
+    return srgb_to_linear(color);
 }
 
 // glTF Appendix B: GGX, separable Smith visibility, Schlick, Lambert diffuse.
@@ -432,7 +429,7 @@ float4 fragment_main(Varying input) : SV_Target
                     id, clothing, model, input.fogDistance);
     float3 fogColor = metallicRoughness ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
     bool hdr = materials.grading.y != 0;
-    color = lerp(hdr ? max(lighting + emissive, 0) : saturate(lighting + emissive), fogColor, fogAmount);
+    color = lerp(max(lighting + emissive, 0), fogColor, fogAmount);
     if (frame.viewportTimeDebug.w != 0)
     {
         float blend = max(shadows.cascade.y, 0.0001);
@@ -442,8 +439,14 @@ float4 fragment_main(Varying input) : SV_Target
         color = lerp(color, color * lerp(nearTint, farTint, cascadeMix), 0.38);
     }
     if (hdr) return float4(color, alpha);
+    // Roll off SDR highlights before postfx clamps them, retaining lit surface detail.
+    color = sdr_highlight_rolloff(color);
+    // Postfx controls describe display brightness in every mode. The sRGB attachment
+    // still expects linear output and performs the final encoding once.
+    bool linearColor = metallicRoughness || surfaceData.parameters.w != 0;
+    if (linearColor) color = linear_to_srgb(color);
     // GL postfx use bottom-left pixel coordinates; Vulkan fragment positions are top-down.
     float2 fragCoord = float2(input.position.x, frame.viewportTimeDebug.y - input.position.y);
     float3 post = scene_postfx(color, fragCoord, frame.viewportTimeDebug, materials.postfx, materials.grading.x, overlay);
-    return float4(metallicRoughness ? mr_visual(post) : post, alpha);
+    return float4(linearColor && surfaceData.parameters.w != 0 ? srgb_to_linear(post) : post, alpha);
 }

@@ -251,13 +251,15 @@ add_test(NAME graphics.vulkan_device COMMAND relaycore_vulkan_device_tests)
 add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation_tests)
 add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
 add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
+add_test(NAME graphics.mesh_pipeline COMMAND relaycore_vulkan_mesh_tests --pipeline-only)
+add_test(NAME graphics.power_restoration_slice COMMAND relaycore_vulkan_mesh_tests --power-restoration-slice)
 add_test(NAME graphics.game_hud COMMAND relaycore_vulkan_mesh_tests --ui-only)
 add_test(NAME graphics.resource_preparation COMMAND relaycore_vulkan_mesh_tests --resource-preparation)
 add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
 add_test(NAME graphics.hdr_pipeline COMMAND relaycore_vulkan_mesh_tests --hdr)
 add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --irradiance)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.vulkan_mesh graphics.game_hud graphics.resource_preparation graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -352,6 +354,20 @@ set_tests_properties(graphics.game_lifecycle graphics.hdr_settings PROPERTIES
 )
 add_test(NAME graphics.power_restoration COMMAND relaycore_power_restoration_graphics)
 add_test(NAME graphics.hdr_episode COMMAND relaycore_power_restoration_graphics --hdr)
+add_test(NAME graphics.foundation_intake COMMAND relaycore_power_restoration_graphics --intake-views)
+add_test(NAME graphics.foundation_intake_sdr COMMAND relaycore_power_restoration_graphics --intake-views-sdr)
+add_test(NAME graphics.foundation_pump COMMAND relaycore_power_restoration_graphics --pump-views)
+add_test(NAME graphics.foundation_pump_sdr COMMAND relaycore_power_restoration_graphics --pump-views-sdr)
+add_test(NAME graphics.b17 COMMAND relaycore_power_restoration_graphics --b17-views)
+add_test(NAME graphics.b17_sdr COMMAND relaycore_power_restoration_graphics --b17-views-sdr)
+set_tests_properties(graphics.foundation_intake graphics.foundation_intake_sdr graphics.foundation_pump graphics.foundation_pump_sdr graphics.b17 graphics.b17_sdr PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    TIMEOUT 120
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 set_tests_properties(graphics.power_restoration graphics.hdr_episode PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE

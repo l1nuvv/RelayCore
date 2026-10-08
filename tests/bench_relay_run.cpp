@@ -175,6 +175,27 @@ int main(int argc, char** argv)
     const bool atmosphere = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--atmosphere";
     });
+    const bool equipment_bay = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--equipment-bay";
+    });
+    const bool gallery = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--gallery";
+    });
+    const bool service_hall = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--service-hall";
+    });
+    const bool standby = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--standby";
+    });
+    const bool exit_corridor = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--exit-corridor";
+    });
+    const bool junctions = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--junctions";
+    });
+    const bool exit_open = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--exit-open";
+    });
     const std::string_view workload = cooling ? "cooling_loop" : transfer ? "pressure_transfer" : "bench_relay";
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
@@ -204,8 +225,44 @@ int main(int argc, char** argv)
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
         auto saves = cooling    ? cooling_saves(config.gameplay)
-                     : transfer ? transfer_saves(config.gameplay, atmosphere)
+                     : transfer ? transfer_saves(config.gameplay, atmosphere || exit_corridor || junctions)
                                 : bench_saves(config.gameplay);
+        if (!transfer && (visual_slice || mounting_views || (cooling && atmosphere)))
+        {
+            auto positions =
+                cooling
+                    ? std::array<glm::vec3, 4>{{{4.5F, .01F, 5}, {-4, .01F, 12}, {-3.5F, .01F, 19}, {3, .01F, 24.5F}}}
+                    : std::array<glm::vec3, 4>{{{2, .01F, -2.5F}, {2, .01F, 2.5F}, {2, .01F, 9.5F}, {0, .01F, 11.8F}}};
+            auto angles =
+                cooling ? std::array<glm::vec2, 4>{{{2.1F, .03F}, {.2F, .03F}, {-3.05F, 0}, {-.6F, 0}}}
+                        : std::array<glm::vec2, 4>{{{2.8F, -.12F}, {2, -.06F}, {-2.2F, -.16F}, {-1.5707963268F, .04F}}};
+            if (mounting_views)
+            {
+                positions =
+                    cooling
+                        ? std::
+                              array<glm::vec3, 4>{{{-2, .01F, 2}, {3, .01F, 19}, {3, .01F, 16.5F}, {-4.5F, .01F, 17.5F}}
+                              }
+                        : std::array<glm::vec3, 4>{{{0, .01F, -2}, {2, .01F, 10}, {0, .01F, 2.5F}, {0, .01F, 11.8F}}};
+                angles = cooling
+                             ? std::array<glm::vec2, 4>{{{2.6F, -.18F}, {-2.15F, .02F}, {2.38F, .50F}, {2.7F, .1F}}}
+                             : std::array<glm::vec2, 4>{
+                                   {{1.5707963268F, .15F}, {1.2F, .02F}, {-1.5707963268F, .02F}, {-1.5707963268F, .04F}}
+                               };
+            }
+            if (cooling && atmosphere)
+            {
+                positions = {{{-3.5F, .01F, 23}, {4.3F, .01F, 23}, {4.3F, .01F, 13}, {3, .01F, 23.3F}}};
+                angles = {{{3.1415926536F, .25F}, {0, .05F}, {-1.5707963268F, .03F}, {1.5707963268F, .15F}}};
+            }
+            const auto powered = saves[3];
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = powered;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
         if (transfer && mounting_views)
         {
             const std::array<glm::vec3, 4> positions{
@@ -233,24 +290,118 @@ int main(int argc, char** argv)
                 saves[i].player.view_angles = angles[i];
             }
         }
+        if (transfer && equipment_bay)
+        {
+            const std::array<glm::vec3, 4> positions{
+                {{5.8F, .01F, 1.8F}, {3.3F, .01F, 8.1F}, {4, .01F, 6}, {4, .01F, 9}}
+            };
+            const std::array<glm::vec2, 4> angles{{{2.24F, -.08F}, {-2.7F, 0}, {1.5707963268F, 0}, {-1.5707963268F, 0}}
+            };
+            const auto powered = saves[3];
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = powered;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
+        if (transfer && (gallery || service_hall))
+        {
+            auto state = saves[3];
+            if (standby)
+            {
+                RelayCore::test::PressureRoute route{config.gameplay};
+                route.walk_to({4, .01F, 5.3F});
+                route.walk_to({2, .01F, 5.3F});
+                static_cast<void>(route.use("transfer_shotgun"));
+                route.walk_to({6.1F, .01F, 8.5F});
+                static_cast<void>(route.use("service_reader"));
+                state = route.save();
+            }
+            const auto positions =
+                gallery ? std::array<glm::vec3, 4>{{{9, .01F, 22}, {27, .01F, 21}, {27, .01F, 20}, {19, .01F, 21}}}
+                        : std::array<glm::vec3, 4>{{{4, .01F, 11}, {4, .01F, 21}, {6, .01F, 17}, {11, .01F, 23}}};
+            const auto angles = gallery
+                                    ? std::array<glm::vec2, 4>{{{0, -.03F}, {3.03F, -.03F}, {.9F, .08F}, {-.78F, .02F}}}
+                                    : std::array<glm::vec2, 4>{
+                                          {{1.5707963268F, -.08F}, {-1.5707963268F, .04F}, {1.1F, .02F}, {-2.65F, 0}}
+                                      };
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = state;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
         if (transfer && atmosphere)
             for (std::size_t i = 0; i < saves.size(); ++i)
             {
                 saves[i].player.position = i < 2 ? glm::vec3{34, .01F, 31} : glm::vec3{37.3F, .01F, 39};
                 saves[i].player.view_angles = i < 2 ? glm::vec2{1.06F, 0} : glm::vec2{.4F, 0};
             }
-        const std::array names = cooling ? std::array{"entry", "service", "standby", "powered"}
+        if (transfer && (exit_corridor || junctions))
+        {
+            auto state = saves[standby ? 0 : 1];
+            if (exit_corridor && exit_open)
+            {
+                RelayCore::test::PressureRoute route{config.gameplay};
+                route.reach_mixed();
+                route.fight_mixed(RelayCore::test::PressureTactic::Distance);
+                route.power_transfer();
+                route.walk_to({31, .01F, 42.5F});
+                static_cast<void>(route.use("exit_reader"));
+                route.wait(270);
+                state = route.save();
+            }
+            const auto positions =
+                exit_corridor
+                    ? std::array<glm::vec3, 4>{{{29, .01F, 39}, {28, .01F, 45}, {28, .01F, 50}, {32, .01F, 42}}}
+                    : std::array<glm::vec3, 4>{{{4, .01F, 8.5F}, {8.7F, .01F, 22}, {30, .01F, 24}, {29, .01F, 28}}};
+            const auto angles =
+                exit_corridor ? std::array<
+                                    glm::vec2,
+                                    4>{{{1.77F, .03F}, {1.5707963268F, .02F}, {-1.5707963268F, .02F}, {2.45F, .08F}}}
+                              : std::array<glm::vec2, 4>{
+                                    {{1.5707963268F, -.15F},
+                                     {3.1415926536F, -.15F},
+                                     {1.5707963268F, -.12F},
+                                     {-1.5707963268F, -.12F}}
+                                };
+            for (std::size_t i = 0; i < saves.size(); ++i)
+            {
+                saves[i] = state;
+                saves[i].player.position = positions[i];
+                saves[i].player.view_angles = angles[i];
+            }
+        }
+        const std::array names = cooling && atmosphere       ? std::array{"header", "start", "auxiliary", "exit"}
+                                 : !transfer && visual_slice ? std::array{"overview", "machinery", "control", "reverse"}
+                                 : cooling                   ? std::array{"entry", "service", "standby", "powered"}
+                                 : exit_corridor             ? std::array{"approach", "forward", "reverse", "reader"}
+                                 : junctions    ? std::array{"bay-hall", "hall-gallery", "gallery-room", "room-gallery"}
+                                 : gallery      ? std::array{"forward", "reverse", "turn", "reader"}
+                                 : service_hall ? std::array{"rover", "reverse", "portal", "corner"}
+                                 : equipment_bay ? std::array{"bench", "cabinet", "door", "reverse"}
                                  : atmosphere
                                      ? std::array{"hall-before", "hall-after", "control-before", "control-after"}
                                  : visual_slice   ? std::array{"overview", "machinery", "control", "reverse"}
                                  : mounting_views ? std::array{"service", "gallery", "notice", "fan"}
                                                   : std::array{"entry", "distance", "cover", "powered"};
-        const std::string capture_directory = cooling    ? "cooling-loop-captures"
-                                              : transfer ? (atmosphere       ? "pressure-atmosphere-captures"
-                                                            : visual_slice   ? "pressure-visual-captures"
-                                                            : mounting_views ? "pressure-mounting-captures"
-                                                                             : "pressure-transfer-captures")
-                                                         : "bench-relay-captures";
+        const std::string capture_directory =
+            cooling && atmosphere         ? "cooling-signage-captures"
+            : !transfer && mounting_views ? (cooling ? "cooling-mounting-captures" : "bench-mounting-captures")
+            : !transfer && visual_slice   ? (cooling ? "cooling-visual-captures" : "bench-visual-captures")
+            : cooling                     ? "cooling-loop-captures"
+            : transfer                    ? (exit_corridor    ? "pressure-exit-captures"
+                                             : junctions      ? "pressure-junction-captures"
+                                             : gallery        ? "pressure-gallery-captures"
+                                             : service_hall   ? "pressure-service-captures"
+                                             : equipment_bay  ? "pressure-equipment-captures"
+                                             : atmosphere     ? "pressure-atmosphere-captures"
+                                             : visual_slice   ? "pressure-visual-captures"
+                                             : mounting_views ? "pressure-mounting-captures"
+                                                              : "pressure-transfer-captures")
+                                          : "bench-relay-captures";
         std::filesystem::create_directories(capture_directory);
         std::cout << "workload=" << workload
                   << "; resolution=1280x720; vsync=off; hdr=on; pipeline=hardware_srgb; shadows="

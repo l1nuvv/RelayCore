@@ -209,6 +209,7 @@ namespace RelayGame
         std::shared_ptr<const RelayCore::render::StaticModel> enemy_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_enemy_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> power_fuse_model_;
+        std::shared_ptr<const RelayCore::render::ModelAsset> service_key_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> shotgun_body_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> shotgun_pump_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> turret_model_;

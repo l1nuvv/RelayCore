@@ -141,7 +141,7 @@ classname = "prop_static"
 model = "models/facility_sign.rcmodel"
 entries = [
   { targetname = "entrance_sign", origin = [-2.35,1.55,-5.18], angles = [180,0,0] },
-  { targetname = "containment_sign", origin = [-1.87,1.15,2.5], angles = [90,0,0], scale = [0.75,0.75,0.75] },
+  { targetname = "containment_sign", origin = [-1.87,0.55,2.5], angles = [90,0,0], scale = [0.75,0.75,0.75] },
 ]
 
 [[entity]]
@@ -213,7 +213,7 @@ entries = [
 classname = "prop_static"
 model = "models/lab_accessories.rcmodel"
 entries = [
-  { origin = [3.70,0.92,-3.60] },
+  { origin = [3.70,0.92,-3.69] },
   { origin = [-4.85,0.92,4.25], angles = [180,0,0] },
 ]
 
@@ -230,6 +230,20 @@ origin = [4.4,2.70,-3.10]
 color = [0.85,0.78,0.64]
 radius = 3.2
 intensity = 1.35
+
+[[entity]]
+classname = "render_light"
+origin = [-2.65,2.21,3.15]
+color = [0.80,0.78,0.68]
+radius = 2.8
+intensity = 1.45
+
+[[entity]]
+classname = "render_light"
+origin = [2,2.65,0.15]
+color = [0.73,0.76,0.70]
+radius = 2.8
+intensity = 0.85
 
 [[entity]]
 classname = "prop_static"
@@ -284,4 +298,11 @@ entries = [
   { origin = [3.8,3.4,3.4], angles = [0,0,0], scale = [1.538462,1,1.277778] },
   { origin = [0,3.4,-7], angles = [90,0,0], scale = [1.384615,1,1.277778] },
   { origin = [4.4,2.92,-3.15], angles = [0,0,0], scale = [1.000000,1,1.277778] },
+  { origin = [2,2.92,0.15], angles = [0,0,0], scale = [0.65,1,1] },
 ]
+
+[[entity]]
+classname = "prop_static"
+targetname = "b17_fitted_services"
+model = "models/b17_services.rcmodel"
+origin = [0,0,0]

@@ -8,7 +8,7 @@ namespace RelayCore
 {
     struct StartupOptions {
         std::filesystem::path config_path{};
-        render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::legacy_gamma;
+        render::ColorPipelineMode color_pipeline_mode = render::ColorPipelineMode::hardware_srgb;
     };
 
     [[nodiscard]] auto parse_startup_options(int argc, char** argv) -> StartupOptions;
