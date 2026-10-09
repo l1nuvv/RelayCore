@@ -327,9 +327,6 @@ def repair_exported_tangents(path):
                 if abs(determinant) < 1e-15:
                     raise ValueError(f"{path}: degenerate UV triangle cannot supply a tangent")
                 tangent = (edge1 * delta2[1] - edge2 * delta1[1]) / determinant
-                # Blender flips exported V while retaining its +Y normal image
-                # convention and bitangent sign. Match its unaffected corners.
-                bitangent = -(edge2 * delta1[0] - edge1 * delta2[0]) / determinant
                 for index in triangle:
                     if not invalid[index]:
                         continue
@@ -339,8 +336,9 @@ def repair_exported_tangents(path):
                     if length < 1e-12:
                         raise ValueError(f"{path}: degenerate surface cannot supply a tangent")
                     direction /= length
-                    sign = -1 if np.dot(np.cross(normal, direction), bitangent) < 0 else 1
-                    tangents[index] = (*direction, sign)
+                    # MikkTSpace's handedness remains valid when a thin corner
+                    # loses its tangent weight. Preserve it across smooth rims.
+                    tangents[index, :3] = direction
                     invalid[index] = False
                     repaired += 1
             if invalid.any():

@@ -50,6 +50,11 @@ namespace RelayGame
             frame_actions_.weapon_selection = captured_actions.weapon_selection;
         frame_actions_.inspector_pin_pressed = captured_actions.inspector_pin_pressed;
         frame_iteration_commands_ = capture_frame_iteration_commands();
+        for (auto& number : damage_numbers_)
+            number.remaining_seconds -= std::max(0.0F, delta_seconds);
+        std::erase_if(damage_numbers_, [](const auto& number) {
+            return number.remaining_seconds <= 0;
+        });
         tick_transient_hud_event(delta_seconds);
         tick_usable_feedback(delta_seconds);
     }

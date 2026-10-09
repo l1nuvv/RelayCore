@@ -559,12 +559,17 @@ namespace RelayGame
             }
         };
         ImGui::SeparatorText("Параметры объекта");
-        if (entity.classname == "enemy_rover")
+        if (entity.classname == "enemy_rover" || entity.classname == "enemy_shooter")
         {
             number("Здоровье", "health", 60);
             number("Скорость", "speed", 1.6F);
             number("Дальность обнаружения", "detection_range", 10);
+            text("Маршрут обхода", "route");
+            if (entity.classname == "enemy_rover")
+                text("Атака (melee/lunge)", "attack_style");
         }
+        if (entity.classname == "enemy_route_point")
+            text("Маршрут обхода", "route");
         if (entity.classname == "level_entry")
         {
             text("Имя входа", "targetname");

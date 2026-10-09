@@ -46,6 +46,11 @@ TEST_CASE("native model product is deterministic and preserves geometry/material
     source.materials[0].normal = CpuRgbaTextureData{1, 1, {128, 190, 240, 42}};
     source.materials[0].normal_scale = .4F;
     source.materials[0].metallic_roughness = MetallicRoughness{.3F, .8F};
+    source.materials[0].metallic_roughness_map = CpuRgbaTextureData{1, 1, {7, 80, 190, 42}};
+    source.materials[0].occlusion = CpuRgbaTextureData{1, 1, {100, 3, 9, 2}};
+    source.materials[0].occlusion_strength = .6F;
+    source.materials[0].emissive = CpuRgbaTextureData{1, 1, {128, 192, 240, 7}};
+    source.materials[0].emissive_factor = {.2F, .6F, .4F};
     write_model_asset(path, source);
     const auto first = read_bytes(path);
     const auto model = read_model_asset(path);
@@ -57,6 +62,11 @@ TEST_CASE("native model product is deterministic and preserves geometry/material
     CHECK(model.materials[0].normal->pixels == source.materials[0].normal->pixels);
     CHECK(model.materials[0].normal_scale == .4F);
     CHECK(model.materials[0].metallic_roughness == source.materials[0].metallic_roughness);
+    CHECK(model.materials[0].metallic_roughness_map->pixels == source.materials[0].metallic_roughness_map->pixels);
+    CHECK(model.materials[0].occlusion->pixels == source.materials[0].occlusion->pixels);
+    CHECK(model.materials[0].occlusion_strength == .6F);
+    CHECK(model.materials[0].emissive->pixels == source.materials[0].emissive->pixels);
+    CHECK(model.materials[0].emissive_factor == source.materials[0].emissive_factor);
     CHECK(model.parts[0].transform[3] == glm::vec4{3, 2, 1, 1});
     write_model_asset(path, model);
     CHECK(read_bytes(path) == first);
@@ -70,7 +80,7 @@ TEST_CASE("native model product is deterministic and preserves geometry/material
         );
     }
     auto changed = first;
-    changed[4] = 4;
+    changed[4] = 6;
     std::ofstream(path, std::ios::binary).write(changed.data(), static_cast<std::streamsize>(changed.size()));
     CHECK_THROWS_WITH_AS(static_cast<void>(read_model_asset(path)), doctest::Contains("version"), std::runtime_error);
     std::ofstream(path, std::ios::binary).write((first + "x").data(), static_cast<std::streamsize>(first.size() + 1));
@@ -205,6 +215,76 @@ TEST_CASE("native static prop and editor use model bounds and embedded materials
     const auto placed = RelayGame::build_static_props(editor.level());
     REQUIRE(placed[0].collider.has_value());
     CHECK(placed[0].collider->maxs.y == doctest::Approx(1.51).epsilon(.01));
+}
+
+TEST_CASE("native v3 product keeps scalar lighting without material maps")
+{
+    RelayCore::test::ScopedTempDirectory temporary;
+    const auto path = temporary.path() / "v3.rcmodel";
+    auto source = triangle_model();
+    source.materials[0].metallic_roughness = MetallicRoughness{.3F, .8F};
+    write_model_asset(path, source);
+    auto bytes = read_bytes(path);
+    bytes[4] = 3;
+    // One material, no maps: v4 and v5 each add twenty bytes before the part.
+    bytes.erase(bytes.size() - 72 - 40, 40);
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    const auto model = read_model_asset(path);
+    CHECK(model.materials[0].metallic_roughness == source.materials[0].metallic_roughness);
+    CHECK_FALSE(model.materials[0].metallic_roughness_map);
+    CHECK_FALSE(model.materials[0].occlusion);
+    CHECK_FALSE(model.materials[0].emissive);
+    CHECK(model.materials[0].emissive_factor == glm::vec3{0});
+}
+
+TEST_CASE("native v4 product defaults to non-emissive materials")
+{
+    RelayCore::test::ScopedTempDirectory temporary;
+    const auto path = temporary.path() / "v4.rcmodel";
+    auto source = triangle_model();
+    source.materials[0].occlusion = CpuRgbaTextureData{1, 1, {70, 0, 0, 255}};
+    write_model_asset(path, source);
+    auto bytes = read_bytes(path);
+    bytes[4] = 4;
+    bytes.erase(bytes.size() - 72 - 20, 20);
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    const auto model = read_model_asset(path);
+    CHECK(model.materials[0].occlusion->pixels == source.materials[0].occlusion->pixels);
+    CHECK_FALSE(model.materials[0].emissive);
+    CHECK(model.materials[0].emissive_factor == glm::vec3{0});
+}
+
+TEST_CASE("native emissive materials reject invalid factors and image payloads")
+{
+    auto model = triangle_model();
+    for (const auto factor : {-1.F, 1.1F, std::numeric_limits<float>::quiet_NaN()})
+    {
+        model.materials[0].emissive_factor = {0, factor, 0};
+        CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("emissive factor"), std::runtime_error);
+    }
+    model.materials[0].emissive_factor = {0, 1, 0};
+    model.materials[0].emissive = CpuRgbaTextureData{1, 1, {0, 0, 0}};
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("byte count"), std::runtime_error);
+}
+
+TEST_CASE("native v4 material maps reject invalid dimensions, strengths and missing factors")
+{
+    auto model = triangle_model();
+    auto& material = model.materials[0];
+    material.metallic_roughness_map = CpuRgbaTextureData{1, 1, {1, 2, 3, 4}};
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("requires"), std::runtime_error);
+    material.metallic_roughness = MetallicRoughness{.4F, .2F};
+    CHECK_NOTHROW(validate_model_asset(model));
+    material.metallic_roughness_map->height = 2;
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("byte count"), std::runtime_error);
+    material.metallic_roughness_map->height = 1;
+    material.occlusion = CpuRgbaTextureData{0, 1, {}};
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("dimensions"), std::runtime_error);
+    material.occlusion = CpuRgbaTextureData{1, 1, {0, 3, 200, 11}};
+    material.occlusion_strength = std::numeric_limits<float>::quiet_NaN();
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("strength"), std::runtime_error);
 }
 
 TEST_CASE("native v1 product remains readable as a base-color-only model")

@@ -1,0 +1,29 @@
+<rml><head><title>RelayCore</title><link type="text/rcss" href="player.rcss" /></head><body id="menu">
+<div id="menu-panel" class="card">
+<div id="identity"><div id="seal"><div class="seal-ring"></div><div class="seal-inner"></div><div class="seal-spine"></div><div class="seal-crossbar"></div><div class="seal-core"></div></div><div id="identity-copy"><div id="brand">RELAYCORE</div><div id="identity-caption">ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС</div></div><span id="version"></span></div>
+<div id="menu-title" class="label"></div><div id="description" class="secondary"></div>
+<div id="update-notice"><span id="update-notice-text"></span><button data-action="notice">Понятно</button></div>
+<div id="main-actions"><button id="continue" class="primary" data-action="continue">Продолжить [Enter]</button><div id="save-summary" class="secondary"></div>
+<div id="scenario-row"><label>Маршрут</label><select id="scenario" data-action="scenario" data-event="change">
+<option value="">Кампания — весь комплекс</option><option value="levels/containment_loop.toml">Контур сдерживания — G-019</option><option value="levels/foundation_intake.toml">Два сектора</option><option value="levels/pressure_transfer.toml">Перепуск давления</option><option value="levels/cooling_loop.toml">Контур охлаждения</option><option value="levels/bench_relay.toml">Реле мастерской</option><option value="levels/occult_lab_b17.toml">Лаборатория B-17</option></select></div>
+<button id="new-game" data-action="new">Начать прохождение</button>
+<div id="confirmation"><p id="confirmation-text"></p><button data-action="confirm">Начать заново</button><button data-action="cancel">Отмена</button></div>
+<button id="editor-button" data-action="editor">Редактор карты</button></div>
+<div id="pause-actions"><button id="resume" class="primary" data-action="resume">Продолжить [Esc]</button><button id="to-menu" data-action="menu">Сохранить и в меню</button><button id="return-game" data-action="return-game">Вернуться в игру</button><button id="return-editor" data-action="editor">Вернуться в редактор</button></div>
+<div id="complete-actions"><div id="complete-title"></div><div id="complete-detail" class="secondary"></div><p id="played-time"></p><button id="complete-menu" class="primary" data-action="menu">В главное меню [Enter]</button><button id="complete-editor" data-action="editor">Вернуться в редактор [F11]</button></div>
+<div id="progress-error" class="error"></div>
+<button id="settings-button" data-action="settings">Настройки</button>
+<div id="settings"><div class="label">НАСТРОЙКИ</div>
+<label>Громкость · <span id="volume-label"></span><input id="volume" type="range" min="0" max="1" step="0.01" data-action="volume" data-event="change" /></label>
+<label>Мышь · <span id="sensitivity-label"></span><input id="sensitivity" type="range" min="0.3" max="8" step="0.1" data-action="sensitivity" data-event="change" /></label>
+<label>Поле зрения · <span id="fov-label"></span><input id="fov" type="range" min="50" max="100" step="1" data-action="fov" data-event="change" /></label>
+<label>Движение камеры · <span id="camera-motion-label"></span><input id="camera-motion" type="range" min="0" max="1" step="0.01" data-action="camera-motion" data-event="change" /></label>
+<p class="secondary">Ноль отключает покачивание и проседание камеры при приземлении.</p>
+<label>Вертикальная синхронизация <select id="vsync" data-action="vsync" data-event="change"><option value="1">Включена</option><option value="0">Выключена</option></select></label>
+<label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR</option></select></label>
+<button id="save-settings" class="primary" data-action="save-settings">Сохранить настройки</button><div id="settings-message" class="error"></div>
+</div>
+<div id="controls" class="secondary">WASD — движение · Shift — бег · Space — прыжок<br />E — взаимодействие · F — фонарик</div>
+<div id="update-section"><button id="check-update" data-action="check-update">Проверить обновления</button><div id="update-message" class="secondary"></div><div id="update-available"><p id="update-size"></p><div id="update-notes"></div><p class="secondary">Игра закроется на время обновления. Сохранения останутся.</p><button data-action="install-update">Обновить и перезапустить</button></div></div>
+<button data-action="quit">Выйти из игры</button>
+</div></body></rml>

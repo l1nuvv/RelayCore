@@ -6,6 +6,7 @@ height = 900
 vsync = true
 
 [render]
+msaa_samples = 4
 hdr_enabled = true
 exposure_ev = 0.0
 clear_r = 0.06

@@ -47,6 +47,7 @@ namespace RelayCore::render
         float postfx_saturation = 0.94F;          ///< Final color saturation after lighting and fog.
         bool hdr_enabled = false;
         float exposure_ev = 0;
+        int msaa_samples = 1;
         bool shadow_enabled = true;                            ///< Enables scene shadow passes.
         int shadow_map_resolution = 1536;                      ///< Square shadow map size in texels.
         glm::vec3 shadow_light_direction{0.28F, -1.0F, 0.22F}; ///< Light-to-scene direction for the key light.

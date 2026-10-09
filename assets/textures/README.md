@@ -2,7 +2,7 @@
 
 `facility_source.png` is original art generated with the built-in ImageGen tool. It contains eight square diffuse textures in a 4 by 2 sheet: concrete, painted steel, mineral floor tiles, diamond tread, ventilation grille, brushed steel, wooden crate and hazard stripes. No Valve assets were used.
 
-`blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically for OpenGL sampling. Unused cells contain neutral steel. No alpha cutouts are required.
+`blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically to preserve the existing atlas UV convention used by the Vulkan renderer. Unused cells contain neutral steel. No alpha cutouts are required.
 
 `wing_materials.png` is an original 2-by-2 source sheet for slots 27–30: blue-gray service access floor, warm maintenance concrete, gray-green ribbed filtration floor, and pale washable filtration wall. These opaque diffuse tiles distinguish the power restoration wings at walking distance. They have no baked lighting or text; their edges repeat through the atlas gutter. Generated with the built-in ImageGen tool using a flat orthographic 2-by-2 seamless industrial texture prompt. The `graphics.power_restoration` captures check them in the game renderer.
 

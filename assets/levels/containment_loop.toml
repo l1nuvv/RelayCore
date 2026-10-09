@@ -1,4 +1,13 @@
-# G-019 checkpoint A: whole-chapter spatial graybox. Hero forms and task gates are provisional.
+# G-019 checkpoint D: native hero assemblies and fitted facility finish.
+
+[[entity]]
+classname = "reflection_probe"
+origin = [0, 4.8, 28]
+mins = [-11.5, 0.1, 12.3]
+maxs = [11.5, 7.8, 41.5]
+resolution = 64
+samples = 128
+product = "lighting/containment_loop.rcreflection"
 
 [[solid_group]]
 boxes = [
@@ -48,6 +57,7 @@ boxes = [
   { origin = [20, 0.6, 46], size = [3, 1.2, 2], material = "metal" },
   { origin = [24, 0.6, 50], size = [3, 1.2, 2], material = "metal" },
   { origin = [-24, 1.3, 45], size = [2.5, 2.6, 2], material = "metal", tint = [0.7, 0.65, 0.52] },
+  { origin = [-24, 0.4, 51], size = [1.0, 0.8, 0.8], material = "metal" },
   { origin = [22, 2.1, 40], size = [12, 4.2, 0.3], material = "WallPanel" },
   { origin = [13, 2.1, 40], size = [2, 4.2, 0.3], material = "WallPanel" },
   { origin = [-8, 4, 42], size = [8, 8, 0.3], material = "concrete" },
@@ -125,10 +135,6 @@ boxes = [
   { origin = [5, 6.6, 30], size = [1.4, 0.6, 2.5], material = "Beam" },
   { origin = [0, 7, 30], size = [10, 0.6, 1.5], material = "Beam" },
   { origin = [0, 0.12, 28], size = [7, 0.24, 8], material = "Platform", tint = [0.85, 0.65, 0.27] },
-  { origin = [0, 2.5, 34], size = [3, 5, 2.4], material = "Rubber", tint = [0.46, 0.32, 0.26] },
-  { origin = [-1.9, 1.6, 33], size = [1.4, 3.2, 1.1], material = "Rubber", tint = [0.46, 0.32, 0.26] },
-  { origin = [1.9, 3.5, 33], size = [1.5, 1, 3], material = "Rubber", tint = [0.46, 0.32, 0.26] },
-  { origin = [0, 2.5, 32.6], size = [3.4, 0.8, 0.6], material = "metal" },
   { origin = [24, 4.7, 32], size = [2, 1.4, 2], material = "metal" },
   { origin = [-10, 0.6, 30], size = [2, 1.2, 4], material = "metal" },
   { origin = [10, 0.6, 30], size = [2, 1.2, 4], material = "metal" },
@@ -143,6 +149,173 @@ origin = [0, 0.01, 4]
 angles = [0, 0, 0]
 
 [[entity]]
+classname = "enemy_rover"
+origin = [-21, 0.01, 23]
+health = 84
+speed = 2.6
+detection_range = 11
+attack_style = "lunge"
+route = "workshop"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-22, 0.01, 20]
+route = "workshop"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-20.5, 0.01, 25]
+route = "workshop"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-15, 0.01, 25]
+route = "workshop"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-16, 0.01, 20]
+route = "workshop"
+
+[[entity]]
+classname = "gameplay_entity"
+origin = [-24, 1.28, 19]
+kind = "pickup"
+targetname = "containment_shotgun"
+item_id = "weapon_shotgun"
+item_name = "дробовик"
+pickup_surface_y = 1.2
+size = [1.08, 0.21, 0.14]
+use_radius = 1.8
+label = "Взять дробовик"
+success_message = "Дробовик взят. 1/2 — выбор оружия. На близкой дистанции остановите рывок робота."
+
+[[entity]]
+classname = "enemy_rover"
+origin = [-17.5, 0.01, 43]
+health = 84
+speed = 2.6
+detection_range = 13
+attack_style = "lunge"
+route = "archive"
+
+[[entity]]
+classname = "enemy_shooter"
+origin = [-13, 0.01, 51.5]
+health = 84
+speed = 2.0
+detection_range = 16
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-26, 0.01, 42]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-22, 0.01, 43]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-22, 0.01, 36]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-17.5, 0.01, 36]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-17.5, 0.01, 44]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-13, 0.01, 44]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-13, 0.01, 51.5]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-17.5, 0.01, 51.5]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-22, 0.01, 51.5]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-26, 0.01, 48]
+route = "archive"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [-26, 0.01, 51]
+route = "archive"
+
+[[entity]]
+classname = "enemy_shooter"
+origin = [24, 0.01, 48]
+health = 84
+speed = 2.0
+detection_range = 16
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [26, 0.01, 43]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [26, 0.01, 48]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [26, 0.01, 53]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [22, 0.01, 53]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [18, 0.01, 51]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [14.8, 0.01, 50]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [14.8, 0.01, 46]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [17, 0.01, 44]
+route = "laboratory"
+
+[[entity]]
+classname = "enemy_route_point"
+origin = [22, 0.01, 44]
+route = "laboratory"
+
+[[entity]]
 classname = "level_entry"
 origin = [0, 0.01, 4]
 targetname = "campaign_arrival"
@@ -153,14 +326,6 @@ classname = "level_entry"
 origin = [-10, 0.01, 36]
 targetname = "apparatus_retry"
 angles = [90, 0, 0]
-
-[[entity]]
-classname = "level_exit"
-origin = [0, 0.01, 50]
-size = [6, 2.5, 2]
-next_map = "levels/occult_lab_b17.toml"
-next_entry = "campaign_arrival"
-requires_completion = true
 
 [[entity]]
 classname = "gameplay_entity"
@@ -190,6 +355,7 @@ classname = "gameplay_entity"
 origin = [-24, 1.0, 51]
 kind = "pickup"
 targetname = "limiter_cassette"
+pickup_surface_y = 0.825
 item_id = "limiter_cassette"
 item_name = "Кассета ограничителя"
 size = [0.4, 0.3, 0.5]
@@ -203,14 +369,13 @@ origin = [23, 5.3, 32]
 kind = "terminal"
 targetname = "grip_service"
 target = "grip_ready"
-chain_target = "limiter_socket"
 action = "activate_target"
 size = [0.12, 0.5, 0.4]
 mount_axis = "-x"
 use_radius = 1.8
 single_use = true
 label = "Восстановить привод грузового захвата"
-success_message = "Привод готов. Гнездо ограничителя доступно у основания рамы."
+success_message = "Захват движется в рабочее положение. Кассета устанавливается у основания рамы."
 
 [[entity]]
 classname = "gameplay_entity"
@@ -227,10 +392,9 @@ classname = "gameplay_entity"
 origin = [-5.6, 1.4, 29]
 kind = "panel"
 targetname = "limiter_socket"
-target = "containment_exit"
+target = "limiter_ready"
+action = "activate_target"
 required_item = "limiter_cassette"
-locked = true
-signal_action = "unlock"
 size = [0.12, 0.5, 0.4]
 mount_axis = "-x"
 use_radius = 1.8
@@ -238,7 +402,7 @@ single_use = true
 label = "Установить кассету ограничителя"
 locked_message = "Грузовой захват отключён. Сервисный пост находится на верхнем уровне."
 required_item_name = "Кассета ограничителя из архивного крыла"
-success_message = "Graybox: аппарат подготовлен; проверочный проход к выходу открыт."
+success_message = "Ограничитель установлен. Восстановите привод и заведите Хранителя под захват."
 
 [[entity]]
 classname = "mission_step"
@@ -264,11 +428,18 @@ detail = "Сервисный пост — на верхнем техническ
 
 [[entity]]
 classname = "mission_step"
+kind = "activate_target"
+target = "limiter_ready"
+retry_entry = "apparatus_retry"
+title = "Установить ограничитель"
+detail = "Установите кассету у основания рамы. Ремонт привода и установка независимы."
+
+[[entity]]
+classname = "mission_step"
 kind = "door_open"
 target = "containment_exit"
-retry_entry = "apparatus_retry"
-title = "Подготовить аппарат"
-detail = "Установите кассету у основания рамы. Центральное столкновение добавляется в checkpoint B."
+title = "Сдержать Хранителя"
+detail = "Заведите угрозу на жёлтую платформу, уклонитесь от удара и нажмите пуск у рамы в окно восстановления."
 
 [[entity]]
 classname = "mission_step"
@@ -280,8 +451,8 @@ detail = "Вернитесь к первоначально видимому вы
 
 [[entity]]
 classname = "mission_settings"
-completion_title = "Контур сдерживания — graybox"
-completion_detail = "Пространственный маршрут проверен. Центральный encounter ещё не реализован."
+completion_title = "Комплекс пройден"
+completion_detail = "Хранитель сдержан аппаратом. Вы прошли через зал и завершили кампанию."
 
 [[entity]]
 classname = "render_light"
@@ -335,16 +506,24 @@ intensity = 1.4
 [[entity]]
 classname = "render_light"
 origin = [0, 7.4, 24]
-color = [0.72, 0.63, 0.43]
-radius = 16
-intensity = 1.4
+color = [0.60, 0.72, 0.70]
+radius = 18
+intensity = 3.2
 
 [[entity]]
 classname = "render_light"
 origin = [0, 7.4, 38]
 color = [0.68, 0.55, 0.38]
 radius = 14
-intensity = 1.4
+intensity = 0.85
+
+[[entity]]
+classname = "render_light"
+origin = [-5.5, 2.2, 29]
+color = [0.28, 0.42, 0.31]
+radius = 6
+intensity = 0.65
+required_target = "grip_ready"
 
 [[entity]]
 classname = "render_light"
@@ -374,3 +553,30 @@ name = "containment_standby"
 size = [56, 8, 60]
 loop = "audio/environment/electrical.wav"
 volume = 0.06
+
+[[entity]]
+classname = "containment_apparatus"
+origin = [0, 0.01, 34]
+trap_origin = [0, 2, 28]
+trap_size = [7, 4, 8]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+origin = [-5.6, 1.4, 26]
+size = [0.12, 0.5, 0.4]
+mount_axis = "-x"
+targetname = "containment_fire"
+target = "containment_engaged"
+action = "activate_target"
+use_radius = 1.8
+single_use = true
+locked = true
+label = "ПУСК СДЕРЖИВАНИЯ"
+locked_message = "Заведите Хранителя под захват и уклонитесь от его удара."
+success_message = "Захват опускается. Хранитель зафиксирован; дождитесь открытия главного выхода."
+
+[[entity]]
+classname = "prop_static"
+origin = [0, 0, 0]
+model = "models/containment_lining.rcmodel"

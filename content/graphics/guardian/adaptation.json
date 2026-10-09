@@ -1,0 +1,11 @@
+{
+  "source": "GAME-READY STUDIOS / bdb9c9cfcf9c4a5eafec9f58b170bf98",
+  "height_m": 3.55,
+  "runtime_arm_pivot": [
+    0.5199999809265137,
+    2.880000114440918,
+    -0.1599999964237213
+  ],
+  "texture_edge": 2048,
+  "rig": "offline pose only"
+}

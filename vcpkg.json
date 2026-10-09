@@ -23,6 +23,7 @@
       ]
     },
     "miniaudio",
+    "rmlui",
     {
       "name": "sdl3",
       "features": ["vulkan"]

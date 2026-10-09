@@ -7,12 +7,15 @@
 
 namespace RelayGame
 {
+    inline constexpr float mobile_shooter_range = 12;
+
     enum class EnemyMode : std::uint8_t {
         Idle,
         Chasing,
         Windup,
         Recovery,
-        Dead
+        Dead,
+        Lunging
     };
 
     struct EnemyState {
@@ -31,6 +34,16 @@ namespace RelayGame
         float detection_range = 10;
         float move_speed = 1.6F;
         float max_health = 60;
+        bool lunge_attack = false;
+        bool ranged_attack = false;
+        std::vector<glm::vec3> route_points;
+        std::array<glm::vec3, 18> route{};
+        std::size_t route_count = 0;
+        std::size_t route_cursor = 0;
+        glm::vec3 route_goal{};
+        float route_replan_seconds = 0;
+        bool seeking_last_seen = false;
+        RelayCore::gameplay::CombatShotTrace shot_trace;
     };
 
     [[nodiscard]] auto build_enemies(const RelayCore::BlockoutLevel& level) -> std::vector<RuntimeEnemy>;
@@ -38,6 +51,7 @@ namespace RelayGame
     struct EnemyThreatResult {
         std::uint32_t windups = 0;
         std::uint32_t strikes = 0;
+        std::uint32_t shots = 0;
     };
 
     auto update_enemies(
@@ -47,7 +61,8 @@ namespace RelayGame
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RuntimeEnemy> enemies,
         float dt,
-        std::vector<RelayCore::physics::WorldCollider>& blockers
+        std::vector<RelayCore::physics::WorldCollider>& blockers,
+        std::span<const RelayCore::physics::WorldCollider> additional_blockers = {}
     ) -> EnemyThreatResult;
 
     struct PlayerAttackResult {

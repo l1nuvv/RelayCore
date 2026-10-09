@@ -4,6 +4,12 @@ This is the project's visual direction reference. It guides requested art work; 
 
 For external textures, materials, HDRIs and game models, follow [asset sources and selection](ASSET_SOURCES.md). It gives agents task-specific search routes, source sites and adaptation checks; this document remains the visual authority.
 
+## Player-facing UI — owner direction 2026-10-09
+
+The game HUD, menus and game screens use RmlUi 6.3. Retain ImGui for editor, diagnostics and developer tools. VIS-43 owns the foundation and HUD migration; VIS-44–46 migrate the remaining screens and complete the separation. [Technical scope, evidence and pending visual acceptance](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui) govern implementation.
+
+Use the project's twentieth-century scientific-industrial, Art Deco and occult visual vocabulary through restrained typography, spacing, colors and purposeful accents. Compose HUD for play: preserve sightlines and focus cues, keep health/interaction feedback immediately readable, and avoid repeated large objective/event cards. Menus need clear primary actions, coherent focus/selection states and agreement with HUD and facility signage. Readability of Cyrillic, long text and DPI takes priority over decorative effects. Preserve actual mechanics; do not add minimaps, ammunition displays or inventory grids without a gameplay need. Restyling ImGui widgets or draw lists does not fulfill this migration, and replacing the library alone does not fulfill its visual acceptance.
+
 ## Visual Reference Board
 
 ![Occult scientific-industrial facility style board](art/occult-facility-style-board.png)

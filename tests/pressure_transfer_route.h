@@ -29,6 +29,7 @@ namespace RelayCore::test
         float mixed_rover_hit_range = 0, closest_mixed_rover_z = 37;
         RelayGame::PlayerWeapon weapon = RelayGame::PlayerWeapon::Precise;
         bool pistol_only = false;
+        bool auto_fire = true;
 
         explicit PressureRoute(const RelayCore::core::GameplayConfig& config) :
             session(RelayGame::LevelSessionBuilder{config}.build(core::asset_path("levels/pressure_transfer.toml"))),
@@ -60,7 +61,8 @@ namespace RelayCore::test
                 player,
                 session.combat.turrets,
                 session.combat.hazards,
-                dt
+                dt,
+                activated
             ));
             static_cast<void>(RelayGame::update_enemies(world(), actor, eye, player, session.enemies, dt, enemy_scratch)
             );
@@ -73,7 +75,7 @@ namespace RelayCore::test
                     ++mixed_exposed_ticks;
                 closest_mixed_rover_z = std::min(closest_mixed_rover_z, session.enemies[1].state.position.z);
             }
-            if (fire)
+            if (fire && auto_fire)
             {
                 glm::vec3 target{};
                 float nearest = 16;
@@ -272,6 +274,16 @@ namespace RelayCore::test
         {
             walk_to({38, .01F, 40});
             static_cast<void>(use("transfer_control"));
+        }
+
+        void start_transfer_under_pressure()
+        {
+            auto_fire = false;
+            walk_to({25.8F, .01F, 29});
+            walk_to({25.8F, .01F, 38});
+            walk_to({30, .01F, 38});
+            walk_to({33, .01F, 40});
+            power_transfer();
         }
 
         void leave()

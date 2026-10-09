@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/gtc/constants.hpp>
-#include <imgui.h>
 
 namespace RelayGame
 {
@@ -180,17 +179,8 @@ namespace RelayGame
         }
     }
 
-    void DemoGame::draw_finale()
+    void DemoGame::draw_finale(RelayCore::EngineServices& services)
     {
-        const auto* viewport = ImGui::GetMainViewport();
-        const ImVec2 pos = viewport->Pos, size = viewport->Size;
-        auto* draw = ImGui::GetForegroundDrawList();
-        draw->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y * 0.12F}, IM_COL32(8, 12, 11, 255));
-        draw->AddRectFilled(
-            {pos.x, pos.y + size.y * 0.83F},
-            {pos.x + size.x, pos.y + size.y},
-            IM_COL32(8, 12, 11, 255)
-        );
         const bool pressure_transfer = runtime_.level_path().ends_with("pressure_transfer.toml");
         const bool bench_relay = runtime_.level_path().ends_with("bench_relay.toml");
         const bool cooling_loop = runtime_.level_path().ends_with("cooling_loop.toml");
@@ -206,8 +196,6 @@ namespace RelayGame
                            : finale_time_ < 2 ? "Питание и охлаждение в норме."
                            : finale_time_ < 4 ? "Изоляция сектора завершена. Допуск подтверждён."
                                               : "Следующий маршрут: исследовательский блок.";
-        const auto extent = ImGui::CalcTextSize(text);
-        draw->AddText({pos.x + (size.x - extent.x) * 0.5F, pos.y + size.y * 0.88F}, IM_COL32(225, 221, 202, 255), text);
-        draw->AddText({pos.x + 24, pos.y + size.y * 0.95F}, IM_COL32(145, 155, 148, 255), "Enter / Esc — пропустить");
+        services.renderer().player_ui().set_text("finale-text", text);
     }
 } // namespace RelayGame

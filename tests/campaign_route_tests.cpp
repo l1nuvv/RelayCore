@@ -9,7 +9,7 @@
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
 
-TEST_CASE("campaign route gates six forward transitions and preserves seven map snapshots")
+TEST_CASE("campaign route gates seven forward transitions and preserves eight map snapshots")
 {
     RelayCore::test::ScopedTempDirectory temp;
     RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
@@ -22,7 +22,8 @@ TEST_CASE("campaign route gates six forward transitions and preserves seven map 
         "bench_relay",
         "pressure_transfer",
         "cooling_loop",
-        "occult_lab_b17"
+        "occult_lab_b17",
+        "containment_loop"
     };
     std::vector<RelayGame::SavedGame> history;
     for (std::size_t i = 0; i < maps.size(); ++i)

@@ -86,21 +86,35 @@ namespace RelayGame
             face(rotor, p(0.07F, -0.04F, 0), p(0.46F, -0.16F, -0.03F), p(0.49F, 0.09F, 0.04F), metal, 1);
             face(rotor, p(0.07F, -0.04F, 0), p(0.49F, 0.09F, 0.04F), p(0.09F, 0.10F, 0.03F), metal, 1);
         }
-        // Cross-brace sits in front of the rotor; ring and blades retain an open silhouette.
         const auto brace_start = frame.vertices.size();
-        rect(frame, 0, 0, 1.05F, 0.025F, metal);
-        rect(frame, 0, 0, 0.025F, 1.05F, metal);
+        for (int wire = -5; wire <= 5; ++wire)
+        {
+            const float offset = wire * .085F;
+            const float chord = 2 * std::sqrt(.515F * .515F - offset * offset);
+            rect(frame, offset, 0, .012F, chord, metal, 1);
+            rect(frame, 0, offset, chord, .012F, metal, 1);
+        }
         for (auto i = brace_start; i < frame.vertices.size(); ++i)
-            frame.vertices[i].position.z = 0.065F;
+            frame.vertices[i].position.z = 0.09F;
+        for (const float x : {-.43F, .43F})
+            for (const float y : {-.43F, .43F})
+            {
+                const auto mount_start = frame.vertices.size();
+                rect(frame, x, y, .12F, .12F, metal, 1);
+                for (auto i = mount_start; i < frame.vertices.size(); ++i)
+                    frame.vertices[i].position.z = .075F;
+                const auto bolt_start = frame.vertices.size();
+                rect(frame, x, y, .025F, .025F, metal * .55F, 1);
+                for (auto i = bolt_start; i < frame.vertices.size(); ++i)
+                    frame.vertices[i].position.z = .08F;
+            }
         fan_frame_mesh_.initialize(frame);
         fan_rotor_mesh_.initialize(rotor);
-        CpuColorMeshData steam, spark;
+        CpuColorMeshData steam;
         const float steam_material = static_cast<float>(RelayCore::surface_material_count() + 1);
         const float emissive_material = steam_material + 1;
         rect(steam, 0, 0, 1, 1, color({0.65F, 0.68F, 0.66F}), steam_material);
-        rect(spark, 0, 0, 0.012F, 0.12F, color({1.0F, 0.59F, 0.17F}), emissive_material);
         steam_mesh_.initialize(steam);
-        spark_mesh_.initialize(spark);
         for (int i = 0; i < 16; ++i)
         {
             CpuColorMeshData lamp;
@@ -196,32 +210,30 @@ namespace RelayGame
                     break;
                 case EnvironmentKind::Steam:
                     if (effect.strength > 0.015F)
-                        for (int i = 0; i < 12; ++i)
+                        for (int i = 0; i < 10; ++i)
                         {
-                            const float t = std::fmod(effect.age * 0.65F + static_cast<float>(i) / 12, 1.0F);
+                            const float t = std::fmod(effect.age * 1.15F + static_cast<float>(i) / 10, 1.0F);
                             const glm::vec3 local{
-                                std::sin(static_cast<float>(i) * 2.4F + t * 3) * t * 0.16F,
-                                t * 1.15F,
-                                0.15F + t * 0.38F
+                                std::sin(static_cast<float>(i) * 2.4F + t * 3) * t * .085F,
+                                t * t * .38F,
+                                .012F + t * .72F
                             };
                             const auto position = glm::vec3{model * glm::vec4{local, 1}};
                             const float size =
-                                (0.10F + t * 0.45F) * std::sin(t * 3.1415927F) * effect.strength * effect.scale;
+                                (.035F + t * .30F) * std::sin(t * 3.1415927F) * effect.strength * effect.scale;
                             puffs.push_back({position, size});
                         }
                     break;
                 case EnvironmentKind::Sparks:
-                    if (effect.strength > 0 && std::fmod(effect.age, 3.2F) < 0.38F)
-                        for (int i = 0; i < 8; ++i)
-                        {
-                            const float t = std::fmod(effect.age, 3.2F);
-                            const float seed = static_cast<float>(i);
-                            auto spark = glm::translate(
-                                model,
-                                {std::sin(seed * 3.7F) * t * 1.3F, t * (1.1F + seed * 0.13F) - 4 * t * t, t * 0.8F}
-                            );
-                            draw(spark_mesh_, glm::rotate(spark, seed * 1.2F, {0, 0, 1}));
-                        }
+                    if (effect.strength > 0)
+                        render_spark_burst(
+                            effect.origin,
+                            glm::vec3{model[2]},
+                            std::fmod(effect.age, 3.2F),
+                            .32F,
+                            true,
+                            effect.scale * 1.6F
+                        );
                     break;
             }
         }

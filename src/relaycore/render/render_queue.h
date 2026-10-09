@@ -33,6 +33,11 @@ namespace RelayCore::render
         const Texture2D* normal_texture = nullptr;
         float normal_scale = 1;
         std::optional<MetallicRoughness> metallic_roughness;
+        const Texture2D* metallic_roughness_map = nullptr;
+        const Texture2D* occlusion_texture = nullptr;
+        float occlusion_strength = 1;
+        const Texture2D* emissive_texture = nullptr;
+        glm::vec3 emissive_factor{0};
     };
 
     struct SpotLight {
@@ -63,7 +68,12 @@ namespace RelayCore::render
             const bool casts_directional_shadow = true,
             const Texture2D* normal_texture = nullptr,
             const float normal_scale = 1,
-            const std::optional<MetallicRoughness> metallic_roughness = std::nullopt
+            const std::optional<MetallicRoughness> metallic_roughness = std::nullopt,
+            const Texture2D* metallic_roughness_map = nullptr,
+            const Texture2D* occlusion_texture = nullptr,
+            const float occlusion_strength = 1,
+            const Texture2D* emissive_texture = nullptr,
+            const glm::vec3 emissive_factor = glm::vec3{0}
         )
         {
             items_.push_back(RenderItem{
@@ -74,7 +84,12 @@ namespace RelayCore::render
                 .casts_directional_shadow = casts_directional_shadow,
                 .normal_texture = normal_texture,
                 .normal_scale = normal_scale,
-                .metallic_roughness = metallic_roughness
+                .metallic_roughness = metallic_roughness,
+                .metallic_roughness_map = metallic_roughness_map,
+                .occlusion_texture = occlusion_texture,
+                .occlusion_strength = occlusion_strength,
+                .emissive_texture = emissive_texture,
+                .emissive_factor = emissive_factor
             });
         }
 

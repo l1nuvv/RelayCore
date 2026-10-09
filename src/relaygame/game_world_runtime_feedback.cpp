@@ -101,14 +101,7 @@ namespace RelayGame
 
         RelayCore::gameplay::RuntimeUsable& usable =
             usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
-        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
-            usable,
-            doors_,
-            usables_,
-            inventory_item_ids_,
-            activated_target_ids_,
-            signaled_target_ids_
-        );
+        const RelayCore::gameplay::InteractionEvent event = apply_runtime_usable_interaction(usable);
         remember_interaction_event(event);
         const RelayCore::gameplay::UseInteractionOutcome outcome = event.kind;
 
@@ -196,16 +189,8 @@ namespace RelayGame
             return;
         }
 
-        const auto attack = fire_player_weapon(
-            world_query(),
-            player_controller_.eye_position_world(),
-            player_controller_.view_forward(),
-            combat_state_.player,
-            combat_state_.turrets,
-            enemies_,
-            selected_weapon_
-        );
-
+        const auto attack =
+            apply_player_attack(player_controller_.eye_position_world(), player_controller_.view_forward());
         const auto& fire_result = attack.combat;
         if (!fire_result.fired)
         {
@@ -493,6 +478,8 @@ namespace RelayGame
                 position = retry.position;
                 view_angles = retry.view_angles;
             }
+        if (containment_)
+            containment_->reset_threat_after_death();
         player_controller_.initialize(position, view_angles);
         player_feedback_.reset();
         RelayCore::gameplay::respawn_player_combat_state(combat_state_.player);

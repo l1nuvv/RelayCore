@@ -52,11 +52,6 @@ if (MSVC)
         $<$<CONFIG:RelWithDebInfo>:/Zo>
     )
 
-    add_link_options(
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/OPT:REF>
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/OPT:ICF>
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/INCREMENTAL:NO>
-    )
 endif()
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -66,6 +61,15 @@ include(RelayCoreOptions)
 include(RelayCoreDependencies)
 
 relaycore_initialize_project()
+if(MSVC)
+    # Non-IPO iteration builds keep incremental linking; final/profile builds keep COMDAT optimization.
+    add_link_options(
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/OPT:REF>
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/OPT:ICF>
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/INCREMENTAL:NO>
+        $<$<AND:$<CONFIG:RelWithDebInfo>,$<NOT:$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/INCREMENTAL>
+    )
+endif()
 relaycore_find_dependencies()
 relaycore_create_dependency_targets()
 
@@ -147,6 +151,23 @@ foreach(shadow IN ITEMS shadow point_shadow)
             COMMENT "Compiling shadow.slang (${shadow}, ${entry}) to SPIR-V" VERBATIM)
         list(APPEND RELAYCORE_MESH_SPIRV "${output}")
     endforeach()
+endforeach()
+foreach(stage IN ITEMS vert frag)
+    if(stage STREQUAL "vert")
+        set(entry vertex_main)
+        set(shader_stage vertex)
+    else()
+        set(entry fragment_main)
+        set(shader_stage fragment)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/player_ui.${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/player_ui.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/player_ui.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
 add_custom_target(relaycore_vulkan_shaders ALL
     DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})

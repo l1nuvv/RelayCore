@@ -2,6 +2,7 @@
 
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaygame/containment_encounter.h"
 #include "relaygame/mission_runtime.h"
 #include "relaygame/player_weapon.h"
 
@@ -161,6 +162,7 @@ namespace RelayGame
         PlayerCombatSnapshot player_combat{};
         MissionRuntimeSnapshot mission{};
         PlayerWeapon selected_weapon = PlayerWeapon::Precise;
+        std::optional<ContainmentState> containment;
     };
 
     struct SnapshotRestoreResult {

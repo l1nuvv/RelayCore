@@ -13,10 +13,12 @@ struct ImDrawData;
 namespace RelayCore::render
 {
     class VulkanDevice;
+    class PlayerUi;
     class PerspectiveCamera;
     struct RenderAuthoringConfig;
     struct RendererConfig;
     struct IrradianceProbeVolume;
+    struct ReflectionProbe;
 
     class VulkanMeshRenderer {
     public:
@@ -54,6 +56,7 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel = {}
         );
         void append_ui(ImDrawData* ui);
+        void append_player_ui(PlayerUi& ui);
         [[nodiscard]] auto capture_prepared_image() -> CpuRgbaTextureData;
         [[nodiscard]] auto shadow_preview(size_t cascade) -> uintptr_t;
         [[nodiscard]] auto capture_shadow_depth(size_t cascade) -> std::vector<float>;
@@ -62,6 +65,7 @@ namespace RelayCore::render
         void reload_shaders(const std::filesystem::path& shader_directory);
         // Prepared world lights already carry the selected color-pipeline encoding; preserve their order/budget.
         void set_local_lights(std::span<const LocalLight> lights);
+        void set_reflection_probe(std::shared_ptr<const ReflectionProbe> probe);
         void set_irradiance_probes(std::shared_ptr<const IrradianceProbeVolume> probes);
         void set_spot_light(const SpotLight& light) noexcept;
         void set_scene_time(float seconds) noexcept;

@@ -88,6 +88,7 @@ namespace RelayCore
         state_->swapchain.reset();
         state_->frame_backend.reset();
         state_->backend.reset();
+        player_ui_.reset();
         imgui_overlay_.shutdown();
     }
 
@@ -102,6 +103,7 @@ namespace RelayCore
         );
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window, *state_->device);
+        player_ui_ = std::make_unique<render::PlayerUi>(window.handle(), *state_->device);
         initialized_ = true;
         log::info("Renderer initialized: Vulkan 1.3, {}", state_->device->capabilities().device_name);
     }
@@ -179,6 +181,8 @@ namespace RelayCore
     void Renderer::process_event(const SDL_Event& event)
     {
         imgui_overlay_.process_event(event);
+        if (player_ui_)
+            player_ui_->process_event(event);
     }
 
     void Renderer::on_resize(int width, int height) noexcept
@@ -193,6 +197,7 @@ namespace RelayCore
     void Renderer::begin_frame()
     {
         irradiance_probes_.reset();
+        reflection_probe_.reset();
         state_->frame_backend.reset();
         state_->items.clear();
         state_->shadow_casters.clear();
@@ -221,6 +226,7 @@ namespace RelayCore
         state_->backend->set_config(config_);
         state_->backend->set_local_lights(local_lights_);
         state_->backend->set_irradiance_probes(irradiance_probes_);
+        state_->backend->set_reflection_probe(reflection_probe_);
         state_->backend->set_spot_light(spot_light_);
         state_->backend->set_scene_time(scene_time_seconds_);
         state_->backend->prepare_frame(
@@ -270,9 +276,9 @@ namespace RelayCore
                                    : 0.0F;
 
         world_diagnostics_.shadow_preview_texture_id =
-            config_.shadow_enabled && ui_available() ? state_->backend->shadow_preview(0) : 0;
+            config_.shadow_enabled && developer_ui_available() ? state_->backend->shadow_preview(0) : 0;
         world_diagnostics_.shadow_far_preview_texture_id =
-            config_.shadow_enabled && ui_available() ? state_->backend->shadow_preview(1) : 0;
+            config_.shadow_enabled && developer_ui_available() ? state_->backend->shadow_preview(1) : 0;
         state_->frame_backend = state_->backend;
         state_->items.clear();
         state_->shadow_casters.clear();
@@ -308,6 +314,11 @@ namespace RelayCore
         scene_time_seconds_ = seconds;
     }
 
+    void Renderer::set_reflection_probe(std::shared_ptr<const render::ReflectionProbe> probe)
+    {
+        reflection_probe_ = std::move(probe);
+    }
+
     void Renderer::set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes)
     {
         irradiance_probes_ = std::move(probes);
@@ -338,22 +349,21 @@ namespace RelayCore
     {
         RELAYCORE_PROFILE_FUNCTION();
         finish_scene();
-        if (!imgui_overlay_.enabled() || !imgui_overlay_.is_initialized())
-        {
-            return false;
-        }
+        developer_frame_active_ = false;
+        if (!developer_ui_available())
+            return ui_available();
 
         imgui_overlay_.update_diagnostics(frame);
         const bool show_shadow_debug_banner = config_.shadow_debug_cascades;
 
-        if (!exclusive && !imgui_overlay_.should_render()
-            && !game_hud_.should_render(player_diagnostics_, interaction_diagnostics_) && !show_shadow_debug_banner)
+        if (!exclusive && !imgui_overlay_.should_render() && !show_shadow_debug_banner)
         {
-            return false;
+            return ui_available();
         }
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.begin_frame");
             imgui_overlay_.begin_frame();
+            developer_frame_active_ = true;
         }
         if (exclusive)
         {
@@ -376,11 +386,6 @@ namespace RelayCore
                 iteration_diagnostics_
             );
         }
-        if (game_hud_.should_render(player_diagnostics_, interaction_diagnostics_))
-        {
-            RELAYCORE_PROFILE_ZONE_N("imgui.draw_game_hud");
-            game_hud_.draw(player_diagnostics_, interaction_diagnostics_);
-        }
         if (show_shadow_debug_banner)
         {
             RELAYCORE_PROFILE_ZONE_N("imgui.draw_shadow_debug_banner");
@@ -392,7 +397,10 @@ namespace RelayCore
     void Renderer::end_ui()
     {
         finish_scene();
-        state_->frame_backend->append_ui(imgui_overlay_.finish_frame());
+        if (player_ui_ && player_ui_->visible())
+            state_->frame_backend->append_player_ui(*player_ui_);
+        if (developer_frame_active_)
+            state_->frame_backend->append_ui(imgui_overlay_.finish_frame());
     }
 
     void Renderer::set_world_diagnostics(const render::WorldDiagnostics& diagnostics) noexcept
@@ -492,17 +500,17 @@ namespace RelayCore
 
     auto Renderer::wants_keyboard_capture() const noexcept -> bool
     {
-        return imgui_overlay_.wants_keyboard_capture();
+        return (player_ui_ && player_ui_->captures_input()) || imgui_overlay_.wants_keyboard_capture();
     }
 
     auto Renderer::wants_mouse_capture() const noexcept -> bool
     {
-        return imgui_overlay_.wants_mouse_capture();
+        return (player_ui_ && player_ui_->captures_input()) || imgui_overlay_.wants_mouse_capture();
     }
 
     auto Renderer::wants_text_input() const noexcept -> bool
     {
-        return imgui_overlay_.wants_text_input();
+        return (player_ui_ && player_ui_->wants_text_input()) || imgui_overlay_.wants_text_input();
     }
 
     void Renderer::set_diagnostics_visible(const bool visible) noexcept

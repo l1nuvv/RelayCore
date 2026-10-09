@@ -32,6 +32,7 @@ namespace RelayCore::gameplay
         glm::vec3 start{};
         glm::vec3 end{};
         float remaining_seconds = 0.0F;
+        std::optional<physics::WorldQueryHit> impact{};
     };
 
     struct RuntimeTurret {
@@ -39,6 +40,7 @@ namespace RelayCore::gameplay
         std::string name{};
         std::string label{};
         std::string destroy_target{};
+        std::string stop_target{};
         physics::Aabb bounds{};
         glm::vec3 origin{};
         float yaw = 0.0F;
@@ -136,6 +138,7 @@ namespace RelayCore::gameplay
         PlayerCombatState& player,
         std::span<RuntimeTurret> turrets,
         std::span<const RuntimeHazardVolume> hazards,
-        float dt
+        float dt,
+        std::span<const std::string> activated_targets = {}
     ) -> CombatThreatResult;
 } // namespace RelayCore::gameplay

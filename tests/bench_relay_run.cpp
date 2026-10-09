@@ -111,6 +111,63 @@ namespace
         return {entry, distance, cover, powered};
     }
 
+    auto transfer_overhaul_saves(const RelayCore::core::GameplayConfig& config) -> std::array<RelayGame::SavedGame, 4>
+    {
+        RelayCore::test::PressureRoute attack{config};
+        attack.reach_mixed();
+        attack.position = {28, .01F, 34.8F};
+        attack.auto_fire = false;
+        for (int tick = 0; tick < 240 && attack.session.enemies[1].state.mode != RelayGame::EnemyMode::Windup; ++tick)
+            attack.tick(false);
+        if (attack.session.enemies[1].state.mode != RelayGame::EnemyMode::Windup)
+            throw std::runtime_error("Pressure transfer windup capture was not reached");
+        for (int tick = 0; tick < 15; ++tick)
+            attack.tick(false);
+        auto windup = attack.save();
+        attack.position.x = 29.8F;
+        for (int tick = 0; tick < 90 && attack.session.enemies[1].state.mode != RelayGame::EnemyMode::Lunging; ++tick)
+            attack.tick(false);
+        if (attack.session.enemies[1].state.mode != RelayGame::EnemyMode::Lunging)
+            throw std::runtime_error("Pressure transfer lunge capture was not reached");
+        auto lunge = attack.save();
+        for (int tick = 0; tick < 60 && attack.session.enemies[1].state.mode != RelayGame::EnemyMode::Recovery; ++tick)
+            attack.tick(false);
+        auto recovery = attack.save();
+        for (auto* save : {&windup, &lunge, &recovery})
+        {
+            const auto delta = glm::normalize(
+                save->enemies[1].position + glm::vec3{0, .45F, 0} - save->player.position - glm::vec3{0, 1.65F, 0}
+            );
+            save->player.view_angles = {std::atan2(delta.z, delta.x), std::asin(delta.y)};
+            save->world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+        }
+        RelayCore::test::PressureRoute bypass{config};
+        bypass.reach_mixed();
+        bypass.start_transfer_under_pressure();
+        auto powered = bypass.save();
+        powered.player.position = {34, .01F, 40};
+        powered.player.view_angles = {.5F, -.1F};
+        bypass.auto_fire = true;
+        bypass.leave();
+        if (!bypass.mission.completed() || bypass.session.combat.turrets[1].enabled
+            || bypass.session.combat.turrets[1].destroyed || bypass.player.kills >= 4)
+            throw std::runtime_error("Pressure transfer objective-first route did not complete");
+        std::cout << "objective_first_damage=" << bypass.player.damage_taken
+                  << "; objective_first_ticks=" << bypass.ticks << "; objective_first_kills=" << bypass.player.kills
+                  << '\n';
+        RelayCore::test::PressureRoute combat_first{config};
+        combat_first.reach_mixed();
+        combat_first.fight_mixed(RelayCore::test::PressureTactic::Cover);
+        combat_first.power_transfer();
+        combat_first.leave();
+        if (!combat_first.mission.completed())
+            throw std::runtime_error("Pressure transfer combat-first comparison did not complete");
+        std::cout << "combat_first_damage=" << combat_first.player.damage_taken
+                  << "; combat_first_ticks=" << combat_first.ticks
+                  << "; combat_first_kills=" << combat_first.player.kills << '\n';
+        return {windup, lunge, recovery, powered};
+    }
+
     auto transfer_saves(const RelayCore::core::GameplayConfig& config, bool atmosphere = false)
         -> std::array<RelayGame::SavedGame, 4>
     {
@@ -162,6 +219,9 @@ int main(int argc, char** argv)
     });
     const bool transfer = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--pressure-transfer";
+    });
+    const bool overhaul = std::ranges::any_of(arguments, [](std::string_view arg) {
+        return arg == "--overhaul";
     });
     const bool cooling = std::ranges::any_of(arguments, [](std::string_view arg) {
         return arg == "--cooling-loop";
@@ -224,9 +284,10 @@ int main(int argc, char** argv)
         RelayCore::AudioSystem audio{config.audio};
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
-        auto saves = cooling    ? cooling_saves(config.gameplay)
-                     : transfer ? transfer_saves(config.gameplay, atmosphere || exit_corridor || junctions)
-                                : bench_saves(config.gameplay);
+        auto saves = cooling                ? cooling_saves(config.gameplay)
+                     : transfer && overhaul ? transfer_overhaul_saves(config.gameplay)
+                     : transfer             ? transfer_saves(config.gameplay, atmosphere || exit_corridor || junctions)
+                                            : bench_saves(config.gameplay);
         if (!transfer && (visual_slice || mounting_views || (cooling && atmosphere)))
         {
             auto positions =
@@ -243,12 +304,14 @@ int main(int argc, char** argv)
                         ? std::
                               array<glm::vec3, 4>{{{-2, .01F, 2}, {3, .01F, 19}, {3, .01F, 16.5F}, {-4.5F, .01F, 17.5F}}
                               }
-                        : std::array<glm::vec3, 4>{{{0, .01F, -2}, {2, .01F, 10}, {0, .01F, 2.5F}, {0, .01F, 11.8F}}};
-                angles = cooling
-                             ? std::array<glm::vec2, 4>{{{2.6F, -.18F}, {-2.15F, .02F}, {2.38F, .50F}, {2.7F, .1F}}}
-                             : std::array<glm::vec2, 4>{
-                                   {{1.5707963268F, .15F}, {1.2F, .02F}, {-1.5707963268F, .02F}, {-1.5707963268F, .04F}}
-                               };
+                        : std::array<glm::vec3, 4>{{{0, .01F, -2}, {-1, .01F, 11.3F}, {0, .01F, 2.5F}, {0, .01F, 11.8F}}
+                          };
+                angles =
+                    cooling
+                        ? std::array<glm::vec2, 4>{{{2.6F, -.18F}, {-2.15F, .02F}, {2.38F, .50F}, {2.7F, .1F}}}
+                        : std::array<glm::vec2, 4>{
+                              {{1.5707963268F, .15F}, {-2.83F, -.04F}, {-1.5707963268F, .02F}, {-1.5707963268F, .04F}}
+                          };
             }
             if (cooling && atmosphere)
             {
@@ -374,7 +437,8 @@ int main(int argc, char** argv)
                 saves[i].player.view_angles = angles[i];
             }
         }
-        const std::array names = cooling && atmosphere       ? std::array{"header", "start", "auxiliary", "exit"}
+        const std::array names = transfer && overhaul        ? std::array{"windup", "lunge", "recovery", "bypassed"}
+                                 : cooling && atmosphere     ? std::array{"header", "start", "auxiliary", "exit"}
                                  : !transfer && visual_slice ? std::array{"overview", "machinery", "control", "reverse"}
                                  : cooling                   ? std::array{"entry", "service", "standby", "powered"}
                                  : exit_corridor             ? std::array{"approach", "forward", "reverse", "reader"}
@@ -392,6 +456,7 @@ int main(int argc, char** argv)
             : !transfer && mounting_views ? (cooling ? "cooling-mounting-captures" : "bench-mounting-captures")
             : !transfer && visual_slice   ? (cooling ? "cooling-visual-captures" : "bench-visual-captures")
             : cooling                     ? "cooling-loop-captures"
+            : transfer && overhaul        ? "pressure-overhaul-captures"
             : transfer                    ? (exit_corridor    ? "pressure-exit-captures"
                                              : junctions      ? "pressure-junction-captures"
                                              : gallery        ? "pressure-gallery-captures"

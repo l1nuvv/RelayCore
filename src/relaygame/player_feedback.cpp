@@ -10,34 +10,36 @@
 
 namespace RelayGame
 {
+    auto weapon_impact_is_metal(const RelayCore::SurfaceMaterial surface) -> bool
+    {
+        using M = RelayCore::SurfaceMaterial;
+        switch (surface)
+        {
+            case M::Metal:
+            case M::Corridor:
+            case M::Platform:
+            case M::PlatformTop:
+            case M::PlatformTop2:
+            case M::Hazard:
+            case M::Beam:
+            case M::Trim:
+            case M::WallPanel:
+            case M::Post:
+                return true;
+            default:
+                return false;
+        }
+    }
     auto weapon_impact_feedback(const std::span<const RelayCore::gameplay::CombatFireResult> rays)
         -> WeaponImpactFeedback
     {
         WeaponImpactFeedback result;
-        using M = RelayCore::SurfaceMaterial;
         for (const auto& ray : rays)
         {
             if (!ray.fired || !ray.world_impact)
                 continue;
             const auto& hit = *ray.world_impact;
-            auto* selected = &result.hard;
-            switch (hit.surface)
-            {
-                case M::Metal:
-                case M::Corridor:
-                case M::Platform:
-                case M::PlatformTop:
-                case M::PlatformTop2:
-                case M::Hazard:
-                case M::Beam:
-                case M::Trim:
-                case M::WallPanel:
-                case M::Post:
-                    selected = &result.metal;
-                    break;
-                default:
-                    break;
-            }
+            auto* selected = weapon_impact_is_metal(hit.surface) ? &result.metal : &result.hard;
             // One nearest cue per surface family keeps a shotgun discharge bounded.
             if (!*selected || hit.distance < (*selected)->distance)
                 *selected = hit;
@@ -130,6 +132,7 @@ namespace RelayGame
         stride_ += (target - stride_) * (1.0F - std::exp(-dt * 12.0F));
         if (walking)
         {
+            travel_direction_ = glm::vec3{displacement.x, 0, displacement.z} / distance;
             const float step_length = 0.85F + std::min(speed, 10.0F) * 0.055F;
             phase_ = std::fmod(phase_ + distance * 3.14159265F / step_length, 6.2831853F);
             const float sprint_amount = std::clamp((speed - 3.5F) / 7.0F, 0.0F, 1.0F);

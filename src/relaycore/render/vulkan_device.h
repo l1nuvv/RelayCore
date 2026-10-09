@@ -22,6 +22,7 @@ namespace RelayCore::render
         uint32_t graphics_queue_family = 0;
         uint32_t present_queue_family = 0;
         bool validation_enabled = false;
+        float max_texture_anisotropy = 1.0F;
     };
 
     class VulkanDevice {

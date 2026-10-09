@@ -8,6 +8,7 @@
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
 #include "relaycore/render/static_model.h"
+#include "relaygame/containment_encounter.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/scientist_pose.h"
 #include "relaygame/static_props.h"
@@ -32,6 +33,7 @@ namespace RelayCore::render
 {
     class PerspectiveCamera;
     struct IrradianceProbeVolume;
+    struct ReflectionProbe;
 } // namespace RelayCore::render
 
 namespace RelayGame
@@ -50,10 +52,13 @@ namespace RelayGame
 
     struct PreparedWorldSceneData {
         std::shared_ptr<const RelayCore::render::IrradianceProbeVolume> irradiance;
+        std::shared_ptr<const RelayCore::render::ReflectionProbe> reflection;
         std::vector<StaticProp> props;
         std::vector<PanelPresentation> panel_presentations;
         std::vector<std::optional<float>> pickup_surfaces;
         bool has_enemies = false;
+        bool has_containment = false;
+        bool has_shooters = false;
         RelayCore::render::BlockoutRenderData blockout{};
         std::vector<WorldLocalLight> local_lights{};
         std::vector<EnvironmentEffect> environment{};
@@ -95,7 +100,8 @@ namespace RelayGame
             std::span<const EnvironmentEffect> environment = {},
             std::span<const RuntimeEnemy> enemies = {},
             const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
-            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {}
+            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {},
+            const ContainmentEncounter* containment = nullptr
         );
 
         void prepare_render_queue(
@@ -112,7 +118,8 @@ namespace RelayGame
             std::span<const EnvironmentEffect> environment = {},
             std::span<const RuntimeEnemy> enemies = {},
             const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
-            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {}
+            std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {},
+            const ContainmentEncounter* containment = nullptr
         );
 
         [[nodiscard]] auto render_items() const noexcept -> std::span<const RelayCore::render::RenderItem>
@@ -161,6 +168,13 @@ namespace RelayGame
         );
 
         void render_scientist(const ScientistPose& pose);
+        void render_containment(
+            const ContainmentEncounter& encounter,
+            bool ready,
+            bool limiter_installed,
+            bool powered,
+            glm::vec3 player_position
+        );
 
         void render_doors(
             const RelayCore::render::PerspectiveCamera& camera,
@@ -185,6 +199,20 @@ namespace RelayGame
             bool hostile,
             bool pellet = false
         );
+        void render_effect_streak(
+            glm::vec3 start,
+            glm::vec3 end,
+            float width,
+            const RelayCore::render::StaticColorMesh& mesh
+        );
+        void render_spark_burst(
+            glm::vec3 origin,
+            glm::vec3 normal,
+            float age,
+            float duration,
+            bool metal = true,
+            float scale = 1
+        );
 
         void render_inspector_pick(
             const RelayCore::render::PerspectiveCamera& camera,
@@ -196,7 +224,12 @@ namespace RelayGame
 
         void record_render_draw(RelayCore::render::RenderPass pass, std::uint32_t triangles) noexcept;
 
-        void queue_interactive_model(const RelayCore::render::ModelAsset& asset, const glm::mat4& model, bool visible);
+        void queue_interactive_model(
+            const RelayCore::render::ModelAsset& asset,
+            const glm::mat4& model,
+            bool visible,
+            bool emissive_enabled = true
+        );
 
         struct RenderChunk {
             RelayCore::render::StaticColorMesh mesh{};
@@ -234,6 +267,8 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh turret_shot_mesh_{};
         RelayCore::render::StaticColorMesh turret_warning_mesh_{};
         std::array<RelayCore::render::StaticColorMesh, 2> rover_signal_meshes_{};
+        std::array<std::shared_ptr<const RelayCore::render::ModelAsset>, 2> shooter_models_;
+        std::array<std::shared_ptr<const RelayCore::render::ModelAsset>, 5> containment_models_;
         std::vector<RenderChunk> render_chunks_{};
         std::shared_ptr<const RelayCore::render::StaticModel> enemy_model_;
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_enemy_model_;
@@ -248,8 +283,10 @@ namespace RelayGame
         std::shared_ptr<const RelayCore::render::StaticModel> destroyed_turret_model_;
         std::vector<WorldLocalLight> local_lights_{};
         std::shared_ptr<const RelayCore::render::IrradianceProbeVolume> irradiance_;
+        std::shared_ptr<const RelayCore::render::ReflectionProbe> reflection_;
         std::vector<EnvironmentEffect> environment_{};
-        RelayCore::render::StaticColorMesh fan_frame_mesh_, fan_rotor_mesh_, steam_mesh_, spark_mesh_;
+        RelayCore::render::StaticColorMesh fan_frame_mesh_, fan_rotor_mesh_, steam_mesh_;
+        std::array<RelayCore::render::StaticColorMesh, 4> containment_meshes_;
         std::array<RelayCore::render::StaticColorMesh, 5> decal_meshes_;
         std::array<RelayCore::render::StaticColorMesh, 16> lamp_meshes_;
         struct EnvironmentPuff {

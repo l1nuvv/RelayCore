@@ -15,6 +15,12 @@ namespace RelayGame
         }
         runtime_.set_paused(screen != Screen::Playing || !window_focused_, services);
         screen_ = screen;
+        services.renderer().player_ui().set_screen(
+            screen == Screen::Playing  ? RelayCore::render::PlayerUiScreen::Hud
+            : screen == Screen::Editor ? RelayCore::render::PlayerUiScreen::Hidden
+            : screen == Screen::Finale ? RelayCore::render::PlayerUiScreen::Finale
+                                       : RelayCore::render::PlayerUiScreen::Menu
+        );
         if (screen != Screen::Editor)
             editor_.suspend_camera();
         if (screen == Screen::Finale && window_focused_)

@@ -23,8 +23,14 @@ struct MaterialData
 [[vk::binding(0, 0)]] ConstantBuffer<MaterialData> materials;
 [[vk::binding(1, 0)]] Sampler2D diffuse;
 [[vk::binding(9, 0)]] Sampler2D normalMap;
-struct SurfaceData { float4 parameters; };
+[[vk::binding(12, 0)]] Sampler2D metallicRoughnessMap;
+[[vk::binding(13, 0)]] Sampler2D occlusionMap;
+[[vk::binding(16, 0)]] Sampler2D emissiveMap;
+struct SurfaceData { float4 parameters; float4 maps; float4 emission; };
 [[vk::binding(10, 0)]] ConstantBuffer<SurfaceData> surfaceData;
+[[vk::binding(14, 0)]] SamplerCube reflectionMap;
+struct ReflectionData { float4 mins, maxs, position; };
+[[vk::binding(15, 0)]] ConstantBuffer<ReflectionData> reflectionData;
 struct IrradianceData
 {
     float4 mins, maxs;
@@ -34,7 +40,7 @@ struct IrradianceData
 [[vk::binding(11, 0)]] ConstantBuffer<IrradianceData> irradiance;
 
 // Matches the positive real basis used by the CPU baker; coefficients already contain cosine / pi.
-float3 probe_indirect(float3 position, float3 normal)
+float3 probe_indirect(float3 position, float3 normal, float reflectionRoughness = -1)
 {
     if (irradiance.dimensions.w == 0 || (draw.flags & 36) != 0
         || any(position < irradiance.mins.xyz) || any(position > irradiance.maxs.xyz)) return 0;
@@ -46,6 +52,14 @@ float3 probe_indirect(float3 position, float3 normal)
         1.092548431*normal.x*normal.y, 1.092548431*normal.y*normal.z,
         .315391565*(3*normal.z*normal.z-1), 1.092548431*normal.x*normal.z,
         .546274215*(normal.x*normal.x-normal.y*normal.y) };
+    // Recover low-frequency incident radiance from cosine/pi-convolved SH for reflections.
+    // A roughness window suppresses high bands; these probes cannot represent sharp reflections.
+    if (reflectionRoughness >= 0)
+        for (uint sh=1; sh<9; ++sh)
+        {
+            float band = sh < 4 ? 2.0 : 6.0;
+            basis[sh] *= exp(-band*reflectionRoughness*reflectionRoughness) / (sh < 4 ? 2.0/3.0 : .25);
+        }
     float3 result = 0;
     for (uint corner=0; corner<8; ++corner)
     {
@@ -272,7 +286,7 @@ float soft_panel_volume(float2 uv, float scale)
 }
 #include "scene_materials.slang"
 
-float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance)
+float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance, float ao)
 {
     float skyAmbient = saturate(normal.y * 0.5 + 0.5);
     float underside = saturate(-normal.y);
@@ -294,6 +308,7 @@ float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 rec
     if (surfaceData.parameters.w == 0)
         indirect = select(indirect <= 0.0031308, indirect * 12.92, 1.055 * pow(indirect, 1.0/2.4) - .055);
     result += color * indirect;
+    result *= ao;
     float directional = saturate(dot(normal, normalize(-materials.direction.xyz)));
     float visibility=directional_visibility(geometricNormal,position,fogDistance);
     result*=1-(1-visibility)*directional*saturate(normal.y)*shadows.strengths.z;
@@ -319,33 +334,56 @@ float3 mr_linear(float3 color)
 }
 
 // glTF Appendix B: GGX, separable Smith visibility, Schlick, Lambert diffuse.
-float3 metallic_roughness_brdf(float3 base, float3 normal, float3 view, float3 light)
+float3 metallic_roughness_brdf(float3 base, float3 normal, float3 view, float3 light, float roughness, float metallic)
 {
     float nl = saturate(dot(normal, light)), nv = saturate(dot(normal, view));
     if (nl <= 0 || nv <= 0) return 0;
     float3 halfVector = safe_normalize_vec3(view + light, normal);
     float nh = saturate(dot(normal, halfVector)), vh = saturate(dot(view, halfVector));
     // The valid roughness=0 singularity uses a documented finite lobe (roughness >= 0.05).
-    float alpha = max(surfaceData.parameters.y * surfaceData.parameters.y, 0.0025);
+    float alpha = max(roughness * roughness, 0.0025);
     float a2 = alpha * alpha;
     float denominator = (1 - nh * nh) + a2 * nh * nh;
     float distribution = a2 / (3.14159265 * denominator * denominator);
     float visibility = 1 / ((nl + sqrt(a2 + (1-a2)*nl*nl)) * (nv + sqrt(a2 + (1-a2)*nv*nv)));
-    float metallic = surfaceData.parameters.z;
     float3 f0 = lerp(float3(0.04), base, metallic);
     float3 fresnel = f0 + (1-f0) * pow(1-vh, 5);
     return ((1-fresnel) * (1-metallic) * base / 3.14159265 + fresnel * distribution * visibility) * nl;
 }
-float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float3 position, float fogDistance)
+float3 environment_brdf(float3 f0, float roughness, float nv)
+{
+    // Karis/Lazarov analytic split-sum fit: unrealengine.com/blog/physically-based-shading-on-mobile
+    float4 r = roughness*float4(-1,-.0275,-.572,.022) + float4(1,.0425,1.04,-.04);
+    float a = min(r.x*r.x, exp2(-9.28*nv))*r.x+r.y;
+    float2 integrated = float2(-1.04,1.04)*a+r.zw;
+    return max(f0*integrated.x+integrated.y, 0);
+}
+float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float3 position, float fogDistance, float roughness, float metallic, float ao)
 {
     float3 base = mr_linear(color);
     float3 view = safe_normalize_vec3(float3(draw.cameraX,draw.cameraY,draw.cameraZ)-position,normal);
-    // Retain the accepted ambient baseline; probes add only baked diffuse, without environment specular.
     float ambient = lerp(materials.ambient.x,materials.ambient.y,saturate(normal.y*.5+.5));
-    float3 result = base * (1-surfaceData.parameters.z) * 0.96 * ambient;
-    result += base * (1-surfaceData.parameters.z) * .96 * probe_indirect(position,normal);
+    float3 result = base * (1-metallic) * 0.96 * ambient;
+    result += base * (1-metallic) * .96 * probe_indirect(position,normal);
+    float3 reflected = reflect(-view, normal);
+    float reflectedAmbient = lerp(materials.ambient.x,materials.ambient.y,saturate(reflected.y*.5+.5));
+    float3 environment = float3(reflectedAmbient) + probe_indirect(position,reflected,roughness);
+    if (reflectionData.mins.w != 0 && (draw.flags & 36) == 0
+        && all(position >= reflectionData.mins.xyz) && all(position <= reflectionData.maxs.xyz))
+    {
+        // Box projection anchors room reflections to the receiver's position, rather than the camera.
+        float3 safeDirection = select(abs(reflected) < .00001, select(reflected < 0, -.00001, .00001), reflected);
+        float3 plane = select(safeDirection > 0, reflectionData.maxs.xyz, reflectionData.mins.xyz);
+        float3 distances = (plane-position)/safeDirection;
+        float distance = min(distances.x, min(distances.y,distances.z));
+        float3 lookup = position + reflected*distance - reflectionData.position.xyz;
+        environment = reflectionMap.SampleLevel(lookup, roughness*reflectionData.maxs.w).rgb;
+    }
+    float3 f0 = lerp(float3(.04),base,metallic);
+    result += environment * environment_brdf(f0,roughness,saturate(dot(normal,view)));
+    result *= ao;
     float3 direction = normalize(-materials.direction.xyz);
-    result += metallic_roughness_brdf(base,normal,view,direction) * mr_linear(materials.directionalColor.rgb)
+    result += metallic_roughness_brdf(base,normal,view,direction,roughness,metallic) * mr_linear(materials.directionalColor.rgb)
               * materials.direction.w * directional_visibility(geometricNormal,position,fogDistance);
     for (int i=0;i<lights.count.x;++i)
     {
@@ -355,12 +393,12 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
         float attenuation = saturate(1-distanceToLight/max(lights.positionRadius[i].w,0.001));
         attenuation = attenuation*attenuation*(3-2*attenuation);
         float visibility = local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,receiverPlaneNormal,lightDirection,attenuation);
-        result += metallic_roughness_brdf(base,normal,view,lightDirection) * mr_linear(lights.color[i].rgb)
+        result += metallic_roughness_brdf(base,normal,view,lightDirection,roughness,metallic) * mr_linear(lights.color[i].rgb)
                   * attenuation * materials.local.z * visibility;
     }
     float3 ray;
     float3 spot = spot_radiance(position,geometricNormal,ray,true);
-    result += metallic_roughness_brdf(base,normal,view,-ray) * spot;
+    result += metallic_roughness_brdf(base,normal,view,-ray,roughness,metallic) * spot;
     return result;
 }
 
@@ -422,11 +460,26 @@ float4 fragment_main(Varying input) : SV_Target
     float3 materialColor = apply_material_surface(color, uv, normalize(input.worldNormal), input.worldPosition, int(id), emissive);
     if (clothing || model) { materialColor = color; emissive = 0; }
     emissive *= overlay ? 1.18 : 1.0;
+    float2 mr = surfaceData.parameters.yz;
+    if (surfaceData.maps.x != 0) mr *= metallicRoughnessMap.Sample(input.uv).gb;
+    float ao = surfaceData.maps.y != 0 ? lerp(1.0, occlusionMap.Sample(input.uv).r, surfaceData.maps.z) : 1.0;
     bool metallicRoughness = (draw.flags & 16) != 0;
+    if (metallicRoughness && (draw.flags & 8) != 0)
+    {
+        // Broaden GGX only where mapped normals vary across a pixel footprint.
+        float3 dx = ddx(shadingNormal), dy = ddy(shadingNormal);
+        float kernel = min(.25 * (dot(dx, dx) + dot(dy, dy)), .04);
+        mr.x = pow(saturate(pow(mr.x, 4) + kernel), .25);
+    }
+    float3 nativeEmission = surfaceData.emission.rgb;
+    if (surfaceData.emission.w != 0) nativeEmission *= emissiveMap.Sample(input.uv).rgb;
+    // Native emission is linear even on the legacy visual-sRGB lighting path.
+    if (!metallicRoughness && surfaceData.parameters.w == 0) nativeEmission = linear_to_srgb(nativeEmission);
+    emissive += nativeEmission;
     float3 lighting = metallicRoughness
-        ? metallic_roughness_color(materialColor, shadingNormal, geometricNormal, receiverPlaneNormal, input.worldPosition, input.fogDistance)
+        ? metallic_roughness_color(materialColor, shadingNormal, geometricNormal, receiverPlaneNormal, input.worldPosition, input.fogDistance, mr.x, mr.y, ao)
         : lit_color(materialColor, shadingNormal, geometricNormal, receiverPlaneNormal, uv, input.worldPosition,
-                    id, clothing, model, input.fogDistance);
+                    id, clothing, model, input.fogDistance, ao);
     float3 fogColor = metallicRoughness ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
     bool hdr = materials.grading.y != 0;
     color = lerp(max(lighting + emissive, 0), fogColor, fogAmount);

@@ -13,7 +13,7 @@ namespace RelayCore::render
     namespace
     {
         constexpr std::uint32_t kMagic = 0x4c444d52; // RMDL, little endian.
-        constexpr std::uint32_t kVersion = 3;
+        constexpr std::uint32_t kVersion = 5;
         constexpr std::size_t kMaxBytes = 256 * 1024 * 1024;
 
         void require(const bool condition, const char* message)
@@ -147,7 +147,35 @@ namespace RelayCore::render
             );
             for (std::size_t i = 3; i < image.pixels.size(); i += 4)
                 require(image.pixels[i] == 255, "model base-color must be opaque");
-            bytes += 32 + image.pixels.size();
+            bytes += 72 + image.pixels.size();
+            for (const auto factor :
+                 {material.emissive_factor.x, material.emissive_factor.y, material.emissive_factor.z})
+                require(
+                    std::isfinite(factor) && factor >= 0 && factor <= 1,
+                    "emissive factor must be finite and in [0, 1]"
+                );
+            require(
+                std::isfinite(material.occlusion_strength) && material.occlusion_strength >= 0
+                    && material.occlusion_strength <= 1,
+                "occlusion strength must be finite and in [0, 1]"
+            );
+            require(
+                !material.metallic_roughness_map || material.metallic_roughness.has_value(),
+                "metallic/roughness map requires metallic/roughness factors"
+            );
+            for (const auto* map : {&material.metallic_roughness_map, &material.occlusion, &material.emissive})
+                if (*map)
+                {
+                    require(
+                        (*map)->width > 0 && (*map)->width <= 4096 && (*map)->height > 0 && (*map)->height <= 4096,
+                        "material map dimensions must be 1..4096"
+                    );
+                    require(
+                        (*map)->pixels.size() == static_cast<std::size_t>((*map)->width) * (*map)->height * 4,
+                        "material map RGBA byte count differs from dimensions"
+                    );
+                    bytes += (*map)->pixels.size();
+                }
             if (material.metallic_roughness)
             {
                 const auto& factors = *material.metallic_roughness;
@@ -260,6 +288,21 @@ namespace RelayCore::render
             append(bytes, material.metallic_roughness ? 1u : 0u);
             append_float(bytes, material.metallic_roughness ? material.metallic_roughness->roughness : 1);
             append_float(bytes, material.metallic_roughness ? material.metallic_roughness->metallic : 0);
+            for (const auto* map : {&material.metallic_roughness_map, &material.occlusion})
+            {
+                append(bytes, *map ? static_cast<std::uint32_t>((*map)->width) : 0u);
+                append(bytes, *map ? static_cast<std::uint32_t>((*map)->height) : 0u);
+                if (*map)
+                    bytes.insert(bytes.end(), (*map)->pixels.begin(), (*map)->pixels.end());
+            }
+            append_float(bytes, material.occlusion_strength);
+            append(bytes, material.emissive ? static_cast<std::uint32_t>(material.emissive->width) : 0u);
+            append(bytes, material.emissive ? static_cast<std::uint32_t>(material.emissive->height) : 0u);
+            if (material.emissive)
+                bytes.insert(bytes.end(), material.emissive->pixels.begin(), material.emissive->pixels.end());
+            for (const auto factor :
+                 {material.emissive_factor.x, material.emissive_factor.y, material.emissive_factor.z})
+                append_float(bytes, factor);
         }
         for (const auto& part : model.parts)
         {
@@ -297,7 +340,7 @@ namespace RelayCore::render
             ProductReader reader{bytes};
             require(reader.integer() == kMagic, "invalid model product magic");
             const auto version = reader.integer();
-            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1, 2, 3)");
+            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1..5)");
             const auto meshes = reader.integer(), materials = reader.integer(), parts = reader.integer();
             require(
                 meshes > 0 && meshes <= 4096 && materials > 0 && materials <= 4096 && parts > 0 && parts <= 65536,
@@ -369,7 +412,7 @@ namespace RelayCore::render
                         };
                     }
                 }
-                if (version == 3)
+                if (version >= 3)
                 {
                     const auto flags = reader.integer();
                     require(flags <= 1, "unsupported material flags");
@@ -378,6 +421,47 @@ namespace RelayCore::render
                         material.metallic_roughness = factors;
                     else
                         require(factors.roughness == 1 && factors.metallic == 0, "invalid legacy material factors");
+                }
+                if (version >= 4)
+                {
+                    for (auto* map : {&material.metallic_roughness_map, &material.occlusion})
+                    {
+                        const auto map_width = reader.integer(), map_height = reader.integer();
+                        require(
+                            map_width <= 4096 && map_height <= 4096 && ((map_width == 0) == (map_height == 0)),
+                            "invalid material-map dimensions"
+                        );
+                        if (map_width)
+                        {
+                            const auto data = reader.take(static_cast<std::size_t>(map_width) * map_height * 4);
+                            *map = CpuRgbaTextureData{
+                                static_cast<int>(map_width),
+                                static_cast<int>(map_height),
+                                {data.begin(), data.end()}
+                            };
+                        }
+                    }
+                    material.occlusion_strength = reader.number();
+                }
+                if (version >= 5)
+                {
+                    const auto emissive_width = reader.integer(), emissive_height = reader.integer();
+                    require(
+                        emissive_width <= 4096 && emissive_height <= 4096
+                            && ((emissive_width == 0) == (emissive_height == 0)),
+                        "invalid emissive-map dimensions"
+                    );
+                    if (emissive_width)
+                    {
+                        const auto emissive_pixels =
+                            reader.take(static_cast<std::size_t>(emissive_width) * emissive_height * 4);
+                        material.emissive = CpuRgbaTextureData{
+                            static_cast<int>(emissive_width),
+                            static_cast<int>(emissive_height),
+                            {emissive_pixels.begin(), emissive_pixels.end()}
+                        };
+                    }
+                    material.emissive_factor = reader.vector();
                 }
                 result.materials.push_back(std::move(material));
             }

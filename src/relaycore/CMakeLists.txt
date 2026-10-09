@@ -34,7 +34,9 @@ set(RELAYCORE_ENGINE_SOURCES
     render/blockout_texture_atlas.cpp
     render/authored_color.cpp
     render/camera.cpp
-    render/game_hud.cpp
+    render/player_ui.cpp
+    render/vulkan_rml_renderer.cpp
+    ${PROJECT_SOURCE_DIR}/extern/rmlui/RmlUi_Platform_SDL.cpp
     render/vulkan_device.cpp
     render/vulkan_swapchain.cpp
     render/vulkan_resources.cpp
@@ -44,6 +46,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/mesh.cpp
     render/static_model.cpp
     render/model_asset.cpp
+    render/reflection_probe.cpp
     render/irradiance_probes.cpp
     render/render_authoring_config.cpp
     render/pipeline_authoring_overlay.cpp
@@ -99,13 +102,15 @@ set(RELAYCORE_ENGINE_HEADERS
     render/blockout_texture_atlas.h
     render/authored_color.h
     render/camera.h
-    render/game_hud.h
+    render/player_ui.h
+    render/player_ui_data.h
     render/vulkan_device.h
     render/vulkan_swapchain.h
     render/vulkan_resources.h
     render/vulkan_uploads.h
     render/vulkan_mesh_renderer.h
     render/mesh.h
+    render/reflection_probe.h
     render/irradiance_probes.h
     render/static_model.h
     render/model_asset.h
@@ -130,6 +135,19 @@ set(RELAYCORE_ENGINE_HEADERS
 
 add_library(relaycore_engine STATIC)
 add_library(RelayCore::engine ALIAS relaycore_engine)
+
+target_precompile_headers(relaycore_engine PRIVATE
+    <algorithm> <array> <filesystem> <memory> <optional> <span>
+    <string> <unordered_map> <vector> <glm/glm.hpp> <spdlog/spdlog.h>)
+set_source_files_properties(audio/miniaudio_impl.cpp render/vma_impl.cpp PROPERTIES
+    SKIP_PRECOMPILE_HEADERS ON)
+
+set_source_files_properties(
+    render/reflection_probe.cpp
+    render/player_ui.cpp
+    ${PROJECT_SOURCE_DIR}/extern/rmlui/RmlUi_Platform_SDL.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+)
 
 target_sources(
     relaycore_engine
@@ -162,6 +180,7 @@ target_link_libraries(
     PRIVATE
         RelayCore::miniaudio_headers
         ${RELAYCORE_IMGUI_TARGET}
+        RmlUi::RmlUi
         Vulkan::Vulkan
         vk-bootstrap::vk-bootstrap
         GPUOpen::VulkanMemoryAllocator
@@ -169,6 +188,7 @@ target_link_libraries(
 )
 
 target_compile_definitions(relaycore_engine PRIVATE
+    RMLUI_SDL_VERSION_MAJOR=3
     RELAYCORE_VULKAN_VALIDATION=$<AND:$<BOOL:${RELAYCORE_ENABLE_VULKAN_VALIDATION}>,$<OR:$<CONFIG:Debug>,$<CONFIG:Asan>>>)
 set_source_files_properties(render/vma_impl.cpp PROPERTIES
     SKIP_UNITY_BUILD_INCLUSION ON

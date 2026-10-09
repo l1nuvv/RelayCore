@@ -164,3 +164,26 @@ Raw before/after captures, logs, metrics and comparison/check scripts are under
 `build/visual-revamp/vis-10`. No frozen baselines, renderer, dependencies, gameplay
 geometry or packaging changed. Continuous human acceptance and the existing
 external/GPU/performance gates remain open.
+
+## Workshop turret mounting correction — 2026-10-09
+
+Author screenshot showed `bay_turret` floating beside the relay control. Its
+origin was x=-2.8 and yaw=0, placing the rear plate away from the x=-4 wall and
+parallel to it. `bench_relay.toml` now uses x=-3.515 and yaw=90. The plate rear
+lands at x=-3.8894, slightly inside the plaster face at x=-3.887; intact and
+destroyed OBJ models share the fixed mounting geometry. Height, size, health,
+damage and timing are unchanged. The position change alters the level fingerprint;
+old saves require a fresh scenario rather than a forced compatibility bypass.
+
+![Destroyed turret fixed to the workshop wall](bench-turret-mounting.png)
+
+Debug/optimized `relaycore_demo_assets` builds passed and staged map hashes match
+source. The existing Debug capture runner was rebuilt; its second workshop
+`--mounting-views` camera now inspects this attachment. `--visual-slice` and
+`--mounting-views` both passed; the mounting image above was inspected. Check Map:
+valid, zero warnings. Five `validation.bench relay` cases passed, covering both
+tactics, cover, native opening, editor/continue and retry. Two save cases required
+an outside-sandbox retry after temporary-file rename access failures; the capture
+runner build similarly required a retry after sandbox MSVC C1902. No validation
+errors appeared in the two render logs. `git diff --check` passed. Raw captures
+and logs: `build/bench-turret-fix`. Continuous author playtest remains open.

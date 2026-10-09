@@ -5,8 +5,8 @@
 #include "relaycore/debug/imgui_overlay.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/color_pipeline_mode.h"
-#include "relaycore/render/game_hud.h"
 #include "relaycore/render/mesh.h"
+#include "relaycore/render/player_ui.h"
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/render/render_queue.h"
@@ -29,6 +29,7 @@ namespace RelayCore::render
 {
     class VulkanMeshRenderer;
     struct IrradianceProbeVolume;
+    struct ReflectionProbe;
 } // namespace RelayCore::render
 
 namespace RelayCore
@@ -115,6 +116,7 @@ namespace RelayCore
         }
 
         void set_local_lights(std::span<const render::LocalLight> lights);
+        void set_reflection_probe(std::shared_ptr<const render::ReflectionProbe> probe);
         void set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes);
 
         void set_scene_time(float seconds) noexcept;
@@ -167,7 +169,15 @@ namespace RelayCore
         [[nodiscard]] auto diagnostics_visible() const noexcept -> bool;
         [[nodiscard]] auto ui_available() const noexcept -> bool
         {
+            return player_ui_ != nullptr;
+        }
+        [[nodiscard]] auto developer_ui_available() const noexcept -> bool
+        {
             return imgui_overlay_.enabled() && imgui_overlay_.is_initialized();
+        }
+        auto player_ui() -> render::PlayerUi&
+        {
+            return *player_ui_;
         }
 
         [[nodiscard]] auto wants_keyboard_capture() const noexcept -> bool;
@@ -203,7 +213,8 @@ namespace RelayCore
         int viewport_height_ = 720;
         render::PerspectiveCamera camera_{};
         debug::ImGuiOverlay imgui_overlay_{};
-        render::GameHud game_hud_{};
+        std::unique_ptr<render::PlayerUi> player_ui_;
+        bool developer_frame_active_ = false;
         render::WorldDiagnostics world_diagnostics_{};
         render::RuntimeDiagnostics runtime_diagnostics_{};
         render::PlayerDiagnostics player_diagnostics_{};
@@ -213,6 +224,7 @@ namespace RelayCore
         render::IterationDiagnostics iteration_diagnostics_{};
         std::vector<render::LocalLight> local_lights_{};
         std::shared_ptr<const render::IrradianceProbeVolume> irradiance_probes_;
+        std::shared_ptr<const render::ReflectionProbe> reflection_probe_;
         render::StaticModelCache static_models_{};
         render::SpotLight spot_light_{};
         float scene_time_seconds_ = 0.0F;

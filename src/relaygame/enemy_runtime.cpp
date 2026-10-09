@@ -1,6 +1,7 @@
 #include "relaygame/enemy_runtime.h"
 
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/enemy_navigation.h"
 
 #include <algorithm>
 #include <charconv>
@@ -37,9 +38,10 @@ namespace RelayGame
         for (std::size_t i = 0; i < level.entities.size(); ++i)
         {
             const auto& entity = level.entities[i];
-            if (entity.classname != "enemy_rover")
+            if (entity.classname != "enemy_rover" && entity.classname != "enemy_shooter")
                 continue;
             RuntimeEnemy enemy;
+            enemy.ranged_attack = entity.classname == "enemy_shooter";
             enemy.state.entity_index = static_cast<int>(i);
             enemy.state.position = entity.origin;
             enemy.state.last_seen = entity.origin;
@@ -53,13 +55,44 @@ namespace RelayGame
                 const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
                 if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value) || value <= 0
                     || value > 1000)
-                    throw std::runtime_error("enemy_rover " + std::to_string(i) + ": invalid " + key);
+                    throw std::runtime_error(entity.classname + " " + std::to_string(i) + ": invalid " + key);
                 return value;
             };
             enemy.max_health = number("health", enemy.max_health);
             enemy.state.health = enemy.max_health;
             enemy.move_speed = number("speed", enemy.move_speed);
             enemy.detection_range = number("detection_range", enemy.detection_range);
+            if (const auto style = entity.properties.find("attack_style"); style != entity.properties.end())
+            {
+                if (enemy.ranged_attack)
+                    throw std::runtime_error("enemy_shooter " + std::to_string(i) + ": attack_style is not supported");
+                if (style->second != "melee" && style->second != "lunge")
+                    throw std::runtime_error(
+                        "enemy_rover " + std::to_string(i) + ": attack_style must be melee or lunge"
+                    );
+                enemy.lunge_attack = style->second == "lunge";
+            }
+            if (const auto route = entity.properties.find("route"); route != entity.properties.end())
+            {
+                if (route->second.empty())
+                    throw std::runtime_error(entity.classname + " " + std::to_string(i) + ": empty route");
+                for (const auto& point : level.entities)
+                    if (point.classname == "enemy_route_point" && point.properties.contains("route")
+                        && point.properties.at("route") == route->second)
+                    {
+                        if (std::abs(point.origin.y - entity.origin.y) > .08F)
+                            throw std::runtime_error(
+                                entity.classname + " " + std::to_string(i) + ": route must be flat"
+                            );
+                        enemy.route_points.push_back(point.origin);
+                    }
+                if (enemy.route_points.empty() || enemy.route_points.size() > 16)
+                    throw std::runtime_error(
+                        entity.classname + " " + std::to_string(i) + ": route needs 1 to 16 points"
+                    );
+            }
+            if (enemy.ranged_attack && enemy.route_points.empty())
+                throw std::runtime_error("enemy_shooter " + std::to_string(i) + ": route is required");
             result.push_back(enemy);
         }
         return result;
@@ -72,7 +105,8 @@ namespace RelayGame
         RelayCore::gameplay::PlayerCombatState& player,
         std::span<RuntimeEnemy> enemies,
         float dt,
-        std::vector<RelayCore::physics::WorldCollider>& blockers
+        std::vector<RelayCore::physics::WorldCollider>& blockers,
+        std::span<const RelayCore::physics::WorldCollider> additional_blockers
     ) -> EnemyThreatResult
     {
         EnemyThreatResult result{};
@@ -80,10 +114,14 @@ namespace RelayGame
             return result;
         blockers.clear();
         blockers.push_back({.bounds = player_bounds, .object = {RelayCore::physics::WorldObjectKind::Player}});
+        blockers.insert(blockers.end(), additional_blockers.begin(), additional_blockers.end());
         const auto static_count = blockers.size();
         for (auto& enemy : enemies)
         {
+            if (!player.alive)
+                break;
             auto& state = enemy.state;
+            enemy.shot_trace.remaining_seconds = std::max(0.0F, enemy.shot_trace.remaining_seconds - dt);
             if (state.mode == EnemyMode::Dead)
                 continue;
             blockers.resize(static_count);
@@ -99,8 +137,13 @@ namespace RelayGame
             const auto eye = state.position + glm::vec3{0, .75F, 0};
             const bool sees =
                 glm::distance(eye, player_eye) <= enemy.detection_range && !blocked(world, eye, player_eye);
-            if (sees)
+            const bool committed = (enemy.lunge_attack || enemy.ranged_attack)
+                                   && (state.mode == EnemyMode::Windup || state.mode == EnemyMode::Lunging);
+            if (sees && !committed)
+            {
                 state.last_seen = {player_eye.x, player_bounds.mins.y, player_eye.z};
+                enemy.seeking_last_seen = false;
+            }
             state.timer = std::max(0.0F, state.timer - dt);
             const auto to_player = glm::vec2{player_eye.x - state.position.x, player_eye.z - state.position.z};
             const bool in_range =
@@ -108,19 +151,61 @@ namespace RelayGame
             glm::vec3 velocity{};
             if (state.mode == EnemyMode::Windup && state.timer == 0)
             {
-                ++result.strikes;
-                if (sees && in_range)
-                    static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
-                state.mode = EnemyMode::Recovery;
-                state.timer = .95F;
-            } else if (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Recovery)
+                if (enemy.ranged_attack)
+                {
+                    const auto target = state.last_seen + glm::vec3{0, 1.0F, 0};
+                    const auto delta = target - eye;
+                    const auto range = glm::length(delta);
+                    if (range > .001F)
+                    {
+                        const auto ray = delta / range;
+                        float distance = mobile_shooter_range;
+                        if (const auto hit = world.raycast(eye, ray, distance, RelayCore::physics::WorldQueryMask::All))
+                            distance = hit->distance;
+                        for (const auto& blocker : blockers)
+                            if (const auto hit =
+                                    RelayCore::physics::ray_intersection_distance(eye, ray, blocker.bounds, distance))
+                            {
+                                distance = *hit;
+                            }
+                        const auto player_hit =
+                            RelayCore::physics::ray_intersection_distance(eye, ray, player_bounds, distance);
+                        if (player_hit && *player_hit <= distance)
+                            static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 12, "Мобильный стрелок")
+                            );
+                        enemy.shot_trace = {.start = eye, .end = eye + ray * distance, .remaining_seconds = .08F};
+                        ++result.shots;
+                    }
+                    state.mode = EnemyMode::Recovery;
+                    state.timer = .95F;
+                } else if (enemy.lunge_attack)
+                {
+                    state.mode = EnemyMode::Lunging;
+                    state.timer = .22F;
+                } else
+                {
+                    ++result.strikes;
+                    if (sees && in_range)
+                        static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
+                    state.mode = EnemyMode::Recovery;
+                    state.timer = .95F;
+                }
+            } else if (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Recovery
+                       && state.mode != EnemyMode::Lunging)
             {
                 if (sees)
                     state.mode = EnemyMode::Chasing;
-                if (sees && in_range)
+                const bool can_attack =
+                    enemy.ranged_attack ? glm::distance(eye, player_eye) <= mobile_shooter_range
+                    : enemy.lunge_attack
+                        ? glm::length(to_player) < 2.4F && std::abs(player_bounds.mins.y - state.position.y) < .7F
+                        : in_range;
+                if (sees && can_attack)
                 {
                     state.mode = EnemyMode::Windup;
-                    state.timer = .45F;
+                    state.timer = enemy.ranged_attack ? .7F : .45F;
+                    if (enemy.lunge_attack || enemy.ranged_attack)
+                        state.yaw = glm::degrees(std::atan2(to_player.x, to_player.y));
                     ++result.windups;
                 } else if (state.mode == EnemyMode::Chasing)
                 {
@@ -129,13 +214,40 @@ namespace RelayGame
                     const auto distance = glm::length(delta);
                     if (distance > .12F)
                     {
-                        velocity = delta / distance * std::min(enemy.move_speed, distance / dt);
-                        state.yaw = glm::degrees(std::atan2(delta.x, delta.z));
+                        velocity = enemy.route_points.empty()
+                                       ? delta / distance * std::min(enemy.move_speed, distance / dt)
+                                       : enemy_route_velocity(
+                                             world,
+                                             enemy,
+                                             state.last_seen,
+                                             player_eye.y - player_bounds.mins.y,
+                                             dt
+                                         );
+                        if (glm::length(velocity) > .001F)
+                            state.yaw = glm::degrees(std::atan2(velocity.x, velocity.z));
                     } else
                         state.mode = EnemyMode::Idle;
                 }
             } else if (state.mode == EnemyMode::Recovery && state.timer == 0)
                 state.mode = EnemyMode::Chasing;
+            if (state.mode == EnemyMode::Lunging)
+            {
+                if (state.timer == 0)
+                {
+                    ++result.strikes;
+                    if (sees && in_range)
+                        static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
+                    state.mode = EnemyMode::Recovery;
+                    state.timer = .95F;
+                } else
+                {
+                    auto delta = state.last_seen - state.position;
+                    delta.y = 0;
+                    const auto distance = glm::length(delta);
+                    if (distance > .12F)
+                        velocity = delta / distance * std::min(enemy.move_speed * 3, distance / dt);
+                }
+            }
             state.vertical_speed = std::max(-20.0F, state.vertical_speed - 18.0F * dt);
             velocity.y = state.vertical_speed;
             const RelayCore::physics::CollisionConfig collision{.radius = .42F, .height = .95F, .step_height = .15F};
@@ -170,6 +282,8 @@ namespace RelayGame
         if (length < .001F)
             return result;
         const auto ray = direction / length;
+        if (const auto blocker = world.raycast(origin, ray, distance, RelayCore::physics::WorldQueryMask::All))
+            distance = blocker->distance;
         int index = -1;
         for (std::size_t i = 0; i < enemies.size(); ++i)
         {
@@ -187,20 +301,36 @@ namespace RelayGame
         if (index >= 0 && result.combat.fired && !result.combat.hit_turret)
         {
             result.combat.world_impact.reset();
+            player.shot_trace.impact = RelayCore::physics::WorldQueryHit{
+                .distance = distance,
+                .position = player.shot_trace.end,
+                .normal = -ray,
+                .surface = RelayCore::SurfaceMaterial::Metal,
+            };
             result.enemy_index = index;
-            auto& state = enemies[static_cast<std::size_t>(index)].state;
+            auto& enemy = enemies[static_cast<std::size_t>(index)];
+            auto& state = enemy.state;
             player.damage_dealt += std::min(state.health, player.weapon_damage);
             state.health = std::max(0.0F, state.health - player.weapon_damage);
             ++player.shots_hit;
             player.hit_confirmation_remaining_seconds = 0.16F;
-            state.last_seen = origin;
+            if ((!enemy.lunge_attack && !enemy.ranged_attack)
+                || (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Lunging))
+            {
+                state.last_seen = origin;
+                if (!enemy.route_points.empty())
+                    state.last_seen.y -= 1.65F;
+                enemy.seeking_last_seen = false;
+                enemy.route_replan_seconds = 0;
+            }
             result.killed_enemy = state.health == 0;
             if (result.killed_enemy)
             {
                 state.mode = EnemyMode::Dead;
                 state.timer = 0;
                 ++player.kills;
-            } else if (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Recovery)
+            } else if (state.mode != EnemyMode::Windup && state.mode != EnemyMode::Recovery
+                       && state.mode != EnemyMode::Lunging)
             {
                 state.mode = EnemyMode::Chasing;
                 state.timer = 0;

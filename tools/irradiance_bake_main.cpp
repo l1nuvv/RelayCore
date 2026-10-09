@@ -22,7 +22,7 @@ int main(int argc, char** argv)
         if (!source)
             throw std::runtime_error("level requires an irradiance_volume");
         std::erase_if(level.entities, [](const auto& e) {
-            return e.classname == "irradiance_volume";
+            return e.classname == "irradiance_volume" || e.classname == "reflection_probe";
         });
         const auto authoring = RelayCore::render::load_render_authoring_config(argv[2]);
         const auto prepared = RelayGame::build_prepared_world_scene_data(

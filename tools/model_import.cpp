@@ -192,11 +192,21 @@ namespace RelayCore::tools
             );
             require(!material.doubleSided, "double-sided materials are unsupported; enable backface culling on export");
             require(
-                !material.occlusionTexture && !material.emissiveTexture && !material.pbrData.metallicRoughnessTexture
-                    && material.emissiveFactor == fastgltf::math::nvec3(0),
-                "occlusion/emissive/metallic-roughness maps are outside the normal-map importer"
+                metallic_roughness || !material.pbrData.metallicRoughnessTexture,
+                "metallic-roughness maps require --metallic-roughness"
             );
             render::ModelMaterial result{{1, 1, {255, 255, 255, 255}}};
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const auto factor = material.emissiveFactor[channel];
+                require(
+                    std::isfinite(factor) && factor >= 0 && factor <= 1,
+                    "emissive factor must be finite and in [0, 1]"
+                );
+                result.emissive_factor[channel] = factor;
+            }
+            if (material.emissiveTexture)
+                result.emissive = import_texture(asset, *material.emissiveTexture);
             if (material.pbrData.baseColorTexture)
             {
                 result.base_color = import_texture(asset, *material.pbrData.baseColorTexture);
@@ -210,6 +220,13 @@ namespace RelayCore::tools
             if (metallic_roughness)
                 result.metallic_roughness =
                     render::MetallicRoughness{material.pbrData.roughnessFactor, material.pbrData.metallicFactor};
+            if (material.pbrData.metallicRoughnessTexture)
+                result.metallic_roughness_map = import_texture(asset, *material.pbrData.metallicRoughnessTexture);
+            if (material.occlusionTexture)
+            {
+                result.occlusion = import_texture(asset, *material.occlusionTexture);
+                result.occlusion_strength = material.occlusionTexture->strength;
+            }
             for (int channel = 0; channel < 3; ++channel)
                 require(
                     std::isfinite(material.pbrData.baseColorFactor[channel])
@@ -401,7 +418,10 @@ namespace RelayCore::tools
                         }
                         if (material < asset.materials.size()
                             && (asset.materials[material].pbrData.baseColorTexture
-                                || asset.materials[material].normalTexture))
+                                || asset.materials[material].normalTexture
+                                || asset.materials[material].pbrData.metallicRoughnessTexture
+                                || asset.materials[material].occlusionTexture
+                                || asset.materials[material].emissiveTexture))
                             require(
                                 primitive.findAttribute("TEXCOORD_0") != primitive.attributes.end(),
                                 "textured primitive requires TEXCOORD_0"

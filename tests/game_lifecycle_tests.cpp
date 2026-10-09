@@ -9,6 +9,8 @@
 #include "relaygame/player_controller_config.h"
 #include "relaygame/usable_interaction.h"
 
+#include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControl.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <chrono>
@@ -88,6 +90,24 @@ namespace
             const auto player_path = directory.path() / "player";
             RelayGame::DemoGame game{player_path};
             const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            SDL_Event held_key{};
+            held_key.type = SDL_EVENT_KEY_DOWN;
+            held_key.key.scancode = SDL_SCANCODE_W;
+            held_key.key.key = SDLK_W;
+            held_key.key.windowID = SDL_GetWindowID(window.handle());
+            renderer.process_event(held_key);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, true), "Developer input frame unavailable");
+            require(ImGui::IsKeyDown(ImGuiKey_W), "Developer key press did not reach ImGui");
+            renderer.end_ui();
+            renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Menu);
+            held_key.type = SDL_EVENT_KEY_UP;
+            renderer.process_event(held_key);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, true), "Modal input frame unavailable");
+            require(!ImGui::IsKeyDown(ImGuiKey_W), "RmlUi menu swallowed the developer key release");
+            renderer.end_ui();
+            renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hidden);
             game.on_startup(services);
             const auto draw = [&] {
                 renderer.begin_frame();
@@ -98,18 +118,23 @@ namespace
                 return renderer.capture_frame();
             };
             const auto activate_menu = [&](const char* label) {
-                auto* menu = ImGui::FindWindowByName("Пауза##player_pause");
-                require(menu != nullptr, "Settings menu was not drawn");
-                ImGui::ActivateItemByID(menu->GetID(label));
+                auto* context = Rml::GetContext("player");
+                require(context != nullptr, "RmlUi player context was unavailable");
+                const auto id = std::string_view{label} == "Настройки" ? "settings-button" : "save-settings";
+                auto* control = context->GetDocument("menu")->GetElementById(id);
+                require(control != nullptr, "RmlUi settings control was unavailable");
+                control->DispatchEvent("click", {});
+                game.on_update({}, services);
                 (void) draw();
             };
             const auto choose_range = [&](const char* label) {
-                activate_menu("Режим изображения");
-                require(!ImGui::GetCurrentContext()->OpenPopupStack.empty(), "HDR/SDR selector did not open");
-                auto* popup = ImGui::GetCurrentContext()->OpenPopupStack.back().Window;
-                require(popup != nullptr, "HDR/SDR selector popup was unavailable");
-                const int index = std::string_view{label} == "HDR" ? 1 : 0;
-                ImGui::ActivateItemByID(ImHashStr(label, 0, popup->GetID(index)));
+                auto* control = dynamic_cast<Rml::ElementFormControl*>(
+                    Rml::GetContext("player")->GetDocument("menu")->GetElementById("hdr")
+                );
+                require(control != nullptr, "RmlUi HDR/SDR selector was unavailable");
+                control->SetValue(std::string_view{label} == "HDR" ? "1" : "0");
+                control->DispatchEvent("change", {});
+                game.on_update({}, services);
                 (void) draw();
             };
             const auto key = [&](SDL_Scancode code) {
@@ -407,7 +432,11 @@ namespace
             RelayCore::Renderer renderer{config.renderer};
             renderer.initialize(window);
             renderer.on_resize(640, 480);
-            require(renderer.ui_available() == ui_enabled, "Readiness test UI availability differs from its mode");
+            require(renderer.ui_available(), "Readiness requires an independent player UI");
+            require(
+                renderer.developer_ui_available() == ui_enabled,
+                "Readiness test developer UI availability differs from its mode"
+            );
             RelayCore::AudioSystem audio{config.audio};
             bool running = true;
             RelayCore::EngineServices services{config, window, renderer, audio, running};
@@ -420,7 +449,7 @@ namespace
             {
                 startup_threw = true;
             }
-            require(startup_threw == (failed && !ui_enabled), "Unexpected startup failure handling");
+            require(!startup_threw, "Player UI must present startup errors independently of developer UI");
             require(WaitForSingleObject(ready.get(), 0) == WAIT_TIMEOUT, "Readiness sent before a runtime frame");
             if (!startup_threw)
             {
@@ -489,7 +518,8 @@ namespace
                 "bench_relay",
                 "pressure_transfer",
                 "cooling_loop",
-                "occult_lab_b17"
+                "occult_lab_b17",
+                "containment_loop"
             };
             const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
             RelayGame::DemoGame game{player_dir};
@@ -545,7 +575,30 @@ namespace
             RelayGame::write_saved_game(progress, final_save);
             game.on_startup(services);
             game.begin_episode(true, services);
-            require(game.has_custom_ui(), "The final B-17 chapter did not finish the campaign");
+            require(game.has_custom_ui(), "The final Guardian chapter did not finish the campaign");
+            renderer.begin_frame();
+            game.on_render(frame, services);
+            require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Completion UI unavailable");
+            game.on_ui(services);
+            renderer.end_ui();
+            auto* completion = Rml::GetContext("player")->GetDocument("menu");
+            require(
+                completion->GetElementById("complete-actions")->IsVisible()
+                    && !completion->GetElementById("complete-title")->GetInnerRML().empty(),
+                "Campaign completion lost its player presentation"
+            );
+            capture_frame(renderer, "campaign-complete.bmp");
+            completion->GetElementById("complete-menu")->Click();
+            game.on_update(frame, services);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Return menu unavailable");
+            game.on_ui(services);
+            renderer.end_ui();
+            require(
+                renderer.player_ui().captures_input() && completion->GetElementById("main-actions")->IsVisible()
+                    && !completion->GetElementById("complete-actions")->IsVisible(),
+                "Completion action did not return to main menu"
+            );
             game.on_shutdown(services);
             std::cout << "campaign_route=passed (seven chapters, six transitions, disk continue, carried player state, "
                          "final completion)\n";

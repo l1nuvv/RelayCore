@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
+#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 #include <string_view>
@@ -138,7 +139,7 @@ namespace RelayCore::render
             .swapchainMaintenance1 = VK_TRUE,
         };
         vkb::PhysicalDeviceSelector selector{state_->instance, state_->surface};
-        const auto physical = require_bootstrap(
+        auto physical = require_bootstrap(
             selector.set_minimum_version(1, 3)
                 .add_required_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
                 .add_required_extension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)
@@ -150,6 +151,7 @@ namespace RelayCore::render
             "VK_KHR_swapchain, VK_KHR_swapchain_maintenance1 (swapchainMaintenance1) and graphics/present "
             "queues for the SDL surface"
         );
+        const bool anisotropy = physical.enable_features_if_present({.samplerAnisotropy = VK_TRUE});
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -186,18 +188,22 @@ namespace RelayCore::render
             .graphics_queue_family = graphics.second,
             .present_queue_family = present.second,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
+            .max_texture_anisotropy =
+                anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
         log::info(
             "Vulkan device created: {} | GPU API {}.{}.{} | required API 1.3 | graphics family={} | present family={} "
             "| "
-            "dynamicRendering/synchronization2/timelineSemaphore/swapchainMaintenance1 enabled | validation={}",
+            "dynamicRendering/synchronization2/timelineSemaphore/swapchainMaintenance1 enabled | validation={} "
+            "| texture anisotropy={}",
             physical.name,
             VK_API_VERSION_MAJOR(physical.properties.apiVersion),
             VK_API_VERSION_MINOR(physical.properties.apiVersion),
             VK_API_VERSION_PATCH(physical.properties.apiVersion),
             graphics.second,
             present.second,
-            state_->capabilities.validation_enabled
+            state_->capabilities.validation_enabled,
+            state_->capabilities.max_texture_anisotropy
         );
     }
 

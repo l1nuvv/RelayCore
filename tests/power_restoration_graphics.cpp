@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "scoped_temp_directory.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -81,10 +82,98 @@ namespace
         }
         return sum / static_cast<double>(pixels.size());
     }
+    void review_glass_steam(RelayCore::Renderer& renderer, const std::filesystem::path& directory)
+    {
+        RelayCore::BlockoutLevel glass_level{};
+        RelayCore::BlockoutSolid glass{};
+        glass.mins = {-1.0F, 0.0F, 4.98F};
+        glass.maxs = {1.0F, 3.0F, 5.02F};
+        glass.material = RelayCore::SurfaceMaterial::Glass;
+        glass_level.solids.push_back(glass);
+        RelayGame::WorldSceneRenderer glass_scene;
+        glass_scene.initialize(
+            RelayGame::build_prepared_world_scene_data(
+                glass_level,
+                renderer.authoring_config(),
+                renderer.color_pipeline_mode()
+            ),
+            renderer.static_models()
+        );
+        RelayGame::EnvironmentEffect steam{};
+        steam.kind = RelayGame::EnvironmentKind::Steam;
+        steam.origin = {0.0F, 1.0F, 6.0F};
+        steam.scale = 2.0F;
+        steam.strength = 1.0F;
+        steam.age = 0.4F;
+        const std::array effects{steam};
+        const auto render_glass_and_steam = [&](const char* name, const glm::vec3 eye, const glm::vec3 target) {
+            renderer.camera().set_position(eye);
+            renderer.camera().set_target(target);
+            renderer.begin_frame();
+            glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, effects);
+            if (glass_scene.diagnostics().transparent_draw_calls != 11)
+                throw std::runtime_error("Glass and steam did not enter the transparent pass together");
+            (void) capture(renderer, directory / name);
+        };
+        render_glass_and_steam("glass-steam-back.bmp", {0.0F, 1.5F, 0.0F}, {0.0F, 1.5F, 7.0F});
+        render_glass_and_steam("glass-steam-front.bmp", {0.0F, 1.5F, 10.0F}, {0.0F, 1.5F, 3.0F});
+        glass_scene.shutdown();
+
+        glass_level.solids[0].mins.x = -5.0F;
+        glass_level.solids[0].maxs.x = 5.0F;
+        RelayGame::WorldSceneRenderer side_glass_scene;
+        side_glass_scene.initialize(
+            RelayGame::build_prepared_world_scene_data(
+                glass_level,
+                renderer.authoring_config(),
+                renderer.color_pipeline_mode()
+            ),
+            renderer.static_models()
+        );
+        RelayGame::WorldSceneRenderer side_steam_scene;
+        side_steam_scene.initialize({.color_pipeline_mode = renderer.color_pipeline_mode()}, renderer.static_models());
+        steam.origin = {3.5F, 1.0F, 3.5F};
+        const std::array side_effects{steam};
+        renderer.camera().set_position({0.0F, 1.5F, 0.0F});
+        renderer.camera().set_target({0.0F, 1.5F, 7.0F});
+        const auto pixels = [&] {
+            auto result = read_rgb(renderer);
+            return result;
+        };
+        const auto render_side_glass = [&] {
+            side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false);
+        };
+        const auto render_side_steam = [&] {
+            side_steam_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
+        };
+        renderer.begin_frame();
+        side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
+        if (side_glass_scene.diagnostics().transparent_draw_calls != 11)
+            throw std::runtime_error("Side-view glass and steam did not enter the transparent pass together");
+        const auto sorted_pixels = pixels();
+        (void) capture(renderer, directory / "glass-steam-side.bmp");
+
+        renderer.begin_frame();
+        render_side_glass();
+        render_side_steam();
+        const auto expected_pixels = pixels();
+
+        renderer.begin_frame();
+        render_side_steam();
+        render_side_glass();
+        const auto wrong_order_pixels = pixels();
+        if (sorted_pixels != expected_pixels || sorted_pixels == wrong_order_pixels)
+            throw std::runtime_error("Side-view glass and steam blend in the wrong order");
+        side_steam_scene.shutdown();
+        side_glass_scene.shutdown();
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
+    const bool effect_views = argc > 1 && std::string_view{argv[1]}.starts_with("--effect-views");
+    const bool effect_sdr = effect_views && std::string_view{argv[1]} == "--effect-views-sdr";
+    const bool body_views = argc > 1 && std::string_view{argv[1]}.starts_with("--body-views");
     const bool character_views = argc > 1 && std::string_view{argv[1]}.starts_with("--character-views");
     const bool profile_views = argc > 1 && std::string_view{argv[1]} == "--profile-views";
     const bool intake_views = argc > 1 && std::string_view{argv[1]}.starts_with("--intake-views");
@@ -126,7 +215,9 @@ int main(int argc, char** argv)
     const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--no-shadows";
     });
-    const bool hdr = (art_review && !art_legacy && !lighting_sdr) || (argc > 1 && std::string_view{argv[1]} == "--hdr");
+    const bool hdr = (effect_views && !effect_sdr) || (body_views && std::string_view{argv[1]} != "--body-views-sdr")
+                     || (art_review && !art_legacy && !lighting_sdr)
+                     || (argc > 1 && std::string_view{argv[1]} == "--hdr");
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -172,11 +263,292 @@ int main(int argc, char** argv)
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{
             config.renderer,
-            (hdr || lighting_sdr) ? RelayCore::render::ColorPipelineMode::hardware_srgb
-                                  : RelayCore::render::ColorPipelineMode::legacy_gamma
+            (hdr || lighting_sdr || effect_sdr) ? RelayCore::render::ColorPipelineMode::hardware_srgb
+                                                : RelayCore::render::ColorPipelineMode::legacy_gamma
         };
         renderer.initialize(window);
         renderer.on_resize(width, height);
+        if (effect_views)
+        {
+            const auto directory = std::filesystem::path{"power-captures"} / (hdr ? "effects-hdr" : "effects-sdr");
+            std::filesystem::create_directories(directory);
+            for (const auto* map :
+                 {"power_restoration", "pressure_transfer", "cooling_loop", "foundation_pump", "development_sandbox"})
+            {
+                const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                    RelayCore::core::asset_path(std::string{"levels/"} + map + ".toml")
+                );
+                RelayGame::WorldSceneRenderer scene;
+                scene.initialize(
+                    RelayGame::build_prepared_world_scene_data(
+                        session.level,
+                        renderer.authoring_config(),
+                        renderer.color_pipeline_mode()
+                    ),
+                    renderer.static_models()
+                );
+                auto environment = RelayGame::build_world_environment(session.level);
+                const auto render_effect = [&](const std::string& name,
+                                               glm::vec3 eye,
+                                               glm::vec3 target,
+                                               std::span<const RelayCore::gameplay::RuntimeTurret> turrets = {},
+                                               const RelayCore::gameplay::PlayerCombatState* player = nullptr,
+                                               std::span<const RelayCore::gameplay::CombatShotTrace> pellets = {},
+                                               int weapon = 0) {
+                    renderer.camera().set_position(eye);
+                    renderer.camera().set_target(target);
+                    renderer.begin_frame();
+                    scene.render(
+                        renderer,
+                        renderer.camera(),
+                        0,
+                        session.doors,
+                        turrets,
+                        session.usables,
+                        -1,
+                        {},
+                        false,
+                        {},
+                        {},
+                        environment,
+                        {},
+                        player,
+                        pellets
+                    );
+                    if (weapon == 1)
+                        scene.render_pistol_viewmodel(
+                            renderer,
+                            renderer.camera(),
+                            player->weapon_cooldown_remaining_seconds,
+                            player->weapon_refire_seconds
+                        );
+                    if (weapon == 2)
+                        scene.render_shotgun_viewmodel(
+                            renderer,
+                            renderer.camera(),
+                            player->weapon_cooldown_remaining_seconds
+                        );
+                    return capture(renderer, directory / (std::string{map} + "-" + name + ".bmp"));
+                };
+                for (std::size_t index = 0; index < environment.size(); ++index)
+                {
+                    if (environment[index].kind == RelayGame::EnvironmentKind::Lamp
+                        || environment[index].kind == RelayGame::EnvironmentKind::Decal)
+                        continue;
+                    const auto origin = environment[index].origin;
+                    const float yaw = glm::radians(environment[index].angles.x);
+                    const glm::vec3 outward{std::sin(yaw), 0, std::cos(yaw)};
+                    const glm::vec3 side{outward.z, 0, -outward.x};
+                    const auto eye = origin + outward * 2.2F + glm::vec3{0, -.2F, 0};
+                    const auto name = "effect-" + std::to_string(index);
+                    for (auto& effect : environment)
+                        if (effect.kind != RelayGame::EnvironmentKind::Lamp)
+                            effect.strength = 0;
+                    const auto off = render_effect(name + "-off", eye, origin);
+                    auto& effect = environment[index];
+                    effect.strength = 1;
+                    for (const float age : {.08F, .22F, .36F, .70F})
+                    {
+                        effect.age = age;
+                        effect.phase = age * 8;
+                        const auto on = render_effect(name + "-" + std::to_string(int(age * 100)), eye, origin);
+                        if (age == .08F && std::abs(on - off) < .00001)
+                            throw std::runtime_error(std::string{map} + " " + name + " is hidden at its source");
+                    }
+                    render_effect(name + "-side", origin + outward * 1.4F + side * .8F, origin);
+                    effect.active = true;
+                    effect.elapsed = 10;
+                    const std::vector<std::string> stop_targets = effect.stop_target.empty()
+                                                                      ? std::vector<std::string>{}
+                                                                      : std::vector<std::string>{effect.stop_target};
+                    RelayGame::update_world_environment(std::span{&effect, 1}, stop_targets, .15F);
+                    render_effect(name + "-coast", eye, origin);
+                    RelayGame::update_world_environment(std::span{&effect, 1}, stop_targets, 6);
+                    render_effect(name + "-stopped", eye, origin);
+                    if (effect.strength >= .02F)
+                        throw std::runtime_error("Repair/isolation did not stop an environment effect");
+                }
+                if (std::string_view{map} == "power_restoration")
+                {
+                    for (auto& effect : environment)
+                        if (effect.kind != RelayGame::EnvironmentKind::Lamp)
+                            effect.strength = 0;
+                    const glm::vec3 eye{4.5F, 1.65F, 7}, target{2.48F, 1.55F, 8.5F};
+                    auto turrets = session.combat.turrets;
+                    if (turrets.empty())
+                        throw std::runtime_error("Effect review requires the return turret");
+                    render_effect("combat-idle", eye, target, turrets);
+                    for (const float age : {0.F, .025F, .055F, .10F, .18F, .25F})
+                    {
+                        RelayCore::gameplay::PlayerCombatState player;
+                        (void) RelayCore::gameplay::apply_player_fire(
+                            RelayCore::test::WorldQueryFixture{session.level, session.doors},
+                            eye,
+                            glm::normalize(target - eye),
+                            player,
+                            turrets
+                        );
+                        player.weapon_cooldown_remaining_seconds = std::max(0.F, player.weapon_refire_seconds - age);
+                        player.shot_trace.remaining_seconds = std::max(0.F, .25F - age);
+                        render_effect(
+                            "pistol-" + std::to_string(int(age * 1000)),
+                            eye,
+                            target,
+                            turrets,
+                            &player,
+                            {},
+                            1
+                        );
+                        player = {};
+                        auto shotgun_turrets = session.combat.turrets;
+                        auto attack = RelayGame::fire_player_weapon(
+                            RelayCore::test::WorldQueryFixture{session.level, session.doors},
+                            eye,
+                            glm::normalize(target - eye),
+                            player,
+                            shotgun_turrets,
+                            {},
+                            RelayGame::PlayerWeapon::Shotgun
+                        );
+                        for (auto& pellet : attack.pellet_traces)
+                            pellet.remaining_seconds = std::max(0.F, .06F - age);
+                        player.weapon_cooldown_remaining_seconds = std::max(0.F, .85F - age);
+                        render_effect(
+                            "shotgun-" + std::to_string(int(age * 1000)),
+                            eye,
+                            target,
+                            shotgun_turrets,
+                            &player,
+                            attack.pellet_traces,
+                            2
+                        );
+                        turrets[0].shot_trace = {target + glm::vec3{.32F, .008F, 0}, eye, std::max(0.F, .08F - age)};
+                        turrets[0].fire_flash_remaining_seconds = std::max(0.F, .16F - age);
+                        render_effect(
+                            "turret-" + std::to_string(int(age * 1000)),
+                            {3, 1.65F, 6.2F},
+                            {3.5F, 1.55F, 8},
+                            turrets
+                        );
+                        turrets[0].destroyed = true;
+                        turrets[0].hit_flash_remaining_seconds = std::max(0.F, .32F - age);
+                        turrets[0].shot_trace = {};
+                        render_effect("destroyed-" + std::to_string(int(age * 1000)), eye, target, turrets);
+                        turrets = session.combat.turrets;
+                    }
+                    for (const auto& [name, aim] : std::array{
+                             std::pair{"wall", glm::vec3{4.5F, 1.65F, 10.5F}},
+                             std::pair{"floor", glm::vec3{4.5F, 0, 8.5F}},
+                             std::pair{"miss", glm::vec3{12, 1.65F, 7}}
+                         })
+                    {
+                        RelayCore::gameplay::PlayerCombatState player;
+                        player.weapon_range = name == std::string_view{"miss"} ? .8F : 24;
+                        (void) RelayCore::gameplay::apply_player_fire(
+                            RelayCore::test::WorldQueryFixture{session.level, session.doors},
+                            eye,
+                            glm::normalize(aim - eye),
+                            player,
+                            {}
+                        );
+                        for (const float age : {.025F, .10F, .18F})
+                        {
+                            player.shot_trace.remaining_seconds = .25F - age;
+                            player.weapon_cooldown_remaining_seconds = .24F - age;
+                            render_effect(
+                                std::string{"impact-"} + name + "-" + std::to_string(int(age * 1000)),
+                                eye,
+                                aim,
+                                {},
+                                &player,
+                                {},
+                                1
+                            );
+                        }
+                    }
+                }
+                scene.shutdown();
+            }
+            review_glass_steam(renderer, directory);
+            return 0;
+        }
+        if (body_views)
+        {
+            const auto directory = std::filesystem::path{"power-captures"} / (hdr ? "body-hdr" : "body-sdr");
+            std::filesystem::create_directories(directory);
+            const auto level =
+                RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/foundation_intake.toml"));
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            const glm::vec3 feet{0, 0, -2};
+            const auto render_body =
+                [&](const std::string& name, const RelayGame::ScientistPose& pose, float fov = 70, bool external = false
+                ) {
+                    renderer.camera().apply_projection_config({.vertical_fov_radians = fov * 3.14159265F / 180});
+                    const glm::vec3 heading = glm::normalize(glm::vec3{pose.forward.x, 0, pose.forward.z});
+                    renderer.camera().set_position(
+                        feet + (external ? glm::vec3{1.35F, 1.15F, 1.5F} : glm::vec3{0, 1.62F - pose.landing * .09F, 0})
+                    );
+                    renderer.camera().set_target(feet + (external ? glm::vec3{0, .6F, 0} : heading * .12F));
+                    renderer.begin_frame();
+                    scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false, {}, pose);
+                    return capture(renderer, directory / (name + ".bmp"));
+                };
+            RelayGame::ScientistPose pose{.position = feet, .visible = true};
+            const auto idle = render_body("idle", pose);
+            pose.visible = false;
+            if (std::abs(idle - render_body("hidden", pose)) < .1)
+                throw std::runtime_error("Player body must be visible looking down");
+            pose.visible = true;
+            (void) render_body("construction", pose, 50, true);
+            for (const float fov : {50.F, 70.F, 90.F})
+                (void) render_body("fov-" + std::to_string(int(fov)), pose, fov);
+            for (int phase = 0; phase < 8; ++phase)
+            {
+                pose.stride_phase = phase * 3.14159265F / 4;
+                pose.stride_amount = 1;
+                (void) render_body("walk-" + std::to_string(phase), pose);
+                (void) render_body("walk-side-" + std::to_string(phase), pose, 50, true);
+            }
+            for (int direction = 0; direction < 4; ++direction)
+                for (int phase = 0; phase < 4; ++phase)
+                {
+                    const float angle = direction * 3.14159265F / 2;
+                    pose.travel_direction = {std::sin(angle), 0, std::cos(angle)};
+                    pose.stride_phase = phase * 3.14159265F / 2;
+                    pose.stride_amount = 1;
+                    (void) render_body("travel-" + std::to_string(direction) + "-" + std::to_string(phase), pose);
+                }
+            pose.stride_amount = 0;
+            pose.travel_direction = {0, 0, 1};
+            for (const float landing : {.5F, 1.F})
+            {
+                pose.landing = landing;
+                (void) render_body("landing-" + std::to_string(int(landing * 100)), pose);
+                (void) render_body("landing-side-" + std::to_string(int(landing * 100)), pose, 50, true);
+            }
+            pose.landing = 0;
+            for (int yaw = 0; yaw < 4; ++yaw)
+            {
+                const float angle = yaw * 3.14159265F / 2;
+                pose.forward = {std::sin(angle), 0, std::cos(angle)};
+                (void) render_body("turn-" + std::to_string(yaw), pose);
+                pose.stride_amount = 1;
+                pose.stride_phase = 1.5707963F;
+                (void) render_body("turn-walking-" + std::to_string(yaw), pose);
+                pose.stride_amount = 0;
+            }
+            scene.shutdown();
+            std::cout << "player_body=passed\n";
+            return 0;
+        }
         if (art_review)
         {
             const auto review_directory = std::filesystem::path{"power-captures"}
@@ -199,6 +571,7 @@ int main(int argc, char** argv)
                 int actor_state = -1;
                 int capture_width = width;
                 int capture_height = height;
+                int operation_count = -1;
             };
             std::vector views{
                 View{"foundation_intake", "foundation-entrance.bmp", {0, 1.65F, -2}, {0, 1.35F, 2}},
@@ -338,6 +711,47 @@ int main(int argc, char** argv)
                         auto view = control;
                         view.image += "-" + std::to_string(state) + ".bmp";
                         view.control_state = state;
+                        views.push_back(std::move(view));
+                    }
+                for (const auto& control : {
+                         View{
+                             "power_restoration",
+                             "state-power",
+                             {14.3F, 1.65F, 20.1F},
+                             {14.3F, 1.5F, 21.76F},
+                             60,
+                             "power_breaker"
+                         },
+                         View{
+                             "cooling_loop",
+                             "state-cooling",
+                             {4.6F, 1.65F, 23},
+                             {6.34F, 1.4F, 23},
+                             60,
+                             "cooling_control"
+                         },
+                         View{
+                             "pressure_transfer",
+                             "state-transfer",
+                             {31, 1.65F, 42},
+                             {31, 1.4F, 43.76F},
+                             60,
+                             "exit_reader"
+                         },
+                         View{
+                             "foundation_pump",
+                             "state-pump",
+                             {-1.3F, 1.65F, 1.5F},
+                             {-2.7F, 1.4F, 1.5F},
+                             60,
+                             "pump_control"
+                         },
+                     })
+                    for (int operation = 0; operation < 4; ++operation)
+                    {
+                        auto view = control;
+                        view.image += "-" + std::to_string(operation) + ".bmp";
+                        view.operation_count = operation;
                         views.push_back(std::move(view));
                     }
             }
@@ -971,7 +1385,7 @@ int main(int argc, char** argv)
                 if (view.door_fraction >= 0)
                     for (auto& door : view_doors)
                         door.open_fraction = view.door_fraction;
-                if (view.control)
+                if (view.control && view.operation_count < 0)
                 {
                     const auto found =
                         std::ranges::find(view_usables, view.control, &RelayCore::gameplay::RuntimeUsable::name);
@@ -992,6 +1406,57 @@ int main(int argc, char** argv)
                         found->consumed = true;
                         found->enabled = false;
                     }
+                }
+                if (view.operation_count >= 0)
+                {
+                    std::vector<std::string> inventory, signaled;
+                    const auto use = [&](std::string_view name) {
+                        const auto found =
+                            std::ranges::find(view_usables, name, &RelayCore::gameplay::RuntimeUsable::name);
+                        if (found == view_usables.end()
+                            || !RelayGame::apply_usable_interaction(
+                                    *found,
+                                    view_doors,
+                                    view_usables,
+                                    inventory,
+                                    view_targets,
+                                    signaled
+                            )
+                                    .primary_applied)
+                            throw std::runtime_error("Equipment state interaction failed: " + std::string{name});
+                    };
+                    if (view.operation_count > 0)
+                    {
+                        if (map == "power_restoration")
+                            for (const auto* name : {"spare_fuse", "maintenance_isolator", "bus_relay"})
+                                use(name);
+                        else if (map == "cooling_loop")
+                            use("cooling_isolator");
+                        else if (map == "pressure_transfer")
+                            use("transfer_control");
+                        else
+                            inventory.push_back("service_key");
+                    }
+                    for (auto& usable : view_usables)
+                        usable.requirement_met =
+                            usable.required_item.empty()
+                            || std::ranges::find(inventory, usable.required_item) != inventory.end();
+                    const auto found =
+                        std::ranges::find(view_usables, view.control, &RelayCore::gameplay::RuntimeUsable::name);
+                    if (found == view_usables.end())
+                        throw std::runtime_error("Equipment state control missing");
+                    if (view.operation_count > 1)
+                    {
+                        use(view.control);
+                        found->feedback_style = RelayCore::gameplay::UsableFeedbackStyle::Success;
+                        found->feedback_remaining_seconds = view.operation_count == 2 ? 1.F : 0.F;
+                        if (!found->consumed || std::ranges::find(view_targets, found->target) == view_targets.end())
+                            throw std::runtime_error("Equipment operation did not persist its target/control state");
+                    } else if ((found->locked || !found->requirement_met) != (view.operation_count == 0))
+                        throw std::runtime_error("Equipment prerequisites did not change blocked/ready state");
+                    static_cast<void>(RelayCore::gameplay::update_doors(2.F, {}, view_doors));
+                    route_environment = RelayGame::build_world_environment(session.level);
+                    RelayGame::update_world_environment(route_environment, view_targets, 2.F);
                 }
                 if (std::string_view{view.image} == "b17-isolated.bmp")
                 {
@@ -1134,6 +1599,15 @@ int main(int argc, char** argv)
                 if (view.control)
                 {
                     const auto pixels = read_rgb(renderer);
+                    if (view.operation_count == 1 || view.operation_count == 2)
+                    {
+                        if (pixels == previous_control_pixels)
+                            throw std::runtime_error(
+                                "Equipment operation did not change the fixed-camera frame: " + view.image
+                            );
+                    }
+                    if (view.operation_count == 3 && pixels != previous_control_pixels)
+                        throw std::runtime_error("Equipment success disappeared after feedback expired: " + view.image);
                     if (view.control_state > 0 && view.control_state < 5 && pixels == previous_control_pixels)
                         throw std::runtime_error("Panel feedback states rendered identically: " + view.image);
                     if (!character_views && view.control_state == 5 && pixels != previous_control_pixels)
@@ -1444,94 +1918,7 @@ int main(int argc, char** argv)
                 throw std::runtime_error("Off-camera panel did not reach the shadow map");
             dynamic_scene.shutdown();
         }
-        {
-            RelayCore::BlockoutLevel glass_level{};
-            RelayCore::BlockoutSolid glass{};
-            glass.mins = {-1.0F, 0.0F, 4.98F};
-            glass.maxs = {1.0F, 3.0F, 5.02F};
-            glass.material = RelayCore::SurfaceMaterial::Glass;
-            glass_level.solids.push_back(glass);
-            RelayGame::WorldSceneRenderer glass_scene;
-            glass_scene.initialize(
-                RelayGame::build_prepared_world_scene_data(
-                    glass_level,
-                    renderer.authoring_config(),
-                    renderer.color_pipeline_mode()
-                ),
-                renderer.static_models()
-            );
-            RelayGame::EnvironmentEffect steam{};
-            steam.kind = RelayGame::EnvironmentKind::Steam;
-            steam.origin = {0.0F, 1.0F, 6.0F};
-            steam.scale = 2.0F;
-            steam.strength = 1.0F;
-            steam.age = 0.4F;
-            const std::array effects{steam};
-            const auto render_glass_and_steam = [&](const char* name, const glm::vec3 eye, const glm::vec3 target) {
-                renderer.camera().set_position(eye);
-                renderer.camera().set_target(target);
-                renderer.begin_frame();
-                glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, effects);
-                if (glass_scene.diagnostics().transparent_draw_calls != 13)
-                    throw std::runtime_error("Glass and steam did not enter the transparent pass together");
-                (void) capture(renderer, std::filesystem::path{"power-captures"} / name);
-            };
-            render_glass_and_steam("glass-steam-back.bmp", {0.0F, 1.5F, 0.0F}, {0.0F, 1.5F, 7.0F});
-            render_glass_and_steam("glass-steam-front.bmp", {0.0F, 1.5F, 10.0F}, {0.0F, 1.5F, 3.0F});
-            glass_scene.shutdown();
-
-            glass_level.solids[0].mins.x = -5.0F;
-            glass_level.solids[0].maxs.x = 5.0F;
-            RelayGame::WorldSceneRenderer side_glass_scene;
-            side_glass_scene.initialize(
-                RelayGame::build_prepared_world_scene_data(
-                    glass_level,
-                    renderer.authoring_config(),
-                    renderer.color_pipeline_mode()
-                ),
-                renderer.static_models()
-            );
-            RelayGame::WorldSceneRenderer side_steam_scene;
-            side_steam_scene.initialize(
-                {.color_pipeline_mode = renderer.color_pipeline_mode()},
-                renderer.static_models()
-            );
-            steam.origin = {3.5F, 1.0F, 3.5F};
-            const std::array side_effects{steam};
-            renderer.camera().set_position({0.0F, 1.5F, 0.0F});
-            renderer.camera().set_target({0.0F, 1.5F, 7.0F});
-            const auto pixels = [&] {
-                auto result = read_rgb(renderer);
-                return result;
-            };
-            const auto render_side_glass = [&] {
-                side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false);
-            };
-            const auto render_side_steam = [&] {
-                side_steam_scene
-                    .render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
-            };
-            renderer.begin_frame();
-            side_glass_scene.render(renderer, renderer.camera(), 0.0F, {}, {}, {}, -1, {}, false, {}, {}, side_effects);
-            if (side_glass_scene.diagnostics().transparent_draw_calls != 13)
-                throw std::runtime_error("Side-view glass and steam did not enter the transparent pass together");
-            const auto sorted_pixels = pixels();
-            (void) capture(renderer, "power-captures/glass-steam-side.bmp");
-
-            renderer.begin_frame();
-            render_side_glass();
-            render_side_steam();
-            const auto expected_pixels = pixels();
-
-            renderer.begin_frame();
-            render_side_steam();
-            render_side_glass();
-            const auto wrong_order_pixels = pixels();
-            if (sorted_pixels != expected_pixels || sorted_pixels == wrong_order_pixels)
-                throw std::runtime_error("Side-view glass and steam blend in the wrong order");
-            side_steam_scene.shutdown();
-            side_glass_scene.shutdown();
-        }
+        review_glass_steam(renderer, "power-captures");
         const auto before = render("intake-before.bmp", {0.0F, 1.65F, -3.5F}, {0.0F, 1.65F, 5.0F});
         (void) render("spawn-before.bmp", {-2.0F, 1.65F, -3.5F}, {-2.0F, 1.65F, 5.0F});
         if (scene.diagnostics().local_light_count != 8)
@@ -1781,6 +2168,8 @@ int main(int argc, char** argv)
         feedback.hit_confirmation_strength = 1.0F;
         feedback.hurt_flash_strength = 1.0F;
         renderer.set_player_diagnostics(feedback);
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hud);
+        renderer.player_ui().set_hud({.visible = true, .health = 75, .max_health = 100, .hurt = 1, .hit = 1});
         if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
             throw std::runtime_error("Combat feedback HUD unavailable");
         renderer.end_ui();
@@ -1789,6 +2178,14 @@ int main(int argc, char** argv)
             renderer.begin_frame();
             scene.render(renderer, renderer.camera(), 0.0F, doors, combat.turrets, usables, -1, {}, false);
             renderer.set_player_diagnostics(feedback);
+            renderer.player_ui().set_hud(
+                {.visible = true,
+                 .alive = feedback.alive,
+                 .health = feedback.health,
+                 .max_health = feedback.max_health,
+                 .weapon = feedback.alive ? "Пистолет" : "Ко входу через 2 с",
+                 .hint = feedback.active_hazard_contacts ? "Отойдите с опасной поверхности" : ""}
+            );
             if (!renderer.begin_ui({.delta_seconds = 1.0 / 60.0}, audio))
                 throw std::runtime_error("Player status HUD unavailable");
             renderer.end_ui();
@@ -1804,6 +2201,7 @@ int main(int argc, char** argv)
         feedback.respawn_remaining_seconds = 1.25F;
         capture_status("hud-respawn.bmp");
         renderer.set_player_diagnostics({});
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hidden);
         RelayGame::LevelEditor editor;
         renderer.camera().set_position({0, 1.65F, -3.5F});
         renderer.camera().set_target({0, 1.65F, 5});
@@ -2215,8 +2613,8 @@ int main(int argc, char** argv)
                 || renderer.player_diagnostics().weapon_cooldown_remaining_seconds < .8F)
                 throw std::runtime_error("Shotgun did not count one attack and start its cooldown");
             (void) draw_game("shotgun-fired.bmp");
-            if (renderer.world_diagnostics().overlay_draw_calls != ready_draws + 7)
-                throw std::runtime_error("Shotgun did not render seven separate pellet traces");
+            if (renderer.world_diagnostics().overlay_draw_calls < ready_draws + 10)
+                throw std::runtime_error("Shotgun did not render pellet traces and its short muzzle flash");
             for (int frame_index = 0; frame_index < 5; ++frame_index)
                 weapon_game.on_update(game_frame, services);
             (void) draw_game("shotgun-recoil.bmp");

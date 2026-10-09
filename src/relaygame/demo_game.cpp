@@ -139,7 +139,8 @@ namespace RelayGame
             services.audio_system().set_paused(!window_focused_);
         if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_RETURN)
         {
-            if (screen_ == Screen::MainMenu && !show_settings_ && !confirm_new_game_)
+            if (screen_ == Screen::MainMenu && !show_settings_ && !confirm_new_game_
+                && !services.renderer().player_ui().has_focused_control())
             {
                 if (save_file_exists_ && !disk_save_)
                     confirm_new_game_ = true;
@@ -147,7 +148,7 @@ namespace RelayGame
                     begin_episode(disk_save_.has_value(), services);
             } else if (screen_ == Screen::Finale)
                 finale_time_ = 6;
-            else if (screen_ == Screen::Complete)
+            else if (screen_ == Screen::Complete && !services.renderer().player_ui().has_focused_control())
                 return_to_menu(services);
             return;
         }
@@ -175,7 +176,7 @@ namespace RelayGame
             return;
         }
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_F11 && !event.key.repeat
-            && services.renderer().ui_available())
+            && services.renderer().developer_ui_available())
         {
             if (screen_ == Screen::Editor)
                 editor_.request_play();
@@ -209,6 +210,7 @@ namespace RelayGame
     void DemoGame::on_update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_update");
+        apply_ui_actions(services);
         if (screen_ == Screen::Finale)
         {
             if (window_focused_)
@@ -284,7 +286,8 @@ namespace RelayGame
             runtime_.environment(),
             runtime_.enemies(),
             &runtime_.player_combat_state(),
-            runtime_.player_pellet_traces()
+            runtime_.player_pellet_traces(),
+            runtime_.containment() ? &*runtime_.containment() : nullptr
         );
         if ((screen_ == Screen::Playing || screen_ == Screen::Paused) && runtime_.player_combat_state().alive)
         {
@@ -310,11 +313,13 @@ namespace RelayGame
     void DemoGame::on_ui(RelayCore::EngineServices& services)
     {
         if (screen_ == Screen::Finale)
-            draw_finale();
+            draw_finale(services);
         else if (screen_ == Screen::Editor)
             editor_.draw_ui(services);
         else if (screen_ != Screen::Playing)
             draw_pause_menu(services);
+        else
+            services.renderer().player_ui().set_hud(runtime_.build_hud_presentation(&services.camera()));
     }
 
     void DemoGame::on_shutdown(RelayCore::EngineServices& services) noexcept

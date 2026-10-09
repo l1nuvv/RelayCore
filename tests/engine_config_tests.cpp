@@ -91,6 +91,19 @@ TEST_CASE("engine config validates explicit HDR exposure")
     check_invalid_config(temp.path(), "[render]\nhdr_enabled = 1\n", "render.hdr_enabled");
 }
 
+TEST_CASE("engine config validates MSAA sample counts")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    for (const auto samples : {1, 2, 4})
+    {
+        const auto path = write_engine_config(temp.path(), "[render]\nmsaa_samples = " + std::to_string(samples));
+        CHECK(RelayCore::core::load_engine_config(path).renderer.msaa_samples == samples);
+    }
+    for (const auto value : {"0", "3", "8", "-1", "true", "1.5"})
+        check_invalid_config(temp.path(), std::string{"[render]\nmsaa_samples = "} + value, "render.msaa_samples");
+}
+
 TEST_CASE("engine config ignores unsupported copy inspector source binding")
 {
     RelayCore::test::ScopedTempDirectory temp;

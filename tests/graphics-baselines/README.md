@@ -1,5 +1,18 @@
 # Accepted graphics baselines
 
+2026-10-09, VIS-49: the four `power_restoration-{0,1}{,-shotgun}` samples now
+represent the accumulated art and weapon pass. The recorded first scene failure
+was reproduced exactly. All 13 coverage and 1,325 over-threshold color tiles lie
+in the door half: VIS-17 replaces the old box with the native leaf and guides.
+The wall half has no failing tiles. The shotgun views also include VIS-35 hands
+and the revised viewmodel. Each current capture was reviewed before its sample
+was updated; normal thresholds and reload/culling/presentation assertions remain.
+The retained VIS-05–07 full BMPs predate a later color-reference update and do not
+encode to the frozen samples, so the comparison figure reconstructs the actual
+old tile averages. Final power/weapon selection: 3/3 passed, no skips or Vulkan
+validation warnings/errors. [Cause, review and remaining human acceptance](../../docs/art/vis48-49-cost-and-review.md)
+and `build/vis48-49` retain the evidence and previous samples.
+
 2026-10-08, colour audit: only the four `power_restoration-{0,1}{,-shotgun}`
 samples were updated for corrected MR display-space postfx, after independent
 numeric checks, a passing original-SPIR-V control with identical assets, and

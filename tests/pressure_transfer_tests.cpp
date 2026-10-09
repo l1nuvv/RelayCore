@@ -183,6 +183,122 @@ TEST_CASE("pressure transfer complete route keeps interactions reachable and rep
     }
 }
 
+TEST_CASE("pressure transfer objective first route disables a live turret and survives continue and retry")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::EngineConfig config;
+    PressureRoute route{config.gameplay};
+    route.reach_mixed();
+    route.start_transfer_under_pressure();
+    REQUIRE(route.player.alive);
+    CHECK(route.player.kills == 2);
+    CHECK(route.player.damage_taken > 0);
+    CHECK_FALSE(route.session.combat.turrets[1].destroyed);
+    CHECK_FALSE(route.session.combat.turrets[1].enabled);
+    CHECK(route.session.combat.turrets[1].health == 60);
+    CHECK(route.session.enemies[1].state.mode != RelayGame::EnemyMode::Dead);
+    const auto control =
+        std::ranges::find(route.session.usables, "transfer_control", &RelayCore::gameplay::RuntimeUsable::name);
+    REQUIRE(control != route.session.usables.end());
+    CHECK(
+        RelayGame::apply_usable_interaction(
+            *control,
+            route.session.doors,
+            route.session.usables,
+            route.inventory,
+            route.activated,
+            route.signaled
+        )
+            .kind
+        == RelayCore::gameplay::UseInteractionOutcome::None
+    );
+
+    RelayGame::GameWorldRuntime runtime;
+    runtime.load_level_session(config, RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path));
+    const auto disk = temp.path() / "objective-first.toml";
+    RelayGame::write_saved_game(disk, route.save());
+    runtime.restore_saved_game(RelayGame::load_saved_game(disk));
+    CHECK_FALSE(runtime.turrets()[1].enabled);
+    CHECK_FALSE(runtime.turrets()[1].destroyed);
+    CHECK(runtime.mission_status().current_step == 7);
+    const auto checkpoint = runtime.capture_encounter_snapshot(10, 0, false);
+    runtime.load_level_session(config, RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path));
+    runtime.restore_encounter_snapshot(checkpoint);
+    CHECK_FALSE(runtime.turrets()[1].enabled);
+    auto dead = runtime.capture_saved_game(10, false);
+    dead.world.player_combat.health = 0;
+    dead.world.player_combat.alive = false;
+    dead.world.player_combat.respawn_remaining_seconds = 1.2F;
+    runtime.restore_saved_game(dead);
+    REQUIRE(runtime.debug_advance_player_respawn(2));
+    CHECK_FALSE(runtime.turrets()[1].enabled);
+    CHECK(runtime.mission_status().current_step == 7);
+    route.auto_fire = true;
+    route.leave();
+    CHECK(route.mission.completed());
+    CHECK(route.player.kills < 4);
+    CHECK_FALSE(route.session.combat.turrets[1].destroyed);
+    MESSAGE(
+        "objective-first: damage=",
+        route.player.damage_taken,
+        "; ticks=",
+        route.ticks,
+        "; kills=",
+        route.player.kills
+    );
+}
+
+TEST_CASE("pressure transfer lunge resumes the same committed attack from disk")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::EngineConfig config;
+    for (const auto phase : {RelayGame::EnemyMode::Windup, RelayGame::EnemyMode::Lunging})
+    {
+        PressureRoute route{config.gameplay};
+        route.position = {28, .01F, 34.8F};
+        for (auto& turret : route.session.combat.turrets)
+            turret.enabled = false;
+        for (int i = 0; i < 240 && route.session.enemies[1].state.mode != phase; ++i)
+            route.tick(false);
+        REQUIRE(route.session.enemies[1].state.mode == phase);
+        const auto save = route.save();
+        const auto disk = temp.path() / "attack.toml";
+        RelayGame::write_saved_game(disk, save);
+        RelayGame::GameWorldRuntime runtime;
+        runtime.load_level_session(
+            config,
+            RelayGame::LevelSessionBuilder{config.gameplay}.build(route.session.level_path)
+        );
+        runtime.restore_saved_game(RelayGame::load_saved_game(disk));
+        auto incompatible = runtime.capture_saved_game(0, false);
+        incompatible.enemies[0].mode = RelayGame::EnemyMode::Lunging;
+        CHECK_THROWS_WITH(runtime.restore_saved_game(incompatible), "Сохранение противника несовместимо с картой.");
+        auto resumed = runtime.enemies();
+        auto player = runtime.player_combat_state();
+        std::vector<RelayCore::physics::WorldCollider> scratch;
+        for (int i = 0; i < 90; ++i)
+        {
+            route.tick(false);
+            RelayGame::update_enemies(
+                route.world(),
+                RelayCore::physics::make_player_aabb(route.position, .3F, 1.8F),
+                route.position + glm::vec3{0, 1.65F, 0},
+                player,
+                resumed,
+                1.F / 120,
+                scratch
+            );
+        }
+        CHECK(resumed[1].state.position == route.session.enemies[1].state.position);
+        CHECK(resumed[1].state.mode == route.session.enemies[1].state.mode);
+        CHECK(resumed[1].state.timer == route.session.enemies[1].state.timer);
+        CHECK(resumed[1].state.last_seen == route.session.enemies[1].state.last_seen);
+        CHECK(player.health == route.player.health);
+    }
+}
+
 TEST_CASE("pressure transfer native bench admits rover and low shots but blocks a standing shortcut")
 {
     RelayCore::test::ScopedTempDirectory temp;
@@ -460,8 +576,8 @@ TEST_CASE("pressure transfer continue and retry preserve pickup device and exit 
         {
             runtime.debug_tick_combat(2);
             static_cast<void>(runtime.debug_apply_combat_threats(
-                RelayCore::physics::make_player_aabb({38, .01F, 41}, .3F, 1.8F),
-                {38, 1.65F, 41},
+                RelayCore::physics::make_player_aabb({27, .01F, 22}, .3F, 1.8F),
+                {27, 1.65F, 22},
                 2
             ));
         }

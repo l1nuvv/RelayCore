@@ -6,6 +6,7 @@
 #include "relaycore/physics/physics_world.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/containment_encounter.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/mission_runtime.h"
 #include "relaygame/runtime_model.h"
@@ -48,6 +49,7 @@ namespace RelayGame
     };
 
     struct LevelSession {
+        std::optional<ContainmentEncounter> containment;
         std::vector<RuntimeEnemy> enemies;
         std::vector<LevelExit> exits;
         std::optional<EpisodeEnding> ending;

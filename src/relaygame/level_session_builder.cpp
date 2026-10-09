@@ -246,6 +246,7 @@ namespace RelayGame
             session.runtime_registry.bindings(),
             session.mission_definition
         );
+        session.containment = build_containment_encounter(session.level, session.usables, session.doors);
         session.enemies = build_enemies(session.level);
         session.combat = RelayCore::gameplay::build_runtime_combat(session.level);
         for (const auto& entity : session.level.entities)

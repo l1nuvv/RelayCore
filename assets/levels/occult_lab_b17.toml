@@ -293,7 +293,7 @@ success_message = "Контур изолирован. Проверка B-17 за
 [[entity]]
 classname = "mission_settings"
 completion_title = "Лаборатория B-17 проверена"
-completion_detail = "Контрольный обход завершён."
+completion_detail = "Лаборатория изолирована. Вернитесь в входной коридор и пройдите в контур сдерживания Хранителя."
 
 [[entity_group]]
 classname = "mission_step"
@@ -339,3 +339,11 @@ classname = "prop_static"
 targetname = "b17_observation_camera_02"
 model = "models/b17_observation_camera.rcmodel"
 origin = [0,0,0]
+
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.02, -6.5]
+size = [2, 2.5, 1]
+next_map = "levels/containment_loop.toml"
+next_entry = "campaign_arrival"
+requires_completion = true

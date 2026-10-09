@@ -1,6 +1,7 @@
 #pragma once
 
 #include "relaycore/render/irradiance_probes.h"
+#include "relaycore/render/reflection_probe.h"
 
 #include <memory>
 #include <optional>
@@ -22,6 +23,17 @@ namespace RelayGame
         RelayCore::render::IrradianceProbeSettings settings;
         std::filesystem::path product;
     };
+    struct WorldReflectionSource {
+        RelayCore::render::ReflectionProbeSettings settings;
+        std::filesystem::path product;
+    };
+    [[nodiscard]] auto world_reflection_source(const RelayCore::BlockoutLevel& level)
+        -> std::optional<WorldReflectionSource>;
+    [[nodiscard]] auto load_world_reflection(
+        const RelayCore::BlockoutLevel& level,
+        const PreparedWorldSceneData& scene,
+        const RelayCore::render::RenderAuthoringConfig& authoring
+    ) -> std::shared_ptr<const RelayCore::render::ReflectionProbe>;
 
     [[nodiscard]] auto world_irradiance_source(const RelayCore::BlockoutLevel& level)
         -> std::optional<WorldIrradianceSource>;

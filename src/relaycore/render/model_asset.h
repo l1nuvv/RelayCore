@@ -20,6 +20,11 @@ namespace RelayCore::render
         std::optional<CpuRgbaTextureData> normal;
         float normal_scale = 1;
         std::optional<MetallicRoughness> metallic_roughness;
+        std::optional<CpuRgbaTextureData> metallic_roughness_map;
+        std::optional<CpuRgbaTextureData> occlusion;
+        float occlusion_strength = 1;
+        std::optional<CpuRgbaTextureData> emissive;
+        glm::vec3 emissive_factor{0};
     };
 
     struct ModelPart {
@@ -44,6 +49,11 @@ namespace RelayCore::render
         Texture2D normal;
         float normal_scale = 1;
         std::optional<MetallicRoughness> metallic_roughness;
+        Texture2D metallic_roughness_map;
+        Texture2D occlusion;
+        float occlusion_strength = 1;
+        Texture2D emissive;
+        glm::vec3 emissive_factor{0};
     };
 
     struct ModelAsset {

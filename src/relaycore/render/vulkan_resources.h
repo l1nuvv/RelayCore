@@ -78,7 +78,7 @@ namespace RelayCore::render
 
     private:
         friend class VulkanUploads;
-        VulkanTexture(const VulkanDevice& device, int width, int height, TextureEncoding encoding);
+        VulkanTexture(const VulkanDevice& device, int width, int height, TextureEncoding encoding, bool cube = false);
         struct State {
             explicit State(const VulkanDevice& owner);
             ~State() noexcept;
@@ -90,6 +90,7 @@ namespace RelayCore::render
             VkSampler sampler = VK_NULL_HANDLE;
             VkExtent2D extent{};
             uint32_t mip_levels = 0;
+            bool cube = false;
             VkSemaphore upload_timeline = VK_NULL_HANDLE;
             uint64_t upload_completion = 0;
         };

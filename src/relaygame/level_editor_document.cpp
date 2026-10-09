@@ -35,7 +35,7 @@ namespace RelayGame
 
         auto entity_size(const RelayCore::EntitySpawnData& entity) -> glm::vec3
         {
-            if (entity.classname == "enemy_rover")
+            if (entity.classname == "enemy_rover" || entity.classname == "enemy_shooter")
                 return {.84F, .95F, .84F};
             const auto text = property(entity, "size");
             if (text.empty())
@@ -53,9 +53,10 @@ namespace RelayGame
 
         auto bottom_origin(const RelayCore::EntitySpawnData& entity) -> bool
         {
-            return entity.classname == "enemy_rover" || entity.classname == "player_spawn"
-                   || entity.classname == "level_entry" || entity.classname == "mission_step"
-                   || entity.classname == "level_exit" || property(entity, "kind") == "door";
+            return entity.classname == "enemy_rover" || entity.classname == "enemy_shooter"
+                   || entity.classname == "player_spawn" || entity.classname == "level_entry"
+                   || entity.classname == "mission_step" || entity.classname == "level_exit"
+                   || property(entity, "kind") == "door";
         }
 
         auto array(glm::vec3 value) -> toml::array
@@ -96,7 +97,8 @@ namespace RelayGame
     auto LevelEditorDocument::visible_entity(std::size_t index) const -> bool
     {
         const auto& entity = level_.entities.at(index);
-        return entity.classname == "enemy_rover" || entity.classname == "player_spawn"
+        return entity.classname == "enemy_rover" || entity.classname == "enemy_shooter"
+               || entity.classname == "enemy_route_point" || entity.classname == "player_spawn"
                || entity.classname == "render_light" || entity.classname == "gameplay_entity"
                || entity.classname == "world_effect" || entity.classname == "prop_static"
                || entity.classname == "mission_step" || entity.classname == "level_entry"

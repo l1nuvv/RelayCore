@@ -76,7 +76,7 @@ namespace RelayGame
         auto save_progress() noexcept -> bool;
         void begin_finale(RelayCore::EngineServices& services);
         void update_finale(float dt, RelayCore::EngineServices& services);
-        void draw_finale();
+        void draw_finale(RelayCore::EngineServices& services);
         std::filesystem::path user_data_directory_;
         std::filesystem::path progress_path_;
         std::optional<SavedGame> disk_save_;
@@ -97,6 +97,7 @@ namespace RelayGame
         void apply_player_settings(RelayCore::EngineServices& services);
         void set_pause(bool paused, RelayCore::EngineServices& services);
         void draw_pause_menu(RelayCore::EngineServices& services);
+        void apply_ui_actions(RelayCore::EngineServices& services);
         PlayerSettings settings_{};
         RelayCore::render::ColorPipelineMode sdr_color_pipeline_ = RelayCore::render::ColorPipelineMode::legacy_gamma;
         std::filesystem::path settings_path_;

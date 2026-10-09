@@ -1,6 +1,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/renderer.h"
+#include "relaygame/player_feedback.h"
 #include "relaygame/world_scene_renderer.h"
 
 #include <cmath>
@@ -13,6 +14,60 @@ namespace RelayGame
 {
     namespace
     {
+        auto weapon_basis(const RelayCore::render::PerspectiveCamera& camera) -> glm::mat4
+        {
+            glm::mat4 basis{1};
+            basis[0] = glm::vec4{camera.right(), 0};
+            basis[1] = glm::vec4{camera.up(), 0};
+            basis[2] = glm::vec4{-camera.forward(), 0};
+            basis[3] = glm::vec4{camera.position(), 1};
+            return basis;
+        }
+
+        auto pistol_transform(const RelayCore::render::PerspectiveCamera& camera, float elapsed, float refire)
+            -> glm::mat4
+        {
+            const float recoil = std::sin(glm::pi<float>() * glm::clamp(elapsed / glm::min(refire, .18F), 0.F, 1.F));
+            auto model = glm::translate(weapon_basis(camera), {.12F, -.13F + recoil * .012F, -.34F + recoil * .020F});
+            model = glm::rotate(model, std::atan(.12F / 11.66F), glm::vec3{0, 1, 0});
+            return glm::rotate(model, std::atan(.083F / 11.66F) + recoil * .13F, glm::vec3{1, 0, 0});
+        }
+
+        auto shotgun_transform(const RelayCore::render::PerspectiveCamera& camera, float elapsed) -> glm::mat4
+        {
+            const float recoil = std::sin(glm::pi<float>() * glm::clamp(elapsed / .14F, 0.F, 1.F));
+            auto model = glm::translate(weapon_basis(camera), {.19F, -.18F + recoil * .008F, -.60F + recoil * .035F});
+            model = glm::rotate(model, std::atan(.19F / 11.4F), glm::vec3{0, 1, 0});
+            return glm::rotate(model, std::atan(.19645F / 11.4F) + recoil * .055F, glm::vec3{1, 0, 0});
+        }
+
+        void queue_muzzle_flash(
+            RelayCore::render::RenderQueue& queue,
+            const RelayCore::render::StaticColorMesh& mesh,
+            glm::mat4 model,
+            glm::vec3 muzzle,
+            float age,
+            float duration
+        )
+        {
+            if (age < 0 || age >= duration)
+                return;
+            const float fade = 1 - age / duration;
+            model = glm::translate(model, muzzle);
+            for (int i = 0; i < 3; ++i)
+            {
+                auto flash = glm::rotate(model, i * glm::pi<float>() / 3, glm::vec3{0, 0, 1});
+                flash = glm::translate(flash, {0, 0, -.025F * fade});
+                queue.push(
+                    mesh,
+                    glm::scale(flash, glm::vec3{.055F, .009F, .065F} * fade),
+                    RelayCore::render::RenderPass::Overlay,
+                    nullptr,
+                    false
+                );
+            }
+        }
+
         [[nodiscard]] auto
         aabb_intersects_planes(const std::array<glm::vec4, 6>& planes, const glm::vec3& mins, const glm::vec3& maxs)
             -> bool
@@ -191,23 +246,12 @@ namespace RelayGame
     ) -> std::span<const RelayCore::render::RenderItem>
     {
         const float elapsed = refire_seconds - cycle_remaining_seconds;
-        const float recoil =
-            cycle_remaining_seconds > 0
-                ? std::sin(glm::pi<float>() * glm::clamp(elapsed / glm::min(refire_seconds, .18F), 0.0F, 1.0F))
-                : 0;
         const float slide =
             cycle_remaining_seconds > 0
                 ? .028F * std::sin(glm::pi<float>() * glm::clamp(elapsed / glm::min(refire_seconds, .10F), 0.0F, 1.0F))
                 : 0;
-        glm::mat4 basis{1};
-        basis[0] = glm::vec4{camera.right(), 0};
-        basis[1] = glm::vec4{camera.up(), 0};
-        basis[2] = glm::vec4{-camera.forward(), 0};
-        basis[3] = glm::vec4{camera.position(), 1};
-        auto model = glm::translate(basis, {.12F, -.13F + recoil * .012F, -.34F + recoil * .020F});
-        // The resting bore converges on the eye ray at 12 m; hitscan stays at the eye.
-        model = glm::rotate(model, std::atan(.12F / 11.66F), glm::vec3{0, 1, 0});
-        model = glm::rotate(model, std::atan(.083F / 11.66F) + recoil * .13F, glm::vec3{1, 0, 0});
+        const auto model =
+            pistol_transform(camera, cycle_remaining_seconds > 0 ? elapsed : refire_seconds, refire_seconds);
         pistol_viewmodel_.clear();
         for (std::size_t index = 0; index < pistol_models_.size(); ++index)
         {
@@ -224,10 +268,17 @@ namespace RelayGame
                     false,
                     surface.normal.cpu_data() ? &surface.normal : nullptr,
                     surface.normal_scale,
-                    surface.metallic_roughness
+                    surface.metallic_roughness,
+                    surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
+                    surface.occlusion.valid() ? &surface.occlusion : nullptr,
+                    surface.occlusion_strength,
+                    surface.emissive.valid() ? &surface.emissive : nullptr,
+                    surface.emissive_factor
                 );
             }
         }
+        if (cycle_remaining_seconds > 0)
+            queue_muzzle_flash(pistol_viewmodel_, player_shot_mesh_, model, {0, .047F, -.174F}, elapsed, .045F);
         return pistol_viewmodel_.items();
     }
 
@@ -249,20 +300,10 @@ namespace RelayGame
     ) -> std::span<const RelayCore::render::RenderItem>
     {
         const float elapsed = .85F - cycle_remaining_seconds;
-        const float recoil =
-            cycle_remaining_seconds > 0 ? std::sin(glm::pi<float>() * glm::clamp(elapsed / .14F, 0.0F, 1.0F)) : 0;
         const float pump = cycle_remaining_seconds > 0
                                ? .07F * std::sin(glm::pi<float>() * glm::clamp((elapsed - .18F) / .54F, 0.0F, 1.0F))
                                : 0;
-        glm::mat4 basis{1};
-        basis[0] = glm::vec4{camera.right(), 0};
-        basis[1] = glm::vec4{camera.up(), 0};
-        basis[2] = glm::vec4{-camera.forward(), 0};
-        basis[3] = glm::vec4{camera.position(), 1};
-        auto model = glm::translate(basis, {.19F, -.18F + recoil * .008F, -.60F + recoil * .035F});
-        // The bore converges on the eye ray at 12 m, independently of the hitscan origin.
-        model = glm::rotate(model, std::atan(.19F / 11.4F), glm::vec3{0, 1, 0});
-        model = glm::rotate(model, std::atan(.19645F / 11.4F) + recoil * .055F, glm::vec3{1, 0, 0});
+        const auto model = shotgun_transform(camera, cycle_remaining_seconds > 0 ? elapsed : .85F);
         shotgun_viewmodel_.clear();
         for (std::size_t index = 0; index < shotgun_view_models_.size(); ++index)
         {
@@ -279,17 +320,80 @@ namespace RelayGame
                     false,
                     surface.normal.cpu_data() ? &surface.normal : nullptr,
                     surface.normal_scale,
-                    surface.metallic_roughness
+                    surface.metallic_roughness,
+                    surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
+                    surface.occlusion.valid() ? &surface.occlusion : nullptr,
+                    surface.occlusion_strength,
+                    surface.emissive.valid() ? &surface.emissive : nullptr,
+                    surface.emissive_factor
                 );
             }
         }
+        if (cycle_remaining_seconds > 0)
+            queue_muzzle_flash(shotgun_viewmodel_, player_shot_mesh_, model, {0, -.01645F, -.680F}, elapsed, .055F);
         return shotgun_viewmodel_.items();
+    }
+
+    void WorldSceneRenderer::render_containment(
+        const ContainmentEncounter& encounter,
+        bool ready,
+        bool limiter_installed,
+        bool powered,
+        glm::vec3 player_position
+    )
+    {
+        const auto& state = encounter.state;
+        const auto box = [&](glm::vec3 center, glm::vec3 size, std::size_t material) {
+            render_queue_.push(containment_meshes_[material], make_centered_box_model_matrix(center, size * .5F));
+            record_render_draw(RelayCore::render::RenderPass::Opaque, 12);
+        };
+        const float crouch = state.capture_fraction;
+        const float reach = state.mode == GuardianMode::Windup ? 1.0F - state.timer / .9F : 0;
+        const auto direction =
+            (state.mode == GuardianMode::Pursuing ? player_position : state.strike_target) - state.position;
+        const bool aimed = state.mode == GuardianMode::Windup || state.mode == GuardianMode::Recovery
+                           || state.mode == GuardianMode::Capturing || state.mode == GuardianMode::Contained
+                           || state.mode == GuardianMode::Pursuing;
+        const float yaw = aimed && glm::length(glm::vec2{direction.x, direction.z}) > .01F
+                              ? std::atan2(direction.x, direction.z)
+                              : glm::pi<float>();
+        auto body = glm::rotate(glm::translate(glm::mat4{1}, state.position), yaw, glm::vec3{0, 1, 0});
+        body = glm::scale(body, {1, 1 - crouch * .30F, 1});
+        queue_interactive_model(*containment_models_[0], body, true);
+        auto arm = glm::translate(body, {.52F, 2.88F, -.16F});
+        arm = glm::rotate(arm, glm::radians(-65.0F * reach), glm::vec3{1, 0, 0});
+        queue_interactive_model(*containment_models_[1], arm, true);
+        const auto center = (encounter.trap.mins + encounter.trap.maxs) * .5F;
+        const float grip_y = 6.5F - state.grip_fraction * 1.4F - state.capture_fraction * 2.4F;
+        queue_interactive_model(
+            *containment_models_[2],
+            glm::translate(glm::mat4{1}, {center.x, grip_y, center.z}),
+            true,
+            powered
+        );
+        const float ram_base = grip_y + .385F;
+        queue_interactive_model(
+            *containment_models_[3],
+            glm::scale(glm::translate(glm::mat4{1}, {center.x, ram_base, center.z}), {1, 6.9F - ram_base, 1}),
+            true
+        );
+        if (limiter_installed)
+        {
+            auto cassette = glm::translate(glm::mat4{1}, {-5.67F, 1.26F, 29});
+            cassette = glm::rotate(cassette, -glm::half_pi<float>(), glm::vec3{0, 1, 0});
+            queue_interactive_model(*containment_models_[4], cassette, true);
+        }
+        if (state.mode == GuardianMode::Windup)
+            box({state.strike_target.x, .255F, state.strike_target.z}, {3, .02F, 3}, 2);
+        const std::size_t indicator = ready ? 3 : 2;
+        box({-5.5F, 2.2F, 29}, {.3F, .3F, .3F}, indicator);
     }
 
     void WorldSceneRenderer::queue_interactive_model(
         const RelayCore::render::ModelAsset& asset,
         const glm::mat4& model,
-        const bool visible
+        const bool visible,
+        const bool emissive_enabled
     )
     {
         for (const auto& part : asset.parts)
@@ -310,7 +414,12 @@ namespace RelayGame
                 true,
                 surface.normal.cpu_data() ? &surface.normal : nullptr,
                 surface.normal_scale,
-                surface.metallic_roughness
+                surface.metallic_roughness,
+                surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
+                surface.occlusion.valid() ? &surface.occlusion : nullptr,
+                surface.occlusion_strength,
+                surface.emissive.valid() ? &surface.emissive : nullptr,
+                emissive_enabled ? surface.emissive_factor : glm::vec3{0}
             );
         }
     }
@@ -463,11 +572,17 @@ namespace RelayGame
                 const bool is_power_fuse = usable.item_id == "power_fuse";
                 const bool is_shotgun = usable.item_id == shotgun_item_id;
                 const bool is_service_key = usable.item_id == "service_key";
+                const bool is_limiter = usable.item_id == "limiter_cassette";
                 const auto entity_index = static_cast<std::size_t>(usable.authored_entity_index);
                 const auto surface_y = entity_index < pickup_surfaces_.size()
                                            ? pickup_surfaces_[entity_index].value_or(bounds.mins.y)
                                            : bounds.mins.y;
-                if (is_shotgun)
+                if (is_limiter)
+                {
+                    auto origin = (bounds.mins + bounds.maxs) * .5F;
+                    origin.y = surface_y + .002F;
+                    pickup_model = glm::translate(glm::mat4{1}, origin);
+                } else if (is_shotgun)
                 {
                     const auto center = (shotgun_world_model_->mins + shotgun_world_model_->maxs) * .5F;
                     auto rotation = glm::rotate(glm::mat4{1}, glm::half_pi<float>(), glm::vec3{0, 1, 0});
@@ -491,7 +606,9 @@ namespace RelayGame
                 }
                 if (!camera_visible)
                 {
-                    if (is_service_key)
+                    if (is_limiter)
+                        queue_interactive_model(*containment_models_[4], pickup_model, false);
+                    else if (is_service_key)
                     {
                         for (const auto& part : service_key_model_->parts)
                             shadow_casters_.push(service_key_model_->meshes[part.mesh], pickup_model * part.transform);
@@ -505,7 +622,9 @@ namespace RelayGame
                     continue;
                 }
                 ++diagnostics_.usable_draw_calls;
-                if (is_service_key)
+                if (is_limiter)
+                    queue_interactive_model(*containment_models_[4], pickup_model, true);
+                else if (is_service_key)
                 {
                     queue_interactive_model(*service_key_model_, pickup_model, true);
                 } else if (is_shotgun)
@@ -593,16 +712,30 @@ namespace RelayGame
                 record_render_draw(RelayCore::render::RenderPass::Opaque, mesh_triangle_count(turret_warning_mesh_));
                 render_queue_.push(turret_warning_mesh_, model, RelayCore::render::RenderPass::Opaque);
             }
+            if (!turret.destroyed && turret.fire_flash_remaining_seconds > .115F)
+            {
+                const float yaw = glm::radians(turret.yaw);
+                const glm::vec3 muzzle =
+                    turret.origin
+                    + glm::vec3{std::sin(yaw) * size.z * .49F, size.y * .01F, std::cos(yaw) * size.z * .49F};
+                const float fade = (turret.fire_flash_remaining_seconds - .115F) / .045F;
+                const glm::vec3 forward{std::sin(yaw), 0, std::cos(yaw)};
+                render_effect_streak(muzzle, muzzle + forward * .09F * fade, .025F * fade, player_shot_mesh_);
+            }
+            if (!turret.destroyed && turret.hit_flash_remaining_seconds > 0)
+                render_spark_burst(
+                    turret.origin,
+                    camera.position() - turret.origin,
+                    .18F - turret.hit_flash_remaining_seconds,
+                    .18F
+                );
             if (turret.destroyed && turret.hit_flash_remaining_seconds > 0.0F)
             {
                 const float yaw = glm::radians(turret.yaw);
                 const glm::vec3 head =
                     turret.origin
                     + glm::vec3{std::sin(yaw) * size.z * 0.42F, -size.y * 0.25F, std::cos(yaw) * size.z * 0.42F};
-                const float remaining = std::min(turret.hit_flash_remaining_seconds, 0.25F);
-                render_shot_trace(camera, {head, head + glm::vec3{-0.35F, 0.30F, 0.10F}, remaining}, true);
-                render_shot_trace(camera, {head, head + glm::vec3{0.30F, 0.15F, 0.30F}, remaining}, true);
-                render_shot_trace(camera, {head, head + glm::vec3{0.12F, -0.28F, -0.25F}, remaining}, true);
+                render_spark_burst(head, {0, 1, 0}, .32F - turret.hit_flash_remaining_seconds, .32F);
             }
         }
     }
@@ -616,37 +749,100 @@ namespace RelayGame
     {
         if (trace.remaining_seconds <= 0.0F)
             return;
+        const float lifetime = hostile ? .08F : (pellet ? .06F : .25F);
+        const float age = std::max(0.F, lifetime - trace.remaining_seconds);
+        if (trace.impact)
+            render_spark_burst(
+                trace.end,
+                trace.impact->normal,
+                age,
+                pellet ? .06F : .16F,
+                weapon_impact_is_metal(trace.impact->surface)
+            );
+        const float visible_seconds = hostile ? .08F : (pellet ? .055F : .065F);
+        if (age >= visible_seconds)
+            return;
+        const auto weapon = pellet ? shotgun_transform(camera, age) : pistol_transform(camera, age, .24F);
+        const glm::vec3 muzzle = pellet ? glm::vec3{0, -.01645F, -.680F} : glm::vec3{0, .047F, -.174F};
         const glm::vec3 visual_start =
-            hostile ? trace.start
-                    : trace.start + camera.right() * 0.22F - camera.up() * 0.17F + camera.forward() * 0.32F;
+            hostile ? trace.start : trace.start + glm::vec3{weapon * glm::vec4{muzzle, 1}} - camera.position();
         const glm::vec3 delta = trace.end - visual_start;
         const float distance = glm::length(delta);
         if (distance <= 0.05F)
             return;
 
         const glm::vec3 forward = delta / distance;
-        const float progress = glm::clamp(1.0F - trace.remaining_seconds / (pellet ? .06F : .25F), 0.0F, 1.0F);
-        const float front = std::max(progress, pellet ? .18F : .08F);
-        const float back = std::max(0.0F, front - 0.18F);
-        const float end_distance = hostile ? distance : front * distance;
-        const float start_distance =
-            hostile ? 0.0F : (pellet ? std::max(.05F, end_distance - .08F) : std::max(0.05F, back * distance));
+        const float front = glm::clamp(.15F + age / visible_seconds, 0.F, 1.F);
+        const float end_distance = front * distance;
+        const float start_distance = std::max(0.F, end_distance - (pellet ? .16F : (hostile ? .55F : .45F)));
         if (end_distance <= start_distance)
             return;
 
-        const glm::vec3 up = std::abs(forward.y) > 0.95F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
-        const glm::vec3 right = glm::normalize(glm::cross(up, forward));
-        const glm::vec3 normal = glm::cross(forward, right);
-        glm::mat4 model{1.0F};
-        const float width =
-            hostile ? 0.018F * glm::clamp(trace.remaining_seconds / 0.08F, 0.0F, 1.0F) : (pellet ? 0.008F : 0.045F);
-        model[0] = glm::vec4{right * width, 0.0F};
-        model[1] = glm::vec4{normal * width, 0.0F};
-        model[2] = glm::vec4{forward * (end_distance - start_distance), 0.0F};
-        model[3] = glm::vec4{visual_start + forward * ((start_distance + end_distance) * 0.5F), 1.0F};
         const auto& mesh = hostile ? turret_shot_mesh_ : (pellet ? pellet_mesh_ : player_shot_mesh_);
+        const float width = (pellet ? .004F : (hostile ? .011F : .009F)) * (1 - age / visible_seconds);
+        render_effect_streak(
+            visual_start + forward * start_distance,
+            visual_start + forward * end_distance,
+            width,
+            mesh
+        );
+    }
+
+    void WorldSceneRenderer::render_effect_streak(
+        glm::vec3 start,
+        glm::vec3 end,
+        float width,
+        const RelayCore::render::StaticColorMesh& mesh
+    )
+    {
+        const auto delta = end - start;
+        const float length = glm::length(delta);
+        if (length < .0001F || width <= 0)
+            return;
+        const auto forward = delta / length;
+        const auto reference = std::abs(forward.y) > .95F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
+        const auto right = glm::normalize(glm::cross(reference, forward));
+        glm::mat4 model{1};
+        model[0] = glm::vec4{right * width, 0};
+        model[1] = glm::vec4{glm::cross(forward, right) * width, 0};
+        model[2] = glm::vec4{forward * length, 0};
+        model[3] = glm::vec4{(start + end) * .5F, 1};
         record_render_draw(RelayCore::render::RenderPass::Overlay, mesh_triangle_count(mesh));
         render_queue_.push(mesh, model, RelayCore::render::RenderPass::Overlay, nullptr, false);
+    }
+
+    void WorldSceneRenderer::render_spark_burst(
+        glm::vec3 origin,
+        glm::vec3 normal,
+        float age,
+        float duration,
+        bool metal,
+        float scale
+    )
+    {
+        if (age < 0 || age >= duration)
+            return;
+        const float fade = 1 - age / duration;
+        normal = glm::dot(normal, normal) > .0001F ? glm::normalize(normal) : glm::vec3{0, 1, 0};
+        const auto reference = std::abs(normal.y) > .95F ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0};
+        const auto right = glm::normalize(glm::cross(normal, reference));
+        const auto up = glm::cross(normal, right);
+        const float speed = metal ? 1.15F : .55F;
+        for (int i = 0; i < (metal ? 6 : 4); ++i)
+        {
+            const float angle = i * 2.399963F;
+            const auto velocity =
+                (normal * (.5F + i * .09F) + right * std::cos(angle) * .65F + up * std::sin(angle) * .65F) * speed;
+            const auto end =
+                origin + (normal * .012F + velocity * (age + .018F) - glm::vec3{0, 2.5F * age * age, 0}) * scale;
+            const auto start = end - glm::normalize(velocity) * (metal ? .06F : .018F) * fade * scale;
+            render_effect_streak(
+                start,
+                end,
+                (metal ? .004F : .009F) * fade * scale,
+                metal ? turret_shot_mesh_ : pellet_mesh_
+            );
+        }
     }
 
     void WorldSceneRenderer::render_inspector_pick(

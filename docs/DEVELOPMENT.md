@@ -1,5 +1,42 @@
 # Разработка RelayCore
 
+## Игровой UI (RmlUi 6.3)
+
+Player documents are `assets/ui/hud.rml`, `menu.rml`, `finale.rml`; shared layout,
+palette and control states live in `assets/ui/player.rcss`. The explicit Cyrillic
+font is `assets/fonts/RobotoMono-Regular.ttf`. Existing asset synchronization stages
+these files alongside the compiled `player_ui.vert/frag.spv`; runtime paths resolve
+through the usual executable-relative root or `RELAYCORE_ASSET_ROOT`.
+After editing RML/RCSS/font or UI shader files, build `relaycore_demo` to synchronize runtime
+assets and restart the game: persistent documents are loaded at UI initialization.
+
+`Renderer` owns `PlayerUi`, its context, official SDL system/IME adapter and Vulkan
+render interface. Game code sends `HudPresentation` built directly from runtime
+state and menu text/values; RmlUi handles stay in the implementation. DOM text is
+escaped and unchanged text is retained. UI listeners enqueue actions; `DemoGame`
+applies them at the start of its update, using existing save/settings/session
+operations. Screen changes clear stale UI actions and gameplay held inputs.
+
+The existing SDL event loop dispatches developer input and focused RmlUi menu input;
+passive HUD/finale documents have no pointer ownership. Context dimensions, geometry
+and scissor use framebuffer pixels; the official SDL translator converts mouse
+coordinates by window pixel density. Authored `dp` layout scales from a 1280×720
+reference with a 0.75 compatibility minimum. Menus scroll on short windows.
+
+After the scene's tone mapping/display conversion, `VulkanMeshRenderer` appends
+RmlUi to the final target's UNORM view using encoded premultiplied alpha, then
+developer ImGui. Current HDR setting is an FP16 scene/tone-mapping path with SDR
+presentation, not an HDR10 swapchain. UI bypasses exposure, fog and scene grading.
+Geometry and atlases are persistent; the existing synchronous mesh submission fence
+completes before the next UI update/resource release. Presentation drains before
+context shutdown, while SDL/Vulkan/VMA still exist. A future asynchronous frame
+submission must add UI retirement to its frame fences before changing this contract.
+
+Use existing `demo-debug`/`graphics-debug` presets; relevant checks are
+`graphics.game_hud`, `graphics.player_ui`, `graphics.game_lifecycle`, `graphics.hdr_settings` and
+`graphics.vulkan_color_baseline`. Review actual captures before changing graphics
+baselines. ImGui's config switch controls developer tools; player UI remains enabled.
+
 ## Испытательный полигон
 
 После перезагрузки CMake в CLion выберите **RelayCore — Sandbox** и нажмите Run.
@@ -56,6 +93,37 @@ pwsh -NoProfile -File tests/level_check_tests.ps1 -Executable build/msvc-debug/s
 Код 1 — ошибка карты/ресурса/назначения перехода; 2 — неверные аргументы.
 Проверка не заменяет игровой проход и не доказывает достижимость всего контента.
 
+## Освещение материалов и сглаживание
+
+`render.msaa_samples` принимает `1`, `2`, `4`; все три игровые конфигурации
+(`engine`, `native_lab_hdr`, `occult_lab_b17`) используют `4`. Отсутствующий ключ
+сохраняет `1` для прежних конфигураций и изолированных fixtures. Неподдерживаемый
+GPU sample count отклоняется с диагностикой; смена MSAA требует перезагрузки
+renderer. Цвет и depth сцены multisampled, shadows остаются single-sample.
+Resolve выполняется для мира и viewmodel до HDR tone mapping и UI;
+HUD/RmlUi/ImGui остаются в финальном single-sample target.
+
+Metallic/roughness материалы получают мягкую environment specular составляющую:
+hemisphere ambient и восстановленные низкочастотные SH radiance из существующих
+irradiance probes, с roughness-фильтром и аналитической
+[environment BRDF](https://www.unrealengine.com/blog/physically-based-shading-on-mobile).
+Это fallback вне authored reflection probe. IMG-02 добавляет статический cubemap
+с GGX mip chain и box projection; внутри bounds он заменяет hemisphere/SH specular.
+Diffuse probes, прямой GGX, shadows и authored texture data
+сохраняются. MSAA сглаживает покрытие геометрии; temporal AA здесь не реализован.
+
+IMG-05 broadens GGX roughness on native normal-mapped PBR surfaces using the
+screen-space variance of the mapped normal. The addition to squared GGX alpha is
+bounded at .04; flat normals and non-PBR materials retain their existing response.
+This filters specular lighting and reflection LOD, without filtering base color,
+text or UI and without storing frame history. Matched 48-frame camera arcs are
+captured by `relaycore_containment_loop_graphics --hdr --motion` (omit `--hdr` for SDR).
+
+Проверки: `graphics.msaa` (1/2/4×, HDR/SDR, диагональное покрытие, viewmodel,
+resize и settled allocations), `graphics.hdr_pipeline`, `graphics.irradiance_probes`,
+`graphics.player_ui`, `graphics.containment_loop(_hdr)` и engine config cases.
+[Одинаковые игровые кадры до/после](art/g019-lighting-aa-before-after.png).
+
 ## Изолированный physics fixture
 
 E-011 проверяет static boxes и triangle wall с проёмом без смены backend игровых карт. В Developer PowerShell:
@@ -86,11 +154,24 @@ cmake --build --preset demo-debug
 ```
 
 `Test-Path` должен вернуть `True`. Debug используется для отладки и validation.
-Для обычной игры и плейтеста выполните configure `msvc-relwithdebinfo` и
-`cmake --build --preset demo-relwithdebinfo`, затем запустите
-`build/msvc-relwithdebinfo/src/relaygame/RelayCore.exe` или **RelayCore — Play** в CLion.
+Для повседневных правок, игры и плейтеста выполните configure `msvc-dev` и
+`cmake --build --preset demo-dev`, затем запустите
+`build/msvc-dev/src/relaygame/RelayCore.exe` или **RelayCore — Play** в CLion.
+Этот профиль сохраняет `/O2`, символы и Tracy, использует PCH и отдельные `.cpp`,
+отключает IPO/LTO и разрешает incremental linking. Первый переход требует полной
+сборки нового дерева; следующие правки используют его инкрементально.
+`msvc-relwithdebinfo` остаётся профилем измерения производительности с IPO и Unity,
+а `msvc-release` — финальной сборкой. Для проверки кода профиля разработки есть
+`tests-dev` / `test-dev` и `validation-dev` (build/test presets).
 Assets по умолчанию находятся рядом с executable; `RELAYCORE_ASSET_ROOT` задаёт
 абсолютный override. Для renderer он должен включать собранные SPIR-V.
+
+Для отдельного прохода `RELAYCORE_USER_DATA_ROOT` задаёт абсолютный каталог
+игровых progress/settings; пустой или относительный путь — ошибка запуска.
+Без override используется прежний каталог SDL. Конфигурация CLion
+**RelayCore — G-019 Playtest** использует `build/g019/player-e`, сохраняя обычный
+пользовательский progress. [Протокол G-019](playtests/G-019-2026-10-09.md)
+описывает новый проход и Continue без удаления существующих сохранений.
 
 ### CLion
 
@@ -144,9 +225,10 @@ Graphics job выполняет configure/build с validation=ON, проверя
 
 ### Профилирование
 
-Профиль `msvc-relwithdebinfo` включает Tracy.
+Профили `msvc-dev` и `msvc-relwithdebinfo` включают Tracy. Для сравнимых с прежними
+измерений используйте `msvc-relwithdebinfo` или **RelayCore — Profile** в CLion.
 
-Для обычной игры в CLion выбирайте **RelayCore — Play**: эта конфигурация собирает `relaycore_demo` с `msvc-relwithdebinfo` и использует runtime assets рядом с executable. Debug/ASan оставлены для отладки и Vulkan core/synchronization validation; их FPS не характеризует игровую сборку. Локальное сравнение после VK-013, RTX 4060 Ti, 1280×720, VSync off, один scripted entrance: Debug p50 42,79 мс / p95 44,16 мс, RelWithDebInfo p50 1,63 мс / p95 2,57 мс. Captures: `build/vk-013-regression-{debug-before,before}.tracy`; полный workload — `build/vk-013-regression-episode-{debug-before,before}.log`. Это сравнение конфигураций, не ускорение renderer патчем.
+Для обычной игры в CLion выбирайте **RelayCore — Play**: эта конфигурация собирает `relaycore_demo` с `msvc-dev` и использует runtime assets рядом с executable. Debug/ASan оставлены для отладки и Vulkan core/synchronization validation; их FPS не характеризует игровую сборку. Локальное сравнение после VK-013, RTX 4060 Ti, 1280×720, VSync off, один scripted entrance: Debug p50 42,79 мс / p95 44,16 мс, RelWithDebInfo p50 1,63 мс / p95 2,57 мс. Captures: `build/vk-013-regression-{debug-before,before}.tracy`; полный workload — `build/vk-013-regression-episode-{debug-before,before}.log`. Это сравнение конфигураций, не ускорение renderer патчем и не замер нового `msvc-dev`.
 
 Для сравнимого захвата:
 
@@ -301,7 +383,7 @@ warning gate намеренно не ослаблен. `dump_*_after.spv` под
 - SDR swapchain `B8G8R8A8_UNORM`/`R8G8B8A8_UNORM` и `SRGB_NONLINEAR`;
 - scene attachment view: UNORM для legacy, SRGB для hardware; UI view всегда UNORM
   над тем же image. Blit читает UNORM storage и не кодирует готовые bytes повторно;
-- порядок world/overlay/transparent → viewmodel с очисткой depth → ImGui →
+- порядок world/overlay/transparent → viewmodel с очисткой depth → RmlUi → developer ImGui →
   transfer/present, attachment reuse barriers и переходы layout/access/stage;
 - D24 shadow writes → fragment reads, directional/spot/point layers и отсутствие
   validation messages. Сверяйте scene/UI и swapchain pixels, а не только успешный present.
@@ -369,14 +451,36 @@ alpha игнорируется. UV и green channel не переворачив�
 сохраняется и применяется к XY перед нормализацией. В обоих цветовых режимах normal
 texture всегда linear. Shadow receiver bias/offset использует геометрическую нормаль,
 освещение — mapped normal.
-Sampler — repeat, linear/trilinear. Неподдерживаемые attributes/extensions, skins,
-animation, morphs, sparse accessors, alpha/double-sided, occlusion/emissive/metallic-roughness
-maps вызывают ошибку с путём source. Metallic/roughness scalars поддерживаются
+Sampler — repeat, linear/trilinear; при поддержке `samplerAnisotropy` устройство
+включает анизотропию до `min(16, maxSamplerAnisotropy)`. Без этой optional feature
+сохраняется трилинейная фильтрация; GPU startup contract не расширяется. Выбранная
+степень записывается в startup log. Неподдерживаемые attributes/extensions, skins,
+animation, morphs, sparse accessors и alpha/double-sided
+вызывают ошибку с путём source. IMG-01/03 поддерживают embedded metallic-roughness
+(G=roughness, B=metallic) и occlusion (R) textures: linear RGBA8, UV0, repeat/linear,
+без texture transform. MR maps требуют `--metallic-roughness`, умножаются на factors;
+AO strength в [0,1] ослабляет только непрямой свет. Неиспользуемые каналы игнорируются.
+IMG-06 adds core glTF emissive textures/factors: embedded PNG/JPEG RGB is sRGB,
+alpha is ignored, and the independent linear RGB factor is finite and in [0,1].
+The same UV0/sampler restrictions apply. RMDL v5 retains readers for v1–4 and
+stores the map and factor separately; runtime emission maps always use sRGB
+sampling, including the legacy color pipeline. Emission is added independently
+of direct/indirect light and AO, before fog and tone mapping. Core factor-only
+materials work; glTF extensions (including emissive-strength) remain unsupported.
+The first consumer is the containment crosshead's illuminated plate, authored
+by `scripts/author-containment-emission.py` and the owning containment exporter.
+Its factor is zero in standby and restored when `grip_ready` powers the drive; it does
+not illuminate geometry. A separate conditional light belongs to the existing
+control indicator. Bloom was not required by this restrained first consumer.
+Verification: `graphics.emissive_maps`, native/GLB cases and containment HDR/SDR.
+Metallic/roughness scalars поддерживаются
 при явном выборе новой модели освещения. По умолчанию importer сохраняет прежний
 base-color/normal путь; `--metallic-roughness` включает glTF factors для всех материалов
 модели. В декларации CMake этот выбор задаёт
-`set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet ON)`; cylinder/bench используют
-прежнее освещение. Декларация входит в SHA256 receipts, смена выбора пересобирает product.
+`set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_power_cabinet ON)`; `lab_bench` также
+явно включён в metallic/roughness список, `service_cylinder` использует прежнее
+освещение. Актуальный список opt-in моделей задаёт `cmake/RelayCoreModelAssets.cmake`.
+Декларация входит в SHA256 receipts, смена выбора пересобирает product.
 
 Новая модель — GGX distribution, separable Smith visibility, Schlick Fresnel и Lambert
 diffuse по [glTF Appendix B](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-b-brdf-implementation).
@@ -398,9 +502,10 @@ cmake --build --preset demo-debug --target relaycore_demo_assets
 cmake --build --preset demo-debug --target relaycore_sandbox
 ```
 
-E-004 подключает модели к сборке: исходники перечислены явно в
-`cmake/RelayCoreModelAssets.cmake`: `service_cylinder.glb`, `lab_bench.glb` и
-`power_cabinet.glb` из `content/models`.
+Модели подключены к сборке через явный список в `cmake/RelayCoreModelAssets.cmake`.
+Первый slice E-004 включал `service_cylinder.glb`, `lab_bench.glb` и
+`power_cabinet.glb` из `content/models`; текущий список также содержит последующие
+facility, signage, interactive hardware и weapon модели.
 Для новой модели добавьте GLB в `content/models` и имя файла в этот список
 (латинские буквы, цифры, `_` и `-`, без подкаталогов);
 product получает путь `models/<имя>.rcmodel`. Файл не нужно добавлять в `assets`:
@@ -420,6 +525,19 @@ compiler rules/product. Упаковка сверяет их с текущими
 content-addressed cache, streaming и автоматический Blender export сюда не входят.
 GLB и receipts не попадают в ZIP. Сам CLI остаётся доступен для отдельного импорта,
 например `build/msvc-debug/relaycore_model_import.exe source.glb build/test.rcmodel`.
+
+Для проверки текущей сборки без упаковки используйте существующий checker:
+
+```powershell
+pwsh -NoProfile -File scripts/check-model-assets.ps1 -ProjectRoot . `
+  -BuildRoot build/msvc-debug -RuntimeAssets build/msvc-debug/src/relaygame/assets
+```
+
+Он сверяет source/importer/rules/declaration/product SHA256 и staged product для
+каждого пути из `generated/runtime-models.txt`. Stale state исправляется повторной
+компиляцией исходника, а не ручной правкой receipt. `.rcmodel` остаётся build-only
+product; воспроизводимый export и editable source хранятся в `scripts`/`content`.
+Отдельный native collision opt-in и его receipts описаны в [COLLISION_ASSETS.md](COLLISION_ASSETS.md).
 
 Сценарий `scripts/export-service-cylinder-glb.py`
 запускается в Blender через `--background --disable-autoexec --python`; он использует
@@ -462,8 +580,10 @@ normal, material_kind, UV, tangent). После base-color width/height/RGBA к�
 Part mesh/material и column-major transform не изменены. Нет зависимости от GLM padding.
 В v3 после normal payload каждого материала добавлены uint flags (бит 0 = новая модель
 освещения), float roughness и float metallic; при flags=0 записываются 1/0. V1/v2 не
-приобретают новую модель при чтении или повторной записи в v3.
-Normal maps остаются встроенными, repeat/linear, одним mip, без TextureAsset/KTX2;
+приобретают новую модель при чтении или повторной записи. V4 после v3 factors
+хранит MR width/height/RGBA, AO width/height/RGBA и float AO strength; 0/0 означает
+отсутствующую карту. Loader сохраняет чтение v1–3 без изменения освещения.
+Normal/MR/AO maps остаются встроенными, repeat/linear, с GPU mip chain, без TextureAsset/KTX2;
 отдельные текстурные продукты и mip policy требуют следующего consumer.
 Loader проверяет размеры, indices, finite geometry/transforms,
 материалы и точный конец файла до создания runtime resources; лимит product 256 MiB.
@@ -580,6 +700,24 @@ Environment specular/probe bake/import ещё не добавлены: это с
 
 Unit/content/graphics tests и episode profile используют staged runtime assets с native моделями и собранными SPIR-V; при ручном запуске задайте `RELAYCORE_ASSET_ROOT` на `build/<preset>/src/relaygame/assets`. CTest делает это автоматически. Изолированный mesh workload использует свой build-time SPIR-V path, но для native моделей также получает staged assets.
 
+### Chapter enemy routes (G-019-C)
+
+`enemy_rover` optionally names a `route`; `enemy_shooter` requires one.
+Matching `enemy_route_point` entities use the same `route` string and feet
+origins on one flat floor (1–16 points, within 8 cm of the enemy's floor).
+The game tests connections against the full rover footprint, floor support,
+and current doors; these authored encounter routes do not climb stairs or
+replace the future native Recast/Detour capability. Enemies without a route
+retain their existing direct pursuit. Missing/oversized/nonflat routes fail
+session construction with the enemy index and reason.
+
+Shooters use the existing saved enemy states: windup 0.7 s with fixed aim,
+one 12 m shot, and recovery 0.95 s. A lost target prompts a reachable firing
+position and then a search of the last-known position. Path/search/trace are
+transient and reset on restore; enemy health/position/aim/mode/timer retain
+the version-5 save contract. The editor displays shooters and route points
+and preserves their properties through save/load.
+
 ### Pickup presentation (VIS-36)
 
 `gameplay_entity` with `kind = pickup` may specify a finite `pickup_surface_y`
@@ -590,3 +728,30 @@ plane. When absent, the bottom of the authored visual bounds is the support.
 The field is excluded from save fingerprints, like `panel_style`; collision,
 focus bounds, reach and consumed state retain their existing owners. Bench,
 cooling, pressure and power placements use their actual authored worktop heights.
+
+## Static reflection probes (IMG-02)
+
+The engine accepts one `reflection_probe` per level. Its `origin` is the capture
+position; `mins`/`maxs` define world-space influence and box projection. Required
+`resolution` is a power of two from 8 to 256, `samples` is 32–1024, and `product`
+is a relative `.rcreflection` asset path. The first authored consumer is the central
+containment hall. Other levels use SH/ambient specular until a probe is authored
+and declared in `cmake/RelayCoreReflectionAssets.cmake`.
+
+`relaycore_reflection_bake level.toml render_authoring.toml output.rcreflection`
+uses prepared static opaque geometry, mean linear diffuse reflectance,
+unconditional local lights and ambient floor. Six linear radiance faces are GGX
+prefiltered into a complete roughness mip chain. Dynamic actors/doors, conditional
+lights, transparent geometry, directional light, emission maps and recursive
+specular transport are excluded. It is a coarse static room snapshot.
+
+RREF v1 stores position/bounds, resolution/sample count, a canonical input signature
+and mip-major +X,-X,+Y,-Y,+Z,-Z RGBA32F radiance. The GPU uploads authored mips
+without ordinary box-filter regeneration. The baker reuses matching inputs and
+settings; runtime rejects stale products. `relaycore_reflection_assets` generates
+under the native asset root; `relaycore_demo_assets` stages the product, and the
+existing `runtime-assets.txt` manifest owns its path.
+
+Verification: `graphics.material_maps_reflections`, `graphics.vulkan_upload`,
+`graphics.irradiance_probes`, `graphics.hdr_pipeline`, containment HDR/SDR and native
+material/import/reflection cases. [Source and visual evidence](art/img01-03-materials-reflections-ao.md).

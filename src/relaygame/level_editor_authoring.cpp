@@ -319,7 +319,10 @@ namespace RelayGame
         {
             for (const auto& entity : level_.entities)
                 if (entity.properties.contains("kind")
-                    && (entity.properties.at("kind") == "panel" || entity.properties.at("kind") == "door_open"))
+                    && (entity.properties.at("kind") == "door_open"
+                        || (entity.properties.at("kind") == "panel"
+                            && (!entity.properties.contains("action")
+                                || entity.properties.at("action") != "activate_target"))))
                 {
                     const auto target = entity.properties.find("target");
                     if (target == entity.properties.end()

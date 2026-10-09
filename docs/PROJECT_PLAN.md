@@ -1,10 +1,160 @@
 # Project plan — RelayCore
 
-Дата исходного анализа: 2026-09-29. Текущее состояние и порядок актуализированы 2026-10-08; исторические проверки ниже сохранены отдельно.
+Дата исходного анализа: 2026-09-29. Направление gameplay актуализировано по авторскому отзыву 2026-10-09; исторические проверки ниже сохранены отдельно.
 
 Этот документ хранит стратегию, зависимости, milestones и решения о границах разработки. Актуальный план — раздел [Development strategy](#development-strategy--2026-10-07); нижележащие N0–N8 и M0–M6 сохраняют историю прежнего планирования. Единственная implementation-очередь, фактические статусы tickets и evidence остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md). Запись плана не запускает реализацию автоматически.
 
 ## Development strategy — 2026-10-07
+
+### Решение автора — полноценная игровая глава, 2026-10-09
+
+**Текущий gameplay priority — [G-019](PLAYABLE_SLICE_ROADMAP.md#g-019--полноценная-глава-связный-маршрут-угроза-и-задача).** Новое поручение заменяет ближайший
+порядок мелкой доводки комнат и производства следующей короткой карты.
+Старые технические результаты остаются evidence своих задач.
+
+**Требования автора, обязательные для следующей реализации:**
+
+- Одна полноценная глава: **20–30 минут первого прохождения** в связной
+  локации. Автор оценивает нынешние семь сегментов суммарно примерно в
+  полторы минуты без sprint: первый 20–25 с, большинство остальных 5–10 с.
+  Это его оценка, не инструментальный замер. Продолжительность создаётся
+  содержанием: исследованием, задачами, боями и решениями, а не пустыми
+  расстояниями, искусственными задержками или запрещённым sprint.
+- Внутри главы игрок ищет, исследует, находит обходы, открывает доступ,
+  решает пространственные/технические задачи, возвращается и применяет
+  найденное. Помещения имеют разные функции и ситуации. Следующая глава
+  начинается после завершения значимого сценария.
+- Автор заметил rover lunge и отключение turret, **но не принял игровую
+  ценность**: быстрый pistol kill делает поведение несущественным. Отзыв
+  относится к balance, AI, encounter и структуре игры; первоначальная
+  трактовка «не заметил изменений» как проблемы визуальной заметности неверна.
+- Нужны полезные и вариативные враги: разные роли, движение, работа
+  с геометрией и реакция на игрока. Принятое поведение меняет действие
+  игрока в обычном проходе, а не только в подготовленной демонстрации.
+- Центральная проблема имеет специальное разрешение через оборудование
+  и состояние мира. Обычное оружие помогает выжить, выиграть окно и убрать
+  обычных врагов, но не устраняет любую проблему заранее из входа.
+- Центральный противник и hero equipment требуют подходящих полноценных
+  моделей: найти/адаптировать источник либо создать через Blender.
+  Силуэт, конструкция, материалы и движения осмысленны для роли. Сферы/кубы
+  допустимы на временном graybox этапе, но **не готовый босс или deliverable**.
+- Сохранить visual revamp и art direction: twentieth-century scientific-
+  industrial + Art Deco + occult imagery. References задают принципы;
+  персонаж, машины, layout и задачи RelayCore должны быть оригинальными.
+  Разработчик самостоятельно дополняет brief; ещё один подробный prompt
+  или готовое техническое задание от пользователя не являются prerequisite.
+
+**Авторские references и что брать из них:**
+
+| Reference | Переносимый принцип |
+| --- | --- |
+| Half-Life: щупальца в ракетной шахте | Сохраняющаяся центральная угроза; разные ветки подготовки; временное окно для действий; возвращение и разрешение угрозы оборудованием |
+| Наружные участки Black Mesa, военные, вертолёт | Связный путь через разные масштабы/дистанции, обычные и крупные угрозы, движение/наблюдение/бой |
+| Наведение артиллерии через экран | Средство воздействия на мир открывает путь; понятны цель воздействия и последствие |
+| Doom / Call of Duty, названные автором | Разнообразие игровых ситуаций внутри уровня; конкретный темп выбирать под RelayCore |
+
+Дополнительно изучены первичные материалы: [Valve, The Cabal — HALF-LIFE
+Lessons, Game Developer, December 1999](https://media.gdcvault.com/GD_Mag_Archives/GDM_December_1999.pdf)
+описывает проектирование последовательности событий, introduction ролей
+врагов/оружия и обучение внутри конкретных areas. [Valve SDK: schedules](https://github.com/ValveSoftware/halflife/blob/master/dlls/schedule.cpp)
+содержит поиск бокового укрытия/cover tasks; [monster movement](https://github.com/ValveSoftware/halflife/blob/master/dlls/monsters.cpp)
+строит routes к last-known position/node goals. Это references поведения
+и процесса, а не готовая переносимая AI library или обещание интересных встреч.
+
+**Оригинальное предложение разработчика — «Контур сдерживания».**
+Название/сюжет/образ ниже являются рабочим предложением, а не приписанной
+автору формулировкой. Цель: пройти архивно-исследовательский корпус.
+В центральном многоуровневом зале сорвался с ограничителей «Хранитель» —
+существо, использованное комплексом как живая часть аппарата сдерживания.
+Оно перекрывает рабочий переход к выходу. Его можно отвлечь/временно
+подавить, но обычный pistol/shotgun не разрешает encounter. Игрок готовит
+аппарат, **своим положением проводит угрозу в ловушку**, использует окно
+и запускает сдерживание. Открывается первоначально видимый путь дальше.
+
+| Часть одной главы | Действие / препятствие | Изменение мира и маршрута |
+| --- | --- | --- |
+| Вход и центральный зал | Увидеть выход/угрозу из безопасной точки, найти служебный обход | Известны ориентир, задача и причина искать другой путь |
+| Служебное крыло | Обойти повреждённый участок, пройти встречу, открыть доступ с обратной стороны | Новый shortcut и угол наблюдения; возвращение пространственно понятно |
+| Архив/лаборатория | По следам неудачного опыта найти кассету ограничителя и её consumer; выбрать опасный короткий или защищённый путь | Найденный предмет восстанавливает видимую функцию аппарата |
+| Верхний технический маршрут | Добраться к обслуживанию грузового захвата через другой уровень высоты, восстановить его движение | Меняются доступ/укрытия и положение механизма; ловушка видна из главного зала |
+| Возвращение и ловушка | Выбрать путь/момент, провести Хранителя в подготовленный сектор, использовать короткое окно | Угроза снята действием в пространстве и аппаратом; главный переход открыт |
+| Выход через знакомое место | Использовать результат и увидеть последствия опыта | Завершена глава; переход в следующий значимый участок |
+
+Это разные действия: наблюдение, поиск пути, бой, поиск/установка предмета,
+работа с механизмом, маневрирование против угрозы, применение результата.
+Ветки подготовки допускают разумный выбор порядка; есть optional места
+для информации/снабжения и узнаваемые shortcuts. Соединение семи прежних
+комнат и повторение двух supply buttons не удовлетворяют этому brief.
+Spatial topology и плотность событий проектируются вместе; человеческая
+длительность измеряется отдельно от scripted ticks и времени загрузок.
+
+**Combat/AI consumer.** Зафиксировать, почему прежняя стрельба из входа
+безопасно разрешает встречу. Rover должен достигать игрока вокруг полезного
+укрытия; мобильный стрелок — искать линию огня, менять позицию после потери
+LOS и давать читаемое окно атаки. Хранитель связывает threat с маршрутом/
+ловушкой. Проверять last-known position, обход, закрытые двери, прекращение
+атак через стены, давление с разных направлений, world-state changes и
+pause/death/save. E-016 начинается с fixture конкретного обхода; G-010
+владеет мобильным стрелком. Recast/Detour добавлять при фактической потребности
+navmesh этого consumer по dependency/architecture reference. AI framework
+не является deliverable. Weapon balance проверяется на этих encounters:
+дистанции, окна и стоимость стрельбы вместе с поведением, а не только HP.
+
+**Hero asset brief.** Хранитель — крупная асимметричная органическая фигура,
+вросшая в старую раму сдерживания: тяжёлый грудной ограничитель, крепления,
+кабели и отдельная активная конечность. Конструкция объясняет связь с
+аппаратом и направление опасного действия. Анатомию/силуэт уточнить по
+concept и actual gameplay cameras. Это не увеличенный rover или копия
+Half-Life tentacles. Основа — просмотренная [industrial-occult board](art/relaycore-industrial-occult-board.png)
+и `ART_DIRECTION.md`: organic/ritual mass, stained steel, restrained brass,
+видимая конструкция, институциональная среда, local warning cues.
+
+Production: editable mesh → proportions/construction/materials/motion →
+multiview/gameplay-distance review → GLB/native compile/receipts/staging →
+fresh runtime inspection. Для custom production использовать relaycore-blender,
+для external source — adaptation checks `ASSET_SOURCES.md`, для handoff —
+relaycore-assets. Rig скачанной модели не создаёт skeletal capability движка;
+animation/collision requirements определить по действиям до экспорта.
+Аппарату также нужен узнаваемый functional hero asset, не цветной коробок.
+
+**Порядок реализации / acceptance:**
+
+1. Graybox **всей главы**: центральный ориентир, ветки, высотный участок,
+   shortcuts и возвращение; проверка альтернатив и тупиков.
+2. Полный цикл центральной задачи в этом graybox: отвлечение/подавление,
+   подготовка, ловушка и state/save/retry. Примитивы остаются промежуточными.
+3. Полезные AI роли и weapon balance на конкретных encounters; наблюдаемое
+   новое действие игрока для каждой принятой роли.
+4. Hero assets/окружение до art direction, native pipeline и multiview/
+   in-engine acceptance; переиспользовать качественный visual kit.
+5. Самостоятельный полный проход: target 20–30 минут, решения, затруднения,
+   темп, смерти, sprint/обычное движение, звук, meaningful world changes,
+   Continue/retry. Narrow technical checks записывать отдельно.
+
+Эта запись фиксирует направление и brief G-019. Checkpoint A дал пространственный
+graybox всей главы; B технически реализует подготовку аппарата, угрозу/ловушку,
+окно сдерживания и save/death/retry. C добавил bounded cover pursuit, два
+mobile-shooter encounters, close-range weapon/dodge choice и технические
+проверки chapter/state/lifecycle. Фактические проверки и ограничения —
+в [карточке G-019](PLAYABLE_SLICE_ROADMAP.md#g-019--полноценная-глава-связный-маршрут-угроза-и-задача).
+D технически поставил native hero assets и окружение; по последнему отзыву
+Хранителю первоначально добавлены металлические оболочки и приводы с ориентиром
+50–60% робота. Автор отверг избыток механики: ударная рука теперь целиком
+кровавая органика, половина спины открыта. По замечанию о «пластилине»
+оставшиеся оболочки и оборудование главы получили scanned albedo/normal.
+По поручению автора 2026-10-09 человеческий проход временно отложен:
+продолжать независимую доводку проекта по подтверждённым проблемам с узкими
+regression checks. Авторская оценка нового вида и checkpoint E, самостоятельный
+проход главы по [протоколу](playtests/G-019-2026-10-09.md) с отдельным профилем,
+остаются открытыми и не блокируют такую разработку.
+D остаётся `awaiting_playtest`: человеческая ценность AI/combat,
+финальная art acceptance и 20–30 минут ещё не приняты; общий G-019 — `in_progress`.
+Короткие карты остаются fixtures/донорами kit, а не законченной главой.
+Исторические планы ниже не имеют приоритета над этим решением.
+
+### Решение автора — игровой UI, 2026-10-09
+
+Player-facing HUD и UI переведены на выбранный автором RmlUi 6.3. ImGui остаётся для editor/diagnostics/developer tools. VIS-43 владеет SDL3/Vulkan интеграцией и HUD; VIS-44 — меню/настройками/save-load, VIS-45 — остальными игровыми экранами, VIS-46 — разделением инструментов и игры. Scope, evidence и незакрытые gates — в [карточке VIS-43–46](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui); фактические статусы остаются в roadmap. Прежние описания ImGui HUD отражают исторический baseline до перехода.
 
 ### Основание и главный вывод
 
@@ -92,7 +242,9 @@ map/models/materials/grid → fingerprint/baker → .rcprobe → runtime stalene
 
 ### NOW / NEXT / LATER / NOT NOW
 
-**NOW:** D1/G-015 и D2/E-018 выполнены; технические итерации D3/G-016 завершены. Автор 2026-10-08 явно отложил приёмку G-016 и поручил D4: новый «Контур охлаждения» технически реализован как [G-017](PLAYABLE_SLICE_ROADMAP.md#g-017--d4--контур-охлаждения-и-повторяемое-производство). **NEXT:** локальный проход нового эпизода, открытые прослушивание/слепой тест/приёмка G-016; D5 и полный профиль после возобновления внешних проверок. E-016, новый collision product и material slice — условные ветви по consumer.
+**NOW, уточнение 2026-10-09:** [VIS-49](PLAYABLE_SLICE_ROADMAP.md#vis-49--проверка-накопленного-art-pass-и-графического-regression) — сначала объяснить известное scene-only несовпадение `graphics.power_restoration_slice`, затем подготовить локальную оценку оружия, тела, света, угроз и состояний в движении. VIS-43 переводит игровой HUD/UI на отдельную основу и может продвигаться независимо от приёмки мира. **NEXT:** VIS-44–46 на новой основе; дальнейшая доводка по конкретным наблюдениям. Мелкий material/CRT/wear pass и углубление процедурной походки отложить до подтверждённой пользы; перед переходом к полноценному персонажу определить rig/animation consumer. Статусы, scope и evidence принадлежат roadmap, результаты проверки этим обновлением не заявляются.
+
+D1/G-015 и D2/E-018 выполнены; технические итерации D3/G-016 завершены. Автор 2026-10-08 отложил приёмку G-016 и поручил D4: «Контур охлаждения» технически реализован как [G-017](PLAYABLE_SLICE_ROADMAP.md#g-017--d4--контур-охлаждения-и-повторяемое-производство). Открытые приёмка G-017, прослушивание/слепой тест/G-016, D5 и полный профиль сохраняются; внешний playtest и другой ПК не возобновляются автоматически. E-016, новый collision product и material slice — условные ветви по consumer. Сделанный art-pass не откатывать и не повторять без конкретной причины.
 
 **LATER:** Recast/Detour, KTX2/shared textures, animation, reflection probes и Source 2 offline import после собственных native-content gates. **NOT NOW:** ECS, service/DI/plugin frameworks, render graph, bindless/GPU-driven/ray tracing, scripting/networking, engine-wide jobs, universal asset database, procedural generation, general dynamics, custom allocator, large rewrite.
 
@@ -146,6 +298,164 @@ D1–D5 — обозначения milestones этого стратегичес�
 | Сила реакции мира неизвестна → проверить существующие свет/вентилятор/ambient/exit cues, при нужде согласовать → заметный перепуск → observation before/after, save/continue, реальное прослушивание audio |
 
 **Exit:** автор явно принимает локальную итерацию, существенная обнаруженная проблема исправлена; человеческие критерии G-011/G-014 проверяются отдельно. **Stop:** не расширять systems после принятия выбранного опыта. HUD сейчас объясняет тактику текстом; его избыточность — Hypothesis, не повод автоматически удалять подсказку.
+
+#### Gameplay overhaul — первый проход D3, 2026-10-09
+
+Поручение автора: аудит gameplay и один первый slice после visual revamp.
+Источник — текущее рабочее дерево, включая уже существующий незакоммиченный
+visual/RmlUi pass. Реализация ограничена смешанным залом `pressure_transfer`;
+остальные главы проверяются на регрессии. Человеческая приёмка остаётся открытой.
+
+**Inventory по коду, до этого прохода.**
+
+| Область | Фактическое поведение / evidence |
+| --- | --- |
+| Player | `player_controller.*`, `player_motion.*`: WASD, sprint, jump, ground/air acceleration и friction; authored config 3,5 м/с, sprint ×1,5; controller defaults acceleration 10, friction 4, gravity 24, jump 8,5. Collider — существующий box controller 0,30 м radius / 1,80 м height; step 0,35 м, ground probe/snap. AABB и native mesh queries через `WorldQuery`. Crouch отсутствует; Ctrl — developer noclip вниз. Мышь, ограниченный pitch, eye/step/landing feedback, shotgun recoil. Controls не меняются. |
+| Health/recovery | `combat_runtime.*`, `game_world_runtime.cpp`: 100 HP, damage source, hurt flash, death после HP=0, respawn delay 1,2 с; выполненные цели, inventory и состояния врагов сохраняются. `mixed_retry` возвращает в зал 03 после соответствующего mission step. Disk continue, encounter replacement и inactive campaign maps уже существуют. |
+| Precise | `combat_runtime.h`, `enemy_runtime.cpp`: 25 damage, 24 м, refire 0,24 с, один точный hitscan без spread; nearest target и world occlusion. ЛКМ — discrete mouse-down, автоматического held-fire нет. Ammo/reload economy нет. Hit confirmation 0,16 с, impact/audio и slide cycle уже реализованы. Роль — дальняя прицельная работа; близкий rover требует три попадания. |
+| Shotgun | Семь детерминированных rays, 14 damage/ray, 14 м, refire 0,85 с; боковой spread 0,16, вертикальный 0,13856. До 98 damage при полном попадании; ранняя смерть не даёт поздним pellets пробить цель. Роль — близкий burst, длинное восстановление и потеря эффективности вдали. Recoil 0,035 rad с existing camera-motion setting, pump cycle и pellet feedback уже есть. Switching не сбрасывает cooldown; shotgun требует pickup. |
+| Rover | `enemy_runtime.*`: обычно 60 HP; по карте 2,3–2,6 м/с. Range + omnidirectional LOS, last-seen pursuit, wake on damage; без pathfinding/FOV/hearing/cover tactics. Melee <1,15 м, windup 0,45 с стоя, 14 damage при сохранившихся range/LOS, recovery 0,95 с. Неуязвимости/stagger нет; death снимает actor blocker. Movement collides с миром, player и другими rover; последний контакт и timer сохраняются. |
+| Turret/hazards | `combat_runtime.*`: stationary hitscan, range/LOS, непрерывная видимость на warmup, reset при укрытии; cooldown + новый warmup перед следующим выстрелом. В pressure: 60 HP, warmup 0,9 с, interval 1,1 с; gallery 6 damage / 20 м, mixed 12 / 17 м. Aim следует за текущим игроком: боковой dodge без LOS-break не спасает от turret. Hazard solids дают 18 HP/с; тонкий декоративный trim исключён. В mixed pressure нет damaging hazard: steam был и остаётся presentation cue. |
+| Objectives/interactions | `mission_runtime.*`, `usable_interaction.cpp`, `interaction_runtime*`: последовательный HUD checklist из door_open, zone, pickup_item, activate_target, signal_target. Usable supports radius/facing/occlusion, required_item, locked/enabled/consumed, single_use, chain signal и lock/unlock receiver. Targets/inventory копятся, поэтому ранее выполненные условия не забываются. Несколько условий можно выразить цепочкой существующих locks; общего AND/OR, alternative-step primitive, timed objective или combat-clear condition нет. |
+| World state/editor | Doors/triggers/activation IDs уже меняют geometry/access, steam/sparks/fan/lights/audio через required_target/stop_target. TOML/editor сохраняют entity properties и fingerprint. Save включает mission index, doors/usables/triggers/turrets, player и rover modes/timers/last_seen; diagnostics/editor отделены от player RmlUi. Не требуется новая quest/AI/editor система. |
+
+**Эпизоды и причина повторяемости.** `power_restoration` имеет fuse → bus →
+power → filter → cooling и возвращение через изменившийся маршрут; это уже
+world-state progression, но решения в основном фиксированы locks/chain targets.
+`cooling_loop` предлагает стороны обхода теплообменника и mixed threat, затем
+isolation → start → exit; остановка steam не меняет combat rules. `foundation_intake`
+и `foundation_pump` дают key/access/start и межкартовое состояние;
+`bench_relay` — компактную native-встречу, а не самостоятельный длительный эпизод.
+`occult_lab_b17` завершает действующую семикартовую campaign route. Sandbox,
+native_lab и test_room — diagnostic/acceptance fixtures, не новые главы.
+
+| Класс проблемы | Подтверждённая причина; предел вывода |
+| --- | --- |
+| Combat mechanics | Unlimited ammo и короткий precise TTK позволяют быстро снимать известные цели; это не дефект попаданий. Damage/health feedback уже есть. Нужны ситуации выбора позиции/приоритета, не увеличение HP. |
+| Enemy AI | Rover медленнее обычного игрока и полностью останавливается при замахе; дистанцию можно увеличивать, пока он ждёт. Turret держит линию огня, но не меняет позицию. Это два простых специализированных поведения, не отсутствие AI. |
+| Encounter/level | До прохода карта уже чередовала rover → gallery turret → mixed rover/turret и имела два cover routes. У mixed entrance высокая защита закрывает turret, а precise убивает rover до ближней атаки. Bench допускает rover/low shots, блокирует стоящего игрока. Постоянная геометрия угроз допускает повтор одной выученной тактики; величина проблемы для нового игрока пока не измерена. |
+| Weapon roles | Precise не доминирует по close burst: существующий test подтверждает один близкий shotgun discharge против трёх precise hits. Но короткий precise TTK снижает необходимость смены оружия; shotgun не должен становиться обязательным ключом к врагу. |
+| Objectives/authoring | До прохода `transfer_running` только unlock exit, stop leak/light, start fan/audio. Устройство не помогало разрешить живую угрозу: практический маршрут сначала зачищал зал, потом нажимал start и exit. Это недостаток связи authoring/combat, не повод переписывать mission runtime. |
+| Feel/pacing | Impact, windup warning mesh/audio, hurt/hit/death, recoil и weapon cycles уже есть. Readability, aim comfort, громкость и ощущение давления требуют наблюдения человека. Длительность scripted ticks не доказывает 3–5 минут или удовольствие; нельзя растянуть карту пустыми переходами. |
+
+**TTK до изменения.** При первом попадании в t=0 precise против 60 HP:
+ceil(60/25)=3, нижняя граница 0,48 с; 45 HP default turret — два / 0,24 с.
+Close shotgun против 60 HP может убить одним залпом; дальняя цель получает лишь
+часть дроби. Турель mixed убивает 100 HP девятью попаданиями: примерно
+0,9 + 8×(1,1+0,9) = 16,9 с непрерывной экспозиции, gallery — 17 / 32,9 с.
+Обычный rover требует восемь ударов: примерно 0,45 + 7×1,4 = 10,25 с
+после входа в melee range. Это расчёт для неподвижных целей; fixed-step rounding,
+реакция игрока, промахи, путь и LOS увеличивают время. Health/damage/fire rates
+не меняются, performance speedup не заявляется.
+
+**Пять pillars и наблюдаемые критерии:** (1) позиция меняет доступные угрозы —
+высокое укрытие останавливает turret, но не rover; (2) два оружия имеют разные
+окна — дальний precise и близкий shotgun остаются оба применимы;
+(3) оборудование разрешает боевую проблему — start отменяет выстрел живой
+turret; (4) предупреждение позволяет действовать — committed rover lunge
+можно избежать боковым уходом, стеной или уничтожением; (5) темп создают
+состояния мира — наблюдение из entrance, сближение/бой, start, recovery/exit.
+
+**Slice brief.** Цель — запустить перепуск и выйти в технический сектор.
+Ситуация — автономный rover и питаемая от перепускного узла turret охраняют
+пульт; steam/аварийный свет показывают standby. Информация — existing HUD
+объясняет сброс питания turret и автономность rover; сохранены signage,
+warning mesh/audio, высокие шкафы и native bench. Решение — зачистить из
+защищённой позиции с минимальной экспозицией либо пройти к пульту под угрозой,
+экономя выстрелы/время ценой риска здоровью. Это два способа той же задачи,
+без дополнительного ключа или ряда кнопок.
+
+Combat — у mixed rover `attack_style="lunge"`: lock текущей позиции на старте
+0,45-секундного windup при дистанции <2,4 м; рывок 0,22 с со скоростью ×3
+к этой позиции, затем один melee strike с проверкой range/LOS и recovery
+0,95 с. При местных 2,3 м/с это 6,9 м/с, около 1,52 м перемещения, ограниченного
+существующими collision sweeps. Попадание не перенаправляет committed attack;
+смерть останавливает его. Остальные rover сохраняют melee behavior.
+
+Environment/consequence — existing start activates `transfer_running`,
+который через новый turret `stop_target` выключает питание без смерти/kill,
+отменяет pending windup/shot trace, останавливает steam/аварийный свет,
+включает fan/ambient/exit illumination и unlock exit. Rover остаётся живым
+и автономным, поэтому после start нужна адаптация. Никакой новой geometry,
+моделей, dependencies, renderer framework или objective primitive не вводится.
+
+Failure/recovery — потеря HP/смерть от понятных угроз, existing local retry;
+completed activation, живые/мёртвые/обесточенные враги и inventory сохраняются.
+Lunging добавлен после Dead без перенумерации старых save modes; используются
+существующие last_seen/timer. Save нового рывка восстанавливает тот же ход атаки;
+несовместимый Lunging у authored melee rover диагностируется. Как и при любых
+map edits, старый progress с прежним fingerprint требует нового эпизода;
+пользовательские сохранения не удаляются.
+
+**Before → After:** бой с неподвижным замахом / неизменная turret / зачистка,
+потом start → committed рывок с боковым escape / live turret можно обесточить
+в ходе боя / start-first и combat-first меняют экспозицию, damage и surviving
+enemies. Perfect precise aim по-прежнему может уничтожить rover до рывка:
+это допустимая награда за точность, не основание повышать HP. Стрельба вперёд
+не отменяет geometry/LOS/вторую угрозу; этот проход не гарантирует обязательную
+смену позиции каждому опытному игроку.
+
+**Verification / финальный Debug проход 2026-10-09:**
+
+- `cmake --build --preset tests-debug --target relaycore_tests relaycore_content_validation relaycore_bench_relay_run relaycore_level_check relaycore_game_lifecycle relaycore_demo --parallel 1` — успешно, в VS x64 developer environment. Sandbox попытка остановилась на MSVC C1902; разрешённый повтор вне sandbox прошёл. Параллельный link/staging ранее столкнулся с копированием RmlUi DLL; последовательная сборка устранила конфликт без удаления caches.
+- `ctest --preset test-debug -R '^relaycore\..*(rover|lunge|turret|combat|shotgun|saved game|save|mission|usable|interaction|encounter|snapshot)' --output-on-failure --no-tests=error --output-log build/msvc-debug/gameplay-unit.log` — **80/80**, 9,49 с. Проверены committed direction, боковой escape, world/player collision, закрытие двери, смерть до/во время рывка, старые melee consumers, корректные/ошибочные authored targets и отмена turret shot.
+- `ctest --preset validation-debug --output-on-failure --no-tests=error --output-log build/msvc-debug/gameplay-content.log` — **57/57**, 29,57 с. Включает обе pressure тактики, real disk save/continue в Windup/Lunging, encounter replacement, death/retry с сохранением отключённой turret, повторное взаимодействие, остальные episode/mission/interaction regressions.
+- `ctest --preset graphics-debug -R '^graphics\.(pressure_transfer|campaign_route|game_lifecycle)$' --output-on-failure --no-tests=error --output-log build/msvc-debug/gameplay-graphics.log` — **3/3**, 68,49 с, без skipped. Реальный DemoGame проверил lifecycle, полный campaign route и pressure runtime. Все семь campaign TOML проверены `relaycore_level_check.exe`: valid=true, warnings=0; destination entries проходят проверку.
+- Из cwd `build/msvc-debug/tests`, с `RELAYCORE_ASSET_ROOT=E:/Code/C++/RelayCore/build/msvc-debug/src/relaygame/assets`: `./relaycore_bench_relay_run.exe --pressure-transfer --overhaul` — exit 0, `pressure_transfer=passed`, Vulkan validation=true, RTX 4060 Ti. Четыре real disk states (windup, lunge, recovery, bypassed turret) загружены/отрисованы дважды; attack камеры подготовлены из simulation state, а обе полные тактики выполнены scripted route. Лог: `build/msvc-debug/tests/pressure-overhaul-runtime.log`; кадры: `build/msvc-debug/tests/pressure-overhaul-captures/{windup,lunge,recovery,bypassed}.bmp`. Кадры просмотрены: red warning различим относительно исходного amber lens, recovery amber; обесточенная turret остаётся целой у активного пульта. Graphics baselines в этом проходе не менялись.
+- После финальной правки, ограничивающей hit-target/yaw commitment только opt-in rover, повторены Debug-сборка, **80/80 + 57/57**, `ctest --preset graphics-debug -R '^graphics\.(pressure_transfer|campaign_route)$' --output-on-failure --no-tests=error --output-log build/msvc-debug/gameplay-graphics-final.log` — **2/2**, 48,29 с, и overhaul replay — exit 0 с теми же route metrics. Existing melee regression проверяет обновление last_seen при попадании во время Windup.
+- Existing weapon comparison: close shotgun 1 tick / precise 59, distant shotgun 207 / precise 59 при 120 Hz, фиксированном aim и continuous requested shots (`gameplay-measurements.log`). Это проверка существующих ролей, не новый баланс или оценка человеческой меткости.
+- Scoped C++ format, просмотр diff и `git diff --check` — прошли. Release/ASan/full graphics suite/Tracy/пакеты в этом проходе не выполнялись; performance улучшение не заявляется.
+
+| Scripted полный pressure route, 120 Hz | Damage / оставшийся HP | Kills | Ticks / simulation time |
+| --- | --- | --- | --- |
+| Сначала защищённая зачистка | 6 / 94 | 4 | 5986 / 49,88 с |
+| Сначала start под угрозой | 54 / 46 | 3; turret жива, выключена | 5208 / 43,40 с |
+
+Разница — 778 ticks (6,48 с) и дополнительные 48 damage: environmental bypass
+имеет наблюдаемую цену. Оба маршрута завершают objective и выход без смерти.
+Это маршруты с известными координатами и автоматическим aim, а не независимый
+player и не доказательство длительности/интереса первого прохождения.
+
+Идентичность проверенного runtime: `build/msvc-debug/src/relaygame/RelayCore.exe`
+SHA256 `3D030F98CEA6E354468B055109E88D7B4DD8D6C2832CC7ADDA6CBB3347A61103`;
+`assets/levels/pressure_transfer.toml`
+SHA256 `7070C0A640B8F9AD7E2C92B58168D31A2B89ACB1C8339DF4EC14B23E6938E7C4`.
+
+Human duration 3–5 минут, fairness/readability, самостоятельный выбор, звук,
+непрерывное прохождение и удовольствие остаются незаполненными критериями
+[существующего протокола G-011/G-016](playtests/G-011-2026-09-29.md).
+
+**Самопроверка дизайна.** Теперь player может разрешить дальнюю угрозу работой
+оборудования, оставляя автономную угрозу для следующего действия; рискует HP
+при раннем выходе к пульту или тратит время на защищённую зачистку. Опаснее
+короткий контакт с rover: начинается раньше, имеет movement commitment,
+не доворачивает за игроком и оставляет recovery window. Укрытия меняют turret
+LOS, native opening меняет rover approach; запуск изменяет combat и атмосферу
+одновременно. Добавленных fetch tasks/кнопок нет, combat не удлиняется через HP.
+`stop_target` и opt-in lunge применимы в других картах, но не перенесены туда
+автоматически. Честность риска/пользы и самостоятельность решений ещё не приняты.
+
+**Следующие инициативы после human review, максимум пять:**
+
+Уточнённый отзыв автора 2026-10-09: прошёл из CLion, заметил рывок и отключение
+turret, но не принял их игровую ценность; не выделяет mixed hall как отдельную
+содержательную ситуацию. Runtime log подтверждает campaign route
+через актуальную pressure карту; [подробности и пределы вывода](playtests/G-011-2026-09-29.md#отзыв-автора-после-прохода--2026-10-09).
+Технический pass принятия gameplay не дал. Новое направление и следующий
+приоритет — [полноценная глава](#решение-автора--полноценная-игровая-глава-2026-10-09),
+G-019; локальные инициативы ниже сохраняются как история узкого pass.
+
+1. Combat/levels: сравнить combat-first и start-first на новом игроке, затем
+   исправить одну подтверждённую sightline/approach/timing проблему; не добавлять волн.
+2. Enemy AI: проверить ценность committed lunge в движении и только после этого
+   рассмотреть ещё одного opt-in consumer; bounded steering нужен лишь при
+   воспроизведённом застревании, мешающем выбранной тактике.
+3. Objectives: связать одно существующее состояние cooling/power с конкретной
+   угрозой или доступным маршрутом по наблюдаемой потребности; не добавлять quest graph.
+4. Levels/pacing: применить сочетание наблюдения, давления и изменившегося возврата
+   к одному следующему encounter, сохраняя тихие участки и visual kit.
+5. Feedback: прослушать windup/attack/start и проверить читаемость отключённой
+   turret и слов «робот автономен»; локальная cue-правка только по путанице игрока.
 
 #### План по отзыву слепого теста — 2026-10-07
 

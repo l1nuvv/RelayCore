@@ -70,6 +70,14 @@ set(RELAYCORE_MODEL_SOURCES
     panel_isolator.glb
     panel_start.glb
     panel_instrument.glb
+    guardian_body.glb
+    guardian_arm.glb
+    containment_grip.glb
+    containment_ram.glb
+    limiter_cassette.glb
+    mobile_shooter.glb
+    mobile_shooter_destroyed.glb
+    containment_lining.glb
 )
 set(RELAYCORE_MODEL_ASSET_ROOT "${PROJECT_BINARY_DIR}/generated/model-assets")
 set(RELAYCORE_MODEL_RECEIPT_ROOT "${PROJECT_BINARY_DIR}/generated/model-receipts")
@@ -87,7 +95,9 @@ foreach(name IN ITEMS b17_observation_camera electrical_notes_board pressure_not
         power_filtration power_pump bench_workshop cooling_exchanger cooling_service
         foundation_intake service_key foundation_pump_machine foundation_pump_room b17_services b17_lining
         door_lift door_slide panel_door panel_isolator panel_start panel_instrument pistol_frame pistol_slide
-        shotgun_view_body shotgun_view_pump shotgun_world)
+        shotgun_view_body shotgun_view_pump shotgun_world
+        guardian_body guardian_arm containment_grip containment_ram limiter_cassette
+        mobile_shooter mobile_shooter_destroyed containment_lining)
     set(RELAYCORE_MODEL_METALLIC_ROUGHNESS_${name} ON)
 endforeach()
 foreach(source IN LISTS RELAYCORE_MODEL_SOURCES)

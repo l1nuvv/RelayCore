@@ -73,6 +73,7 @@ namespace RelayGame
         usable_spatial_index_ = std::move(session.usable_spatial_index);
         runtime_registry_ = std::move(session.runtime_registry);
         authoring_warnings_ = std::move(session.authoring_warnings);
+        containment_ = std::move(session.containment);
         enemies_ = std::move(session.enemies);
         enemy_blockers_.reserve(enemies_.size() + 1);
         loaded_level_turrets_ = std::move(session.combat.turrets);
@@ -106,6 +107,7 @@ namespace RelayGame
         combat_state_.hazards = loaded_level_hazards_;
         RelayCore::gameplay::reset_player_combat_state(combat_state_.player);
         transient_hud_event_ = {};
+        damage_numbers_.clear();
         inspector_state_ = {};
         mission_runtime_.reset(loaded_mission_definition_);
         interaction_state_.use_binding_label =
@@ -504,6 +506,25 @@ namespace RelayGame
         return signaled_target_ids_;
     }
 
+    auto GameWorldRuntime::apply_runtime_usable_interaction(RelayCore::gameplay::RuntimeUsable& usable)
+        -> RelayCore::gameplay::InteractionEvent
+    {
+        const auto event = RelayGame::apply_usable_interaction(
+            usable,
+            doors_,
+            usables_,
+            inventory_item_ids_,
+            activated_target_ids_,
+            signaled_target_ids_
+        );
+        if (containment_ && event.primary_applied && event.target == "containment_engaged")
+        {
+            containment_->state.mode = GuardianMode::Capturing;
+            containment_->state.timer = 0;
+        }
+        return event;
+    }
+
     auto GameWorldRuntime::debug_apply_usable_interaction(const std::size_t usable_index)
         -> RelayCore::gameplay::InteractionEvent
     {
@@ -514,24 +535,21 @@ namespace RelayGame
         }
 
         RelayCore::gameplay::RuntimeUsable& usable = usables_[usable_index];
-        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
-            usable,
-            doors_,
-            usables_,
-            inventory_item_ids_,
-            activated_target_ids_,
-            signaled_target_ids_
-        );
+        const RelayCore::gameplay::InteractionEvent event = apply_runtime_usable_interaction(usable);
         remember_interaction_event(event);
         refresh_runtime_usables_and_focus();
         refresh_active_door_count();
         return event;
     }
 
-    auto GameWorldRuntime::debug_apply_player_fire(const glm::vec3& origin, const glm::vec3& direction)
-        -> RelayCore::gameplay::CombatFireResult
+    auto GameWorldRuntime::apply_player_attack(const glm::vec3& origin, const glm::vec3& direction)
+        -> PlayerAttackResult
     {
-        RELAYCORE_PROFILE_FUNCTION();
+        std::vector<float> health_before;
+        for (const auto& enemy : enemies_)
+            health_before.push_back(enemy.state.health);
+        for (const auto& turret : combat_state_.turrets)
+            health_before.push_back(turret.health);
         const auto attack = fire_player_weapon(
             world_query(),
             origin,
@@ -542,6 +560,42 @@ namespace RelayGame
             selected_weapon_
         );
 
+        const auto add_number = [this](glm::vec3 position, float amount) {
+            if (damage_numbers_.size() == 32)
+                damage_numbers_.erase(damage_numbers_.begin());
+            damage_numbers_.push_back({position, amount, .9F});
+        };
+        for (std::size_t i = 0; i < enemies_.size(); ++i)
+            if (const auto damage = health_before[i] - enemies_[i].state.health; damage > 0)
+                add_number(enemies_[i].state.position + glm::vec3{0, 1.2F, 0}, damage);
+        for (std::size_t i = 0; i < combat_state_.turrets.size(); ++i)
+            if (const auto damage = health_before[enemies_.size() + i] - combat_state_.turrets[i].health; damage > 0)
+            {
+                const auto& bounds = combat_state_.turrets[i].bounds;
+                add_number(
+                    {(bounds.mins.x + bounds.maxs.x) * .5F, bounds.maxs.y + .3F, (bounds.mins.z + bounds.maxs.z) * .5F},
+                    damage
+                );
+            }
+        bool hit_guardian = false;
+        if (containment_)
+            for (std::size_t i = 0; i < attack.ray_count; ++i)
+                if (const auto& hit = attack.rays[i].world_impact;
+                    hit && hit->object == containment_->collider().object)
+                {
+                    containment_->suppress();
+                    hit_guardian = true;
+                }
+        if (hit_guardian)
+            add_number(containment_->state.position + glm::vec3{0, 3.9F, 0}, 0);
+        return attack;
+    }
+
+    auto GameWorldRuntime::debug_apply_player_fire(const glm::vec3& origin, const glm::vec3& direction)
+        -> RelayCore::gameplay::CombatFireResult
+    {
+        RELAYCORE_PROFILE_FUNCTION();
+        const auto attack = apply_player_attack(origin, direction);
         const auto& fire_result = attack.combat;
         if (fire_result.fired)
         {
@@ -571,6 +625,7 @@ namespace RelayGame
             .stride_amount = player_feedback_.stride(),
             .landing = player_feedback_.landing(),
             .visible = combat_state_.player.alive && player_controller_.movement_mode() != MovementMode::Noclip,
+            .travel_direction = player_feedback_.travel_direction(),
         };
     }
 
@@ -608,7 +663,8 @@ namespace RelayGame
             combat_state_.player,
             combat_state_.turrets,
             combat_state_.hazards,
-            dt
+            dt,
+            activated_target_ids_
         );
         combat_state_.active_hazard_contacts = combat_result.hazard_contacts;
         combat_state_.turret_shots_last_frame = combat_result.turret_shots;
@@ -625,6 +681,38 @@ namespace RelayGame
         }
 
         return advance_dead_player_state(dt);
+    }
+
+    void GameWorldRuntime::update_containment(float dt)
+    {
+        if (containment_ && !paused_)
+        {
+            enemy_blockers_.clear();
+            enemy_blockers_.push_back(
+                {.bounds = player_controller_.player_bounds(), .object = {RelayCore::physics::WorldObjectKind::Player}}
+            );
+            for (const auto& enemy : enemies_)
+                if (enemy.state.mode != EnemyMode::Dead)
+                    enemy_blockers_.push_back(
+                        {.bounds = enemy_bounds(enemy.state), .object = {RelayCore::physics::WorldObjectKind::Enemy}}
+                    );
+            containment_->update(
+                world_query(false),
+                player_controller_.player_bounds(),
+                player_controller_.eye_position_world(),
+                combat_state_.player,
+                dt,
+                doors_,
+                activated_target_ids_,
+                enemy_blockers_
+            );
+            containment_->sync_usables(usables_, activated_target_ids_);
+        }
+    }
+
+    void GameWorldRuntime::debug_update_containment(float dt)
+    {
+        update_containment(dt);
     }
 
     void GameWorldRuntime::debug_tick_combat(const float dt) noexcept
@@ -669,6 +757,8 @@ namespace RelayGame
             mission_runtime_,
             simulation_loop_.tick_index()
         );
+        if (containment_)
+            snapshot.containment = containment_->state;
         snapshot.selected_weapon = selected_weapon_;
         return snapshot;
     }
@@ -682,6 +772,34 @@ namespace RelayGame
                 && std::ranges::find(snapshot.inventory_item_ids, shotgun_item_id) == snapshot.inventory_item_ids.end()
             ))
             return {.error = "Snapshot contains an unavailable player weapon."};
+        if (snapshot.containment.has_value() != containment_.has_value()
+            || (containment_ && !containment_->validate_state(*snapshot.containment, snapshot.activated_target_ids)))
+            return {.error = "Snapshot contains missing or inconsistent containment state."};
+        if (containment_)
+        {
+            for (std::size_t i = 0; i < usables_.size(); ++i)
+            {
+                const auto& usable = usables_[i];
+                if (usable.name != "grip_service" && usable.name != "limiter_socket"
+                    && usable.name != "containment_fire")
+                    continue;
+                const auto* handle = runtime_registry_.find_usable(i);
+                const auto saved = std::ranges::find(snapshot.usables, handle->id, &RuntimeUsableSnapshot::runtime_id);
+                const bool activated = std::ranges::find(snapshot.activated_target_ids, usable.target)
+                                       != snapshot.activated_target_ids.end();
+                if (saved == snapshot.usables.end() || saved->consumed != activated)
+                    return {.error = "Snapshot contains inconsistent apparatus interaction state."};
+            }
+            const auto exit = std::ranges::find(doors_, "containment_exit", &RelayCore::gameplay::RuntimeDoor::name);
+            const auto* handle = runtime_registry_.find_door(static_cast<std::size_t>(exit - doors_.begin()));
+            const auto saved = std::ranges::find(snapshot.doors, handle->id, &RuntimeDoorSnapshot::runtime_id);
+            if (saved == snapshot.doors.end()
+                || (snapshot.containment->mode == GuardianMode::Contained
+                        ? saved->state != RelayCore::gameplay::DoorState::Opening
+                              && saved->state != RelayCore::gameplay::DoorState::Open
+                        : saved->state != RelayCore::gameplay::DoorState::Closed || saved->open_fraction != 0))
+                return {.error = "Snapshot contains an exit state inconsistent with containment."};
+        }
         const RelayGame::SnapshotRestoreResult result = RelayGame::restore_runtime_level_snapshot(
             snapshot,
             runtime_state_.level_path,
@@ -698,6 +816,8 @@ namespace RelayGame
         );
         if (result.restored)
         {
+            if (containment_)
+                containment_->state = *snapshot.containment;
             selected_weapon_ = snapshot.selected_weapon;
             combat_state_.pellet_traces = {};
             combat_state_.shotgun_cycle_remaining_seconds = 0;
@@ -705,6 +825,7 @@ namespace RelayGame
             frame_actions_.weapon_selection.reset();
             (void) player_controller_.consume_weapon_selection();
             transient_hud_event_ = {};
+            damage_numbers_.clear();
             interaction_state_.last_event = {};
             interaction_state_.fired_triggers = 0;
             combat_state_.active_hazard_contacts = 0;
@@ -757,13 +878,20 @@ namespace RelayGame
             throw std::runtime_error("Сохранение содержит другой состав противников.");
         for (std::size_t i = 0; i < enemies_.size(); ++i)
             if (save.enemies[i].entity_index != enemies_[i].state.entity_index
-                || save.enemies[i].health > enemies_[i].max_health)
+                || save.enemies[i].health > enemies_[i].max_health
+                || (save.enemies[i].mode == EnemyMode::Lunging && !enemies_[i].lunge_attack))
                 throw std::runtime_error("Сохранение противника несовместимо с картой.");
         const auto result = restore_runtime_snapshot(save.world);
         if (!result.restored)
             throw std::runtime_error("Сохранение несовместимо с текущим уровнем: " + result.error);
         for (std::size_t i = 0; i < enemies_.size(); ++i)
+        {
             enemies_[i].state = save.enemies[i];
+            enemies_[i].route_count = enemies_[i].route_cursor = 0;
+            enemies_[i].route_replan_seconds = 0;
+            enemies_[i].seeking_last_seen = false;
+            enemies_[i].shot_trace = {};
+        }
         player_controller_.restore_state(save.player);
         player_feedback_.reset();
         simulation_loop_.reset(save.world.simulation_tick);
@@ -884,6 +1012,8 @@ namespace RelayGame
                           static_cast<std::size_t>(&enemy - enemies_.data()),
                           enemy.state.entity_index}}
                 );
+        if (containment_)
+            dynamic_blockers_.push_back(containment_->collider());
         const glm::vec3 previous_position = player_controller_.position();
         const bool was_grounded = player_controller_.grounded();
         const float previous_vertical_speed = player_controller_.velocity().y;
@@ -940,6 +1070,13 @@ namespace RelayGame
         play_door_state_change_audio(services);
         sync_door_audio_state();
 
+        const auto guardian_before = containment_ ? containment_->state.mode : GuardianMode::Watching;
+        const auto health_before_guardian = combat_state_.player.health;
+        update_containment(sim_delta_seconds);
+        if (containment_ && containment_->state.mode == GuardianMode::Windup && guardian_before != GuardianMode::Windup)
+            play_gameplay_audio(services, audio_cues_.threat_windup);
+        if (combat_state_.player.health < health_before_guardian)
+            play_gameplay_audio(services, audio_cues_.player_hurt);
         const float health_before_enemies = combat_state_.player.health;
         const auto enemy_threats = update_enemies(
             world_query(),
@@ -948,10 +1085,16 @@ namespace RelayGame
             combat_state_.player,
             enemies_,
             sim_delta_seconds,
-            enemy_blockers_
+            enemy_blockers_,
+            containment_ ? std::span<const RelayCore::physics::WorldCollider>{guardian_collider_}
+                         : std::span<const RelayCore::physics::WorldCollider>{}
         );
         if (enemy_threats.strikes > 0)
             play_gameplay_audio(services, audio_cues_.rover_attack);
+        if (enemy_threats.windups > 0)
+            play_gameplay_audio(services, audio_cues_.threat_windup);
+        if (enemy_threats.shots > 0)
+            play_gameplay_audio(services, audio_cues_.turret_fire);
         if (combat_state_.player.health < health_before_enemies)
             play_gameplay_audio(services, audio_cues_.player_hurt);
         const float player_health_before_threats = combat_state_.player.health;
@@ -963,7 +1106,8 @@ namespace RelayGame
             combat_state_.player,
             combat_state_.turrets,
             combat_state_.hazards,
-            sim_delta_seconds
+            sim_delta_seconds,
+            activated_target_ids_
         );
         combat_state_.active_hazard_contacts = combat_result.hazard_contacts;
         combat_state_.hazard_contact_last_step = combat_result.hazard_contacts > 0;
@@ -1024,6 +1168,8 @@ namespace RelayGame
             usable.requirement_met =
                 usable.required_item.empty() || has_inventory_item(std::string_view{usable.required_item});
         }
+        if (containment_)
+            containment_->sync_usables(usables_, activated_target_ids_);
         RelayCore::gameplay::rebuild_usable_spatial_index(usables_, usable_spatial_index_);
         refresh_interaction_focus();
     }
@@ -1039,12 +1185,18 @@ namespace RelayGame
         return physics_fixture_->raycast(origin, direction, max_distance);
     }
 
-    auto GameWorldRuntime::world_query() -> RelayCore::physics::WorldQuery
+    auto GameWorldRuntime::world_query(bool include_guardian) -> RelayCore::physics::WorldQuery
     {
         RelayCore::gameplay::collect_blocking_doors(doors_, query_doors_);
+        std::span<const RelayCore::physics::WorldCollider> actors;
+        if (containment_ && include_guardian)
+        {
+            guardian_collider_[0] = containment_->collider();
+            actors = guardian_collider_;
+        }
         if (physics_fixture_)
-            return {*physics_fixture_, query_doors_};
-        return {world_colliders_, query_doors_};
+            return {*physics_fixture_, query_doors_, actors};
+        return {world_colliders_, query_doors_, actors};
     }
 
     void GameWorldRuntime::refresh_interaction_focus()

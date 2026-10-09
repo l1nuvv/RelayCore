@@ -42,6 +42,26 @@ These libraries already fit RelayCore. Do not replace them merely for perceived 
 
 The verified VK-D00 manifest resolves SDL3 `3.4.16#1`, miniaudio `0.11.25`, GLM `1.0.3`, spdlog `1.17.0#1`, toml++ `3.4.0#1`, doctest `2.5.3`, ImGui `1.92.9`, and Tracy `0.14.1#1`. Do not hard-code these versions individually unless a dedicated version constraint is required.
 
+### Player-facing UI decision — 2026-10-09
+
+Implementation selection: **RmlUi 6.3**, standard manifest port at the existing
+`a42757564758c60651ebc616d9b000b7b91249ef` baseline, default FreeType font engine.
+Lua/SVG/Lottie and sample graphics backends are not enabled. `extern/rmlui`
+contains the official 6.3 SDL platform/input adapter and MIT notice. RelayCore's
+small `VulkanRmlRenderer` implements geometry, generated font textures,
+premultiplied alpha, rectangular scissor and transforms on the existing device/VMA.
+The upstream Vulkan demo owns its device/swapchain/frame machinery, so importing
+that backend would duplicate runtime ownership. Authored UI uses no images,
+filters, layers, transformed clipping or rounded overflow; these optional features
+are outside the adapter's current contract. `assets/fonts/RobotoMono-Regular.ttf`
+and its upstream font license are staged with RML/RCSS. See
+[6.3 release](https://github.com/mikke89/RmlUi/releases/tag/6.3) and
+[baseline port](https://github.com/microsoft/vcpkg/blob/a42757564758c60651ebc616d9b000b7b91249ef/ports/rmlui/vcpkg.json).
+
+The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The current ImGui HUD/menu integration below describes the Vulkan migration baseline, not the target game UI contract. VIS-43 owns selection and integration of a focused game UI solution; VIS-44–46 complete screen migration. See [scope and gates](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui).
+
+RmlUi types remain within UI implementation; manifest/version policy is unchanged. Gameplay presentation data and actions are RelayCore-owned and independent of ImGui and diagnostics contracts. The implementation uses the selected release's headers/backends rather than master documentation for API signatures.
+
 ## 3. Vulkan migration dependencies — approved for VK-000
 
 The ordered migration and loader policy remain in `VULKAN_MIGRATION_PLAN.md`.
@@ -52,7 +72,7 @@ The ordered migration and loader policy remain in `VULKAN_MIGRATION_PLAN.md`.
 | instance/device/queue/swapchain bootstrap | **vk-bootstrap** | initialization only; do not turn it into renderer architecture |
 | Vulkan memory allocation | **Vulkan Memory Allocator (VMA)** | GPU allocation/suballocation/mapping/budget only |
 | shader language/compiler | **Slang → SPIR-V** | build/offline tool first; runtime compiler optional dev tooling later |
-| UI backend | ImGui SDL3 + Vulkan | renderer-owned HUD/menu/debug/editor presentation |
+| UI backend at Vulkan cutover | ImGui SDL3 + Vulkan | current renderer-owned HUD/menu/debug/editor presentation; game UI replacement is planned in VIS-43–46 |
 | validation | Khronos Validation Layers | development verification |
 | frame debugging | RenderDoc | external developer tool |
 

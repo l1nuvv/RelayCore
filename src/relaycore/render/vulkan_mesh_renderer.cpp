@@ -4,6 +4,8 @@
 #include "relaycore/render/authored_color.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/irradiance_probes.h"
+#include "relaycore/render/player_ui.h"
+#include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/render_authoring_config.h"
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
@@ -220,7 +222,8 @@ namespace RelayCore::render
                 const VkFormat format,
                 const VkImageUsageFlags usage,
                 const VkImageAspectFlags aspect,
-                const VkFormat attachment_format = VK_FORMAT_UNDEFINED
+                const VkFormat attachment_format = VK_FORMAT_UNDEFINED,
+                const VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT
             )
             {
                 const bool srgb_view = attachment_format == VK_FORMAT_R8G8B8A8_SRGB;
@@ -239,7 +242,7 @@ namespace RelayCore::render
                     .extent = {extent.width, extent.height, 1},
                     .mipLevels = 1,
                     .arrayLayers = 1,
-                    .samples = VK_SAMPLE_COUNT_1_BIT,
+                    .samples = samples,
                     .tiling = VK_IMAGE_TILING_OPTIMAL,
                     .usage = usage,
                 };
@@ -274,12 +277,14 @@ namespace RelayCore::render
             VkExtent2D extent;
             MeshImage color, depth;
             std::unique_ptr<MeshImage> hdr_scene;
+            std::unique_ptr<MeshImage> multisample_scene;
             VulkanBuffer readback;
             MeshTarget(
                 const VulkanDevice& device,
                 const VkExtent2D size,
                 const VkFormat scene_format,
-                const VkFormat display_format
+                const VkFormat display_format,
+                const VkSampleCountFlagBits samples
             ) :
                 extent(size), color(device), depth(device), readback(
                                                                 device,
@@ -305,11 +310,25 @@ namespace RelayCore::render
                         VK_IMAGE_ASPECT_COLOR_BIT
                     );
                 }
+                if (samples != VK_SAMPLE_COUNT_1_BIT)
+                {
+                    multisample_scene = std::make_unique<MeshImage>(device);
+                    multisample_scene->initialize(
+                        size,
+                        scene_format,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_FORMAT_UNDEFINED,
+                        samples
+                    );
+                }
                 depth.initialize(
                     size,
                     VK_FORMAT_D32_SFLOAT,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                    VK_IMAGE_ASPECT_DEPTH_BIT
+                    VK_IMAGE_ASPECT_DEPTH_BIT,
+                    VK_FORMAT_UNDEFINED,
+                    samples
                 );
             }
         };
@@ -535,6 +554,11 @@ namespace RelayCore::render
             const CpuRgbaTextureData* normal;
             float normal_scale;
             std::optional<MetallicRoughness> metallic_roughness;
+            const CpuRgbaTextureData* mr_map;
+            const CpuRgbaTextureData* occlusion;
+            float occlusion_strength;
+            const CpuRgbaTextureData* emissive;
+            glm::vec3 emissive_factor;
             auto operator==(const MaterialKey&) const -> bool = default;
         };
         struct MaterialKeyHash {
@@ -545,20 +569,29 @@ namespace RelayCore::render
                                            ^ (std::hash<float>{}(factors.metallic) << 1)
                                            ^ std::hash<bool>{}(key.metallic_roughness.has_value());
                 return material_hash ^ std::hash<const void*>{}(key.color) ^ (std::hash<const void*>{}(key.normal) << 1)
-                       ^ (std::hash<float>{}(key.normal_scale) << 2);
+                       ^ (std::hash<float>{}(key.normal_scale) << 2) ^ std::hash<const void*>{}(key.mr_map)
+                       ^ (std::hash<const void*>{}(key.occlusion) << 2) ^ std::hash<float>{}(key.occlusion_strength)
+                       ^ std::hash<const void*>{}(key.emissive) ^ std::hash<float>{}(key.emissive_factor.x)
+                       ^ (std::hash<float>{}(key.emissive_factor.y) << 1)
+                       ^ (std::hash<float>{}(key.emissive_factor.z) << 2);
             }
         };
         struct Material {
             VkDevice device;
             std::weak_ptr<const CpuRgbaTextureData> source;
             std::weak_ptr<const CpuRgbaTextureData> normal_source;
-            VulkanTexture texture, normal_texture;
+            std::weak_ptr<const CpuRgbaTextureData> mr_source, occlusion_source, emissive_source;
+            VulkanTexture texture, normal_texture, mr_texture, occlusion_texture, emissive_texture;
             VulkanBuffer surface_data;
             VkDescriptorPool pool = VK_NULL_HANDLE;
             VkDescriptorSet set = VK_NULL_HANDLE;
             explicit Material(const VulkanDevice& owner) :
-                device(owner.handle()),
-                surface_data(owner, sizeof(glm::vec4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload)
+                device(owner.handle()), surface_data(
+                                            owner,
+                                            sizeof(glm::vec4) * 3,
+                                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                            VulkanBufferMemory::upload
+                                        )
             {}
             ~Material() noexcept
             {
@@ -572,6 +605,9 @@ namespace RelayCore::render
         VulkanUploads uploads;
         VulkanBuffer material_data;
         VulkanBuffer light_data;
+        VulkanBuffer reflection_data;
+        VulkanTexture reflection_texture;
+        std::shared_ptr<const ReflectionProbe> reflection;
         VulkanBuffer irradiance_data;
         std::shared_ptr<const IrradianceProbeVolume> irradiance;
         VulkanBuffer frame_data;
@@ -610,6 +646,12 @@ namespace RelayCore::render
                 VulkanBufferMemory::upload
             ),
             light_data(owner, sizeof(LightParameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload),
+            reflection_data(
+                owner,
+                sizeof(glm::vec4) * 3,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VulkanBufferMemory::upload
+            ),
             irradiance_data(
                 owner,
                 sizeof(IrradianceParameters),
@@ -685,6 +727,31 @@ namespace RelayCore::render
         {
             renderer_config = config;
             color_pipeline = pipeline;
+            if (config.msaa_samples != 1 && config.msaa_samples != 2 && config.msaa_samples != 4)
+                throw std::invalid_argument("Vulkan render.msaa_samples must be 1, 2 or 4");
+            const auto samples = static_cast<VkSampleCountFlagBits>(config.msaa_samples);
+            for (const auto format : {scene_format(), VK_FORMAT_D32_SFLOAT})
+            {
+                VkImageFormatProperties support{};
+                const auto usage = format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                                                  : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                require_mesh_vk(
+                    vkGetPhysicalDeviceImageFormatProperties(
+                        device.physical_device(),
+                        format,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        usage,
+                        0,
+                        &support
+                    ),
+                    "MSAA attachment format support"
+                );
+                if (!(support.sampleCounts & samples))
+                    throw std::runtime_error(
+                        "GPU does not support render.msaa_samples for scene color/depth; use 1 or 2"
+                    );
+            }
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
             max_target_width = std::min(properties.limits.maxFramebufferWidth, properties.limits.maxImageDimension2D);
@@ -770,6 +837,41 @@ namespace RelayCore::render
             );
             atlas_source.initialize_rgba(atlas.width, atlas.height, atlas.pixels, encoding);
             const std::array bindings{
+                VkDescriptorSetLayoutBinding{
+                    16,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT,
+                    nullptr
+                },
+                VkDescriptorSetLayoutBinding{
+                    14,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT,
+                    nullptr
+                },
+                VkDescriptorSetLayoutBinding{
+                    15,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT,
+                    nullptr
+                },
+                VkDescriptorSetLayoutBinding{
+                    12,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT,
+                    nullptr
+                },
+                VkDescriptorSetLayoutBinding{
+                    13,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT,
+                    nullptr
+                },
                 VkDescriptorSetLayoutBinding{
                     11,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -968,7 +1070,9 @@ namespace RelayCore::render
             };
             const VkPipelineMultisampleStateCreateInfo multisample{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+                .rasterizationSamples = shadow_kind < 0
+                                            ? static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
+                                            : VK_SAMPLE_COUNT_1_BIT,
             };
             const VkPipelineDepthStencilStateCreateInfo depth{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
@@ -1062,18 +1166,56 @@ namespace RelayCore::render
                 .first->second;
         }
 
+        void update_reflection(std::shared_ptr<const ReflectionProbe> probe)
+        {
+            if (probe == reflection && reflection_texture.view())
+                return;
+            if (probe)
+                validate_reflection_probe(*probe);
+            wait();
+            ReflectionProbe fallback{{{}, {-1, -1, -1}, {1, 1, 1}, 8, 32}, 0, {}};
+            if (!probe)
+                for (uint32_t size = 8; size; size >>= 1)
+                    fallback.mips.emplace_back(6 * size * size, glm::vec4{0, 0, 0, 1});
+            auto uploaded = uploads.upload_reflection(probe ? *probe : fallback);
+            uploads.wait(uploaded.completion);
+            // Material descriptors reference the shared cube. Frames are complete before replacing it.
+            materials.clear();
+            reflection_texture = std::move(uploaded.texture);
+            reflection = std::move(probe);
+            const std::array data{
+                glm::vec4{reflection ? reflection->settings.mins : glm::vec3{}, reflection ? 1.F : 0.F},
+                glm::vec4{
+                    reflection ? reflection->settings.maxs : glm::vec3{},
+                    static_cast<float>(reflection_texture.mip_levels() - 1)
+                },
+                glm::vec4{reflection ? reflection->settings.position : glm::vec3{}, 0}
+            };
+            reflection_data.write(std::as_bytes(std::span{data}));
+        }
+
         auto material_key(
             const Texture2D& resource,
             const Texture2D* normal,
             const float scale,
-            const std::optional<MetallicRoughness> factors
+            const std::optional<MetallicRoughness> factors,
+            const Texture2D* mr_map,
+            const Texture2D* occlusion,
+            const float occlusion_strength,
+            const Texture2D* emissive,
+            const glm::vec3 emissive_factor
         ) const -> MaterialKey
         {
             return {
                 resource.cpu_data().get(),
                 normal ? normal->cpu_data().get() : nullptr,
                 normal ? scale : 1,
-                factors
+                factors,
+                mr_map ? mr_map->cpu_data().get() : nullptr,
+                occlusion ? occlusion->cpu_data().get() : nullptr,
+                occlusion ? occlusion_strength : 1,
+                emissive ? emissive->cpu_data().get() : nullptr,
+                emissive_factor
             };
         }
 
@@ -1081,7 +1223,12 @@ namespace RelayCore::render
             const Texture2D& resource,
             const Texture2D* normal,
             const float scale,
-            const std::optional<MetallicRoughness> factors
+            const std::optional<MetallicRoughness> factors,
+            const Texture2D* mr_map,
+            const Texture2D* occlusion,
+            const float occlusion_strength,
+            const Texture2D* emissive,
+            const glm::vec3 emissive_factor
         ) -> Material&
         {
             const auto& cpu = resource.cpu_data();
@@ -1095,7 +1242,31 @@ namespace RelayCore::render
                 && (!std::isfinite(factors->roughness) || factors->roughness < 0 || factors->roughness > 1
                     || !std::isfinite(factors->metallic) || factors->metallic < 0 || factors->metallic > 1))
                 throw std::invalid_argument("Vulkan metallic/roughness factors must be finite and in [0, 1]");
-            const auto key = material_key(resource, normal, scale, factors);
+            for (const auto* map : {mr_map, occlusion})
+                if (map && (!map->valid() || map->encoding() != TextureEncoding::linear))
+                    throw std::invalid_argument("Vulkan material map requires an initialized linear texture");
+            if (mr_map && !factors)
+                throw std::invalid_argument("Vulkan metallic/roughness map requires factors");
+            if (!std::isfinite(occlusion_strength) || occlusion_strength < 0 || occlusion_strength > 1)
+                throw std::invalid_argument("Vulkan occlusion strength must be in [0, 1]");
+            if (!reflection_texture.view())
+                update_reflection({});
+            if (emissive && (!emissive->valid() || emissive->encoding() != TextureEncoding::srgb))
+                throw std::invalid_argument("Vulkan emissive map requires an initialized sRGB texture");
+            for (const auto factor : {emissive_factor.x, emissive_factor.y, emissive_factor.z})
+                if (!std::isfinite(factor) || factor < 0 || factor > 1)
+                    throw std::invalid_argument("Vulkan emissive factor must be finite and in [0, 1]");
+            const auto key = material_key(
+                resource,
+                normal,
+                scale,
+                factors,
+                mr_map,
+                occlusion,
+                occlusion_strength,
+                emissive,
+                emissive_factor
+            );
             const auto found = materials.find(key);
             if (found != materials.end())
                 return *found->second;
@@ -1111,17 +1282,42 @@ namespace RelayCore::render
                 result->normal_texture = std::move(uploaded_normal.texture);
                 result->normal_source = normal->cpu_data();
             }
+            if (mr_map)
+            {
+                auto uploaded_map = uploads.upload_rgba(*mr_map->cpu_data(), TextureEncoding::linear);
+                uploads.wait(uploaded_map.completion);
+                result->mr_texture = std::move(uploaded_map.texture);
+                result->mr_source = mr_map->cpu_data();
+            }
+            if (occlusion)
+            {
+                auto uploaded_map = uploads.upload_rgba(*occlusion->cpu_data(), TextureEncoding::linear);
+                uploads.wait(uploaded_map.completion);
+                result->occlusion_texture = std::move(uploaded_map.texture);
+                result->occlusion_source = occlusion->cpu_data();
+            }
+            if (emissive)
+            {
+                auto uploaded_map = uploads.upload_rgba(*emissive->cpu_data(), TextureEncoding::srgb);
+                uploads.wait(uploaded_map.completion);
+                result->emissive_texture = std::move(uploaded_map.texture);
+                result->emissive_source = emissive->cpu_data();
+            }
             const auto values = factors.value_or(MetallicRoughness{1, 0});
-            const glm::vec4 surface_parameters{
-                key.normal_scale,
-                values.roughness,
-                values.metallic,
-                color_pipeline == ColorPipelineMode::hardware_srgb ? 1.0F : 0.0F
+            const std::array surface_parameters{
+                glm::vec4{
+                    key.normal_scale,
+                    values.roughness,
+                    values.metallic,
+                    color_pipeline == ColorPipelineMode::hardware_srgb ? 1.0F : 0.0F
+                },
+                glm::vec4{mr_map ? 1.F : 0.F, occlusion ? 1.F : 0.F, key.occlusion_strength, 0},
+                glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
             };
-            result->surface_data.write(std::as_bytes(std::span{&surface_parameters, 1}));
+            result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
             const std::array sizes{
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 6},
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6}
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 7},
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
             };
             const VkDescriptorPoolCreateInfo pool_info{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -1165,8 +1361,72 @@ namespace RelayCore::render
                 normal_image_texture.view(),
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
             };
+            const auto& mr_image_texture = mr_map ? result->mr_texture : result->texture;
+            const auto& ao_image_texture = occlusion ? result->occlusion_texture : result->texture;
+            const VkDescriptorImageInfo mr_image{
+                mr_image_texture.sampler(),
+                mr_image_texture.view(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            const VkDescriptorImageInfo ao_image{
+                ao_image_texture.sampler(),
+                ao_image_texture.view(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
             const VkDescriptorBufferInfo normal_buffer{result->surface_data.handle(), 0, result->surface_data.size()};
+            const VkDescriptorImageInfo reflection_image{
+                reflection_texture.sampler(),
+                reflection_texture.view(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            const VkDescriptorBufferInfo reflection_buffer{reflection_data.handle(), 0, reflection_data.size()};
+            const auto& emissive_image_texture = emissive ? result->emissive_texture : result->texture;
+            const VkDescriptorImageInfo emissive_image{
+                emissive_image_texture.sampler(),
+                emissive_image_texture.view(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
             const std::array writes{
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = result->set,
+                    .dstBinding = 16,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &emissive_image
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = result->set,
+                    .dstBinding = 14,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &reflection_image
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = result->set,
+                    .dstBinding = 15,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .pBufferInfo = &reflection_buffer
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = result->set,
+                    .dstBinding = 12,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &mr_image
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = result->set,
+                    .dstBinding = 13,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &ao_image
+                },
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = result->set,
@@ -1274,7 +1534,10 @@ namespace RelayCore::render
                 return entry.second.source.expired();
             });
             std::erase_if(materials, [](const auto& entry) {
-                return entry.second->source.expired() || (entry.first.normal && entry.second->normal_source.expired());
+                return entry.second->source.expired() || (entry.first.normal && entry.second->normal_source.expired())
+                       || (entry.first.mr_map && entry.second->mr_source.expired())
+                       || (entry.first.occlusion && entry.second->occlusion_source.expired())
+                       || (entry.first.emissive && entry.second->emissive_source.expired());
             });
         }
 
@@ -1288,7 +1551,12 @@ namespace RelayCore::render
                         item.diffuse_texture ? *item.diffuse_texture : atlas_source,
                         item.normal_texture,
                         item.normal_scale,
-                        item.metallic_roughness
+                        item.metallic_roughness,
+                        item.metallic_roughness_map,
+                        item.occlusion_texture,
+                        item.occlusion_strength,
+                        item.emissive_texture,
+                        item.emissive_factor
                     ));
                 }
         }
@@ -1306,10 +1574,19 @@ namespace RelayCore::render
                     continue;
                 const auto& geometry = meshes.at(item.mesh->cpu_data().get());
                 const auto& texture = item.diffuse_texture ? *item.diffuse_texture : atlas_source;
-                const auto set =
-                    materials
-                        .at(material_key(texture, item.normal_texture, item.normal_scale, item.metallic_roughness))
-                        ->set;
+                const auto set = materials
+                                     .at(material_key(
+                                         texture,
+                                         item.normal_texture,
+                                         item.normal_scale,
+                                         item.metallic_roughness,
+                                         item.metallic_roughness_map,
+                                         item.occlusion_texture,
+                                         item.occlusion_strength,
+                                         item.emissive_texture,
+                                         item.emissive_factor
+                                     ))
+                                     ->set;
                 const auto vertex = geometry.vertices.handle();
                 const VkDeviceSize offset = 0;
                 vkCmdBindVertexBuffers(commands, 0, 1, &vertex, &offset);
@@ -1562,6 +1839,8 @@ namespace RelayCore::render
         {
             if (config.hdr_enabled != renderer_config.hdr_enabled)
                 throw std::invalid_argument("Changing HDR requires a prepared renderer reload");
+            if (config.msaa_samples != renderer_config.msaa_samples)
+                throw std::invalid_argument("Changing MSAA requires a prepared renderer reload");
             if (config.hdr_enabled && color_pipeline != ColorPipelineMode::hardware_srgb)
                 throw std::invalid_argument("HDR requires the hardware_srgb color pipeline");
             if (!std::isfinite(config.exposure_ev) || config.exposure_ev < -10 || config.exposure_ev > 10)
@@ -1715,11 +1994,11 @@ namespace RelayCore::render
             vkCmdEndRendering(commands);
         }
 
-        void append_ui(ImDrawData* ui)
+        void append_ui(ImDrawData* ui, PlayerUi* player_ui = nullptr)
         {
             if (!target)
                 throw std::logic_error("Vulkan UI requires a prepared scene");
-            if (!ui)
+            if (!ui && !player_ui)
                 return;
             begin_commands();
             VkImageMemoryBarrier2 barrier{
@@ -1741,7 +2020,28 @@ namespace RelayCore::render
                 .pImageMemoryBarriers = &barrier
             };
             vkCmdPipelineBarrier2(commands, &dependency);
-            record_ui(ui);
+            if (player_ui)
+            {
+                RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "RmlUi");
+                const VkRenderingAttachmentInfo color{
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = target->color.unorm_view ? target->color.unorm_view : target->color.view,
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+                };
+                const VkRenderingInfo rendering{
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = {{0, 0}, target->extent},
+                    .layerCount = 1,
+                    .colorAttachmentCount = 1,
+                    .pColorAttachments = &color
+                };
+                vkCmdBeginRendering(commands, &rendering);
+                player_ui->record(commands);
+                vkCmdEndRendering(commands);
+            } else
+                record_ui(ui);
             barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
             barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
@@ -1910,7 +2210,13 @@ namespace RelayCore::render
             const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
             if (!target || target->extent.width != extent.width || target->extent.height != extent.height)
             {
-                target = std::make_unique<MeshTarget>(device, extent, scene_format(), display_format());
+                target = std::make_unique<MeshTarget>(
+                    device,
+                    extent,
+                    scene_format(),
+                    display_format(),
+                    static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
+                );
                 if (tone_mapping)
                     tone_mapping->bind(target->hdr_scene->view);
             }
@@ -1922,7 +2228,7 @@ namespace RelayCore::render
             {
                 RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "Scene frame");
                 render_shadows(shadow_casters, camera);
-                std::array barriers{
+                std::array<VkImageMemoryBarrier2, 3> barriers{
                     VkImageMemoryBarrier2{
                         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                         .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -1952,9 +2258,14 @@ namespace RelayCore::render
                         .subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}
                     },
                 };
+                if (target->multisample_scene)
+                {
+                    barriers[2] = barriers[0];
+                    barriers[2].image = target->multisample_scene->image;
+                }
                 VkDependencyInfo dependency{
                     .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size()),
+                    .imageMemoryBarrierCount = target->multisample_scene ? 3u : 2u,
                     .pImageMemoryBarriers = barriers.data()
                 };
                 vkCmdPipelineBarrier2(commands, &dependency);
@@ -1964,8 +2275,11 @@ namespace RelayCore::render
                 );
                 VkRenderingAttachmentInfo color{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = scene_image.view,
+                    .imageView = target->multisample_scene ? target->multisample_scene->view : scene_image.view,
                     .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .resolveMode = target->multisample_scene ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE,
+                    .resolveImageView = target->multisample_scene ? scene_image.view : VK_NULL_HANDLE,
+                    .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                     .clearValue = {.color = {{clear_rgb.x, clear_rgb.y, clear_rgb.z, 1}}}
@@ -2127,6 +2441,13 @@ namespace RelayCore::render
     {
         state_->append_ui(ui);
     }
+
+    void VulkanMeshRenderer::append_player_ui(PlayerUi& ui)
+    {
+        const auto extent = state_->target->extent;
+        ui.prepare(int(extent.width), int(extent.height));
+        state_->append_ui(nullptr, &ui);
+    }
     auto VulkanMeshRenderer::capture_prepared_image() -> CpuRgbaTextureData
     {
         return state_->capture_prepared_image();
@@ -2140,6 +2461,11 @@ namespace RelayCore::render
     auto VulkanMeshRenderer::prepared_extent() const -> VkExtent2D
     {
         return state_->target ? state_->target->extent : VkExtent2D{};
+    }
+
+    void VulkanMeshRenderer::set_reflection_probe(std::shared_ptr<const ReflectionProbe> probe)
+    {
+        state_->update_reflection(std::move(probe));
     }
 
     void VulkanMeshRenderer::set_irradiance_probes(std::shared_ptr<const IrradianceProbeVolume> probes)

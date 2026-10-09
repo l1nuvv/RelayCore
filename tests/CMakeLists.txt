@@ -60,6 +60,8 @@ target_link_libraries(relaycore_audio_lifetime PRIVATE
 set_target_properties(relaycore_audio_lifetime PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_game_lifecycle game_lifecycle_tests.cpp)
 target_link_libraries(relaycore_game_lifecycle PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+add_executable(relaycore_player_ui_graphics player_ui_graphics.cpp)
+target_link_libraries(relaycore_player_ui_graphics PRIVATE RelayGame::runtime RmlUi::RmlUi RelayCore::project_options RelayCore::warnings)
 add_executable(relaycore_bench_relay_run bench_relay_run.cpp)
 add_executable(relaycore_containment_loop_graphics containment_loop_graphics.cpp)
 target_link_libraries(relaycore_containment_loop_graphics PRIVATE RelayGame::runtime)
@@ -104,6 +106,7 @@ target_sources(
         static_model_tests.cpp
         model_asset_tests.cpp
         irradiance_probe_tests.cpp
+        reflection_probe_tests.cpp
         model_import_tests.cpp
         enemy_runtime_tests.cpp
         save_game_tests.cpp
@@ -126,6 +129,7 @@ target_sources(
         player_motion_tests.cpp
         world_query_tests.cpp
         player_experience_tests.cpp
+        scientist_pose_tests.cpp
         render_authoring_config_tests.cpp
         pipeline_authoring_overlay_tests.cpp
 
@@ -218,6 +222,7 @@ foreach(test_target IN ITEMS
     relaycore_vulkan_mesh_tests
     relaycore_power_restoration_graphics
     relaycore_game_lifecycle
+    relaycore_player_ui_graphics
     relaycore_episode_profile
     relaycore_bench_relay_run
     relaycore_containment_loop_graphics
@@ -246,6 +251,7 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
 
 foreach(runtime_graphics_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_audio_lifetime
     relaycore_vulkan_mesh_tests relaycore_window_lifetime_tests relaycore_game_lifecycle
+    relaycore_player_ui_graphics
     relaycore_power_restoration_graphics relaycore_episode_profile relaycore_bench_relay_run relaycore_containment_loop_graphics)
     add_dependencies(${runtime_graphics_target} relaycore_demo_assets)
 endforeach()
@@ -259,6 +265,7 @@ add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
 add_test(NAME graphics.mesh_pipeline COMMAND relaycore_vulkan_mesh_tests --pipeline-only)
 add_test(NAME graphics.power_restoration_slice COMMAND relaycore_vulkan_mesh_tests --power-restoration-slice)
 add_test(NAME graphics.game_hud COMMAND relaycore_vulkan_mesh_tests --ui-only)
+add_test(NAME graphics.player_ui COMMAND relaycore_player_ui_graphics)
 add_test(NAME graphics.containment_loop COMMAND relaycore_containment_loop_graphics)
 add_test(NAME graphics.containment_loop_hdr COMMAND relaycore_containment_loop_graphics --hdr)
 set_tests_properties(graphics.containment_loop graphics.containment_loop_hdr PROPERTIES
@@ -269,14 +276,25 @@ set_tests_properties(graphics.containment_loop graphics.containment_loop_hdr PRO
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_containment_loop_graphics>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_tests_properties(graphics.player_ui PROPERTIES
+    LABELS "integration;graphics"
+    RUN_SERIAL TRUE
+    SKIP_RETURN_CODE 77
+    TIMEOUT 180
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_player_ui_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 add_test(NAME graphics.resource_preparation COMMAND relaycore_vulkan_mesh_tests --resource-preparation)
 add_test(NAME graphics.pistol_viewmodel COMMAND relaycore_vulkan_mesh_tests --pistol-viewmodel)
 add_test(NAME graphics.shotgun_viewmodel COMMAND relaycore_vulkan_mesh_tests --shotgun-viewmodel)
 add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
 add_test(NAME graphics.hdr_pipeline COMMAND relaycore_vulkan_mesh_tests --hdr)
+add_test(NAME graphics.msaa COMMAND relaycore_vulkan_mesh_tests --msaa)
 add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --irradiance)
+add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
+add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -378,6 +396,20 @@ add_test(NAME graphics.foundation_pump COMMAND relaycore_power_restoration_graph
 add_test(NAME graphics.foundation_pump_sdr COMMAND relaycore_power_restoration_graphics --pump-views-sdr)
 add_test(NAME graphics.character_pickups COMMAND relaycore_power_restoration_graphics --character-views)
 add_test(NAME graphics.character_pickups_sdr COMMAND relaycore_power_restoration_graphics --character-views-sdr)
+add_test(NAME graphics.player_body COMMAND relaycore_power_restoration_graphics --body-views)
+add_test(NAME graphics.player_body_sdr COMMAND relaycore_power_restoration_graphics --body-views-sdr)
+add_test(NAME graphics.world_effects COMMAND relaycore_power_restoration_graphics --effect-views)
+add_test(NAME graphics.world_effects_sdr COMMAND relaycore_power_restoration_graphics --effect-views-sdr)
+set_tests_properties(graphics.world_effects graphics.world_effects_sdr PROPERTIES
+    LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77 TIMEOUT 180
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_tests_properties(graphics.player_body graphics.player_body_sdr PROPERTIES
+    LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77 TIMEOUT 120
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 set_tests_properties(graphics.character_pickups graphics.character_pickups_sdr PROPERTIES
     LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77 TIMEOUT 300
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"

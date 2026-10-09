@@ -20,6 +20,7 @@ namespace RelayGame
 
     [[nodiscard]] auto weapon_impact_feedback(std::span<const RelayCore::gameplay::CombatFireResult> rays)
         -> WeaponImpactFeedback;
+    [[nodiscard]] auto weapon_impact_is_metal(RelayCore::SurfaceMaterial surface) -> bool;
 
     enum class FootstepSurface {
         Concrete,
@@ -59,6 +60,10 @@ namespace RelayGame
         {
             return landing_;
         }
+        [[nodiscard]] auto travel_direction() const noexcept -> glm::vec3
+        {
+            return travel_direction_;
+        }
 
     private:
         float phase_ = 0.0F;
@@ -66,5 +71,6 @@ namespace RelayGame
         float step_timer_ = 0.0F;
         float landing_ = 0.0F;
         float airborne_time_ = 0.0F;
+        glm::vec3 travel_direction_{0.0F, 0.0F, 1.0F};
     };
 } // namespace RelayGame

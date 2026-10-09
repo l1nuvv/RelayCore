@@ -1,6 +1,7 @@
 #include "relaycore/core/log.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/mesh.h"
+#include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_uploads.h"
 
@@ -277,8 +278,49 @@ namespace
             uploads.retire(std::move(texture.texture), texture.completion);
             uploads.collect();
         }
+        {
+            VulkanUploads uploads{device};
+            CpuRgbaTextureData detailed{.width = 2048, .height = 1024};
+            detailed.pixels.resize(static_cast<size_t>(detailed.width) * detailed.height * 4);
+            for (int y = 0; y < detailed.height; ++y)
+                for (int x = 0; x < detailed.width; ++x)
+                {
+                    const auto offset = (static_cast<size_t>(y) * detailed.width + x) * 4;
+                    detailed.pixels[offset] = static_cast<uint8_t>(x);
+                    detailed.pixels[offset + 1] = static_cast<uint8_t>(y);
+                    detailed.pixels[offset + 2] = static_cast<uint8_t>((x + y) % 2 * 255);
+                    detailed.pixels[offset + 3] = 255;
+                }
+            auto texture = uploads.upload_rgba(detailed, TextureEncoding::srgb);
+            const auto bytes = uploads.readback(texture.texture);
+            if (texture.texture.extent().width != 2048 || texture.texture.extent().height != 1024
+                || texture.texture.mip_levels() != 12 || bytes.size() < detailed.pixels.size()
+                || std::memcmp(bytes.data(), detailed.pixels.data(), detailed.pixels.size()) != 0)
+                throw std::runtime_error("Detailed model-size texture lost resolution or texels during GPU upload");
+            uploads.retire(std::move(texture.texture), texture.completion);
+            uploads.collect();
+        }
         if (allocation_count(device) != 0)
             throw std::runtime_error("Upload/readback/reload leaked VMA allocations");
+        {
+            VulkanUploads uploads{device};
+            ReflectionProbe cube{{{}, {-2, -2, -2}, {2, 2, 2}, 8, 32}, 0, {}};
+            std::vector<std::byte> expected;
+            for (uint32_t size = 8; size; size >>= 1)
+            {
+                auto& mip = cube.mips.emplace_back(6 * size * size);
+                for (std::size_t pixel = 0; pixel < mip.size(); ++pixel)
+                    mip[pixel] = {static_cast<float>(pixel) / (size * size) + .1F, static_cast<float>(size), .5F, 1};
+                const auto bytes = std::as_bytes(std::span{mip});
+                expected.insert(expected.end(), bytes.begin(), bytes.end());
+            }
+            auto uploaded = uploads.upload_reflection(cube);
+            check_bytes(uploads.readback(uploaded.texture), expected);
+            uploads.retire(std::move(uploaded.texture), uploaded.completion);
+            uploads.collect();
+        }
+        if (allocation_count(device) != 0)
+            throw std::runtime_error("Reflection cube upload/readback leaked VMA allocations");
         check_deferred_retirement(device, mesh);
         {
             VulkanUploads uploads{device};

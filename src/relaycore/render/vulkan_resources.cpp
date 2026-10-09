@@ -124,12 +124,16 @@ namespace RelayCore::render
         const VulkanDevice& device,
         const int width,
         const int height,
-        const TextureEncoding encoding
+        const TextureEncoding encoding,
+        const bool cube
     ) : state_(std::make_unique<State>(device))
     {
         if (width <= 0 || height <= 0)
             throw std::invalid_argument("Vulkan texture requires positive dimensions");
-        const VkFormat format = encoding == TextureEncoding::srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+        state_->cube = cube;
+        const VkFormat format = cube                                ? VK_FORMAT_R32G32B32A32_SFLOAT
+                                : encoding == TextureEncoding::srgb ? VK_FORMAT_R8G8B8A8_SRGB
+                                                                    : VK_FORMAT_R8G8B8A8_UNORM;
         constexpr auto usage =
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         VkImageFormatProperties image_properties{};
@@ -140,7 +144,7 @@ namespace RelayCore::render
                 VK_IMAGE_TYPE_2D,
                 VK_IMAGE_TILING_OPTIMAL,
                 usage,
-                0,
+                cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
                 &image_properties
             ),
             "Vulkan GPU does not support the RGBA texture upload format"
@@ -149,21 +153,23 @@ namespace RelayCore::render
         state_->mip_levels = std::bit_width(std::max(state_->extent.width, state_->extent.height));
         if (state_->extent.width > image_properties.maxExtent.width
             || state_->extent.height > image_properties.maxExtent.height
-            || state_->mip_levels > image_properties.maxMipLevels)
+            || state_->mip_levels > image_properties.maxMipLevels || (cube && image_properties.maxArrayLayers < 6))
             throw std::invalid_argument("Vulkan texture dimensions exceed GPU format limits");
         VkFormatProperties format_properties{};
         vkGetPhysicalDeviceFormatProperties(device.physical_device(), format, &format_properties);
-        constexpr auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT
-                                  | VK_FORMAT_FEATURE_BLIT_DST_BIT;
+        const VkFormatFeatureFlags required =
+            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+            | (cube ? 0u : VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT);
         if ((format_properties.optimalTilingFeatures & required) != required)
             throw std::runtime_error("Vulkan RGBA texture format requires linear filtering and mip blit support");
         const VkImageCreateInfo image_info{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .flags = cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u,
             .imageType = VK_IMAGE_TYPE_2D,
             .format = format,
             .extent = {state_->extent.width, state_->extent.height, 1},
             .mipLevels = state_->mip_levels,
-            .arrayLayers = 1,
+            .arrayLayers = cube ? 6u : 1u,
             .samples = VK_SAMPLE_COUNT_1_BIT,
             .tiling = VK_IMAGE_TILING_OPTIMAL,
             .usage = usage,
@@ -185,9 +191,9 @@ namespace RelayCore::render
         const VkImageViewCreateInfo view_info{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = state_->image,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
             .format = format,
-            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, state_->mip_levels, 0, 1},
+            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, state_->mip_levels, 0, cube ? 6u : 1u},
         };
         require_resource_result(
             vkCreateImageView(state_->device, &view_info, nullptr, &state_->view),
@@ -198,9 +204,11 @@ namespace RelayCore::render
             .magFilter = VK_FILTER_LINEAR,
             .minFilter = VK_FILTER_LINEAR,
             .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeU = cube ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = cube ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = cube ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .anisotropyEnable = !cube && device.capabilities().max_texture_anisotropy > 1.0F ? VK_TRUE : VK_FALSE,
+            .maxAnisotropy = device.capabilities().max_texture_anisotropy,
             .maxLod = static_cast<float>(state_->mip_levels - 1),
         };
         require_resource_result(

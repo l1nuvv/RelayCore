@@ -232,6 +232,10 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("postfx_saturation", postfx_saturation);
             RELAYCORE_ASSIGN_RENDER("hdr_enabled", hdr_enabled);
             RELAYCORE_ASSIGN_RENDER("exposure_ev", exposure_ev);
+            RELAYCORE_ASSIGN_RENDER("msaa_samples", msaa_samples);
+            if (config.renderer.msaa_samples != 1 && config.renderer.msaa_samples != 2
+                && config.renderer.msaa_samples != 4)
+                invalid_config_value(config_path, "render.msaa_samples", "must be 1, 2 or 4");
             if (config.renderer.exposure_ev < -10 || config.renderer.exposure_ev > 10)
                 invalid_config_value(config_path, "render.exposure_ev", "must be in [-10, 10] stops");
             RELAYCORE_ASSIGN_RENDER("shadow_enabled", shadow_enabled);

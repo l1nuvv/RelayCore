@@ -176,8 +176,7 @@ TEST_CASE("GLB normal map preserves linear bytes, scale and mirrored tangent han
     CHECK(model.meshes[model.parts[1].mesh].geometry.vertices[0].tangent == glm::vec4{-1, 0, 0, -1});
     for (const auto& [from, to, diagnostic] : std::vector<std::tuple<std::string, std::string, std::string>>{
              {",\"TANGENT\":3", "", "TANGENT"},
-             {"\"index\":0,\"scale\":0.5", "\"index\":0,\"texCoord\":1", "TEXCOORD_0"},
-             {"\"normalTexture\"", "\"occlusionTexture\"", "occlusion"}
+             {"\"index\":0,\"scale\":0.5", "\"index\":0,\"texCoord\":1", "TEXCOORD_0"}
          })
     {
         auto bad = json;
@@ -248,7 +247,67 @@ TEST_CASE("Blender cabinet metallic-roughness material recompiles to the staged 
     }
 }
 
-TEST_CASE("GLB metallic-roughness import is explicit and rejects unsupported maps")
+TEST_CASE("GLB emissive maps retain sRGB texels and linear factors independently of base color")
+{
+    RelayCore::test::ScopedTempDirectory temporary;
+    const auto path = temporary.path() / "emissive.glb";
+    std::string json = triangle_json;
+    const auto replace = [&](const std::string& from, const std::string& to) {
+        json.replace(json.find(from), from.size(), to);
+    };
+    replace(
+        "\"pbrMetallicRoughness\"",
+        R"("emissiveFactor":[0.2,0.6,0.4],"emissiveTexture":{"index":0},"pbrMetallicRoughness")"
+    );
+    replace("\"byteLength\":96", "\"byteLength\":" + std::to_string(144 + normal_png.size()));
+    replace(
+        "\"byteLength\":24}",
+        "\"byteLength\":24},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":144,\"byteLength\":"
+            + std::to_string(normal_png.size()) + "}"
+    );
+    json.insert(json.rfind('}'), R"(,"textures":[{"source":0}],"images":[{"bufferView":4,"mimeType":"image/png"}])");
+    write_glb(path, json, false, true);
+    const auto model = RelayCore::tools::import_glb(path);
+    REQUIRE(model.materials[0].emissive);
+    CHECK(model.materials[0].emissive->pixels == std::vector<std::uint8_t>{128, 192, 240, 255});
+    CHECK(model.materials[0].emissive_factor == glm::vec3{.2F, .6F, .4F});
+    const auto product = temporary.path() / "emissive.rcmodel";
+    RelayCore::render::write_model_asset(product, model);
+    RelayCore::render::StaticModelCache cache;
+    for (const auto encoding : {RelayCore::render::TextureEncoding::linear, RelayCore::render::TextureEncoding::srgb})
+    {
+        const auto loaded = cache.load(product, encoding);
+        CHECK(loaded->materials[0].emissive.encoding() == RelayCore::render::TextureEncoding::srgb);
+        CHECK(loaded->materials[0].emissive_factor == model.materials[0].emissive_factor);
+    }
+    for (const auto& [from, to, diagnostic] : std::vector<std::tuple<std::string, std::string, std::string>>{
+             {",\"TEXCOORD_0\":2", "", "TEXCOORD_0"},
+             {"0.2,0.6,0.4", "0.2,-0.1,0.4", "emissive"},
+             {"\"index\":0", "\"index\":0,\"texCoord\":1", "TEXCOORD_0"}
+         })
+    {
+        auto bad = json;
+        bad.replace(bad.find(from), from.size(), to);
+        write_glb(path, bad, false, true);
+        CHECK_THROWS_WITH_AS(
+            static_cast<void>(RelayCore::tools::import_glb(path)),
+            doctest::Contains(diagnostic),
+            std::runtime_error
+        );
+    }
+    auto factor_only = json;
+    factor_only.erase(
+        factor_only.find(R"("emissiveTexture":{"index":0},)"),
+        std::string_view{R"("emissiveTexture":{"index":0},)"}.size()
+    );
+    write_glb(path, factor_only, false, true);
+    const auto scalar = RelayCore::tools::import_glb(path);
+    CHECK_FALSE(scalar.materials[0].emissive);
+    CHECK(scalar.materials[0].emissive_factor == glm::vec3{.2F, .6F, .4F});
+}
+
+TEST_CASE("GLB metallic-roughness import is explicit and rejects external maps")
 {
     RelayCore::test::ScopedTempDirectory temporary;
     const auto path = temporary.path() / "material.glb";
@@ -265,7 +324,65 @@ TEST_CASE("GLB metallic-roughness import is explicit and rejects unsupported map
     write_glb(path, json);
     CHECK_THROWS_WITH_AS(
         static_cast<void>(RelayCore::tools::import_glb(path, true)),
-        doctest::Contains("metallic-roughness maps"),
+        doctest::Contains("embedded buffer views"),
         std::runtime_error
     );
+}
+
+TEST_CASE("GLB material maps preserve independent linear channels and AO strength")
+{
+    RelayCore::test::ScopedTempDirectory temporary;
+    const auto path = temporary.path() / "maps.glb";
+    std::string json = triangle_json;
+    const auto replace = [&](const std::string& from, const std::string& to) {
+        json.replace(json.find(from), from.size(), to);
+    };
+    replace("\"pbrMetallicRoughness\"", "\"occlusionTexture\":{\"index\":0,\"strength\":0.6},\"pbrMetallicRoughness\"");
+    replace("\"baseColorFactor\"", "\"metallicRoughnessTexture\":{\"index\":0},\"baseColorFactor\"");
+    replace("\"byteLength\":96", "\"byteLength\":" + std::to_string(144 + normal_png.size()));
+    replace(
+        "\"byteLength\":24}",
+        "\"byteLength\":24},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":144,\"byteLength\":"
+            + std::to_string(normal_png.size()) + "}"
+    );
+    json.insert(json.rfind('}'), R"(,"textures":[{"source":0}],"images":[{"bufferView":4,"mimeType":"image/png"}])");
+    write_glb(path, json, false, true);
+    const auto model = RelayCore::tools::import_glb(path, true);
+    const auto& material = model.materials[0];
+    REQUIRE(material.metallic_roughness_map);
+    REQUIRE(material.occlusion);
+    CHECK(material.metallic_roughness_map->pixels == std::vector<std::uint8_t>{128, 192, 240, 255});
+    CHECK(material.occlusion->pixels == material.metallic_roughness_map->pixels);
+    CHECK(material.occlusion_strength == doctest::Approx(.6));
+    CHECK_THROWS_WITH_AS(
+        static_cast<void>(RelayCore::tools::import_glb(path)),
+        doctest::Contains("--metallic-roughness"),
+        std::runtime_error
+    );
+    for (const auto& [from, to, diagnostic] : std::vector<std::tuple<std::string, std::string, std::string>>{
+             {",\"TEXCOORD_0\":2", "", "TEXCOORD_0"},
+             {"\"strength\":0.6", "\"strength\":1.1", "strength"},
+             {"\"index\":0", "\"index\":0,\"texCoord\":1", "TEXCOORD_0"}
+         })
+    {
+        auto bad = json;
+        bad.replace(bad.find(from), from.size(), to);
+        write_glb(path, bad, false, true);
+        CHECK_THROWS_WITH_AS(
+            static_cast<void>(RelayCore::tools::import_glb(path, true)),
+            doctest::Contains(diagnostic),
+            std::runtime_error
+        );
+    }
+    const auto product = temporary.path() / "maps.rcmodel";
+    RelayCore::render::write_model_asset(product, model);
+    RelayCore::render::StaticModelCache cache;
+    for (const auto encoding : {RelayCore::render::TextureEncoding::linear, RelayCore::render::TextureEncoding::srgb})
+    {
+        const auto loaded = cache.load(product, encoding);
+        CHECK(loaded->materials[0].metallic_roughness_map.encoding() == RelayCore::render::TextureEncoding::linear);
+        CHECK(loaded->materials[0].occlusion.encoding() == RelayCore::render::TextureEncoding::linear);
+        CHECK(loaded->materials[0].occlusion.cpu_data()->pixels == material.occlusion->pixels);
+    }
 }

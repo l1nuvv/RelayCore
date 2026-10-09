@@ -2,6 +2,8 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game.cpp
         demo_game_session.cpp
         demo_game_transition.cpp
+        containment_encounter.cpp
+        enemy_navigation.cpp
         mission_runtime.cpp
         runtime_model.cpp
         usable_interaction.cpp
@@ -10,6 +12,7 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game_progress.cpp
         save_game.cpp
         player_feedback.cpp
+        scientist_pose.cpp
         player_settings.cpp
         demo_game_debug_command_helpers.cpp
         demo_game_debug_commands.cpp
@@ -20,6 +23,7 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game_source_debug_commands.cpp
         game_world_runtime.cpp
         game_world_runtime_diagnostics.cpp
+        game_world_runtime_hud.cpp
         game_world_runtime_feedback.cpp
         game_world_runtime_update.cpp
         level_session_builder.cpp
@@ -45,6 +49,7 @@ set(RELAYCORE_DEMO_SOURCES
 set(RELAYCORE_DEMO_HEADERS
         demo_game.h
         game_updates.h
+        containment_encounter.h
         mission_runtime.h
         runtime_model.h
         usable_interaction.h
@@ -72,6 +77,10 @@ set(RELAYCORE_DEMO_HEADERS
 
 add_library(relaygame_runtime STATIC)
 add_library(RelayGame::runtime ALIAS relaygame_runtime)
+target_precompile_headers(relaygame_runtime PRIVATE
+    <algorithm> <array> <filesystem> <memory> <optional> <span>
+    <string> <unordered_map> <vector> <glm/glm.hpp> <spdlog/spdlog.h>)
+set_source_files_properties(game_world_runtime_hud.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 add_executable(relaycore_demo main.cpp)
 
 target_sources(
@@ -130,6 +139,16 @@ add_custom_command(TARGET relaycore_irradiance_bake POST_BUILD
     COMMAND_EXPAND_LISTS VERBATIM)
 include(${PROJECT_SOURCE_DIR}/cmake/RelayCoreIrradianceAssets.cmake)
 
+add_executable(relaycore_reflection_bake ${PROJECT_SOURCE_DIR}/tools/reflection_bake_main.cpp)
+target_link_libraries(relaycore_reflection_bake PRIVATE RelayGame::runtime)
+relaycore_apply_standard_target_settings(relaycore_reflection_bake)
+set_target_properties(relaycore_reflection_bake PROPERTIES
+    FOLDER "tools" RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools/reflection-bake")
+add_custom_command(TARGET relaycore_reflection_bake POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_reflection_bake>" $<TARGET_RUNTIME_DLLS:relaycore_reflection_bake>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(${PROJECT_SOURCE_DIR}/cmake/RelayCoreReflectionAssets.cmake)
+
 add_custom_target(
         relaycore_demo_assets ALL
         COMMAND
@@ -153,6 +172,7 @@ add_dependencies(relaycore_demo_assets relaycore_vulkan_shaders)
 add_dependencies(relaycore_demo_assets relaycore_model_assets)
 add_dependencies(relaycore_demo_assets relaycore_collision_assets)
 add_dependencies(relaycore_demo_assets relaycore_irradiance_assets)
+add_dependencies(relaycore_demo_assets relaycore_reflection_assets)
 add_custom_command(TARGET relaycore_demo_assets POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RELAYCORE_MESH_SPIRV}
         "$<TARGET_FILE_DIR:relaycore_demo>/assets/shaders/vulkan"

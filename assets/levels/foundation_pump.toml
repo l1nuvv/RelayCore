@@ -11,7 +11,7 @@ entries = [
 [[entity]]
 classname = "prop_static"
 model = "models/ventilation_unit.rcmodel"
-origin = [0,2.6,9.55]
+origin = [-1.5,2.6,9.55]
 angles = [180,0,0]
 
 [[solid_group]]

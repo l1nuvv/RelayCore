@@ -39,6 +39,21 @@ TEST_CASE("footsteps follow traveled ground distance, not airborne or blocked mo
     CHECK(steps == 3);
 }
 
+TEST_CASE("body travel direction follows ground displacement and survives stopping")
+{
+    RelayGame::PlayerFeedback feedback;
+    (void) feedback.update(.1F, {-.3F, 0, -.4F}, 0, true, true, false);
+    CHECK(feedback.travel_direction().x == doctest::Approx(-.6F));
+    CHECK(feedback.travel_direction().z == doctest::Approx(-.8F));
+    (void) feedback.update(.1F, {}, 0, true, true, false);
+    CHECK(feedback.travel_direction().x == doctest::Approx(-.6F));
+    (void) feedback.update(.1F, {.3F, .2F, 0}, 2, false, false, false);
+    CHECK(feedback.travel_direction().z == doctest::Approx(-.8F));
+    feedback.reset();
+    CHECK(feedback.stride() == 0);
+    CHECK(feedback.travel_direction() == glm::vec3{0, 0, 1});
+}
+
 TEST_CASE("footstep material comes from the support directly below the feet")
 {
     RelayCore::BlockoutLevel level;

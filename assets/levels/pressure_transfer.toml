@@ -256,6 +256,7 @@ fire_interval = 1.1
 [[entity]]
 classname = "enemy_rover"
 origin = [28,0.01,37]
+attack_style = "lunge"
 health = 60
 speed = 2.3
 detection_range = 12
@@ -266,6 +267,7 @@ kind = "turret"
 origin = [36,1.55,41]
 size = [0.78,0.92,0.78]
 targetname = "relay_turret"
+stop_target = "transfer_running"
 angles = [180,0,0]
 label = "Турель перепускного зала"
 health = 60
@@ -288,7 +290,7 @@ chain_target = "exit_reader"
 use_radius = 1.8
 single_use = true
 label = "Включить перепуск давления"
-success_message = "Перепуск работает. Пульт выхода на дальней стене разблокирован."
+success_message = "Перепуск работает: утечка остановлена, питание турели сброшено. Робот автономен. Пульт выхода разблокирован."
 
 [[entity]]
 classname = "gameplay_entity"
@@ -358,7 +360,7 @@ entries = [
   { kind = "zone", origin = [11,0.01,22], size = [4,2.5,7], title = "Пройти в перепускную галерею", detail = "В конце служебного зала войдите в галерею по указателю 02. Длинную галерею контролирует турель." },
   { kind = "door_open", target = "gallery_gate", title = "Снять блокировку зала 03", detail = "Пульт на левой стене галереи, между защитными блоками. Турель контролирует центральный проход." },
   { kind = "zone", origin = [30,0.01,28], size = [4,2.5,3], retry_entry = "mixed_retry", title = "Дойти до перепускного зала", detail = "Зал 03 открыт. В конце галереи войдите в него по указателю; обходите опору турели." },
-  { kind = "activate_target", target = "transfer_running", title = "Включить перепуск давления", detail = "Робот проходит под верстаком; высокий шкаф закрывает огонь турели. Пульт — на правой стене." },
+  { kind = "activate_target", target = "transfer_running", title = "Включить перепуск давления", detail = "Перепуск на правой стене сбрасывает питание турели. Зачистите зал или доберитесь до пульта под огнём. Робот автономен: после сигнала рывка уйдите вбок." },
   { kind = "door_open", target = "transfer_exit", title = "Открыть выход", detail = "Перепуск разблокировал пульт на дальней стене рядом с дверью." },
   { kind = "zone", origin = [28,0.01,49], size = [3.6,2.5,2], title = "Войти в технический сектор", detail = "Пройдите через открытую дверь до конца коридора." },
 ]
@@ -403,7 +405,8 @@ volume = 0.06
 [[entity]]
 classname = "world_effect"
 kind = "steam"
-origin = [39.0,2.15,35.5]
+origin = [39.30,1.68,34.6]
+angles = [270,0,0]
 scale = 0.45
 stop_target = "transfer_running"
 

@@ -15,6 +15,59 @@
 
 namespace RelayGame
 {
+    auto world_reflection_source(const RelayCore::BlockoutLevel& level) -> std::optional<WorldReflectionSource>
+    {
+        std::optional<WorldReflectionSource> source;
+        for (const auto& entity : level.entities)
+        {
+            if (entity.classname != "reflection_probe")
+                continue;
+            if (source)
+                throw std::runtime_error("only one reflection_probe is supported per scene");
+            const auto property = [&](const char* key) -> const std::string& {
+                const auto found = entity.properties.find(key);
+                if (found == entity.properties.end() || found->second.empty())
+                    throw std::runtime_error(std::string{"reflection_probe requires "} + key);
+                return found->second;
+            };
+            const auto vector = [&](const char* key) {
+                auto text = property(key);
+                std::replace(text.begin(), text.end(), ',', ' ');
+                std::istringstream input{text};
+                glm::vec3 value;
+                std::string extra;
+                if (!(input >> value.x >> value.y >> value.z) || (input >> extra))
+                    throw std::runtime_error(std::string{"reflection_probe."} + key + " requires three numbers");
+                return value;
+            };
+            const auto integer = [&](const char* key) {
+                std::istringstream input{property(key)};
+                std::uint32_t value;
+                std::string extra;
+                if (!(input >> value) || (input >> extra))
+                    throw std::runtime_error(std::string{"reflection_probe."} + key + " requires an integer");
+                return value;
+            };
+            WorldReflectionSource result;
+            result.settings.position = entity.origin;
+            result.settings.mins = vector("mins");
+            result.settings.maxs = vector("maxs");
+            result.settings.resolution = integer("resolution");
+            result.settings.samples = integer("samples");
+            RelayCore::render::validate_reflection_settings(result.settings);
+            const std::filesystem::path path{property("product")};
+            if (path.is_absolute() || path.extension() != ".rcreflection"
+                || std::ranges::any_of(path, [](const auto& part) {
+                       return part == "..";
+                   }))
+                throw std::runtime_error("reflection_probe.product requires a relative .rcreflection path without '..'"
+                );
+            result.product = RelayCore::core::asset_path(path.generic_string());
+            source = std::move(result);
+        }
+        return source;
+    }
+
     auto world_irradiance_source(const RelayCore::BlockoutLevel& level) -> std::optional<WorldIrradianceSource>
     {
         std::optional<WorldIrradianceSource> source;
@@ -131,7 +184,18 @@ namespace RelayGame
                         };
                     mean /= static_cast<float>(material.base_color.pixels.size() / 4);
                     if (material.metallic_roughness)
-                        mean *= .96F * (1 - material.metallic_roughness->metallic);
+                    {
+                        float metallic = material.metallic_roughness->metallic;
+                        if (material.metallic_roughness_map)
+                        {
+                            const auto& pixels = material.metallic_roughness_map->pixels;
+                            double sum = 0;
+                            for (std::size_t i = 2; i < pixels.size(); i += 4)
+                                sum += pixels[i];
+                            metallic *= static_cast<float>(sum / (255.0 * static_cast<double>(pixels.size() / 4)));
+                        }
+                        mean *= .96F * (1 - metallic);
+                    }
                     model.reflectance.push_back(mean);
                 }
             }
@@ -169,7 +233,7 @@ namespace RelayGame
         {
             auto linear_level = level;
             std::erase_if(linear_level.entities, [](const auto& e) {
-                return e.classname == "irradiance_volume";
+                return e.classname == "irradiance_volume" || e.classname == "reflection_probe";
             });
             linear_scene = build_prepared_world_scene_data(
                 linear_level,
@@ -185,5 +249,41 @@ namespace RelayGame
                 + "; rebuild relaycore_irradiance_assets after geometry, static lights or bake settings changes"
             );
         return std::make_shared<const RelayCore::render::IrradianceProbeVolume>(std::move(volume));
+    }
+
+    auto load_world_reflection(
+        const RelayCore::BlockoutLevel& level,
+        const PreparedWorldSceneData& scene,
+        const RelayCore::render::RenderAuthoringConfig& authoring
+    ) -> std::shared_ptr<const RelayCore::render::ReflectionProbe>
+    {
+        const auto source = world_reflection_source(level);
+        if (!source)
+            return {};
+        std::optional<PreparedWorldSceneData> linear_scene;
+        if (scene.color_pipeline_mode != RelayCore::render::ColorPipelineMode::hardware_srgb)
+        {
+            auto linear_level = level;
+            std::erase_if(linear_level.entities, [](const auto& e) {
+                return e.classname == "irradiance_volume" || e.classname == "reflection_probe";
+            });
+            linear_scene = build_prepared_world_scene_data(
+                linear_level,
+                authoring,
+                RelayCore::render::ColorPipelineMode::hardware_srgb
+            );
+        }
+        const auto inputs = build_world_irradiance_scene(linear_scene ? *linear_scene : scene, authoring);
+        auto probe = RelayCore::render::read_reflection_probe(source->product);
+        const auto ambient = glm::vec3{authoring.lighting.ambient_floor};
+        if (probe.settings != source->settings
+            || probe.source_signature
+                   != RelayCore::render::reflection_source_signature(inputs, source->settings, ambient))
+            throw std::runtime_error(
+                "stale reflection product " + source->product.string()
+                + "; rebuild relaycore_reflection_assets after geometry, static lights, materials or bake settings "
+                  "changes"
+            );
+        return std::make_shared<const RelayCore::render::ReflectionProbe>(std::move(probe));
     }
 } // namespace RelayGame

@@ -195,6 +195,24 @@ namespace RelayCore::render
             }
             surface.normal_scale = material.normal_scale;
             surface.metallic_roughness = material.metallic_roughness;
+            if (material.metallic_roughness_map)
+            {
+                const auto& map = *material.metallic_roughness_map;
+                surface.metallic_roughness_map
+                    .initialize_rgba(map.width, map.height, map.pixels, TextureEncoding::linear);
+            }
+            if (material.occlusion)
+            {
+                const auto& map = *material.occlusion;
+                surface.occlusion.initialize_rgba(map.width, map.height, map.pixels, TextureEncoding::linear);
+            }
+            surface.occlusion_strength = material.occlusion_strength;
+            if (material.emissive)
+            {
+                const auto& map = *material.emissive;
+                surface.emissive.initialize_rgba(map.width, map.height, map.pixels, TextureEncoding::srgb);
+            }
+            surface.emissive_factor = material.emissive_factor;
         }
         for (auto& mesh : data.meshes)
         {
