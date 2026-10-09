@@ -385,12 +385,25 @@ namespace RelayGame
             // A bounded walkability check at the spawn elevation; stairs/jumps remain a playtest concern.
             if (spawn != level_.entities.end())
             {
-                constexpr int width = 129;
                 constexpr float cell = .5F;
-                std::vector<unsigned char> reachable(width * width, 0);
+                constexpr int limit = 128;
+                int min_x = 0, max_x = 0, min_z = 0, max_z = 0;
+                for (const auto* solids : {&session.level.solids, &session.level.prop_colliders})
+                    for (const auto& solid : *solids)
+                    {
+                        min_x = std::min(min_x, static_cast<int>(std::floor((solid.mins.x - spawn->origin.x) / cell)));
+                        max_x = std::max(max_x, static_cast<int>(std::ceil((solid.maxs.x - spawn->origin.x) / cell)));
+                        min_z = std::min(min_z, static_cast<int>(std::floor((solid.mins.z - spawn->origin.z) / cell)));
+                        max_z = std::max(max_z, static_cast<int>(std::ceil((solid.maxs.z - spawn->origin.z) / cell)));
+                    }
+                min_x = std::max(-limit, min_x);
+                max_x = std::min(limit, max_x);
+                min_z = std::max(-limit, min_z);
+                max_z = std::min(limit, max_z);
+                const int width = max_x - min_x + 1, depth = max_z - min_z + 1;
+                std::vector<unsigned char> reachable(width * depth, 0);
                 const auto position = [&](int index) {
-                    return spawn->origin
-                           + glm::vec3{(index % width - width / 2) * cell, 0, (index / width - width / 2) * cell};
+                    return spawn->origin + glm::vec3{(index % width + min_x) * cell, 0, (index / width + min_z) * cell};
                 };
                 const auto walkable = [&](glm::vec3 feet) {
                     bool floor = false;
@@ -407,7 +420,7 @@ namespace RelayGame
                     return floor;
                 };
                 std::queue<int> pending;
-                const int start = width * width / 2;
+                const int start = -min_z * width - min_x;
                 if (walkable(spawn->origin))
                 {
                     reachable[start] = 1;
@@ -421,7 +434,7 @@ namespace RelayGame
                     for (int delta : {-1, 1, -width, width})
                     {
                         const int next = index + delta;
-                        if (next < 0 || next >= width * width || (std::abs(delta) == 1 && index / width != next / width)
+                        if (next < 0 || next >= width * depth || (std::abs(delta) == 1 && index / width != next / width)
                             || reachable[next])
                             continue;
                         reachable[next] = 2;
@@ -436,7 +449,7 @@ namespace RelayGame
                     if (step.kind == MissionStepKind::EnterZone)
                     {
                         bool reached = false;
-                        for (int i = 0; i < width * width && !reached; ++i)
+                        for (int i = 0; i < width * depth && !reached; ++i)
                             reached = reachable[i] == 1
                                       && RelayCore::physics::overlaps(
                                           RelayCore::physics::make_player_aabb(position(i), .3F, 1.8F),
