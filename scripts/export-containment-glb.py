@@ -5,7 +5,7 @@ Blender --background --factory-startup --disable-autoexec --threads 2
 Use -- --model=<name> for one assembly. Moving assembly origins are their pivots.
 """
 from pathlib import Path
-from math import sin, cos, pi
+from math import sin, cos, pi, atan2, hypot
 import importlib.util
 import sys
 import tomllib
@@ -211,7 +211,8 @@ def lining(m):
         B("Suspended fixture tray", (x, y+.16, z), (1.5, .12, .40), m["steel"])
         B("Fixture diffuser", (x, y+.08, z), (1.38, .04, .29), m["ivory"])
         for dx in (-.55, .55):
-            R("Fixture hanger", (x+dx, y+.23, z), (x+dx, 7.98, z), .016, m["steel"], 12)
+            ceiling = 4.125 if -6 < x < 6 and z < 12 else 7.98
+            R("Fixture hanger", (x+dx, y+.23, z), (x+dx, ceiling, z), .016, m["steel"], 12)
     for x in (-5, 5):
         B("Gantry column casing", (x, 3.6, 30), (.83, 7.2, .83), m["paint"], .025)
         B("Anchored foot plate", (x, .09, 30), (1.20, .18, 1.20), m["steel"])
@@ -255,6 +256,184 @@ def lining(m):
         ("ARCHIVE / RETURN >", (-12.19, 2.8, 36), 2.6, "-x"),
     ):
         S(text, pos, width, m, facing)
+    observation_and_hall(m)
+    workshop(m)
+    archive(m)
+    laboratory(m)
+    upper_services(m, level)
+    final_contacts(m)
+
+
+def observation_and_hall(m):
+    B("Observer worktop", (-4.3, .93, 10.1), (2.7, .06, 1.1), m["steel"], .012)
+    for x in (-5.35, -3.25):
+        B("Observer drawer pedestal", (x, .45, 10.1), (.5, .90, 1.02), m["paint"], .012)
+        for y in (.26, .56, .79):
+            B("Observer drawer", (x, y, 9.58), (.44, .19, .035), m["blue"], .004)
+            R("Observer pull", (x-.12, y, 9.548), (x+.12, y, 9.548), .014, m["steel"], 12)
+    B("Observer wiring channel", (-4.3, .82, 10.53), (2.1, .12, .10), m["dark"], .006)
+    cable("CRT power lead", [(-4.65, 1.22, 10.35), (-4.65, 1.0, 10.69),
+          (-4.65, .82, 10.70), (-4.65, .82, 10.53), (-5.834, .82, 10.53)], .016, m["dark"])
+    S("C-19 / REMOTE OBSERVATION", (-4.3, 2.4, 11.80), 2.8, m)
+    for x in (-10, 10):
+        B("Hall instrumentation plinth", (x, .61, 30), (2.035, 1.22, 4.035), m["paint"], .012)
+        for z in (28.8, 30, 31.2):
+            B("Plinth service hatch", (x+(.99 if x < 0 else -.99), .62, z), (.05, .80, .95), m["blue"], .009)
+        cable("Hall instrument trunk", [(x, 1.3, 30), (x, 2.8, 30),
+              (x, 3.1, 31), (x, 3.1, 33), (x/10*11.65, 3.1, 33),
+              (x/10*11.65, 2.65, 33)], .037, m["dark"])
+    for z in (29.55, 30.45):
+        port = -.22 if z < 30 else .22
+        cable("Drive hydraulic header", [(24+port, 5.4, 32), (24+port, 7.32, 32),
+              (24+port, 7.32, z), (5, 7.32, z), (5, 7.6, 28+port),
+              (0, 7.6, 28+port)], .047, m["dark"])
+        for x in (6, 10, 14, 18, 22):
+            R("Header suspension", (x, 7.22, z), (x, 7.98, z), .024, m["steel"], 12)
+            B("Header saddle", (x, 7.26, z), (.12, .08, .24), m["steel"], .008)
+    for x in (-11.65, 11.65):
+        for y in (2.4, 2.65):
+            R("Hall wall service pipe", (x, y, 22.2), (x, y, 33.8), .062, m["steel"], 24)
+            for z in (23, 26, 29, 32, 33.5):
+                B("Wall pipe bracket", (x, y, z), (.26, .05, .07), m["paint"], .004)
+        R("Service pipe wall termination", (x, 2.4, 22.2),
+          (-11.87 if x < 0 else 11.87, 2.4, 22.2), .062, m["steel"], 24)
+        R("Service pipe wall termination", (x, 2.65, 33.8),
+          (-11.87 if x < 0 else 11.87, 2.65, 33.8), .062, m["steel"], 24)
+
+
+def repair_tools(x, y, z, m):
+    B("Open parts tray base", (x, y+.018, z), (.52, .036, .34), m["blue"], .006)
+    for dx in (-.255, .255):
+        B("Parts tray end", (x+dx, y+.065, z), (.018, .10, .34), m["blue"], .004)
+    for dz in (-.165, .165):
+        B("Parts tray rim", (x, y+.065, z+dz), (.50, .10, .018), m["blue"], .004)
+    collar("Removed winding", (x-.10, y+.061, z), .069, m["brass"], .012)
+    for dz in (-.07, .07):
+        R("Spare contact", (x+.11, y+.062, z+dz), (x+.18, y+.062, z+dz), .018, m["steel"], 12)
+    for dx, radius in ((-.115, .04), (.115, .055)):
+        collar("Ring spanner head", (x+dx, y+.012, z-.32), radius, m["steel"], .009)
+    R("Ring spanner web", (x-.065, y+.012, z-.32), (x+.051, y+.012, z-.32), .015, m["steel"], 12)
+    R("Driver shaft", (x-.16, y+.023, z+.31), (x+.04, y+.023, z+.31), .006, m["steel"], 12)
+    ellipsoid("Fluted driver grip", (x+.11, y+.023, z+.31), (.15, .042, .042), m["dark"])
+
+
+def papers(x, y, z, m):
+    B("Folded service folder", (x, y+.012, z), (.39, .024, .29), m["ochre"], .003)
+    B("Job sheet", (x+.016, y+.027, z), (.34, .006, .26), m["ivory"], .001)
+    for row in range(6):
+        B("Job sheet ruled record", (x-.02, y+.031, z-.09+row*.03), (.20-row*.012, .001, .003), m["dark"], 0)
+
+
+def workshop(m):
+    repair_tools(-18.1, 1.25, 22.75, m)
+    # The left side of the pickup worktop remains empty around the shotgun.
+    repair_tools(-23.0, 1.25, 19.35, m)
+    papers(-24.6, 1.25, 19.55, m)
+    B("Wall-mounted tool board", (-27.80, 2.0, 19), (.035, 1.35, 2.5), m["blue"], .006)
+    for z in (18.15, 18.55, 18.95, 19.35, 19.75):
+        B("Tool suspension hook", (-27.74, 2.3, z), (.09, .035, .045), m["steel"], .004)
+        R("Hanging service wrench", (-27.72, 1.80, z), (-27.72, 2.24, z), .027, m["steel"], 16)
+        B("Wrench open jaw", (-27.72, 2.27, z), (.04, .09, .14), m["steel"], .006)
+    S("REPAIR / C-19 DRIVE", (-27.76, 2.94, 19), 2.4, m, "+x")
+    cable("Workshop test lead", [(-18.8, 1.28, 23.15), (-18.65, 1.257, 23.0),
+          (-18.40, 1.257, 23.15), (-18.20, 1.311, 22.819)], .006, m["dark"])
+
+
+def archive(m):
+    for x, row in ((-20, "A"), (-15, "B")):
+        for index, z in enumerate((32, 40, 48), 1):
+            for side in (-1, 1):
+                B("Archive cabinet end panel", (x, 1.45, z+side*2.53),
+                  (1.25, 2.9, .04), m["paint"], .005)
+                S(f"{row}-{index:02} / C-19", (x, 2.43, z+side*2.565), 1.16,
+                  m, "+z" if side > 0 else "-z")
+    B("Dossier cabinet folded shell", (-24, 1.31, 45), (2.53, 2.62, 2.03), m["paint"], .012)
+    for y in (.40, 1.0, 1.6, 2.2):
+        B("Dossier drawer front", (-24, y, 43.968), (2.40, .53, .035), m["blue"], .006)
+        for x in (-24.7, -23.3):
+            R("Dossier drawer pull", (x-.16, y, 43.932), (x+.16, y, 43.932), .02, m["steel"], 12)
+    S("C-19 / EXPERIMENT RECORDS", (-24, 2.84, 45), 2.55, m)
+    papers(-27.05, .92, 48.45, m)
+    for z in (48.0, 48.12, 48.24):
+        B("Archive binder", (-27.25, 1.10, z), (.24, .36, .075), m["ochre"], .006)
+        B("Binder spine label", (-27.123, 1.15, z), (.008, .15, .04), m["ivory"], .001)
+    S("LIMITER / ISSUE DESK", (-24, 3.10, 53.79), 2.8, m)
+
+
+def laboratory(m):
+    papers(24.1, 1.25, 49.45, m)
+    S("FIELD ANALYSIS / C-19", (22, 3.12, 53.79), 3.4, m)
+    cable("Bench field sensor lead", [(19.5, 1.40, 46.25), (19.65, 1.257, 46.60),
+          (20.1, 1.257, 46.70), (20.35, 1.32, 46.65)], .008, m["dark"])
+    cable("Laboratory instrument wall feed", [(27.4, .16, 49.35), (27.7, .10, 49.35),
+          (27.84, .10, 49.35)], .026, m["dark"])
+    B("Laboratory cable entry", (27.82, .10, 49.35), (.05, .14, .14), m["steel"], .005)
+
+
+def upper_services(m, level):
+    for solid in level["solid_group"][0]["boxes"]:
+        x, y, z = solid["origin"]
+        w, height, d = solid["size"]
+        if y != 4.5 or height != 1:
+            continue
+        B("Folded gallery guard", (x, y, z), (w+.025, height+.015, d+.025), m["paint"], .004)
+        B("Gallery hand cap", (x, 5.025, z), (w+.06, .055, d+.06), m["steel"], .008)
+        B("Gallery kick strip", (x, 4.08, z), (w+.04, .16, d+.04), m["steel"], .004)
+        axis = 0 if w > d else 2
+        length = w if axis == 0 else d
+        bays = int(length/2)
+        for index in range(bays+1):
+            pos = [x, y, z]
+            pos[axis] += -length/2 + index*length/bays
+            B("Guard panel seam post", pos, (.09, 1.02, d+.05) if axis == 0
+              else (w+.05, 1.02, .09), m["steel"], .004)
+    for x, start in ((18, 14), (-24, 30)):
+        for side in (-1, 1):
+            obj = B("Stair side stringer", (x+side*1.535, 2, start+4.5),
+                    (.09, .18, hypot(9, 3.9)), m["steel"], .01)
+            obj.rotation_euler.x = -atan2(3.9, 9)
+        for step in range(20):
+            B("Stair tread folded nosing", (x, (step+1)*.2+.012, start+step*.45+.025),
+              (3.04, .024, .06), m["steel"], .003)
+    for side, depths in ((-1, (30, 34, 38)), (1, (20, 26, 34))):
+        for z in depths:
+            B("Gallery cantilever beam", (side*9.96, 3.65, z), (3.86, .30, .16), m["steel"], .008)
+            B("Gallery wall anchor plate", (side*11.82, 3.40, z), (.05, .82, .54), m["paint"], .006)
+            for y in (3.14, 3.64):
+                for dz in (-.18, .18):
+                    R("Gallery anchor bolt", (side*11.79, y, z+dz),
+                      (side*11.74, y, z+dz), .025, m["steel"], 12)
+    B("Drive service folded case", (24, 4.7, 32), (2.035, 1.435, 2.035), m["paint"], .015)
+    B("Drive case service hatch", (24, 4.77, 30.966), (1.64, 1.06, .035), m["blue"], .006)
+    for x in (23.3, 24.7):
+        for y in (4.37, 5.16):
+            R("Drive hatch fastener", (x, y, 30.94), (x, y, 30.92), .024, m["steel"], 12)
+    S("C-19 / HYDRAULIC DRIVE", (24, 5.20, 30.922), 1.85, m)
+    for x in (23.25, 24.75):
+        B("Drive case foot", (x, 4.04, 32), (.24, .08, 1.85), m["steel"], .005)
+
+
+def final_contacts(m):
+    papers(-3.22, .96, 9.82, m)
+    B("Observer power wall entry", (-5.834, .82, 10.53), (.052, .14, .14), m["steel"], .005)
+    cable("Observer monitor power lead", [(-3.55, 1.15, 10.325), (-3.55, 1.0, 10.69),
+          (-3.55, .82, 10.70), (-3.55, .82, 10.53)], .013, m["dark"])
+    for x in (-5.3, -3.3):
+        R("Observer sign glass standoff", (x, 2.4, 11.82), (x, 2.4, 11.985), .022, m["steel"], 12)
+    for z in (18.1, 19.9):
+        R("Workshop sign wall standoff", (-27.78, 2.94, z), (-27.85, 2.94, z), .02, m["steel"], 12)
+    for x in (-25, -23):
+        R("Dossier header support", (x, 2.62, 45), (x, 2.67, 45), .024, m["steel"], 12)
+    for x, y, z in ((-25.1, 3.10, 53.79), (-22.9, 3.10, 53.79),
+                    (20.7, 3.12, 53.79), (23.3, 3.12, 53.79)):
+        R("Archive lab sign wall standoff", (x, y, z+.015), (x, y, 53.85), .02, m["steel"], 12)
+    for x in (23.2, 24.8):
+        R("Drive plate standoff", (x, 5.20, 30.94), (x, 5.20, 30.95), .024, m["steel"], 12)
+    for side in (-1, 1):
+        B("Hall instrument header junction", (side*11.65, 2.65, 33), (.20, .18, .20), m["blue"], .006)
+        for z in (23, 26, 29, 32):
+            R("Hall pipe coupling", (side*11.65, 2.4, z-.085),
+              (side*11.65, 2.4, z+.085), .081, m["steel"], 24)
 
 
 if __name__ == "__main__":

@@ -76,13 +76,23 @@ int main(int argc, char** argv)
         };
         const std::array views{
             View{"observation", {0, 1.65F, 9}, {0, 2, 34}},
+            View{"observation-workplace", {0, 1.65F, 9}, {-4.5F, 1.1F, 8}},
+            View{"observation-desk", {-4.3F, 1.65F, 7.4F}, {-4.3F, 1.25F, 10.1F}},
             View{"service", {-16, 1.65F, 14}, {-20, 1.5F, 24}},
+            View{"workshop-pickup", {-24, 1.65F, 16.5F}, {-24, 1.3F, 19}},
             View{"archive", {-26, 1.65F, 42}, {-16, 1.4F, 49}},
+            View{"archive-north", {-8, 1.65F, 50}, {-23, 1.4F, 50}},
+            View{"archive-cassette", {-24, 1.65F, 48.5F}, {-24, 1.1F, 51}},
+            View{"archive-workplace", {-24.5F, 1.65F, 49}, {-27.05F, 1.25F, 49}},
+            View{"laboratory", {16, 1.65F, 43}, {23, 1.6F, 50}},
+            View{"laboratory-bench", {20, 1.65F, 43.8F}, {20, 1.5F, 46}},
             View{"west-stairs", {-24, 1.65F, 29}, {-24, 4.4F, 40.5F}},
             View{"upper-return", {-10, 5.65F, 40.5F}, {0, 2, 28}},
             View{"mechanical-deck", {21.5F, 5.65F, 37}, {24, 4.8F, 32}},
+            View{"mechanical-deck-front", {21.5F, 5.65F, 29}, {24, 4.9F, 32}},
             View{"east-stairs", {18, 1.65F, 13.5F}, {18, 4.2F, 25}},
             View{"frame", {-7, 1.65F, 24}, {0, 3, 33}},
+            View{"hall-return", {0, 1.65F, 38}, {0, 2, 24}},
             View{"exit", {0, 1.65F, 39}, {0, 1.65F, 49}},
             View{"guardian-front", {0, 1.85F, 30}, {0, 1.85F, 34}},
             View{"guardian-back", {0, 1.85F, 38}, {0, 1.85F, 34}},
@@ -120,6 +130,35 @@ int main(int argc, char** argv)
         RelayGame::GameWorldRuntime runtime;
         runtime.load_level_session(config, std::move(session));
         RelayCore::test::ScopedTempDirectory isolated;
+        for (int i = 1; i < argc; ++i)
+        {
+            constexpr std::string_view prefix = "--previous-level=";
+            const std::string_view argument{argv[i]};
+            if (!argument.starts_with(prefix))
+                continue;
+            RelayGame::GameWorldRuntime previous;
+            previous.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(std::filesystem::path{argument.substr(prefix.size(
+                ))})
+            );
+            const auto before = runtime.capture_saved_game(0, false);
+            const auto path = isolated.path() / "previous-progress.toml";
+            RelayGame::write_saved_game(path, previous.capture_saved_game(0, false));
+            bool rejected = false;
+            try
+            {
+                runtime.restore_saved_game(RelayGame::load_saved_game(path));
+            } catch (const std::runtime_error& error)
+            {
+                rejected = std::string_view{error.what()} == "Карта изменилась после сохранения. Начните новый эпизод.";
+            }
+            const auto after = runtime.capture_saved_game(0, false);
+            if (!rejected || after.player.position != before.player.position
+                || after.world.simulation_tick != before.world.simulation_tick)
+                throw std::runtime_error("Previous-map Continue was not safely rejected");
+            std::cout << "Previous-map disk Continue rejected with the authored-map diagnostic; state preserved\n";
+        }
         const auto use = [&](std::string_view name) {
             const auto found = std::ranges::find(runtime.usables(), name, &RelayCore::gameplay::RuntimeUsable::name);
             if (found == runtime.usables().end())
@@ -396,7 +435,7 @@ int main(int argc, char** argv)
         combat_capture("shooter-destroyed");
 
         scene.shutdown();
-        std::cout << "containment checkpoint D: 24 gameplay/state views, shooter warning/shot/recovery/death, "
+        std::cout << "containment gameplay/environment/state views, shooter warning/shot/recovery/death, "
                      "pause/resume, disk continuation and exit "
                      "lifecycle verified\n";
     } catch (const std::exception& error)
