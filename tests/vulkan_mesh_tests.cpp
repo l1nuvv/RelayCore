@@ -448,6 +448,147 @@ namespace
         }
     }
 
+    void check_material_descriptors(VulkanMeshRenderer& renderer, const VulkanDevice& device)
+    {
+        constexpr size_t count = 1025;
+        constexpr int size = 192;
+        renderer.set_config(RendererConfig{.shadow_enabled = false});
+        PerspectiveCamera camera{{.position = {0, 0, 45}, .target = {0, 0, 0}}};
+        camera.set_viewport(size, size);
+        auto box = make_color_box_mesh_data();
+        for (auto& vertex : box.vertices)
+            vertex.color = {1, 1, 1};
+        StaticColorMesh mesh, invalid;
+        mesh.initialize(box);
+        Texture2D retained;
+        const std::array<uint8_t, 4> white{255, 255, 255, 255};
+        retained.initialize_rgba(1, 1, white, TextureEncoding::linear);
+        const std::array retained_items{RenderItem{.mesh = &mesh, .diffuse_texture = &retained}};
+        const auto baseline = renderer.render_image(retained_items, camera, size, size);
+        renderer.prepare_frame(retained_items, {}, camera, size, size);
+        require(renderer.capture_prepared_image().pixels == baseline.pixels, "Descriptor fixture slot mismatch");
+        renderer.prepare_resources(retained_items);
+        const auto settled_allocations = allocation_count(device);
+        const auto settled = renderer.material_descriptor_usage();
+        require(settled.pools == 1 && settled.materials == 1, "Descriptor fixture did not start settled");
+
+        for (int cycle = 0; cycle < 3; ++cycle)
+        {
+            std::vector<Texture2D> textures(count);
+            std::vector<RenderItem> items;
+            items.reserve(count);
+            const auto initialize_texture = [&](const size_t i) {
+                const std::array<uint8_t, 4> color{
+                    static_cast<uint8_t>(40 + i % 200),
+                    static_cast<uint8_t>(40 + (i / 33) % 200),
+                    static_cast<uint8_t>(40 + (i * 7) % 200),
+                    255
+                };
+                textures[i].initialize_rgba(1, 1, color, TextureEncoding::linear);
+            };
+            for (size_t i = 0; i < count; ++i)
+            {
+                initialize_texture(i);
+                items.push_back(RenderItem{
+                    .mesh = &mesh,
+                    .model_matrix = glm::translate(
+                        glm::mat4{1},
+                        glm::vec3{(float(i % 33) - 16) * 1.1F, (float(i / 33) - 15.5F) * 1.1F, 0}
+                    ),
+                    .diffuse_texture = &textures[i]
+                });
+            }
+            renderer.prepare_resources(items);
+            const auto peak = renderer.material_descriptor_usage();
+            require(peak.materials == count + 1 && peak.pools <= 16, "Material descriptors did not share pools");
+            const auto image = renderer.render_image(items, camera, size, size);
+            require(image.pixels != baseline.pixels, "Bulk material fixture did not render");
+
+            for (size_t i = 0; i < count; i += 2)
+                textures[i] = Texture2D{};
+            renderer.prepare_resources(retained_items);
+            require(
+                renderer.material_descriptor_usage().materials == count / 2 + 1,
+                "Expired material descriptors were not freed"
+            );
+            for (size_t i = 0; i < count; i += 2)
+                initialize_texture(i);
+            renderer.prepare_resources(items);
+            const auto reused = renderer.material_descriptor_usage();
+            require(
+                reused.pools == peak.pools && reused.materials == peak.materials,
+                "Churn grew descriptor pools instead of reusing freed sets"
+            );
+            if (cycle == 0)
+            {
+                RelayCore::test::ScopedTempDirectory missing;
+                expect_failure(
+                    [&] {
+                        renderer.reload_shaders(missing.path());
+                    },
+                    "vertex_main"
+                );
+                require(
+                    renderer.render_image(items, camera, size, size).pixels == image.pixels,
+                    "Failed reload changed pooled material bindings"
+                );
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            }
+            require(
+                renderer.render_image(items, camera, size, size).pixels == image.pixels,
+                "Reused material descriptors changed pixels"
+            );
+            {
+                RelayCore::test::BlockGraphicsQueue gate{device};
+                gate.block();
+                renderer.prepare_frame(items, {}, camera, size, size);
+                textures.clear();
+                items.clear();
+                renderer.prepare_frame(retained_items, {}, camera, size, size);
+                const auto pending = renderer.material_descriptor_usage();
+                require(
+                    pending.pools == peak.pools && pending.materials == peak.materials,
+                    "In-flight material descriptors were reclaimed early"
+                );
+                gate.release();
+            }
+            require(
+                renderer.capture_prepared_image().pixels == baseline.pixels,
+                "Retiring pooled materials changed the retained scene"
+            );
+            renderer.prepare_resources(retained_items);
+            const auto reclaimed = renderer.material_descriptor_usage();
+            require(
+                reclaimed.pools == settled.pools && reclaimed.materials == settled.materials
+                    && allocation_count(device) == settled_allocations,
+                "Material churn retained obsolete descriptors or GPU allocations"
+            );
+            {
+                Texture2D abandoned;
+                abandoned.initialize_rgba(1, 1, white, TextureEncoding::linear);
+                const std::array broken{
+                    RenderItem{.mesh = &mesh, .diffuse_texture = &abandoned},
+                    RenderItem{.mesh = &invalid}
+                };
+                expect_failure(
+                    [&] {
+                        renderer.prepare_resources(broken);
+                    },
+                    "initialized CPU mesh"
+                );
+            }
+            static_cast<void>(renderer.render_image(retained_items, camera, size, size));
+            renderer.prepare_resources(retained_items);
+            require(
+                renderer.material_descriptor_usage().materials == settled.materials
+                    && allocation_count(device) == settled_allocations,
+                "Failed preparation retained pooled material resources"
+            );
+            std::cout << "material_descriptors: cycle=" << cycle << "; materials=" << peak.materials
+                      << "; peak_pools=" << peak.pools << "; settled_pools=" << reclaimed.pools << '\n';
+        }
+    }
+
     void check_pipeline(VulkanMeshRenderer& renderer, const std::filesystem::path& captures, const VulkanDevice& device)
     {
         PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
@@ -3084,6 +3225,7 @@ int main(int argc, char** argv)
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
+    const bool descriptors_only = argc == 2 && std::string_view{argv[1]} == "--material-descriptors";
     const bool pistol_only = argc == 2 && std::string_view{argv[1]} == "--pistol-viewmodel";
     const bool shotgun_only = argc == 2 && std::string_view{argv[1]} == "--shotgun-viewmodel";
     const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
@@ -3093,7 +3235,8 @@ int main(int argc, char** argv)
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
-        && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only)
+        && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
+        && !descriptors_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -3122,7 +3265,7 @@ int main(int argc, char** argv)
             check_mesh_pipeline(device, atlas, captures);
         else if (ui_only)
             check_ui(device, vk_window, authoring, atlas, captures);
-        else if (resources_only)
+        else if (resources_only || descriptors_only)
         {
             VulkanMeshRenderer renderer{
                 device,
@@ -3132,7 +3275,10 @@ int main(int argc, char** argv)
                 TextureEncoding::linear,
                 RendererConfig{}
             };
-            check_resource_preparation(renderer, device, authoring);
+            if (descriptors_only)
+                check_material_descriptors(renderer, device);
+            else
+                check_resource_preparation(renderer, device, authoring);
         } else if (point_receiver_only)
             check_point_shadow_receiver(device, authoring, atlas, captures);
         else if (native_hdr)

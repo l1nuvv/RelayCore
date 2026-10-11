@@ -20,6 +20,11 @@ namespace RelayCore::render
     struct IrradianceProbeVolume;
     struct ReflectionProbe;
 
+    struct VulkanMaterialDescriptorUsage {
+        size_t pools = 0;
+        size_t materials = 0;
+    };
+
     class VulkanMeshRenderer {
     public:
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
@@ -34,6 +39,8 @@ namespace RelayCore::render
         );
         ~VulkanMeshRenderer() noexcept;
         void prepare_resources(std::span<const RenderItem> items);
+        // Includes retired materials until their final GPU use completes.
+        [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 

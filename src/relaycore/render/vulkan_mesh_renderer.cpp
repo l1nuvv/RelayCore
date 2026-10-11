@@ -581,8 +581,37 @@ namespace RelayCore::render
                        ^ (std::hash<float>{}(key.emissive_factor.z) << 2);
             }
         };
-        struct Material {
+        struct MaterialDescriptorPool {
+            static constexpr uint32_t capacity = 128;
             VkDevice device;
+            VkDescriptorPool handle = VK_NULL_HANDLE;
+            uint32_t materials = 0;
+
+            explicit MaterialDescriptorPool(const VkDevice owner) : device(owner)
+            {
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 14 * capacity},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * capacity}
+                };
+                const VkDescriptorPoolCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+                    .maxSets = 2 * capacity,
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device, &info, nullptr, &handle),
+                    "Failed to create shared mesh material pool"
+                );
+            }
+            ~MaterialDescriptorPool() noexcept
+            {
+                vkDestroyDescriptorPool(device, handle, nullptr);
+            }
+        };
+
+        struct Material {
             VulkanSceneCompletion last_use{};
             uint64_t upload_completion = 0;
             uint64_t recording = 0;
@@ -591,20 +620,25 @@ namespace RelayCore::render
             std::weak_ptr<const CpuRgbaTextureData> mr_source, occlusion_source, emissive_source;
             VulkanTexture texture, normal_texture, mr_texture, occlusion_texture, emissive_texture;
             VulkanBuffer surface_data;
-            VkDescriptorPool pool = VK_NULL_HANDLE;
+            MaterialDescriptorPool* pool = nullptr;
             std::array<VkDescriptorSet, 2> sets{};
             explicit Material(const VulkanDevice& owner) :
-                device(owner.handle()), surface_data(
-                                            owner,
-                                            sizeof(glm::vec4) * 3,
-                                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                            VulkanBufferMemory::upload
-                                        )
+                surface_data(
+                    owner,
+                    sizeof(glm::vec4) * 3,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                )
             {}
             ~Material() noexcept
             {
                 if (pool)
-                    vkDestroyDescriptorPool(device, pool, nullptr);
+                {
+                    const auto result = vkFreeDescriptorSets(pool->device, pool->handle, 2, sets.data());
+                    if (result != VK_SUCCESS)
+                        std::fprintf(stderr, "Vulkan material descriptor shutdown failed: VkResult %d\n", result);
+                    --pool->materials;
+                }
             }
         };
 
@@ -678,6 +712,7 @@ namespace RelayCore::render
         std::array<VkPipeline, 3> shadow_pipelines{};
         Texture2D atlas_source;
         std::unordered_map<const CpuColorMeshData*, Mesh> meshes;
+        std::vector<std::unique_ptr<MaterialDescriptorPool>> material_pools;
         std::unordered_map<MaterialKey, std::unique_ptr<Material>, MaterialKeyHash> materials;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -1377,31 +1412,7 @@ namespace RelayCore::render
                     glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
                 };
                 result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
-                const std::array sizes{
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 14},
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20}
-                };
-                const VkDescriptorPoolCreateInfo pool_info{
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                    .maxSets = 2,
-                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
-                    .pPoolSizes = sizes.data(),
-                };
-                require_mesh_vk(
-                    vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &result->pool),
-                    "Failed to create mesh material pool"
-                );
-                const std::array layouts{descriptor_layout, descriptor_layout};
-                const VkDescriptorSetAllocateInfo allocation{
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                    .descriptorPool = result->pool,
-                    .descriptorSetCount = 2,
-                    .pSetLayouts = layouts.data(),
-                };
-                require_mesh_vk(
-                    vkAllocateDescriptorSets(device.handle(), &allocation, result->sets.data()),
-                    "Failed to allocate mesh material descriptors"
-                );
+                allocate_material_descriptors(*result);
                 for (size_t slot = 0; slot < frames.size(); ++slot)
                 {
                     const VkDescriptorBufferInfo buffer{
@@ -1631,6 +1642,42 @@ namespace RelayCore::render
             }
         }
 
+        void allocate_material_descriptors(Material& material)
+        {
+            const std::array layouts{descriptor_layout, descriptor_layout};
+            const auto allocate = [&](MaterialDescriptorPool& pool) {
+                std::array<VkDescriptorSet, 2> sets{};
+                const VkDescriptorSetAllocateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool.handle,
+                    .descriptorSetCount = static_cast<uint32_t>(sets.size()),
+                    .pSetLayouts = layouts.data()
+                };
+                const auto result = vkAllocateDescriptorSets(device.handle(), &info, sets.data());
+                if (result == VK_SUCCESS)
+                {
+                    material.sets = sets;
+                    material.pool = &pool;
+                    ++pool.materials;
+                }
+                return result;
+            };
+            for (auto& pool : material_pools)
+                if (pool->materials < MaterialDescriptorPool::capacity)
+                {
+                    const auto result = allocate(*pool);
+                    if (result == VK_SUCCESS)
+                        return;
+                    if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)
+                        require_mesh_vk(result, "Failed to allocate shared mesh material descriptors");
+                }
+            material_pools.push_back(std::make_unique<MaterialDescriptorPool>(device.handle()));
+            require_mesh_vk(
+                allocate(*material_pools.back()),
+                "Failed to allocate mesh material descriptors from a new pool"
+            );
+        }
+
         void collect_retired_resources()
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan material retirement collect");
@@ -1639,6 +1686,11 @@ namespace RelayCore::render
             std::erase_if(retired_materials, [completed, uploaded](const auto& material) {
                 return material->last_use.value <= completed && material->upload_completion <= uploaded;
             });
+            // Keep one reusable block; never reclaim a pool holding in-flight descriptors.
+            if (!material_pools.empty())
+                std::erase_if(material_pools, [first = material_pools.front().get()](const auto& pool) {
+                    return pool.get() != first && pool->materials == 0;
+                });
             submissions.collect();
         }
 
@@ -2604,6 +2656,14 @@ namespace RelayCore::render
         reload_shaders(shader_directory);
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
+
+    auto VulkanMeshRenderer::material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage
+    {
+        VulkanMaterialDescriptorUsage usage{.pools = state_->material_pools.size()};
+        for (const auto& pool : state_->material_pools)
+            usage.materials += pool->materials;
+        return usage;
+    }
 
     void VulkanMeshRenderer::prepare_resources(const std::span<const RenderItem> items)
     {

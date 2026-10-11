@@ -290,6 +290,7 @@ set_tests_properties(graphics.player_ui PROPERTIES
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 add_test(NAME graphics.resource_preparation COMMAND relaycore_vulkan_mesh_tests --resource-preparation)
+add_test(NAME graphics.material_descriptors COMMAND relaycore_vulkan_mesh_tests --material-descriptors)
 add_test(NAME graphics.pistol_viewmodel COMMAND relaycore_vulkan_mesh_tests --pistol-viewmodel)
 add_test(NAME graphics.shotgun_viewmodel COMMAND relaycore_vulkan_mesh_tests --shotgun-viewmodel)
 add_test(NAME graphics.vulkan_color_baseline COMMAND relaycore_vulkan_mesh_tests --color-baseline)
@@ -299,7 +300,7 @@ add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --i
 add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
 add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
