@@ -6,7 +6,7 @@ For external textures, materials, HDRIs and game models, follow [asset sources a
 
 ## Player-facing UI — owner direction 2026-10-09
 
-The game HUD, menus and game screens use RmlUi 6.3. Retain ImGui for editor, diagnostics and developer tools. VIS-43 owns the foundation and HUD migration; VIS-44–46 migrate the remaining screens and complete the separation. [Technical scope, evidence and pending visual acceptance](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui) govern implementation.
+The game HUD, menus and game screens use RmlUi 6.3. Retain ImGui for editor, diagnostics and developer tools. VIS-43–46 have implemented the foundation, HUD, menus and game-screen migration; visual acceptance in play remains open. [Technical scope, evidence and pending visual acceptance](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui) govern implementation.
 
 Use the project's twentieth-century scientific-industrial, Art Deco and occult visual vocabulary through restrained typography, spacing, colors and purposeful accents. Compose HUD for play: preserve sightlines and focus cues, keep health/interaction feedback immediately readable, and avoid repeated large objective/event cards. Menus need clear primary actions, coherent focus/selection states and agreement with HUD and facility signage. Readability of Cyrillic, long text and DPI takes priority over decorative effects. Preserve actual mechanics; do not add minimaps, ammunition displays or inventory grids without a gameplay need. Restyling ImGui widgets or draw lists does not fulfill this migration, and replacing the library alone does not fulfill its visual acceptance.
 
@@ -202,6 +202,33 @@ Occult accents:
 - amber;
 - muted spectral green;
 - occasional dark violet.
+
+### Owner palette — 2026-10-11
+
+Owner-supplied HEX references are sRGB graphic colors, not PBR reflectance or HDR light intensities. They extend the muted material vocabulary above. Preserve the moodboards and gameplay readability; assign signal meaning with shapes/symbols as well as color. Electric blue/navy needs a separate text-legibility check; acid green and toxic yellow require distinct authored roles when used together.
+
+| Pair | HEX: color pair (not text contrast approval) | Suggested use |
+|---|---|---|
+| Electric blue / dark navy | `#245BFF` / `#101A46` | Controlled electronics, experimental machinery and instrument signals |
+| Near-black / acid green | `#0A0A0A` / `#B6FF00` | Toxicity, biohazard warnings and rare anomaly signals |
+| Dark brown / rust orange | `#24150F` / `#D96B27` | Industrial systems, maintenance zones, machinery and warm light |
+| Graphite / dusty pink | `#292929` / `#C88E9B` | Neutral architecture, aged decorative details and occult accents |
+| Near-black / blood red | `#080808` / `#C1121F` | Emergency lights, warning graphics and ritual marks |
+| Deep violet / hot pink | `#32104F` / `#FF3CAC` | Rare supernatural phenomena and high-priority anomalous focal points |
+| Dark indigo / ice blue | `#19152F` / `#A5E7FF` | Experimental labs, cryogenics, containment and cold localized light |
+| Near-black / silver | `#080808` / `#BFC3C7` | Equipment, industrial metalwork and technical graphics |
+| Milk / burgundy | `#F1E9D8` / `#701C32` | Archives, Art Deco signage, institutional and occult identity |
+| Dark green / toxic yellow | `#123B2A` / `#E5FF00` | Biological/chemical hazards and high-contrast warning accents |
+
+#### Use priority
+
+- **Base:** graphite, silver, concrete gray, dirty white and aged industrial materials.
+- **Research:** dark indigo plus ice blue as a selective lighting/material motif.
+- **Utility spaces:** brown/rust orange with worn steel and practical lighting.
+- **Occult layer:** milk/burgundy with brass, paper, wax, symbols and ritual forms.
+- **Restricted accents:** electric blue, acid green, blood red, hot pink and toxic yellow. Use sparingly for meaningful visual information rather than saturating entire rooms.
+
+Avoid direct one-to-one application of poster backgrounds to whole 3D rooms. Treat base color, emissive color/intensity and light radiance separately. Check legibility, exposure and tone mapping in SDR and HDR. This reference adds no renderer, pipeline or gameplay requirements.
 
 ## 7. Lighting
 
@@ -483,7 +510,7 @@ For finished Blender models, use `.agents/skills/relaycore-blender/SKILL.md`:
 
 ## 19. First Environment Target
 
-This is a proposed art validation target, not an approved roadmap ticket. Build it only when explicitly requested or included in an authorized milestone.
+This was the first art-validation brief. B-17 is now implemented as `occult_lab_b17.toml` and forms part of the campaign; [production evidence](art/b17-visual-slice.md) and VIS-13 record its review. The contents below explain the original brief and are not a new task to rebuild the scene.
 
 ### Occult Research Laboratory — B-17
 

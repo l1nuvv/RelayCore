@@ -1,5 +1,7 @@
 # Разработка RelayCore
 
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): реализованы lifetime/scheduling VK14-03/04 и поэтапный графический backlog. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Новые эффекты и зависимости пока не реализованы; план сам по себе не запускает implementation milestones.
+
 ## Игровой UI (RmlUi 6.3)
 
 Player documents are `assets/ui/hud.rml`, `menu.rml`, `finale.rml`; shared layout,
@@ -44,7 +46,8 @@ baselines. ImGui's config switch controls developer tools; player UI remains ena
 
 После перезагрузки CMake в CLion выберите **RelayCore — Sandbox** и нажмите Run.
 Запустится меню полигона; «Начать испытания» открывает `assets/levels/development_sandbox.toml`.
-Редактор из этого меню также получает полигон. Основной `relaycore_demo` запускает прежний эпизод.
+Редактор из этого меню также получает полигон. Основной `relaycore_demo` открывает
+игровое меню со сквозной кампанией по умолчанию; отдельная глава выбирается там же.
 Сохранения и настройки полигона находятся в `%APPDATA%/RelayCore/Sandbox`, отдельно от игры.
 
 Центральный зал безопасен. Запад — движение (ступени по 20 см, мост шириной 90 см,
@@ -76,7 +79,8 @@ F10 возвращает её; F3/F4/F8 — noclip, инспектор и исх
 атаками. F9/F10 и выход в меню сохраняют выбор вместе с инвентарём и состоянием
 мира. F7 начинает полигон заново, оружие нужно подобрать ещё раз.
 Модель дробовика видна на столе и от первого лица, цевьё двигается после выстрела.
-Текущий вариант без рук. После обновления расположения предмета использовать F7
+Native viewmodel VIS-35 включает перчатки и рукава; мировой pickup VIS-36 остаётся
+без рук. После обновления расположения предмета использовать F7
 или новый запуск полигона, затем подобрать E и выбрать 2.
 [Проверка роли оружия](playtests/G-009-2026-09-28.md).
 
@@ -210,21 +214,48 @@ pwsh -NoProfile -File tests/release_workflow_tests.ps1
 Первый тест использует временный Git-репозиторий, второй — тестовую копию с имитацией сборки и публикации. Они не меняют индекс проекта и не загружают выпуск на GitHub. Pre-commit проверяет staged-содержимое: после исправления всех перечисленных файлов включите изменения в коммит через CLion.
 
 ```powershell
-cmake --build --preset demo-debug --target relaycore_demo relaycore_tests relaycore_content_validation relaycore_game_lifecycle
-ctest --test-dir build/msvc-debug -R '^(relaycore\.|validation\.|graphics\.game_lifecycle$)' --output-on-failure
+cmake --build --preset tests-debug
+ctest --preset test-debug --output-on-failure --no-tests=error
+cmake --build --preset validation-debug
+ctest --preset validation-debug --output-on-failure --no-tests=error
+# Если затронут lifecycle игры:
+cmake --build --preset demo-debug --target relaycore_game_lifecycle
+ctest --preset graphics-debug -R '^graphics\.game_lifecycle$' --output-on-failure --no-tests=error
 ```
 
-Для графического теста нужны Vulkan 1.3 и поддерживаемые device contract возможности. Дополнительные пресеты и полный
+Для графического теста нужны Vulkan 1.4 и поддерживаемые device contract возможности. Дополнительные пресеты и полный
 порядок проверок перечислены в корневом README; их не требуется запускать после
 каждого редактирования карты.
 
 ### Контракт автоматических проверок
 
-На Windows `tests-debug` собирает unit/audio targets и CLI-проверку карт. `test-debug` запускает также `relaycore.tooling.pre_commit`, `relaycore.tooling.release_scripts`, `relaycore.tooling.release_workflow` и `relaycore.tooling.level_check`. Нужны PowerShell 7 и `clang-format`; CMake добавляет найденный formatter в PATH pre-commit теста. Release-тесты используют изолированные fixtures и имитацию публикации. Дополнительная Java-проверка интерпретатора CLion остаётся ручной: `pwsh -NoProfile -File tests/release_workflow_tests.ps1 -Java <java.exe>`.
+На Windows `tests-debug` собирает unit/audio targets, а через зависимости — physics,
+updater и CLI-проверку карт. `test-debug` запускает также tooling-проверки hooks,
+release scripts/workflow, level/model/collision/irradiance assets. Нужны PowerShell 7
+и `clang-format`; CMake добавляет найденный formatter в PATH pre-commit теста.
+Release-тесты используют изолированные fixtures и имитацию публикации. Дополнительная
+Java-проверка интерпретатора CLion остаётся ручной:
+`pwsh -NoProfile -File tests/release_workflow_tests.ps1 -Java <java.exe>`.
+
+`graphics-debug` build preset собирает базовые window/device/presentation/upload/mesh
+и основные игровые targets. Одноимённый test preset выбирает все зарегистрированные
+`graphics.*`, включая отдельные player UI и containment executables. Для полной
+выборки дополнительно соберите `relaycore_player_ui_graphics` и
+`relaycore_containment_loop_graphics`; для узкой — executable выбранного теста.
+Проверьте выборку `ctest --preset graphics-debug -N` до запуска. Сборка базового
+пресета сама по себе не доказывает готовность каждого зарегистрированного executable.
 
 В `.github/workflows/ci.yml` обычные GitHub-hosted jobs проверяют сборку, unit/content/tooling и компиляцию graphics targets. Это не подтверждает работу GPU. Полное выполнение `graphics.*` запускается через `workflow_dispatch` с `run_graphics=true` на заранее настроенном runner с метками `self-hosted`, `Windows`, `X64`, `relaycore-graphics`. На нём нужны рабочий интерактивный Windows desktop, драйвер Vulkan, Vulkan SDK с validation layers и build tools. Метки не создают runner: зарегистрируйте подходящую машину перед запуском job.
 
-Graphics job выполняет configure/build с validation=ON, проверяет loader/layers через существующий `relaycore_vulkan_toolchain_check`, затем результат CTest/JUnit: report должен содержать хотя бы один test case, без failure/error/skipped. Количество тестов не фиксировано. Доступность features, создание instance/device, presentation, uploads и validation проверяются самими Vulkan-тестами. Локальный эквивалент: `cmake --build --preset graphics-debug`, затем `ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml`; после CTest нужно проверить отсутствие skip в report. Удалённый graphics gate не считается пройденным по локальной сборке.
+Graphics job выполняет configure/build с validation=ON, проверяет loader/layers через существующий `relaycore_vulkan_toolchain_check`, затем результат CTest/JUnit: report должен содержать хотя бы один test case, без failure/error/skipped. Количество тестов не фиксировано. Доступность features, создание instance/device, presentation, uploads и validation проверяются самими Vulkan-тестами. Локальная полная выборка:
+
+```powershell
+cmake --build --preset graphics-debug
+cmake --build --preset graphics-debug --target relaycore_player_ui_graphics relaycore_containment_loop_graphics
+ctest --preset graphics-debug --no-tests=error --output-junit graphics-results.xml
+```
+
+После CTest проверьте отсутствие skip в report. Текущий CI job также использует базовый build preset; на чистом дереве его одного недостаточно для двух отдельных targets выше. Удалённый graphics gate подтверждается фактическим report, а не локальной сборкой или названием workflow.
 
 ### Профилирование
 
@@ -261,6 +292,22 @@ cmake --build --preset demo-relwithdebinfo
 в [протоколе G-006/H-002](playtests/G-006-H-002-2026-09-28.md).
 
 Для интегрированного scripted workload используйте отдельный target
+`relaycore_containment_profile` для актуальной G-019:
+
+```powershell
+cmake --build --preset demo-relwithdebinfo --target relaycore_containment_profile -j 2
+$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-relwithdebinfo/src/relaygame/assets).Path
+build/msvc-relwithdebinfo/tests/relaycore_containment_profile.exe
+```
+
+Это два прохода семи состояний по 4 с, 1920×1080, VSync off, звук on,
+scene HDR, изолированные Continue/бой/respawn/пауза/resize. Он сохраняет captures
+в `containment-profile` относительно рабочей папки и wall-clock p50/p95/p99/max;
+первые 0,5 с и readback исключены. Resize меняет разрешение; camera sweeps
+не заменяют непрерывный grounded-проход. Evidence/рабочие бюджеты — VK14-00 в
+[renderer plan](RENDERER_MODERNIZATION_PLAN.md#vk14-00-execution--2026-10-11).
+
+Для прежнего эпизода используйте
 `cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile`.
 Запустите `build/msvc-relwithdebinfo/tests/relaycore_episode_profile.exe` с абсолютным
 `RELAYCORE_ASSET_ROOT` на ресурсы кандидата. Он использует обычные `Application` и
@@ -291,7 +338,12 @@ cmake --build --preset demo-relwithdebinfo
 
 ### Vulkan: capture и validation
 
-Runtime проверяет Vulkan 1.3, dynamic rendering, synchronization2, timeline semaphore,
+Runtime требует минимум Vulkan 1.4 для loader и GPU; instance/effective/VMA API — 1.4.
+Лог отдельно показывает loader, instance, physical/effective API, драйвер,
+queue families и включённые device extensions. Fallback и developer override
+для Vulkan 1.3 удалены; старый `RELAYCORE_VULKAN_FORCE_1_3` больше не влияет на запуск.
+Loader/GPU ниже 1.4 отклоняются с диагностикой. SPIR-V 1.5 и
+существующие feature chains сохраняются. Runtime также проверяет dynamic rendering, synchronization2, timeline semaphore,
 graphics/present queues для SDL surface, `VK_KHR_swapchain`, `VK_KHR_swapchain_maintenance1` /
 `swapchainMaintenance1`, `VK_KHR_surface_maintenance1` и `VK_KHR_get_surface_capabilities2`.
 Tracy требует также host query reset и graphics timestamp queries. Presentation fences
@@ -316,7 +368,13 @@ build/msvc-relwithdebinfo/tests/relaycore_vulkan_mesh_tests.exe --profile-views
 Перед запуском подключите Tracy 0.14.1 либо запустите его `tracy-capture.exe`
 с `-o build/vulkan.tracy -s 15`. `tracy-csvexport.exe -g build/vulkan.tracy`
 проверяет GPU events. Контексты сцены и presentation имеют отдельные query pools;
-коллекция выполняется после fence waits. `hostQueryReset` и timestamp queries
+коллекция выполняется после scene timeline waits и presentation fence waits.
+VK14-03 сохраняет синхронные host waits; Tracy отдельно показывает scene
+completion, acquire, presentation copy, present и retirement/drain. Последний use
+mesh/material cache entries принадлежит scene timeline; upload и presentation
+имеют отдельные completion domains. Подробности и ограничения —
+[VK14-03](RENDERER_MODERNIZATION_PLAN.md#vk14-03-execution--2026-10-11).
+`hostQueryReset` и timestamp queries
 graphics queue требуются только при `RELAYCORE_ENABLE_TRACY=ON`. При выключенном
 Tracy query pools не создаются. В кадре profiling не добавляет queue/device idle;
 startup calibration Tracy использует queue waits.
@@ -492,7 +550,9 @@ Factors — linear значения в [0,1]; invalid/nonfinite данные о�
 минимум 0.05 (alpha минимум 0.0025). Это явное численное приближение.
 Directional/local/spot используют текущие light/shadow contracts, геометрический shadow
 bias и mapped normal для BRDF. Hemisphere ambient — приближение diffuse irradiance;
-environment specular/IBL пока отсутствует. Металл без прямого света остаётся тёмным.
+environment specular использует SH/hemisphere fallback из irradiance probes либо
+статический GGX cubemap внутри bounds authored reflection probe. Динамических
+отражений нет; условия bake описаны в разделе Static reflection probes ниже.
 Для этой модели shading, fog и postfx вычисляются в linear space в обоих color modes,
 затем legacy кодирует RGB вручную, hardware использует sRGB attachment. Прежние материалы
 сохраняют свою цветовую обработку. SDR saturation сохраняется в default-пути;
@@ -569,12 +629,13 @@ product; воспроизводимый export и editable source хранятс
 После изменения GLB выполните обычную сборку, затем повторно запустите preview
 или нажмите F7 в обычной игре. Во время editor preview F7 не выполняет reload:
 редактор сохраняет собственное состояние для возврата.
-Карта и три `.rcmodel` включаются в обычный playtest ZIP; Blender/GLB для запуска
-не требуются. Исходные игровые карты и default startup map остаются прежними.
+Карта native fixture и её три `.rcmodel` входят в runtime staging и запрошенный
+playtest ZIP; Blender/GLB для запуска не требуются. Fixture выбирается отдельно
+от кампании и не заменяет её стартовую главу.
 
-Compiler пишет только product v3. Loader читает v1–v3; v1 остаётся base-color-only,
-v2 — base-color/normal, оба используют прежнее освещение. Старые runtimes не читают v3:
-для обновлённого runtime
+Compiler пишет product v5. Loader читает v1–v5; v1 остаётся base-color-only,
+v2 — base-color/normal, оба используют прежнее освещение. Старые runtimes не читают
+новые версии products: для обновлённого runtime
 products пересобираются обычной сборкой, receipts/staging учитывают изменение importer.
 Little-endian header — RMDL/version/mesh/material/part counts. В v2 mesh начинается
 с flags (бит 0 = tangents), vertex/index counts; vertex — 16 float (position, color,
@@ -585,8 +646,10 @@ Part mesh/material и column-major transform не изменены. Нет за�
 освещения), float roughness и float metallic; при flags=0 записываются 1/0. V1/v2 не
 приобретают новую модель при чтении или повторной записи. V4 после v3 factors
 хранит MR width/height/RGBA, AO width/height/RGBA и float AO strength; 0/0 означает
-отсутствующую карту. Loader сохраняет чтение v1–3 без изменения освещения.
-Normal/MR/AO maps остаются встроенными, repeat/linear, с GPU mip chain, без TextureAsset/KTX2;
+отсутствующую карту. V5 дописывает emissive width/height/RGBA и три linear factor
+компоненты; map является sRGB, factor независим от map. Loader сохраняет чтение
+v1–v4 без изменения прежнего освещения.
+Normal/MR/AO/emissive maps остаются встроенными, repeat/linear, с GPU mip chain, без TextureAsset/KTX2;
 отдельные текстурные продукты и mip policy требуют следующего consumer.
 Loader проверяет размеры, indices, finite geometry/transforms,
 материалы и точный конец файла до создания runtime resources; лимит product 256 MiB.
@@ -656,6 +719,10 @@ conversion, чтобы не обрезать слабую linear radiance. `grap
 при одинаковой камере; пустое изображение без заметного влияния теней считается ошибкой.
 HDR должен сохранять минимум половину суммарного hardware-sRGB SDR shadow contrast.
 Legacy SDR записывается отдельно, его lighting arithmetic отличается.
+`graphics.containment_color` (`relaycore_containment_loop_graphics --color-audit`)
+сравнивает три фиксированных вида G-019 в hardware-sRGB SDR/HDR при EV 0 и
+проверяет HDR EV −1/0/+1 через prepared reload. Метрики печатаются как `color_view`,
+кадры — `containment-captures/color-*-ev*-hdr.bmp`; это encoded SDR readback.
 Captures: `hdr-settings-shadow-{SDR,HDR,hardware-SDR}.bmp`,
 `hdr-settings-{door,fan,ceiling}.bmp` в test working directory.
 
@@ -681,7 +748,8 @@ ctest --preset graphics-debug -R '^graphics\.(hdr_settings|game_lifecycle)$' --o
 ./relaycore_vulkan_mesh_tests.exe --profile-native-hdr
 ```
 
-Environment specular/probe bake/import ещё не добавлены: это следующий шаг N3.
+Irradiance `.rcprobe` и статический reflection `.rcreflection` уже используются;
+их bake/runtime contracts описаны выше и в разделе Static reflection probes.
 
 ## Где объекты во время игры
 
@@ -695,7 +763,7 @@ Environment specular/probe bake/import ещё не добавлены: это с
 стабильный ID, тип и индекс элемента в соответствующем векторе. Игровые правила
 обновляют эти структуры, не перечитывая TOML каждый кадр.
 
-Рендер подготавливает меши стен и экземпляры статических OBJ-моделей отдельно;
+Рендер подготавливает меши стен и экземпляры статических native/OBJ-моделей отдельно;
 экземпляр содержит преобразование и ссылку на общий ресурс модели. При смене
 карты новая сессия сначала собирается целиком, затем заменяет старую. Для уже
 посещённых карт сохранение содержит снимки изменяемого состояния дверей,

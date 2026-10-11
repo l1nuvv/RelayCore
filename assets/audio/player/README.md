@@ -1,4 +1,4 @@
-# Player sounds (0.2)
+# Player sounds
 
 Walking sounds are cut from the supplied `concrete_footsteps_short_3.5s.wav`, `metal_footsteps_short_3.6s.wav` and `tile_footsteps_short_3.5s.wav` recordings by `python scripts/build-player-footsteps.py`. Four isolated footfalls are selected from each source. The clips remain mono PCM16 at 44.1 kHz and receive short edge fades so they do not click when triggered.
 

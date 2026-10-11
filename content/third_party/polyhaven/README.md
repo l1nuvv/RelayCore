@@ -13,7 +13,7 @@ against the file API's MD5 hashes. All four assets use [CC0](https://polyhaven.c
 `scripts/export-polyhaven-lab.py` imports the selected asset into Blender, places
 the origin at the bottom centre, preserves base color and OpenGL normal maps,
 and exports `content/models/<runtime model>.blend` and `.glb` with tangents.
-The current RelayCore importer consumes scalar metallic/roughness factors:
+This exporter deliberately uses scalar metallic/roughness factors, although the current native importer also supports embedded MR/AO maps:
 the source metal mask separates enamel and exposed metal by polygon; the ORM
 texture is removed from exported materials. AO is not baked into color. Glass
 is exported opaque; the multimeter's clear gauge cover is omitted so that its

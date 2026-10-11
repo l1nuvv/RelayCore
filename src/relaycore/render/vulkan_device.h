@@ -13,8 +13,7 @@ namespace RelayCore
 
 namespace RelayCore::render
 {
-    inline constexpr uint32_t kVulkanApiVersion = VK_API_VERSION_1_3;
-    inline constexpr uint32_t kVulkanPreferredApiVersion = VK_API_VERSION_1_4;
+    inline constexpr uint32_t kVulkanApiVersion = VK_API_VERSION_1_4;
 
     struct VulkanDeviceCapabilities {
         std::string device_name;
@@ -26,7 +25,6 @@ namespace RelayCore::render
         uint32_t graphics_queue_family = 0;
         uint32_t present_queue_family = 0;
         bool validation_enabled = false;
-        bool force_api_1_3 = false;
         float max_texture_anisotropy = 1.0F;
     };
 

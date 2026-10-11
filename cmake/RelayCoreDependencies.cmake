@@ -11,7 +11,7 @@ macro(relaycore_find_dependencies)
 
     find_package(imgui CONFIG REQUIRED)
     find_package(RmlUi CONFIG REQUIRED)
-    find_package(Vulkan REQUIRED)
+    find_package(Vulkan 1.4 REQUIRED)
     find_package(vk-bootstrap CONFIG REQUIRED)
     find_package(VulkanMemoryAllocator CONFIG REQUIRED)
     find_package(slang CONFIG REQUIRED)

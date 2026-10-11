@@ -146,6 +146,7 @@ set_source_files_properties(audio/miniaudio_impl.cpp render/vma_impl.cpp PROPERT
 
 set_source_files_properties(
     render/reflection_probe.cpp
+    render/irradiance_probes.cpp
     render/player_ui.cpp
     ${PROJECT_SOURCE_DIR}/extern/rmlui/RmlUi_Platform_SDL.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON

@@ -27,6 +27,12 @@ auto main() -> int
     );
     std::printf("VMA header API support: %u.%u\n", VMA_VULKAN_VERSION / 1000000U, VMA_VULKAN_VERSION / 1000U % 1000U);
 
+    if (version < VK_API_VERSION_1_4)
+    {
+        std::fprintf(stderr, "RelayCore requires Vulkan loader API 1.4 or newer; update the Vulkan driver/loader.\n");
+        return 1;
+    }
+
     const bool validation_available = system->is_layer_available("VK_LAYER_KHRONOS_validation");
     const bool debug_utils_available = system->is_extension_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     std::printf(

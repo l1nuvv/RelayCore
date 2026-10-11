@@ -4,7 +4,7 @@
 
 - RelayCore is a custom C++20 engine and GoldSource-inspired indoor FPS product, not a historical recreation or a general-purpose framework. Keep it understandable, debuggable, profileable, and shippable under one-developer direction even when implementation is agent-assisted.
 - Prefer a small working vertical slice over framework-building, speculative generality, or architecture for hypothetical future features.
-- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime uses SDL3 and direct Vulkan 1.3; OpenGL was removed at VK-013. Tests use doctest; performance work uses Tracy.
+- Primary environment: Windows 11, Visual Studio/MSVC, CMake presets, Ninja, vcpkg manifest mode, CLion. Current runtime requires SDL3 and direct Vulkan 1.4; OpenGL was removed at VK-013. Tests use doctest; performance work uses Tracy.
 
 ## Evidence and scope
 

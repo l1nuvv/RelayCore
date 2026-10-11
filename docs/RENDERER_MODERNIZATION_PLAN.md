@@ -1,13 +1,13 @@
 # RelayCore — Vulkan 1.4 Migration and Advanced Renderer Modernization Plan
 
-**Status:** VK14-00/01/02/03 are committed separately; VK14-04's four execution points are complete. Covered local technical gates pass on both effective API profiles, with measured scheduling benefit and unchanged image parity. Native 1.3-only/other-GPU and human acceptance remain separate; the historical presentation discrepancy is not explained by the current passing checks.
+**Status:** VK14-00/01/02/03 are committed separately; VK14-04's four execution points are complete. Their covered local technical gates passed on both then-supported API profiles, with measured scheduling benefit and unchanged image parity. The owner requested Vulkan 1.4 as the sole runtime baseline on 2026-10-12; 1.3 compatibility gates are retired. Other-GPU and human acceptance remain separate; the historical presentation discrepancy is not explained by the passing checks.
 **Prepared:** 2026-10-11
 **Repository:** [`l1nuvv/RelayCore`](https://github.com/l1nuvv/RelayCore), branch `dev`
 **Verified source baseline:** `c9b4dcb619def034f81eca0cca5604bb5e63709c` (2026-10-10 21:44:15 UTC), checked through the connected GitHub repository.
 **Audience:** project owner and coding agents (including Codex).
-**Scope:** upgrade the preferred Vulkan runtime to **1.4 while retaining a fully usable Vulkan 1.3 baseline**; improve Vulkan correctness, GPU scheduling/resource management, the renderer, and the asset pipeline; implement the advanced rendering features listed here in controlled, verifiable slices.
+**Scope:** require **Vulkan 1.4 for the loader and selected GPU**, with no Vulkan 1.3 fallback or forced-1.3 mode; improve Vulkan correctness, GPU scheduling/resource management, the renderer, and the asset pipeline; implement the advanced rendering features listed here in controlled, verifiable slices.
 
-> **Important:** Execution evidence for VK14-00 through VK14-04 is recorded below; later features remain planned. Existing project plans, current source, tests and runtime traces take priority over historical assumptions. The project owner's new Vulkan 1.4/1.3 modernization objective expands the previously deferred capability scope; it does not cancel the accepted gameplay/art direction or automatically authorize a single giant implementation pass.
+> **Important:** Execution evidence for VK14-00 through VK14-04 is recorded below; its 1.3/forced-profile results are historical, not requirements for future work. Later features remain planned. Existing project plans, current source, tests and runtime traces take priority over historical assumptions. The owner's Vulkan 1.4 modernization objective does not cancel the accepted gameplay/art direction or automatically authorize a single giant implementation pass.
 
 ---
 
@@ -495,17 +495,77 @@ Evidence supports retaining points 2/3; rollback is not selected. Point commits:
 `bf4e45b` (baseline), `9391903` (uploads), `166369f` (slots/UI/copy), followed by
 the point 4 verification record. Later VK14 milestones are outside this task.
 
+## Vulkan 1.4-only contract revision — 2026-10-12
+
+The owner explicitly requested removal of Vulkan 1.3 compatibility to avoid the
+second API implementation/test profile during subsequent VK14 work. Require
+loader and selected physical-device API ≥1.4, request instance API 1.4 and pass
+1.4 to VMA. Remove API negotiation, the forced-1.3 environment override and its
+two CTest registrations. Keep existing feature/extension checks and SPIR-V 1.5;
+optional rendering capabilities still require their own support checks.
+
+This supersedes the original VK14-01 compatibility contract and all earlier
+native/forced-1.3 acceptance gates. Historical two-profile evidence above remains
+unchanged. Vulkan 1.3 hardware is outside the supported runtime baseline; no
+performance gain is claimed.
+
+**Verification:** Windows/MSVC, RTX 4060 Ti, loader/headers 1.4.357, physical API
+1.4.329. `cmake --preset msvc-debug` and `cmake --preset msvc-dev` passed without
+dependency version changes. The initial sandbox build failed with the previously
+recorded MSVC C1902/PDB IPC restriction; the same targeted build passed outside
+the sandbox in the VS x64 developer environment:
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_vulkan_device_tests relaycore_vulkan_presentation_tests relaycore_vulkan_upload_tests relaycore_vulkan_mesh_tests relaycore_player_ui_graphics relaycore_containment_loop_graphics relaycore_game_lifecycle relaycore_vulkan_toolchain_check -j 2
+cmake --build --preset demo-dev --target relaycore_demo relaycore_vulkan_device_tests -j 2
+```
+
+`build/msvc-debug/relaycore_vulkan_toolchain_check.exe` passed, reporting loader
+and VMA support 1.4 plus available validation/debug-utils. Graphics checks ran
+on the ordinary desktop outside the sandbox with process-local
+`DISABLE_VULKAN_OBS_CAPTURE=1`; installed/global hooks were unchanged:
+
+```powershell
+ctest --preset graphics-debug -R '^graphics\.(vulkan_(device|missing_validation|presentation|recreation_failure|upload|mesh|color_baseline)|mesh_pipeline|hdr_pipeline|msaa|containment_color|resource_preparation|player_ui|containment_loop(_hdr)?|game_lifecycle)$' --no-tests=error --output-on-failure --output-junit vk14-only-graphics.xml
+ctest --test-dir build/msvc-dev -R '^graphics\.vulkan_device$' --no-tests=error --output-on-failure --output-junit vk14-only-device.xml
+```
+
+Debug: **15 passed / 1 failed / 0 skipped**; development/Tracy device: **1 passed /
+0 failed / 0 skipped**. Passing cases cover device allocation/timeline/lifetime,
+missing-validation rejection, presentation/recreation, uploads, prepared resource
+churn, mesh pipeline, RmlUi, G-019 SDR/HDR/exposure, color/HDR/MSAA and lifecycle.
+No validation warnings/errors occurred. JUnit reports are in the respective build
+directories. The normal `RelayCore — Play` executable is updated.
+
+**Separate baseline failure:** `graphics.vulkan_mesh` fails its existing
+`power_restoration-0` image comparison: mask difference **0.00361111**, color
+difference **0.306111**, mean RGB delta **5.48441**. A diagnostic executable using
+the pre-change negotiation logic from HEAD `889cf3e` reproduces the identical
+failure on the same current renderer, shaders, test object and staged assets,
+with instance/effective API 1.4. The old source was adapted only to the current
+capability ABI (removed the retired override-report field and localized its old
+API constants). This isolates the API change; it does not diagnose the original
+image discrepancy. Reproduction script, source, compiler/link commands and log
+remain in `build/vk14-only/`; diagnostic binary is
+`build/msvc-debug/tests/relaycore_vulkan_mesh_before_api.exe`. Baselines/tolerances
+were preserved. No unrelated rendering correction is included.
+
+`clang-format --dry-run --Werror` passed for the four changed C++ files;
+`git diff --check` passed. Real older-loader/GPU rejection remains unexecuted
+because that hardware/loader is unavailable. Optional-feature and other-GPU/human
+gates remain independent. No commit, push or package was created.
+
 ## 1. Executive decision
 
-1. **Minimum runtime:** Vulkan 1.3, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.
-2. **Preferred runtime:** Vulkan 1.4 when both the instance/loader and selected physical device support it. Negotiate the actual device API level and feature bits; do not make Vulkan 1.4 a hard requirement.
-3. **One renderer:** Preserve the existing render-data boundary and Vulkan ownership. Do **not** fork a separate 1.3 engine, restart the renderer, reintroduce OpenGL, or add a generic `IRenderBackend`.
+1. **Minimum runtime:** Vulkan 1.4, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.
+2. **Required API:** Both loader and selected physical device must support at least 1.4. Instance and VMA use API 1.4; missing support fails startup explicitly. There is no 1.3 fallback or developer override.
+3. **One renderer:** Preserve the existing render-data boundary and Vulkan ownership. Do not restart the renderer, reintroduce OpenGL, or add a generic `IRenderBackend`.
 4. **Core vs optional:** Vulkan 1.4 core improvements are independent from optional extensions (hardware ray tracing, mesh shaders, fragment shading rate, HDR presentation). Optional features must have explicit capability checks, bounded quality/cost settings, and viable fallback behavior.
 5. **Full requested feature backlog, incremental delivery:** All technologies in this document are in scope for evaluation/implementation. Implement and verify them individually, with meaningful acceptance gates and rollbacks. The aspiration to support a feature is not grounds to enable it on every GPU or to compromise existing content.
 6. **Actual user-facing value:** Prioritize known SDR/HDR color complaints, visible graphics deficiencies, first-use/session stutters and measured bottlenecks. Do not claim that API 1.4, ray tracing, or compute automatically improves frame rate or art quality.
-7. **Compatibility test:** A forced Vulkan 1.3 mode must run on a Vulkan 1.4-capable device; also test a genuine Vulkan 1.3-only device/driver where available. An API version string alone does not establish extension support.
+7. **Compatibility test:** Test startup/rendering on Vulkan 1.4 and explicit rejection of older loaders/devices where available. Test optional features independently; an API version string alone does not establish extension support. No forced-1.3 suite is required.
 
-**Definition of success:** A stable Vulkan 1.4 preferred runtime with a tested Vulkan 1.3 baseline, a selectable and observable feature/capability system, materially improved rendering where applicable, reliable fallbacks, validated GPU resource ownership, reproducible evidence and no regression to the G-019 gameplay/content pipeline.
+**Definition of success:** A stable Vulkan 1.4 runtime, a selectable and observable optional feature/capability system, materially improved rendering where applicable, reliable optional-feature alternatives, validated GPU resource ownership, reproducible evidence and no regression to the G-019 gameplay/content pipeline.
 
 ---
 
@@ -528,7 +588,7 @@ This document owns the separate renderer modernization milestones and is **not**
 
 ### 2.2 Existing working foundations — preserve
 
-- C++20, Windows/MSVC, CMake/Ninja/vcpkg; SDL3 platform/window/input; **direct Vulkan 1.3** is the sole runtime graphics backend.
+- C++20, Windows/MSVC, CMake/Ninja/vcpkg; SDL3 platform/window/input; **direct Vulkan 1.4** is the sole runtime graphics backend (required since 2026-10-12).
 - `vk-bootstrap` for instance/physical-device/logical-device/swapchain selection; standard Vulkan loader; **VMA** for GPU buffers/images; Slang compiled **offline** to SPIR-V; Khronos validation, Tracy Vulkan and RenderDoc workflow.
 - Required device/runtime contract: `dynamicRendering`, `synchronization2`, `timelineSemaphore`, swapchain/WSI maintenance dependencies; optional anisotropic filtering.
 - Scene passes, MSAA, directional/spot/point shadow maps, FP16 HDR scene, exposure/tone mapping, existing SDR color-path variants, fog and post effects.
@@ -539,7 +599,10 @@ This document owns the separate renderer modernization milestones and is **not**
 - RmlUi 6.3 provides player HUD/menus; Dear ImGui remains for editor, debug and diagnostic tools. Retain current SDL3/Vulkan ownership and RmlUi rendering integration.
 - Existing gameplay loop, G-019 maps, editor, tests, content pipeline, save/continue/retry and packages are regression-critical.
 
-### 2.3 Confirmed missing/incomplete backend mechanisms at the stated commit
+### 2.3 Historical missing/incomplete backend mechanisms at the stated commit
+
+This is the pre-VK14-01 source snapshot, not the current task list. Execution
+evidence above and the 2026-10-12 API contract supersede completed/revised rows.
 
 | Area | Code evidence | Current limitation |
 |---|---|---|
@@ -564,30 +627,30 @@ These are **static code findings, not measured FPS regressions**. Re-read latest
 
 Vulkan 1.4 (December 2024) promoted and standardized many previously optional capabilities, including `VK_KHR_push_descriptor`, `VK_KHR_dynamic_rendering_local_read`, `VK_KHR_maintenance5/6`, `VK_KHR_map_memory2`, line rasterization and other extensions; it increases guaranteed capabilities/limits and introduces stronger streaming-transfer requirements. **Promoted functionality is not automatically a performance optimization**: every new path still requires an actual consumer, correct synchronization and benchmarks.
 
-### 3.1 Version negotiation contract
+### 3.1 Required version contract
 
-- **Build-time SDK/headers:** use Vulkan 1.4-capable headers/loader and compatible vk-bootstrap/VMA/Slang; build still targets **minimum runtime 1.3**. Current dependency baseline may already ship 1.4 headers. Do not update all of vcpkg or shader dependencies without necessity and a diff review.
-- **Instance version:** inspect `vkb::SystemInfo` / `vkEnumerateInstanceVersion`; request up to Vulkan 1.4 when available, **never require >1.3**. Distinguish loader/instance version from each physical GPU's version.
-- **GPU version:** query `VkPhysicalDeviceProperties::apiVersion`; choose a device meeting the existing **1.3** required feature/extension contract. Prefer 1.4 if the selected suitable device supports it. Do not select an unsuitable 1.4 GPU ahead of a capable 1.3 GPU merely for a higher label; document selection policy.
-- **Enabled features:** use the proper `VkPhysicalDeviceFeatures2` / Vulkan 1.2/1.3/1.4 feature chains and optional extension feature structs. Feature availability, device-extension promotion, function aliases, queue support and shader capabilities are separate checks. **Never call 1.4-only core functionality on a 1.3 device just because the loader supports 1.4.**
-- **Loader/function dispatch:** use supported core commands on 1.4; use named extension variants on 1.3 **only if** the requisite extension and feature bits are enabled. Keep the existing standard loader policy unless there is a concrete reason to change it.
-- **VMA:** pass the negotiated API version appropriate for the actual allocator/device. Do not advertise 1.4 to VMA on a 1.3 physical device.
+- **Build-time SDK/headers:** require Vulkan 1.4-capable headers/loader and compatible vk-bootstrap/VMA/Slang. CMake requires Vulkan ≥1.4. Keep the existing dependency baseline unless a concrete blocker requires a separate update.
+- **Instance version:** inspect `vkb::SystemInfo` / `vkEnumerateInstanceVersion`; reject loaders below 1.4 and request API 1.4. Distinguish loader/instance version from each physical GPU's version.
+- **GPU version:** require `VkPhysicalDeviceProperties::apiVersion` ≥1.4 together with required features/extensions and SDL surface-compatible queues. Older devices are rejected with detailed selection diagnostics.
+- **Enabled features:** use the proper `VkPhysicalDeviceFeatures2` / Vulkan 1.2/1.3/1.4 feature chains and optional extension feature structs. Existing 1.2/1.3 feature structs remain valid on 1.4; they are not fallback paths. Feature availability, device-extension promotion, function aliases, queue support and shader capabilities are separate checks.
+- **Loader/function dispatch:** use supported core commands on 1.4 and independently enabled extensions where needed. Keep the existing standard loader policy unless there is a concrete reason to change it.
+- **VMA:** pass API 1.4 after loader and physical-device checks succeed.
 - **Shader compatibility:** preserve the current compatible SPIR-V 1.5 baseline. Introduce separate shader modules/variants for extensions or advanced capabilities; validate each variant on its intended Vulkan/device profile. Vulkan 1.4 does **not** mandate a new SPIR-V source format for every shader.
-- **Debug/test override:** add a developer/test-only **force-Vulkan-1.3 capability path** that limits advertised API use and disables 1.4-only functionality even on 1.4 hardware. Do not silently disable unrelated optional extensions if those are independently supported on 1.3; offer clear test flags where needed.
-- **Diagnostics:** log loader API, requested instance API, selected physical-device API, negotiated effective API, queue families, required/optional feature bits, enabled extension names, chosen formats, shader variant and reasons for each fallback. Do not mistake a log line for proof that a path executed.
+- **Debug/test profiles:** run the Vulkan 1.4 profile. The forced-1.3 override and its tests are removed; retain tests for optional capabilities and required-feature rejection.
+- **Diagnostics:** log loader API, requested instance API, selected physical-device API, effective API, queue families, required/optional feature bits, enabled extension names, chosen formats, shader variant and reasons for optional-feature alternatives. Do not mistake a log line for proof that a path executed.
 
-**Do not simply change** `kVulkanApiVersion` from `VK_API_VERSION_1_3` to `VK_API_VERSION_1_4`: that would break the 1.3 minimum and would not build feature-specific fallbacks.
+Vulkan 1.4 is an intentional compatibility requirement. This does not enable optional features automatically or justify unused feature chains, shader variants or rendering effects.
 
 ### 3.2 Vulkan 1.4-specific candidate consumers
 
-| Vulkan 1.4 area | RelayCore use case | Vulkan 1.3 fallback / caution |
+| Vulkan 1.4 area | RelayCore use case | Adoption constraint / alternative |
 |---|---|---|
 | Improved streaming-transfer guarantee | Sustained texture/model transfers while drawing | Existing timeline/graphics-queue transfer model; extension/capability-aware upload path. Guarantees do not remove the app's own `uploads.wait()` calls. |
 | Push descriptors | Very small pass-local transient bindings | Standard descriptor sets; do **not** replace persistent material descriptors without evidence. |
 | Dynamic rendering local read | Suitable attachment-read rendering algorithms; check depth/stencil and multisampled local-read properties separately | Explicit image transitions and separate subpasses/passes; no mandatory deferred renderer conversion. |
 | Scalar block layout (optional since Vulkan 1.2; mandatory support in 1.4) | Compact data layouts where correct shader interface demands them | Existing layouts/padding; reflect/validate host–GPU offsets. |
-| Maintenance5/6, map-memory2 and other promoted features | Specific API simplifications and correctness improvements | Existing 1.3 calls or feature-gated extension commands. |
-| Larger guaranteed limits | More MRTs/render targets, wider push constants and high-resolution targets | Query actual 1.3 limits and choose compatible layouts; never hardcode assumptions into common shader interfaces. |
+| Maintenance5/6, map-memory2 and other promoted features | Specific API simplifications and correctness improvements | Adopt through a concrete consumer with explicitly enabled required features. |
+| Larger guaranteed limits | More MRTs/render targets, wider push constants and high-resolution targets | Query actual device limits and validate layouts; never hardcode assumptions into common shader interfaces. |
 
 **Not provided by core Vulkan 1.4:** hardware RT, `VK_EXT_mesh_shader`, fragment shading rate, bindless resource architecture, true display HDR, sophisticated GI, motion vectors or FSR. Those require separate code and in several cases optional extensions and hardware.
 
@@ -597,11 +660,11 @@ Vulkan 1.4 (December 2024) promoted and standardized many previously optional ca
 
 Implement a **small renderer-owned** capability record, populated once after device selection; avoid a generic framework or global singleton. Candidate fields (exact type/name should follow current code conventions); introduce only fields consumed by the selected milestone, not the whole future backlog:
 
-- `loader_api`, `instance_api`, `physical_api`, `effective_api`, force-1.3 test override;
+- `loader_api`, `instance_api`, `physical_api`, `effective_api`;
 - required: dynamic rendering, sync2, timeline, swapchain maintenance, presentation/format support;
 - optional: memory-budget reporting, depth/shadow format options, suitable compute queue, transfer queue, push descriptors/local read, descriptor indexing/update-after-bind, buffer device address, indirect-draw/mesh-shader capabilities, fragment shading rate, ray query/acceleration structures/ray tracing pipelines, HDR-capable surface formats/colorspaces/metadata;
 - GPU limits: attachment counts, push constants, workgroup sizes, descriptor counts, maximum resolution, timestamp support, memory heaps;
-- selected **backend technique** per feature: e.g. CPU draws vs indirect draws, raster reflections vs RT reflections, 1.3 baseline vs 1.4 core fast path.
+- selected **backend technique** per feature: e.g. CPU draws vs indirect draws, raster reflections vs RT reflections.
 
 Support **three distinct configuration layers**:
 
@@ -613,7 +676,7 @@ Support **three distinct configuration layers**:
 
 | Feature | Preferred | Fallback / baseline |
 |---|---|---|
-| API | Vulkan 1.4 | Vulkan 1.3 with required pre-existing contract |
+| API | Required Vulkan 1.4 | Startup failure for unsupported loader/device; no API fallback |
 | Mesh pipeline | Meshlets + mesh shaders where supported/beneficial | Existing indexed triangles via conventional vertex/fragment shaders |
 | Submission | GPU culling + indirect (when it wins) | Existing CPU chunk/frustum culling + indexed draws |
 | Material bindings | Descriptor indexing/bindless where capacity/scaling justifies it | Shared pooled conventional descriptors |
@@ -682,7 +745,7 @@ A fallback is only “supported” after testing. It is not sufficient to set a 
 - Recover from `VK_ERROR_SURFACE_LOST_KHR` by correctly recreating the SDL `VkSurfaceKHR`, rechecking present support and rebuilding the swapchain; stop gracefully on unrecoverable `VK_ERROR_DEVICE_LOST` with diagnostics. Full device-hot-recovery is **not** a requirement.
 - Add VMA heap budgets/allocation counts and reporting, using `VK_EXT_memory_budget` when available, plus upload staging outstanding bytes and pending GPU retirements; keep costly detailed snapshots out of the normal frame path.
 - Add semantic Vulkan debug names and Tracy zones for wait points, allocations and pass boundaries; preserve RenderDoc compatibility.
-- Gate: repeated window loss/resize/minimize/restore, device-incompatible conditions and resource churn; test both 1.3 and 1.4 profiles.
+- Gate: repeated window loss/resize/minimize/restore, device-incompatible conditions and resource churn on Vulkan 1.4.
 
 ---
 
@@ -705,7 +768,7 @@ Implement this **after** a measured baseline and safe frame/resource-lifetime fo
 **Important engineering tradeoffs:**
 
 - Existing native static GLB meshes can generally be converted **offline** into meshlets, instance streams, bounds and acceleration structures; no mass reauthoring of Blender source assets is required.
-- Mesh shaders, bindless and hardware RT remain optional on **both** Vulkan 1.3 and 1.4: selected physical-device extensions/features determine their availability.
+- Mesh shaders, bindless and hardware RT remain optional on Vulkan 1.4: selected physical-device extensions/features determine their availability.
 - One workable ray-traced effect (e.g. selected reflections or shadows) must reach parity/fallback and profile gates before combining RT GI, RT AO, RT reflections and RT shadows.
 - Do not infer that increasing GPU draw complexity, frame buffering or async queues helps the small present-day G-019 workload; demand a real consumer and profile.
 
@@ -798,7 +861,7 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 | ID | Milestone | Concrete deliverable | Non-negotiable gate |
 |---|---|---|---|
 | **VK14-00** | Source, hardware and performance baseline | Inventory current Vulkan code/SDK versions, selected GPUs and tests; screenshots/Tracy baseline; initial version/capability matrix | Exact commit, build commands, data and bottlenecks documented; no speculative performance claims |
-| **VK14-01** | Preferred Vulkan 1.4 + guaranteed 1.3 fallback | Version negotiation, feature chain/capability report, force-1.3 test mode, tests and docs | Launch/render/resize/UI/content on both effective profiles; 1.3 device never invokes 1.4-only entry points |
+| **VK14-01** | Required Vulkan 1.4 (owner revision 2026-10-12) | Loader/device minimum, instance/VMA 1.4, capability report, tests and docs; retire 1.3 fallback | Launch/render/resize/UI/content on 1.4; older loaders/devices fail explicitly |
 | **VK14-02** | SDR/HDR correctness | Isolated color-pipeline corrections, output-stage contracts and test captures | Existing SDR/HDR scene-image comparison, UI colors, readback, no unintended regressions; physical HDR separate |
 | **VK14-03** | Completion/lifetime foundations + profiler data | Explicit GPU-resource last-use/deferred retirement; wait-zone instrumentation. [Implemented; local desktop gate completed during VK14-04](#vk14-04-execution--2026-10-12) | Clean sync validation during reload, resize, resource churn, failed prepare and shutdown |
 | **VK14-04** | Scene scheduling and upload fixes | Two scene slots and GPU timeline waits for resource consumption. [Local technical gate complete; measured benefit and tail limit](#vk14-04-execution--2026-10-12) | Measured first-use/frame benefit; no lifetime regressions; rollback if not beneficial |
@@ -844,9 +907,8 @@ For each selected child task record fixture, baseline settings, measurable budge
 
 | Profile | What it verifies |
 |---|---|
-| **A — Vulkan 1.3 forced** on a 1.4-capable GPU | Baseline core/API behavior, no accidental 1.4 dependency |
-| **B — Native Vulkan 1.3-only driver/GPU** (when available) | Actual portability, extension handling and feature negotiation |
-| **C — Vulkan 1.4** on supported GPU | Preferred core 1.4 commands/features and performance |
+| **A — Loader/device below Vulkan 1.4** (when available) | Explicit startup rejection with an actionable diagnostic; not a rendering profile |
+| **C — Vulkan 1.4** on supported GPU | Required core API, enabled features and performance |
 | **D — Vulkan 1.4 lacking an optional RT/mesh/VRS/HDR capability** | Optional features do not become de facto hard requirements |
 | **E — Debug validation + sync validation and targeted GPU-assisted validation** | Resource/barrier/layout/descriptor correctness |
 | **F — Optimized real gameplay + editor + UI** | Performance, save/continue, continuous session, material reload, authoring workflow |
@@ -877,7 +939,7 @@ If specific physical hardware is unavailable, mark that test **blocked**; do not
 
 | Risk | Required mitigation or stop condition |
 |---|---|
-| Accidental Vulkan 1.4 hard requirement | Forced 1.3 tests early and on every relevant device/API change; no 1.4 core symbol on 1.3 path |
+| Accidental optional-feature hard requirement | Vulkan 1.4 remains the API baseline; test unsupported optional RT/mesh/VRS/HDR paths independently |
 | Synchronization regression during frame overlap | B1 owner/completion invariants **before** B2; sync validation, reload/resize tests and GPU-last-use recording |
 | Feature explosion without product value | Each expensive renderer technique gets its own slice, visible fixture, measurable budget and rollback/off policy |
 | Shader/pipeline/descriptor churn | Reuse current Slang pipeline, build/publish/retire policies; avoid speculative render graph/job-system rewrites |
@@ -895,11 +957,11 @@ A developer may **decline or defer a specific optimization** if measurement show
 
 ## 12. Codex execution contract / concise handoff prompt
 
-> You are implementing the RelayCore Vulkan 1.4 / Vulkan 1.3 renderer modernization program. The current planning specification is `docs/RENDERER_MODERNIZATION_PLAN.md`. First inspect the current `dev` HEAD and repository rules (`AGENTS.MD`), then relevant existing Vulkan/architecture/dependency/roadmap documents and directly affected source/tests. Compare this file's baseline to the latest code; never implement already-completed work twice. Vulkan 1.4 is **preferred**, Vulkan 1.3 is **required**; optional advanced capabilities must not become baseline dependencies. Preserve existing engine/game boundaries, native models/PBR/assets, RmlUi player UI, ImGui diagnostics, editor, G-019, save/continue and build/validation workflows.
+> You are implementing the RelayCore Vulkan 1.4 renderer modernization program. The current planning specification is `docs/RENDERER_MODERNIZATION_PLAN.md`. First inspect the current `dev` HEAD and repository rules (`AGENTS.MD`), then relevant existing Vulkan/architecture/dependency/roadmap documents and directly affected source/tests. Compare this file's baseline to the latest code; never implement already-completed work twice. Vulkan 1.4 is **required**, with no 1.3 fallback or forced-1.3 tests; optional advanced capabilities must not become baseline dependencies. Preserve existing engine/game boundaries, native models/PBR/assets, RmlUi player UI, ImGui diagnostics, editor, G-019, save/continue and build/validation workflows.
 >
-> Work on **one explicitly selected milestone** (begin with VK14-00, then VK14-01), not the whole backlog in one pass. Before changes, write the factual delta, precise scoped design, compatibility rules, tests, risks and rollback. Implement only the smallest complete patch. Run relevant real Windows/MSVC/Vulkan tests when available; where tools/GPU hardware are unavailable, record exact blockers. Capture evidence and per-feature cost instead of equating compiling with visual quality. Do not add generic managers, virtual backends, render graphs, ECS, dependencies or configuration scaffolding without a concrete consumer. Keep existing stable code; do not commit/push or silently change gameplay/art direction. Finish with changed files, executed commands, evidence, unverified gates and the next ready milestone.
+> Work on **one explicitly selected pending milestone**, not the whole backlog in one pass. Before changes, write the factual delta, precise scoped design, compatibility rules, tests, risks and rollback. Implement only the smallest complete patch. Run relevant real Windows/MSVC/Vulkan tests when available; where tools/GPU hardware are unavailable, record exact blockers. Capture evidence and per-feature cost instead of equating compiling with visual quality. Do not add generic managers, virtual backends, render graphs, ECS, dependencies or configuration scaffolding without a concrete consumer. Keep existing stable code; do not commit/push or silently change gameplay/art direction. Finish with changed files, executed commands, evidence, unverified gates and the next ready milestone.
 
-**First implementation deliverable when implementation is explicitly requested without a narrower task:** `VK14-00` current-state delta + Vulkan 1.4/1.3 capability contract and acceptance matrix; then implement `VK14-01` in a separate reviewed step. Do not interpret this document alone as permission to implement VK14-02 through VK14-14 automatically.
+**First implementation deliverable when implementation is explicitly requested without a narrower task:** recheck the current-state delta, required Vulkan 1.4 capability contract and acceptance matrix; select the next pending milestone using the execution evidence above. Do not repeat completed VK14-00/01 work or interpret this document alone as permission to implement the remaining backlog automatically.
 
 ---
 
@@ -926,7 +988,7 @@ All links refer to **public technical references**, not evidence that a feature 
 
 ## Final acceptance checklist
 
-- [ ] Runtime negotiates Vulkan 1.4 where available while retaining the tested Vulkan 1.3 baseline.
+- [ ] Runtime requires Vulkan 1.4 for loader/device/instance/VMA and explicitly rejects older loaders/devices.
 - [ ] Optional RT/mesh/VRS/bindless/async/HDR feature paths are explicitly guarded by complete capability checks.
 - [ ] GPU completion, uploads, scene scheduling, descriptors, pipelines, swapchain lifetime and memory telemetry have passing ownership and stress tests.
 - [ ] Each requested rendering technique has a concrete, validated implementation or an explicitly evidence-backed blocked/deferred status; no nominal feature checkboxes.

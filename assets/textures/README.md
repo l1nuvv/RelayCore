@@ -12,9 +12,9 @@ Validate with the `graphics.power_restoration` test, which renders intake, servi
 
 ## Generation prompt
 
-### Scientist materials (0.2)
+### Original atlas character materials
 
-`scientist_materials.png` is an original ImageGen source, packed into atlas slots 23–26: ivory cotton, charcoal-brown twill, dark brown shoe leather and charcoal rubber. These materials use object-space mapping, so the fabric moves with each body part. Repeat sizes are 0.20, 0.24, 0.16 and 0.12 metres respectively. All four are opaque diffuse textures; no environment materials are reused on the scientist.
+`scientist_materials.png` is an original ImageGen source, packed into atlas slots 23–26: ivory cotton, charcoal-brown twill, dark brown shoe leather and charcoal rubber. The atlas character/body path uses object-space mapping, so fabric moves with each body part. Repeat sizes are 0.20, 0.24, 0.16 and 0.12 metres respectively. These opaque diffuse swatches remain source material for that path; the current VIS-38 scientist uses its own native model/materials, documented in [the asset report](../../docs/art/vis36-38-pickups-security-scientist.md).
 
 Generation specification: exact 2-by-2 sheet of four seamless square diffuse swatches, ordered cotton / twill / leather / rubber. Restrained late-1990s FPS material art, readable fine weave and grain, neutral uniform albedo illumination. No clothing silhouettes, seams, buttons, text, logos, baked highlights, shadows, AO, perspective or background. Original material art, no copied game assets. Validation: `graphics.power_restoration` renders idle, stepping and turned first-person body views through the game renderer.
 

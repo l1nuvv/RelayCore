@@ -1,5 +1,7 @@
 # RelayCore agent infrastructure audit — 2026-10-07
 
+Примечание 2026-10-10: завершённый "RELEASE_AUTOMATION_PLAN.md" удалён при актуализации документации. Его исторические результаты сохранены в [протоколе 1.3.2](../playtests/release-1.3.2.md); текущий workflow — [UPDATES.md](../UPDATES.md). Таблица ниже отражает аудит на исходную дату.
+
 Scope: текущий working tree, agent instructions и developer tooling; engine/game code не изменялся. Целевой пользовательский профиль — Codex / GPT-6.1 Sol / High. Настройки модели и пользовательские глобальные skills не менялись.
 
 ## Результат

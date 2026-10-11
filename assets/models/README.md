@@ -1,4 +1,6 @@
-# Статические модели — 0.7
+# Статические модели
+
+Текущий pipeline: GLB → native `.rcmodel` v5 (reader принимает v1–5), с отдельными collision/probe products. Авторинг и staging описаны в [DEVELOPMENT.md](../../docs/DEVELOPMENT.md#статические-модели-glb--native-product). Ниже сохранены источники прежних OBJ/BMP и native-семейств; OBJ не задаёт материалы текущего native viewmodel.
 
 `shotgun_body.obj` и `shotgun_pump.obj` — Stevens Model 520 из предоставленного
 автором архива `low-poly-stevens-model-520a.zip` ([источник](https://sketchfab.com/3d-models/low-poly-stevens-model-520a-275af36ee49545f3bdf117329f72745f)).
@@ -88,7 +90,7 @@ diffuse-текстуру всему мешу; MTL и несколько мате
 
 Текстура — BMP RGB/RGBA, непрозрачный albedo. UV имеют начало снизу слева.
 Применяются освещение, туман, тени и цветовой режим сцены; процедурный материал
-стены поверх модели не накладывается. Alpha-cutout, скелет и анимации не входят в 0.7.
+стены поверх модели не накладывается. Alpha-cutout, скелет и анимации не поддерживаются текущим static importer.
 
 ```toml
 [[entity]]
@@ -109,7 +111,7 @@ collision_material = "Metal"
 его материал определяет шаги и приземление. Треугольники OBJ не становятся коллизией.
 
 Для native `models/<имя>.rcmodel` доступен отдельный opt-in
-`collision = "collision/<имя>.rccollision"` вместо трёх box-полей выше.
+`collision_asset = "collision/<имя>.rccollision"` вместо трёх box-полей выше.
 Collision product явно связан с моделью, компилируется из отдельного authored source
 и проверяется при подготовке сцены; render triangles не используются автоматически.
 `lab_bench` сохраняет проход снизу через `content/collision/lab_bench.toml`.

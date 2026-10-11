@@ -1,24 +1,26 @@
 ---
 name: relaycore-rmlui
-description: Integrate, author and debug RmlUi game HUD, menus and screens in RelayCore with SDL3 and Vulkan; migrate player-facing ImGui UI through VIS-43–46. Use for RML/RCSS, C++ data bindings, UI input/focus and rendering. Exclude ImGui editor/diagnostics changes except coexistence checks.
+description: Author and debug the implemented RmlUi game HUD, menus and screens in RelayCore with SDL3 and Vulkan. Use for RML/RCSS, C++ presentation data, UI input/focus and rendering. Exclude ImGui editor/diagnostics changes except coexistence checks.
 ---
 
 # RelayCore RmlUi
 
-Use RmlUi for player-facing UI work requested by the owner. This skill guides integration; its presence does not mean RmlUi is installed or VIS-43 is implemented. Retain ImGui for editor, diagnostics and developer tools. A request to create this skill alone does not launch the migration tickets.
+Use RmlUi for player-facing UI work requested by the owner. RmlUi 6.3 and the VIS-43–46 technical integration are implemented; human visual acceptance remains a separate gate in the roadmap. Retain ImGui for editor, diagnostics and developer tools. This skill does not authorize new UI features or repeating the migration.
 
 ## Scope and evidence
 
 Read the introduction, status table and selected VIS-43–46 ticket in `docs/PLAYABLE_SLICE_ROADMAP.md`. For integration read the game UI sections in `docs/DEPENDENCY_STACK.md` and `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. For visual decisions use `relaycore-art-direction` and `docs/ART_DIRECTION.md`. Repository paths here are relative to the repository root.
 
-Start at the affected screen and direct callers. Initial migration anchors, to recheck against current source:
+Start at the affected screen and direct callers. Current ownership anchors, to recheck against source:
 
-- `src/relaycore/render/game_hud.h` and `.cpp`: ImGui HUD consuming `PlayerDiagnostics` and `InteractionDiagnostics`.
+- `assets/ui/{hud,menu,finale}.rml` and nearby RCSS: authored player screens.
+- `src/relaycore/render/player_ui.h`, `.cpp` and `player_ui_data.h`: persistent RmlUi context/documents, RelayCore-owned presentation/actions and input ownership.
+- `src/relaycore/render/vulkan_rml_renderer.cpp`: geometry/textures, draw order and UI GPU lifetime.
 - `src/relaygame/demo_game_menu.cpp`: menu presentation and existing actions/settings.
 - `src/relaycore/render/renderer.cpp`: frame and presentation integration.
 - `src/relaycore/debug/imgui_overlay.cpp`: SDL events and ImGui capture; inspect event dispatch callers before changing arbitration.
 
-VIS-43 owns foundation/HUD; VIS-44–45 own further screens; VIS-46 checks ordinary play without ImGui tools. Implement the requested slice and preserve existing behavior.
+VIS-43 owns foundation/HUD; VIS-44–45 own further screens; VIS-46 records ordinary play without ImGui tools. These are completed technical slices with their recorded acceptance limits. Fix or extend only the requested screen/behavior.
 
 ## Dependency and backend
 
@@ -26,7 +28,7 @@ Read [references/integration.md](references/integration.md) for dependency adopt
 
 Verify the actual vcpkg baseline/port, SDL3/Vulkan support and Windows/MSVC build. Record the exact selected version, features, integration cost and limitations in the owning ticket and `docs/DEPENDENCY_STACK.md`. Follow manifest/overlay policy. Upstream sample backends are adaptation sources; a standalone sample does not prove integration into RelayCore. SDL GPU is a separate path from the project's direct Vulkan renderer.
 
-Prove the foundation on the real HUD and one interactive screen with long Russian text before expanding migration. Preserve RelayCore window/device/swapchain ownership. Do not add Lua, a browser runtime, an event bus or a general UI framework merely to use RmlUi.
+For a requested backend or ownership change, verify the real HUD and an interactive screen with long Russian text. Reuse the implemented foundation and preserve RelayCore window/device/swapchain ownership. Do not add Lua, a browser runtime, an event bus or a general UI framework merely to use RmlUi.
 
 ## Data and actions
 

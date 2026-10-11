@@ -16,19 +16,11 @@ namespace
         const auto& capabilities = device.capabilities();
         if (capabilities.physical_api_version < RelayCore::render::kVulkanApiVersion)
             throw std::runtime_error("Selected GPU does not meet the Vulkan API baseline");
-        const auto preferred = RelayCore::render::kVulkanPreferredApiVersion;
-        const bool force_1_3 = SDL_getenv_unsafe("RELAYCORE_VULKAN_FORCE_1_3") != nullptr
-                               && std::string_view{SDL_getenv_unsafe("RELAYCORE_VULKAN_FORCE_1_3")} == "1";
-        const auto expected_instance = !force_1_3 && capabilities.loader_api_version >= preferred
-                                           ? preferred
-                                           : RelayCore::render::kVulkanApiVersion;
-        const auto expected_effective =
-            capabilities.physical_api_version >= preferred ? expected_instance : RelayCore::render::kVulkanApiVersion;
-        if (capabilities.force_api_1_3 != force_1_3 || capabilities.instance_api_version != expected_instance
-            || capabilities.effective_api_version != expected_effective
+        if (capabilities.instance_api_version != RelayCore::render::kVulkanApiVersion
+            || capabilities.effective_api_version != RelayCore::render::kVulkanApiVersion
             || capabilities.effective_api_version > capabilities.physical_api_version
             || capabilities.effective_api_version > capabilities.loader_api_version)
-            throw std::runtime_error("Vulkan API negotiation did not preserve the requested loader/device limits");
+            throw std::runtime_error("Vulkan 1.4 startup did not preserve the required loader/device limits");
 #if RELAYCORE_VULKAN_VALIDATION
         if (!capabilities.validation_enabled)
             throw std::runtime_error("Development startup did not enable Vulkan validation");
@@ -95,25 +87,9 @@ namespace
             throw std::runtime_error("Timeline semaphore counter query failed");
     }
 
-    void run_checks(const bool expect_missing_validation, const bool expect_invalid_api_override)
+    void run_checks(const bool expect_missing_validation)
     {
         RelayCore::Window window{RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false}};
-        if (expect_invalid_api_override)
-        {
-            try
-            {
-                RelayCore::render::VulkanDevice device{window};
-            } catch (const std::runtime_error& error)
-            {
-                if (std::string_view{error.what()} == "RELAYCORE_VULKAN_FORCE_1_3 must be 0 or 1")
-                {
-                    std::cout << "invalid_api_override=" << error.what() << '\n';
-                    return;
-                }
-                throw;
-            }
-            throw std::runtime_error("Invalid Vulkan API override did not fail startup");
-        }
         if (expect_missing_validation)
         {
             try
@@ -172,10 +148,7 @@ int main(const int argc, char** argv)
     int result = 0;
     try
     {
-        run_checks(
-            argc == 2 && std::string_view{argv[1]} == "--expect-missing-validation",
-            argc == 2 && std::string_view{argv[1]} == "--expect-invalid-api-override"
-        );
+        run_checks(argc == 2 && std::string_view{argv[1]} == "--expect-missing-validation");
     } catch (const std::exception& error)
     {
         std::cerr << "Vulkan device failed: " << error.what() << '\n';

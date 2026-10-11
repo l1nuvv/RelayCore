@@ -1,8 +1,15 @@
 # RelayCore — Vulkan migration plan
 
-Status: approved graphics-backend direction and implementation plan. This is not permission to execute every phase in one task.
+Status: VK-013/014 and VK-F01 are completed; Vulkan is the only runtime backend.
+This document retains migration gates and historical evidence. Current setup,
+commands and diagnostics belong to [DEVELOPMENT.md](DEVELOPMENT.md), current
+ownership to [ARCHITECTURE.md](ARCHITECTURE.md), and open product/GPU acceptance
+to the [roadmap](PLAYABLE_SLICE_ROADMAP.md). Earlier GL phases below are historical;
+this plan is not permission to execute additional work.
 
 Basis: repository snapshot `1.3.4` supplied 2026-09-30. Current source/tests and `AGENTS.MD` override stale details. Long-term engine direction is in `docs/ENGINE_ARCHITECTURE_REFERENCE.md`.
+
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы. Историческая parity migration ниже остаётся завершённой.
 
 ## 1. Goal
 
@@ -202,7 +209,7 @@ Required architectural facilities:
 
 Do not require descriptor buffers, mesh shaders, ray tracing, bindless resources, variable-rate shading or other optional modern features during migration.
 
-Vulkan **1.3 is the minimum runtime API** for the current migration, agreed with the project owner during VK-002 on 2026-10-01. Require it for the instance and selected physical device and report it in startup diagnostics. Enable required feature bits explicitly; API version support alone does not enable device features. Vulkan 1.4 facilities may be introduced by their owning tasks after checking instance/device API, extension and feature support. On a 1.3 device, use a supported extension path or an implemented alternative; an unsupported mandatory facility must fail startup with a concrete diagnostic. Never call unsupported functionality based only on the developer GPU's version.
+Vulkan **1.4 is the minimum loader and physical-device API**, requested by the project owner on 2026-10-12. Require it for the instance and selected physical device and report it in startup diagnostics; VMA also uses API 1.4. There is no 1.3 fallback or forced-1.3 mode. Enable required feature bits explicitly; API version support alone does not enable device features. Additional facilities may be introduced by their owning tasks after checking extension and feature support. An unsupported mandatory facility must fail startup with a concrete diagnostic. Historical VK-002 evidence below retains the original 1.3 baseline.
 
 ## 6. Architecture and patterns
 
@@ -411,7 +418,7 @@ Scope:
 
 Gate: clear-color window runs/resizes/minimizes/restores repeatedly without validation errors or device-wide idle in normal frame flow.
 
-Presentation fences require `VK_KHR_swapchain_maintenance1` and `swapchainMaintenance1`; instance setup requires `VK_KHR_surface_maintenance1` and `VK_KHR_get_surface_capabilities2`. Check and enable these explicitly even on Vulkan 1.4 hardware. This narrows driver compatibility but provides a defined lifetime for presentation's semaphore and swapchain references without relying on device/queue idle. Missing support fails startup with a concrete diagnostic; runtime API minimum remains 1.3. See the [Khronos presentation fence contract](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html).
+Presentation fences require `VK_KHR_swapchain_maintenance1` and `swapchainMaintenance1`; instance setup requires `VK_KHR_surface_maintenance1` and `VK_KHR_get_surface_capabilities2`. Check and enable these explicitly even on Vulkan 1.4 hardware. This narrows driver compatibility but provides a defined lifetime for presentation's semaphore and swapchain references without relying on device/queue idle. Missing support fails startup with a concrete diagnostic; runtime API minimum is 1.4. See the [Khronos presentation fence contract](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html).
 
 ### VK-004 — GPU resources and upload
 

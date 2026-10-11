@@ -8,7 +8,7 @@ The owner intends the engine and game to remain private. Do not make licensing a
 
 Choose sources by visual fit, useful geometry, texture quality, editable formats, adaptation cost and price. Prefer free available downloads when they satisfy the task; this catalog does not authorize purchases, subscriptions or account changes. A site's listing here does not mean it has a connected tool or automated download API.
 
-[ART_DIRECTION.md](ART_DIRECTION.md) owns style: believable late-1980s/1990s scientific-industrial infrastructure, with restrained functional occult elements. The [static-model section of DEVELOPMENT.md](DEVELOPMENT.md#статические-модели-glb--native-product) owns supported interchange and runtime materials. Use [relaycore-blender](../.agents/skills/relaycore-blender/SKILL.md) for Blender authoring and [relaycore-assets](../.agents/skills/relaycore-assets/SKILL.md) for native compilation/staging.
+[ART_DIRECTION.md](ART_DIRECTION.md) owns style: twentieth-century scientific-industrial and urban Art Deco spaces, late-1980s/1990s analog equipment, and the owner's overt ritual/infernal motifs. The [static-model section of DEVELOPMENT.md](DEVELOPMENT.md#статические-модели-glb--native-product) owns supported interchange and runtime materials. Use [relaycore-blender](../.agents/skills/relaycore-blender/SKILL.md) for Blender authoring and [relaycore-assets](../.agents/skills/relaycore-assets/SKILL.md) for native compilation/staging.
 
 ## Agent workflow
 
@@ -63,7 +63,7 @@ Useful queries: `1990s CRT monitor`, `analog oscilloscope`, `laboratory power su
 ## Texture and model handoff
 
 - For Blender look development, use the full material inputs that the requested render needs. Color/albedo is sRGB; normal/roughness/metalness/height are data. Check normal-map convention and physical tiling scale.
-- For game delivery, recheck the current importer in `docs/DEVELOPMENT.md`. The documented static path supports base color and tangent-space normals; metallic/roughness scalar factors use an explicit opt-in. Do not assume a downloaded full PBR map set, glass, transparency, emissive material, displacement or procedural shader exports unchanged.
+- For game delivery, recheck the current importer in `docs/DEVELOPMENT.md`. The native v5 path supports embedded base color, tangent-space normals, metallic/roughness maps and factors (explicit lighting opt-in), AO and core emissive maps/factors. UV0, tangents, supported samplers and channel/color-space rules still apply. Glass/transparency, emissive-strength extensions, displacement, procedural shader graphs, skins and animations remain unsupported; a full downloaded PBR set does not export unchanged.
 - A model advertised as rigged or animated does not add skeletal/animation support to RelayCore. Keep such source work separate from the accepted static runtime deliverable unless the requested milestone provides the consumer.
 - Keep collision explicitly authored and separate from the render mesh. Do not use high-density scan triangles as collision merely because the visual model is available.
 - Prefer a portable `.blend` or mesh plus textures for preparation, then export to the project's GLB/native workflow. Validate scale, normals/tangents, UVs, visible material response and representative gameplay viewing distance.

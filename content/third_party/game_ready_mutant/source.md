@@ -26,7 +26,7 @@ organic albedo are retained. Remaining mechanical surfaces use the scanned
 materials described in [containment sources](../polyhaven/containment/README.md).
 The percentage is an art target, not a measured mesh-area statistic.
 
-Runtime receives static opaque GLBs with scalar metallic/roughness factors.
+Runtime receives static opaque GLBs with normal maps and metallic/roughness factors; IMG-01/03 additionally author embedded MR/AO maps for selected materials. The source albedo/normal attribution above remains unchanged.
 The source skeleton/animations are not exported. Runtime uses rigid body/arm
 transforms and capture compression; there is no skeletal walking animation.
 Images are reduced to 2048 pixels. Normal vectors are normalized into the

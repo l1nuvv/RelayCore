@@ -1,5 +1,7 @@
 # Accepted graphics baselines
 
+Current authority is per sample: reviewed replacements below supersede the original VK-012 bytes for that sample. Dated failures refer to the recorded runs; VIS-49 closes the selected power/weapon mismatch, while broader unverified paths are not declared green. This directory stores regression references, not a claim of a fresh full graphics run.
+
 2026-10-09, VIS-49: the four `power_restoration-{0,1}{,-shotgun}` samples now
 represent the accumulated art and weapon pass. The recorded first scene failure
 was reproduced exactly. All 13 coverage and 1,325 over-threshold color tiles lie

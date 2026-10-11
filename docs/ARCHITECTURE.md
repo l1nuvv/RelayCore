@@ -1,5 +1,8 @@
 # Архитектура RelayCore
 
+
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
+
 ## Player UI ownership (RmlUi 6.3)
 
 `Renderer` owns the RmlUi context, SDL platform/IME interface and
@@ -15,7 +18,7 @@ pipelines through their final GPU use. Presentation drains before device/allocat
 destruction; ImGui and readback remain synchronous.
 See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
 
-Этот документ описывает актуальный runtime contract по состоянию на 2026-10-02, после VK-013/014. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md); здесь описаны владельцы и границы текущего кода.
+Этот документ описывает текущих владельцев и границы runtime; сверка с source выполнена 2026-10-10. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md).
 
 **Реализация 2026-10-09:** RmlUi 6.3 обслуживает игровой HUD, меню и финал; ImGui сохраняется для editor/diagnostics. RelayCore-owned presentation data/actions, input/focus ownership и evidence описаны в [VIS-43–46](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui). Авторская приёмка читаемости в движении остаётся отдельным gate.
 
@@ -55,9 +58,9 @@ main
 
 ## Сохранение и локальный повтор встречи
 
-[`SavedGame`](../src/relaygame/save_game.h) содержит `RuntimeLevelSnapshot`, player pose/motion, отпечаток карты, время игры, фонарик, состояния подвижных противников и плоскую историю неактивных карт. Запись использует формат 4; parser принимает 1/2/3/4. Выбранное оружие входит в snapshot; форматы 1–3 выбирают точное оружие, формат 4 требует допустимый выбор и наличие дробовика в инвентаре при его выборе. Применение дополнительно проверяет fingerprint, состав противников и совместимость runtime snapshot. Поэтому поддержка чтения старой версии не означает возможность продолжить любую старую карту.
+[`SavedGame`](../src/relaygame/save_game.h) содержит `RuntimeLevelSnapshot`, player pose/motion, отпечаток карты, время игры, фонарик, состояния подвижных противников и плоскую историю неактивных карт. Запись использует формат 5; parser принимает 1–5. Формат 5 добавляет состояние сдерживания G-019. Выбранное оружие входит в snapshot; форматы 1–3 выбирают точное оружие, форматы 4–5 требуют допустимый выбор и наличие дробовика в инвентаре при его выборе. Применение дополнительно проверяет fingerprint, состав противников и совместимость runtime snapshot. Поэтому поддержка чтения старой версии не означает возможность продолжить любую старую карту.
 
-`DemoGame` владеет дисковым прогрессом и историей посещённых карт. `save_progress` записывает разрешённую игровую сессию; editor/preview не записываются. Состояние смерти также сохраняется вместе с оставшимся временем до respawn: выход во время смерти не откатывает мир к предыдущему сохранению. После «Продолжить» завершается ожидание и игрок возвращается к spawn с полным здоровьем. Автосохранение срабатывает при смене задания, через 25 секунд, при паузе и выходе. Смерть сохраняет задачи, устройства и состояние врагов; это не откат к дисковому checkpoint. Формат сохранения остаётся 4.
+`DemoGame` владеет дисковым прогрессом и историей посещённых карт. `save_progress` записывает разрешённую игровую сессию; editor/preview не записываются. Состояние смерти также сохраняется вместе с оставшимся временем до respawn: выход во время смерти не откатывает мир к предыдущему сохранению. После «Продолжить» завершается ожидание и игрок возвращается к spawn с полным здоровьем. Автосохранение срабатывает при смене задания, через 25 секунд, при паузе и выходе. Смерть сохраняет задачи, устройства и состояние врагов; это не откат к дисковому checkpoint. Текущий формат сохранения — 5.
 
 F9 создаёт `EncounterSnapshot`: полный `SavedGame` текущей карты, время сцены и состояния эффектов окружения. F10 подготавливает восстановление на копии `GameWorldRuntime`, проверяет камеру и только затем заменяет runtime. Восстанавливаются движение и взгляд игрока, здоровье/тайминги боя, rover state, двери, предметы, миссия, simulation tick, фонарик и фазы оборудования. Краткие трассеры, hit confirmation и feedback устройств от отброшенной попытки очищаются. Ошибки подготовки публикуются в iteration diagnostics и сохраняют прежнюю активную сессию.
 
@@ -104,7 +107,7 @@ F7 перечитывает engine/render authoring config и текущую к�
 
 ## Graphics backend direction
 
-Direct Vulkan 1.3 — единственный runtime backend после VK-013. VK-014 завершил ревью ownership/error paths и снял локальный Tracy/RenderDoc baseline. Loader API 1.3 недостаточно: startup проверяет dynamic rendering, synchronization2, timeline semaphore, SDL graphics/present queues, `VK_KHR_swapchain`, `VK_KHR_swapchain_maintenance1` / `swapchainMaintenance1`, `VK_KHR_surface_maintenance1` и `VK_KHR_get_surface_capabilities2`. Tracy-сборка дополнительно требует host query reset и timestamp queries на graphics queue. Эти требования осознанно ограничивают совместимость; её подтверждает реальный запуск, не toolchain probe.
+Direct Vulkan — единственный runtime backend после VK-013; с 2026-10-12 обязательный минимум loader/GPU — API 1.4. Instance/effective/VMA API — 1.4, версия видна в renderer-owned capabilities; fallback и forced-1.3 mode удалены. VK-014 завершил ревью ownership/error paths и снял локальный Tracy/RenderDoc baseline. Loader API 1.4 недостаточно: startup проверяет dynamic rendering, synchronization2, timeline semaphore, SDL graphics/present queues, `VK_KHR_swapchain`, `VK_KHR_swapchain_maintenance1` / `swapchainMaintenance1`, `VK_KHR_surface_maintenance1` и `VK_KHR_get_surface_capabilities2`. Tracy-сборка дополнительно требует host query reset и timestamp queries на graphics queue. Эти требования осознанно ограничивают совместимость; её подтверждает реальный запуск, не toolchain probe.
 
 E-003 вводит первый native MeshAsset/ModelAsset product: GLB компилируется отдельным инструментом в `.rcmodel`, engine читает CPU geometry, opaque RGBA материалы и transforms частей. `StaticModelCache` разделяет неизменяемые ресурсы; game передаёт части в существующую очередь, backend владеет GPU uploads. OBJ/BMP остаются действующим путём прежних моделей.
 
@@ -113,9 +116,10 @@ preserving v1–3 lighting. A game-owned prepared scene may supply one static
 reflection cube with bounds; the engine owns its validated CPU product, Vulkan
 upload and descriptors. Inside its bounds, box-projected GGX IBL replaces SH
 specular; material AO attenuates indirect illumination only. Capture/staleness
-inputs are documented in DEVELOPMENT.md. Lightmaps, dynamic reflections and
-emissive native textures remain separate capabilities.
+inputs are documented in DEVELOPMENT.md. Lightmaps and dynamic reflections
+remain separate capabilities. IMG-06 adds native v5 emissive
+textures/factors; the reader accepts products v1–5.
 
 Долгосрочные engine/world/render constraints находятся в `ENGINE_ARCHITECTURE_REFERENCE.md`, порядок перехода — в `VULKAN_MIGRATION_PLAN.md`, approved third-party foundations и staged vcpkg policy — в `DEPENDENCY_STACK.md`. Эти документы задают направление и границы, а фактические этапы интеграции фиксирует roadmap.
 
-E-010 ввёл общий заимствующий `physics::WorldQuery` для combat/LOS/focus и AABB movement. E-011 добавил отдельный immutable `PhysicsWorld` со static boxes/mesh rays, box casts и overlaps на Jolt. `LevelSessionBuilder::build_physics_fixture` готовит его явно; `GameWorldRuntime` получает владение при activation. Копии prepared fixture session разделяют immutable collision data, поэтому её lifetime длится до освобождения последнего владельца; queries не хранят body handles вне physics. Обычные игровые карты по-прежнему готовятся через `build()` и используют AABB movement/query backend. Mesh movement parity и production collision products относятся к E-012/E-013; `Application` collision сценой не владеет.
+`physics::WorldQuery` обслуживает combat/LOS/focus и movement. Карты без native collision сохраняют AABB backend. Если `prop_static` явно задаёт collision product, `LevelSessionBuilder::build()` загружает отдельный `.rccollision`, проверяет pairing с моделью, применяет placement transform и создаёт immutable Jolt `PhysicsWorld` вместе с world colliders. Render triangles не становятся коллизией автоматически. `GameWorldRuntime` получает shared ownership при activation; копии prepared session разделяют immutable collision data, queries не выносят Jolt handles за границу physics. `Application` collision сценой не владеет. Контракт авторинга, компиляции и staging — в [COLLISION_ASSETS.md](COLLISION_ASSETS.md).

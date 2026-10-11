@@ -12,9 +12,9 @@ are retained in `manifest.json`.
 Both are CC0. Only diffuse and OpenGL tangent-space normals are used.
 `scripts/export-containment-glb.py::scanned_metal` recolors the diffuse while
 preserving photographic value variation and some oxide chroma. The source
-files remain unchanged. Roughness/metallic are supported scalar factors:
+files remain unchanged. These scanned source materials use scalar roughness/metallic factors:
 paint is mostly dielectric; exposed steel uses the metal factor. No roughness,
-metalness or AO map is passed to the native importer.
+metalness or AO source map is imported by this scanned-metal helper. IMG-01/03 subsequently add locally authored MR/AO maps to selected Guardian/ram materials; those are not downloaded Poly Haven channels.
 
 The surfaces are used by this chapter's six equipment/lining assemblies and
 the Guardian restraint/remaining shells. Guardian organic UVs remain unchanged.

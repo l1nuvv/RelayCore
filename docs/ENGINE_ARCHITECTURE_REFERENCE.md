@@ -4,6 +4,18 @@ Status: long-term architecture/reference document, not an automatic implementati
 
 Basis: repository snapshot `1.3.4` supplied 2026-09-30. Current source, tests, runtime evidence, and the user's current task override this document when they disagree.
 
+Current implementation checkpoint — 2026-10-10: Vulkan is the only runtime backend;
+RmlUi owns player UI, while ImGui remains for developer tools. Native models use
+product v5 (reader accepts v1–5), including normal/metallic-roughness/AO/emissive
+maps; static reflection probes and explicit native collision products are implemented.
+Maps with collision-product placements use the Jolt query world; other maps retain
+AABB. Save writer uses format 5, reader accepts 1–5. G-019 and the eight-map campaign
+have technical evidence; human acceptance remains open. Current contracts belong to
+[ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
+[COLLISION_ASSETS.md](COLLISION_ASSETS.md), and the [roadmap](PLAYABLE_SLICE_ROADMAP.md).
+
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
+
 ## 1. When to read this
 
 Read this file for work that materially affects engine/world architecture, scene/level representation, asset import/compilation/loading, rendering, materials, lighting, collision/physics world, navigation, visibility/streaming, animation/FX, or Source/Source 2 compatibility.
@@ -45,7 +57,7 @@ A Source 2 map port is therefore an integration test of RelayCore's own systems.
 
 ### 2.1 Graphics direction
 
-Direct Vulkan 1.3 is the runtime graphics API after VK-013 cutover. The original OpenGL implementation supplied parity evidence and has been removed.
+Direct Vulkan is the runtime graphics API after VK-013 cutover; VK14-01 prefers 1.4 while retaining the required 1.3 baseline. The original OpenGL implementation supplied parity evidence and has been removed.
 
 The migration must preserve visible behavior before adding the next generation of renderer features. In particular, do not combine backend parity work with an HDR/material/lightmap/probe redesign unless a small prerequisite is unavoidable.
 
@@ -61,8 +73,8 @@ The preferred Vulkan support stack is deliberately small:
 - Khronos Validation Layers for API/synchronization/GPU-assisted validation;
 - Tracy Vulkan integration for GPU profiling;
 - RenderDoc for frame capture and GPU inspection;
-- fastgltf, meshoptimizer, KTX2/libktx and BLAKE3 later in the asset pipeline where their owning compiler stages exist; Zstandard only for intentional/measured general product compression.
-- Jolt Physics is the approved future general physics/collision foundation; Recast/Detour is the approved future navigation foundation. Their implementation types stay behind RelayCore subsystem contracts.
+- fastgltf already fronts static GLB compilation. meshoptimizer, KTX2/libktx and BLAKE3 remain later asset-pipeline choices when their owning stages begin; Zstandard is reserved for intentional/measured product compression.
+- Jolt Physics already owns the static native collision/query path; general dynamics and character replacement remain separate milestones. Recast/Detour is the approved future navigation foundation. Their implementation types stay behind RelayCore subsystem contracts.
 - miniaudio remains the audio foundation; Steam Audio is an approved later spatial-acoustics extension, not a replacement for `AudioSystem`.
 
 `volk` is **not** a default dependency for the first migration. The current vcpkg Dear ImGui Vulkan binding links the normal Vulkan loader; mixing that with volk's no-direct-loader model creates unnecessary build/loader complexity. Reconsider volk only if the project intentionally moves all Vulkan consumers, including ImGui integration, to one consistent custom-loader path.
@@ -281,9 +293,9 @@ Use modern core facilities instead of Vulkan-1.0-era architecture:
 - SPIR-V produced offline/build-time from Slang;
 - pipeline/cache handling kept explicit and measurable.
 
-Vulkan 1.3 is the minimum runtime API for the current migration, agreed with the project owner during VK-002 on 2026-10-01. Required device feature bits remain explicit. Introduce Vulkan 1.4 facilities through concrete owning tasks with instance/device API, extension and feature checks; use a supported extension or implemented alternative on 1.3, or fail startup if the facility is mandatory and unavailable. Do not call unsupported functions based only on the developer GPU's capabilities.
+Vulkan 1.4 is the minimum loader and physical-device API, requested by the project owner on 2026-10-12. Instance and VMA use API 1.4; there is no 1.3 fallback or forced-1.3 mode. Required device feature bits remain explicit. Introduce additional facilities through concrete owning tasks with extension and feature checks; an unsupported mandatory facility must fail startup with a concrete diagnostic. Optional RT/mesh/VRS/HDR capabilities retain their own checks and alternatives.
 
-VK-003 additionally requires `VK_KHR_swapchain_maintenance1` with `swapchainMaintenance1` and its instance extension dependencies. Present fences give swapchain and presentation semaphore references a defined destruction/reuse point without device-wide idle during frames or resize. This requires supporting drivers; missing extensions/features fail startup explicitly. API 1.3 alone does not establish presentation compatibility.
+VK-003 additionally requires `VK_KHR_swapchain_maintenance1` with `swapchainMaintenance1` and its instance extension dependencies. Present fences give swapchain and presentation semaphore references a defined destruction/reuse point without device-wide idle during frames or resize. This requires supporting drivers; missing extensions/features fail startup explicitly. API 1.4 alone does not establish presentation compatibility.
 
 ### 6.3 Frame/resource lifetime pattern
 
@@ -339,6 +351,8 @@ Preferred product/tool choices:
 None of these are mandatory dependencies before their owning asset-pipeline milestone starts.
 
 ## 8. Capability targets
+
+This section describes capability targets, including implemented subsets. Current native v5 models already carry indexed geometry/tangents, material parts, base-color/normal/MR/AO/emissive maps and instance transforms. FP16 HDR, dynamic lights/shadows, baked SH irradiance and one bounded static reflection probe are implemented; lightmaps, dynamic reflections, alpha-native materials, skeletal animation and general navmesh remain outside that subset. Static native collision is integrated behind `WorldQuery`; authored encounter routes are bounded gameplay data, not Recast/Detour navigation.
 
 ### Mesh/model
 
@@ -475,9 +489,9 @@ Execute `docs/VULKAN_MIGRATION_PLAN.md`: bootstrap/toolchain → device/swapchai
 
 ### C — Native production assets
 
-Current scheduling decision (2026-10-02): the owner deferred blind playtesting/another GPU and explicitly authorized E-003, the first static MeshAsset/ModelAsset slice. GLB is compiler input; `.rcmodel` is the versioned native runtime product with opaque base-color materials. Further asset/rendering scope remains tied to demonstrated content needs and measurements; this slice does not authorize the rest of this program.
+Historical scheduling decision (2026-10-02): the owner deferred blind playtesting/another GPU and explicitly authorized E-003, the first static MeshAsset/ModelAsset slice. GLB is compiler input; `.rcmodel` is the versioned native runtime product. Subsequent implemented capabilities are summarized at the top of this document; their scope and evidence belong to the roadmap. Further asset/rendering scope remains tied to demonstrated content needs and measurements; the original slice did not authorize the rest of this program.
 
-The owner's continuation starts E-004: declared GLB sources compile into per-configuration build products before runtime staging, with SHA256 receipts checked during packaging. This uses CMake file dependencies, without introducing an asset cache, changing the model format, or expanding the renderer's material capabilities.
+E-004 completed the declared GLB build/staging slice: sources compile into per-configuration products, with SHA256 receipts checked during packaging. It used CMake file dependencies without a general asset cache. Later material/product versions are separate completed tickets; E-004 is not the next task.
 
 Add production mesh/model data, texture products, material representation, resource references/dependencies as actually needed, and a richer native level/instance path that coexists with `BlockoutLevel`.
 

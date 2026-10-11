@@ -2,7 +2,9 @@
 
 Дата исходного анализа: 2026-09-29. Направление gameplay актуализировано по авторскому отзыву 2026-10-09; исторические проверки ниже сохранены отдельно.
 
-Этот документ хранит стратегию, зависимости, milestones и решения о границах разработки. Актуальный план — раздел [Development strategy](#development-strategy--2026-10-07); нижележащие N0–N8 и M0–M6 сохраняют историю прежнего планирования. Единственная implementation-очередь, фактические статусы tickets и evidence остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md). Запись плана не запускает реализацию автоматически.
+Этот документ хранит стратегию, зависимости, milestones и решения о границах разработки. Актуальный план — раздел [Development strategy](#development-strategy--2026-10-07); нижележащие N0–N8 и M0–M6 сохраняют историю прежнего планирования. Gameplay/content implementation-очередь, фактические статусы её tickets и evidence остаются в [PLAYABLE_SLICE_ROADMAP.md](PLAYABLE_SLICE_ROADMAP.md). Запись плана не запускает реализацию автоматически.
+
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
 
 ## Development strategy — 2026-10-07
 
@@ -11,6 +13,11 @@
 **Текущий gameplay priority — [G-019](PLAYABLE_SLICE_ROADMAP.md#g-019--полноценная-глава-связный-маршрут-угроза-и-задача).** Новое поручение заменяет ближайший
 порядок мелкой доводки комнат и производства следующей короткой карты.
 Старые технические результаты остаются evidence своих задач.
+
+**Обновление решения автора, 2026-10-10:** G-019 принята. Единственное
+замечание — уровень пустой по декорациям и наполнению; это предмет следующего
+прохода по окружению главы. Приёмка и её границы записаны в roadmap и протоколе;
+независимые замеры первого прохода не предоставлены.
 
 **Требования автора, обязательные для следующей реализации:**
 
@@ -142,13 +149,11 @@ D технически поставил native hero assets и окружение
 50–60% робота. Автор отверг избыток механики: ударная рука теперь целиком
 кровавая органика, половина спины открыта. По замечанию о «пластилине»
 оставшиеся оболочки и оборудование главы получили scanned albedo/normal.
-По поручению автора 2026-10-09 человеческий проход временно отложен:
-продолжать независимую доводку проекта по подтверждённым проблемам с узкими
-regression checks. Авторская оценка нового вида и checkpoint E, самостоятельный
-проход главы по [протоколу](playtests/G-019-2026-10-09.md) с отдельным профилем,
-остаются открытыми и не блокируют такую разработку.
-D остаётся `awaiting_playtest`: человеческая ценность AI/combat,
-финальная art acceptance и 20–30 минут ещё не приняты; общий G-019 — `in_progress`.
+По поручению автора 2026-10-09 человеческий проход был временно отложен;
+независимая доводка продолжалась по подтверждённым проблемам с узкими
+regression checks. Автор 2026-10-10 принял G-019 с замечанием о декорациях
+и наполнении. Детальные результаты самостоятельного прохода по
+[протоколу](playtests/G-019-2026-10-09.md) и замер 20–30 минут не предоставлены.
 Короткие карты остаются fixtures/донорами kit, а не законченной главой.
 Исторические планы ниже не имеют приоритета над этим решением.
 
@@ -169,27 +174,27 @@ Player-facing HUD и UI переведены на выбранный автор�
 | Area | Current state / evidence | Limitation / urgency |
 | --- | --- | --- |
 | Lifecycle и ownership | [Application](../src/relaycore/app/application.cpp) владеет SDL/window/renderer/audio/delegate; EngineServices заимствует доступ | Сохранять порядок shutdown и session replacement; нового service framework не нужно |
-| Simulation/input | [FixedSimulationLoop](../src/relaygame/fixed_simulation_loop.h), 120 Hz; discrete actions ждут tick; отдельный ImGui input ownership | Retry/activation проверять на границах состояний |
-| Engine/game | Игра готовит typed runtime collections и render submissions; engine не зависит от game headers | Combat primitives/GameHud специализированы, но feature blocker для массового переноса не установлен |
+| Simulation/input | [FixedSimulationLoop](../src/relaygame/fixed_simulation_loop.h), 120 Hz; discrete actions ждут tick; игровые меню получают ввод через RmlUi, developer tools — через ImGui | Retry/activation проверять на границах состояний |
+| Engine/game | Игра готовит typed runtime collections и render submissions; engine не зависит от game headers | PlayerUi получает RelayCore-owned presentation/actions; игровые правила остаются у игры. Массовый перенос модулей не нужен |
 | Vulkan | [VulkanDevice](../src/relaycore/render/vulkan_device.cpp), swapchain, VMA, dynamic rendering, synchronization2, timeline uploads, Slang SPIR-V | Migration завершена; API 1.3 недостаточно без требуемого swapchainMaintenance1; другой GPU ещё не принят |
 | Rendering | [WorldSceneRenderer](../src/relaygame/world_scene_renderer.cpp): opaque/overlay/transparent, shadow casters/viewmodel, chunk/frustum culling, transparency sorting | Отдельные draw submissions; measured steady-state scaling bottleneck не установлен |
-| Materials/light | [.rcmodel v3](../src/relaycore/render/model_asset.h): normal/tangents, scalar roughness/metalness; shadows, HDR/tone mapping, SH9 probes | Нет ORM/emissive maps/environment specular; probes используются не всеми игровыми картами |
-| GPU preparation | [VulkanMeshRenderer](../src/relaycore/render/vulkan_mesh_renderer.cpp) приобретает mesh/material и ждёт uploads при первом render | Подтверждённый consumer E-018; NOW |
-| Native pipeline | [20 GLB declarations](../cmake/RelayCoreModelAssets.cmake), importer, versioned products, SHA256 receipts, manifest/staging/cache/reload | Static opaque subset; embedded textures; нет universal catalog/content cache, и пока они не обязательны |
+| Materials/light | [.rcmodel v5](../src/relaycore/render/model_asset.h): normal/tangents, MR/AO/emissive maps/factors, HDR/tone mapping, irradiance и static GGX reflection probes | Reflection — один authored static cube на карту; нет dynamic reflections, alpha, KTX2/shared texture products |
+| GPU preparation | [VulkanMeshRenderer](../src/relaycore/render/vulkan_mesh_renderer.cpp) подготавливает known scene meshes/materials до первого игрового render; E-018 выполнен | UI atlases имеют свой first-use lifecycle; новые assets требуют проверки подготовки |
+| Native pipeline | [Явный список GLB](../cmake/RelayCoreModelAssets.cmake), importer, versioned products, SHA256 receipts, manifest/staging/cache/reload | Static opaque subset; embedded textures; нет universal catalog/content cache, и пока они не обязательны |
 | Physics | [WorldQuery](../src/relaycore/physics/world_query.h), [PhysicsWorld](../src/relaycore/physics/physics_world.h): AABB плюс opt-in Jolt static meshes/sweeps, independent collision product | Dynamics/CharacterVirtual отсутствуют; useful static Jolt slice уже выполнен |
-| Gameplay | Два оружия, rover/turret/hazards, interaction/mission, death/continue/finale/transitions; [pressure tests](../tests/pressure_transfer_tests.cpp) | Поздний respawn у исходного входа; самостоятельное качество нового эпизода ещё не принято |
-| AI | [Enemy runtime](../src/relaygame/enemy_runtime.cpp): LOS/range, last_seen, Idle/Chasing/Windup/Recovery/Dead | Нет обхода препятствий; текущие две тактики работают, E-016 условный |
+| Gameplay | Два оружия, rover/turret/shooter/Guardian, interaction/mission, authored retry, save format 5, восемь связанных карт и финал; [chapter tests](../tests/containment_loop_tests.cpp) | 20–30 минут и игровая ценность главы не подтверждены самостоятельным проходом |
+| AI | [Enemy runtime](../src/relaygame/enemy_runtime.cpp): LOS/range/last_seen, bounded authored encounter routes и мобильный стрелок G-019-C | Routes ограничены одним плоским этажом; нет общего Recast/Detour navigation world |
 | Authoring/tools | [Editor](../src/relaygame/level_editor_document.h): transforms/properties/placement/browser/links/undo/preview; collision overlay/inspection, CLI checker | Save flatten-ит groups/templates; repository source, staged assets и user copy различаются |
 | Engineering | [Presets](../CMakePresets.json), [tests](../tests/CMakeLists.txt), [CI](../.github/workflows/ci.yml), ASan/clang-tidy/Tracy, release/update tools | GPU CI opt-in; существующие reports не равны новому полному зелёному baseline |
 
-Устойчивая foundation для текущего масштаба: explicit lifecycle, fixed-step/input, prepared session replacement, interaction/combat/mission/save flows, Vulkan cutover и declared native model build/staging. Transitional: сосуществование AABB/OBJ/BMP/native paths, синхронный scene submission, lazy GPU acquisition, string-based authored properties, save fingerprint и editor flattening. Это ограничения, а не автоматическая очередь rewrite.
+Устойчивая foundation для текущего масштаба: explicit lifecycle, fixed-step/input, prepared session replacement, interaction/combat/mission/save flows, Vulkan cutover, declared native model build/staging и scene GPU preparation. Transitional: сосуществование AABB/OBJ/BMP/native paths, синхронный scene submission, string-based authored properties, save fingerprint и editor flattening. Это ограничения, а не автоматическая очередь rewrite.
 
 G-011–G-014 технически реализованы, но человеческая приёмка открыта. Только направления/условная работа: navigation, KTX2/shared textures, animation, dynamics, common catalog/compiler, Source 2 importer. Не предлагать заново Vulkan migration, VMA, Slang, native models, normal maps, HDR, decals, steam/sparks или frustum culling: они уже существуют в ограниченном полезном виде.
 
 ### Bottlenecks и баланс engine/game
 
 1. **Player experience подтверждён слабее технической достижимости.** [G-011](playtests/G-011-2026-09-29.md) и [G-012/G-013](playtests/G-012-2026-10-07.md) сохраняют незаполненные человеческие критерии. Scripted routes не доказывают pacing, самостоятельный выбор оружия, читаемость проёма или удовольствие. Эти утверждения остаются Hypothesis.
-2. **Retry и session entry имеют конкретные издержки.** [Respawn](../src/relaygame/game_world_runtime_feedback.cpp) возвращает к исходному spawn при сохранённом progress; [G-014 profile](profiling/G-014-2026-10-07.md) фиксирует first-frame uploads/waits. Это G-015/E-018, а не новый save/renderer framework.
+2. **Исторические retry/session-entry проблемы устранены в своих границах.** G-015 добавил authored retry, E-018 перенёс подготовку GPU resources до render. [G-014](profiling/G-014-2026-10-07.md) сохраняет исходный профиль; [E-018](profiling/E-018-2026-10-07.md) — before/after. Возвращаться к ним следует при новом воспроизведении, а не повторять реализованные tickets.
 3. **Повторяемость content production не измерена.** Assets/tools есть, но скорость изготовления следующей комнаты/эпизода и самая дорогая ручная операция неизвестны. Likely следующий прирост — reusable kit и локальное сокращение workflow, не universal editor/database.
 
 Проект сейчас сильнее ограничен game/content iteration, чем отсутствием engine capabilities. Рабочая стратегическая оценка — около двух третей продуктовых/content ограничений и одной трети конкретных engine/workflow ограничений; это не статистика. Native models/static collision перестали быть исходными capability blockers. AI становится blocker только на необходимом layout с воспроизводимым обходом.
@@ -212,22 +217,22 @@ collision TOML → compiler → independent .rccollision + pairing/receipt
 map/models/materials/grid → fingerprint/baker → .rcprobe → runtime staleness check
 ```
 
-Несколько primitives/materials/transforms уже поддержаны. .rcmodel v3 читает также v1/v2. Unsupported skins/animation/morphs/alpha/double-sided/maps диагностируются. Collision не выводится неявно из render triangles. Relative product path — текущая authored asset identity; canonical path/encoding/file metadata — runtime cache key, а не content-addressed compiler cache. Reload следует за build/staging и сохраняет рабочий ресурс при failed preparation.
+Несколько primitives/materials/transforms уже поддержаны. `.rcmodel` writer использует v5, reader — v1–v5. Normal/MR/AO/emissive maps поддержаны в documented subset; skins/animation/morphs/alpha/double-sided и неподдерживаемые attributes/extensions диагностируются. Collision не выводится неявно из render triangles. Relative product path — текущая authored asset identity; canonical path/encoding/file metadata — runtime cache key, а не content-addressed compiler cache. Reload следует за build/staging и сохраняет рабочий ресурс при failed preparation.
 
 **Минимальный следующий прирост pipeline:** reusable набор existing props/materials/collision conventions → новая комната через TOML/editor → запись ручных шагов/задержек → одно локальное исправление. E-017 уже переиспользует актуальные irradiance products; старый 202-секундный rebake не оправдывает новый cache framework.
 
 | Direction | Priority / consumer |
 | --- | --- |
-| GPU preparation | NOW: session entry/retry pressure_transfer, E-018 |
+| GPU preparation | E-018 реализован; расширять только при новом неподготовленном ресурсе или measured hitch |
 | Lighting/shadows | Сначала authored настройка и наблюдение читаемости угроз/устройств; не новый lighting framework |
 | Decals/FX/transparency | Использовать существующие marks/steam/sparks/sorting; impact visual или native alpha — под конкретный недостаток/asset |
-| ORM/emissive/reflections | Later: один используемый asset не выражается factors/текущим освещением |
+| MR/AO/emissive/reflections | IMG-01–06 реализованы на chapter consumers; человеческая visual acceptance открыта |
 | KTX2/shared textures | Later: compressed/offline mip/HDR/cubemap или measured memory/loading consumer |
 | Skinning/animation | Later: реальный animated enemy/character |
 | Batching/instancing/occlusion/streaming | Только measured scene submission/GPU/memory pressure; shared CPU assets уже есть, instanced GPU draws ещё нет |
 | Shader tooling | Build-time Slang/SPIR-V и rollback; reflection/checks при конкретной interface problem |
 | Render graph/bindless/GPU-driven/async transfer | Сейчас consumer не установлен |
-| Physics | Useful Jolt slice уже выполнен; следующий independent collision product под traversable geometry; dynamics только под игровое взаимодействие |
+| Physics | Native collision/query/movement slices E-012–14 выполнены; новые products по конкретной геометрии, dynamics только под игровое взаимодействие |
 
 ### Стратегические варианты
 
@@ -242,11 +247,11 @@ map/models/materials/grid → fingerprint/baker → .rcprobe → runtime stalene
 
 ### NOW / NEXT / LATER / NOT NOW
 
-**NOW, уточнение 2026-10-09:** [VIS-49](PLAYABLE_SLICE_ROADMAP.md#vis-49--проверка-накопленного-art-pass-и-графического-regression) — сначала объяснить известное scene-only несовпадение `graphics.power_restoration_slice`, затем подготовить локальную оценку оружия, тела, света, угроз и состояний в движении. VIS-43 переводит игровой HUD/UI на отдельную основу и может продвигаться независимо от приёмки мира. **NEXT:** VIS-44–46 на новой основе; дальнейшая доводка по конкретным наблюдениям. Мелкий material/CRT/wear pass и углубление процедурной походки отложить до подтверждённой пользы; перед переходом к полноценному персонажу определить rig/animation consumer. Статусы, scope и evidence принадлежат roadmap, результаты проверки этим обновлением не заявляются.
+**NOW:** G-019 принята автором 2026-10-10; новая работа выполняется по поручению автора и подтверждённой проблеме. VIS-43–46 и IMG-01–06 технически реализованы, E-016 дал bounded encounter routes, G-010 — мобильного стрелка. Повторно реализовывать их как «следующие задачи» не нужно. Отдельные критерии приёмки, непрерывный sound-on профиль и другой GPU сохраняются в roadmap.
 
-D1/G-015 и D2/E-018 выполнены; технические итерации D3/G-016 завершены. Автор 2026-10-08 отложил приёмку G-016 и поручил D4: «Контур охлаждения» технически реализован как [G-017](PLAYABLE_SLICE_ROADMAP.md#g-017--d4--контур-охлаждения-и-повторяемое-производство). Открытые приёмка G-017, прослушивание/слепой тест/G-016, D5 и полный профиль сохраняются; внешний playtest и другой ПК не возобновляются автоматически. E-016, новый collision product и material slice — условные ветви по consumer. Сделанный art-pass не откатывать и не повторять без конкретной причины.
+D1/G-015, D2/E-018 и технические итерации D3/G-016, D4/G-017 выполнены. **NEXT:** наполнение G-019 по последовательности в roadmap: исходные виды/kit → зал и пост → мастерская → архив → лабораторное крыло → верхний сервисный маршрут → детали/свет → проверка и приёмка. Независимый проход по протоколу остаётся отдельным источником наблюдений. Сделанный art-pass и принятые baseline samples сохраняются; возвращаться к ним нужно по новому воспроизведению.
 
-**LATER:** Recast/Detour, KTX2/shared textures, animation, reflection probes и Source 2 offline import после собственных native-content gates. **NOT NOW:** ECS, service/DI/plugin frameworks, render graph, bindless/GPU-driven/ray tracing, scripting/networking, engine-wide jobs, universal asset database, procedural generation, general dynamics, custom allocator, large rewrite.
+**LATER:** Recast/Detour, KTX2/shared textures, skeletal animation, dynamic reflections и Source 2 offline import под конкретный consumer. **NOT NOW:** ECS, service/DI/plugin frameworks, render graph, bindless/GPU-driven/ray tracing, scripting/networking, engine-wide jobs, universal asset database, general dynamics, custom allocator и large rewrite.
 
 ### Milestones и impact
 
@@ -517,7 +522,9 @@ G-019; локальные инициативы ниже сохраняются �
 
 **Exit:** критерии приняты или конкретные ограничения явно согласованы. H-009 delivery отдельно по запросу candidate/release. **Stop:** исправлять observed/measured проблемы; не превращать hardening в общую portability программу.
 
-### Dependency graph
+### Dependency graph — исходная схема 2026-10-07
+
+G-015/E-018 и последующие compact episodes уже технически выполнены. E-016 и G-010 получили consumer в G-019. Схема сохраняет первоначальное основание порядка, а не назначает эти этапы следующими задачами.
 
 ```text
 Existing Vulkan/native models/static collision
@@ -535,11 +542,11 @@ Navigation не требуется retry/текущим двум тактика�
 
 | Existing item | Decision | Reason |
 | --- | --- | --- |
-| G-015 / E-018 | KEEP | Подтверждённые consumers; E-018 требует свежего baseline |
+| G-015 / E-018 | KEEP completed | Retry и GPU preparation выполнены; E-018 имеет сопоставимый before/after |
 | G-011–G-014 | KEEP | Открытая человеческая приёмка сохраняется |
 | H-008 | MODIFY | G-014 — partial local evidence; full route/другой ПК открыты |
 | H-009 | REORDER | После приёмки/профиля и прямого delivery request |
-| E-016 / G-010 | KEEP deferred | Нужен blocker/недостаток существующих угроз |
+| E-016 / G-010 | KEEP implemented | G-019 дал consumer: bounded encounter routes и mobile shooter; human acceptance G-010 остаётся открытой |
 | E-003–E-014 / E-015 / E-017 / VK milestones | KEEP completed | Не повторять implementation; technical gates не закрывают human acceptance |
 | Architecture C/D/E | MODIFY | Многие slices выполнены; broad production capability не объявлять целиком законченной |
 | N5 rich features | MODIFY | По одному consumer, не обязательный комплект систем |
@@ -600,13 +607,15 @@ Asset pipeline останавливается, когда assets consumer вос
 
 ### Три следующих действия
 
-1. G-015: regression case смерти после mixed-hall entry с сохранением kills/mission/inventory, затем безопасная authored retry pose.
-2. E-018: повторить существующий optimized `--pressure-transfer --profile` на текущей карте; отдельно loading/first/warm и identity inputs.
-3. После retry: авторский проход pressure_transfer, запись потери маршрута/выбора оружия/повторного подхода; выбрать одну confirmed gameplay problem.
+1. Выбирать новую работу по текущему поручению и открытой проблеме, сверяя owning ticket; G-015/E-018 уже выполнены.
+2. При самостоятельном проходе G-019 записать реальную длительность, решения, затруднения, звук и Continue/retry по протоколу; технические проверки не закрывают human acceptance.
+3. По результату выбрать одну подтверждённую причину для следующей итерации. Если playtest пока недоступен, сохранять его критерии открытыми и выполнять только отдельно порученную работу.
 
 ## Текущий цикл — игровая отдача native-базы, 2026-10-07
 
-Этот раздел сохраняет основания и последовательность начала цикла. E-015/E-017 и технические G-013/G-014 уже выполнены; актуальный приоритет определяет Development strategy выше и единственная очередь roadmap. Формулировки о первоначальных проблемах ниже относятся к началу цикла.
+Историческая запись цикла 7 октября: E-015/E-017/G-015/E-018 затем выполнены, E-016/G-010 реализованы под главу G-019. Описанные ниже исходные проблемы и порядок объясняют решения того цикла; текущие возможности и работа — в разделах выше и roadmap.
+
+Этот раздел сохраняет основания и последовательность начала цикла. E-015/E-017 и технические G-013/G-014 уже выполнены; актуальный gameplay/content приоритет определяет Development strategy выше и очередь roadmap. Формулировки о первоначальных проблемах ниже относятся к началу цикла.
 
 Автор поручил продолжить развитие игры и движка на текущем ПК, временно отложив нового игрока и другой компьютер. Эти проверки сохраняют прежние открытые критерии, но не блокируют реализацию следующего цикла. Упаковка и публикация в поручение не входят. Статусы и evidence ведутся только в [roadmap](PLAYABLE_SLICE_ROADMAP.md#e-015--surface-aware-impact-feedback-по-потребности-n5).
 
@@ -643,7 +652,7 @@ Tracy G-014 выявил first-use uploads/waits в первом кадре но
 
 Ближайший инженерный результат — согласованные world queries и независимая статическая mesh-коллизия для native-контента, с сохранением принятого движения. Следующий продуктовый результат — принятый самостоятельный эпизод с двумя оружиями, затем небольшой игровой участок, использующий новые native world capabilities. Проверочная комната N1 уже существует; повторять её создание не требуется. Offline-перенос представительной Source 2/CS2-карты сохраняется как долгосрочный исследовательский трек после проверки собственных возможностей на игровом контенте.
 
-Порядок основан на [roadmap](PLAYABLE_SLICE_ROADMAP.md), [engine reference](ENGINE_ARCHITECTURE_REFERENCE.md), [Vulkan plan](VULKAN_MIGRATION_PLAN.md), [dependency policy](DEPENDENCY_STACK.md), [runtime architecture](ARCHITECTURE.md), [development workflow](DEVELOPMENT.md), [art direction](ART_DIRECTION.md), [editor/campaign guide](EDITOR_AND_CAMPAIGN.md), [release plan](RELEASE_AUTOMATION_PLAN.md), [update contract](UPDATES.md), README и протоколах плейтестов. RC-022 color baseline, visual reference, authored-values audit и overlay contract использованы как история цветового pipeline и ограничения retuning; старые OpenGL-команды из них не являются текущим workflow.
+Порядок основан на [roadmap](PLAYABLE_SLICE_ROADMAP.md), [engine reference](ENGINE_ARCHITECTURE_REFERENCE.md), [Vulkan plan](VULKAN_MIGRATION_PLAN.md), [dependency policy](DEPENDENCY_STACK.md), [runtime architecture](ARCHITECTURE.md), [development workflow](DEVELOPMENT.md), [art direction](ART_DIRECTION.md), [editor/campaign guide](EDITOR_AND_CAMPAIGN.md), [release evidence](playtests/release-1.3.2.md), [update contract](UPDATES.md), README и протоколах плейтестов. RC-022 color baseline, visual reference, authored-values audit и overlay contract использованы как история цветового pipeline и ограничения retuning; старые OpenGL-команды из них не являются текущим workflow.
 
 Первоначальный план сверял model/mesh/import/build contracts, manifest, save parser, движение rover, CMake presets и отчёты E-004. Пересмотр 2026-10-04 использует текущие collision/player/combat/interaction/enemy callers, владельца `LevelSession`, static-prop authoring и записи E-005–E-009. Новая сборка и игровой проход при пересмотре не выполнялись.
 
@@ -659,17 +668,17 @@ Tracy G-014 выявил first-use uploads/waits в первом кадре но
 
 Jolt уже выбран в [dependency policy](DEPENDENCY_STACK.md#4-physics--jolt-physics); mesh collision, ray/shape queries и отдельные character helpers подтверждаются [официальным описанием Jolt](https://github.com/jrouwe/JoltPhysics#features). В E-011 добавлен Jolt 5.6.0#1 через pinned overlay с SSE2 minimum; общий baseline сохранён. Настройки и ограничения записаны в dependency policy.
 
-### Что уже есть и чего ещё нет
+### Что уже есть и чего ещё нет — сверка 2026-10-10
 
 | Область | Подтверждённое состояние | Следствие для плана |
 | --- | --- | --- |
-| Игра | `power_restoration`, два оружия, turret/rover/hazards, миссии, смерть/respawn, save/continue, переходы, Sandbox | Использовать существующие механики; G-009 завершена, G-010 отложена |
+| Игра | Связанная кампания из восьми карт, два оружия, turret/rover/mobile shooter/Guardian, задачи, retry, save/continue и Sandbox | G-009 завершена, G-010 технически выполнена и `awaiting_playtest`; новые механики требуют своего consumer |
 | Новый эпизод | `pressure_transfer` технически проходим; G-011 `awaiting_playtest` | Нужны наблюдения самостоятельного игрока, а не повторная реализация карты |
 | Vulkan | VK-013, VK-014 и VK-F01 завершены; единственный runtime backend | Развивать native capabilities поверх действующего backend |
-| Модели | GLB → `.rcmodel` v3; loader читает v1–v3; opaque base-color, normal и opt-in roughness/metalness factors | N2 native material slice завершён; IBL, material data maps, alpha, skin/animation ещё не поддерживаются |
+| Модели | GLB → `.rcmodel` v5; loader читает v1–v5; opaque base-color, normal, opt-in MR, AO и emissive | Material maps и bounded IBL реализованы; alpha-native, skin/animation остаются вне текущего subset |
 | Сборка контента | E-004: явный список GLB, per-preset products, staging, SHA256 receipts и packaging checks | Следующая модель должна проходить обычную сборку; общего asset catalog/cache ещё нет |
-| Геометрия/движение | AABB и opt-in native collision products; прежний box movement, mesh sweeps; rover движется к `last_seen` без поиска пути | Render-модель требует отдельной authored collision; consumer G-012 технически выполнен, human acceptance ожидается |
-| Освещение | Dynamic lights/shadows, fog/post; E-008 linear FP16 HDR/exposure/UI; E-009 baked diffuse SH9 probes | Native lab и G-012 имеют offline one-bounce products и invalidation; lightmaps, reflection probes и масштабирование света требуют отдельного consumer |
+| Геометрия/движение | AABB и opt-in native collision products; прежний box movement, mesh sweeps; E-016/G-019C используют bounded authored routes | Render-модель требует отдельной collision; общая navmesh/Recast не реализована. G-012 технически выполнен, human acceptance ожидается |
+| Освещение | Dynamic lights/shadows, fog/post, linear FP16 HDR/exposure, baked diffuse SH9 и bounded static reflection | One-bounce products и invalidation работают; lightmaps, dynamic reflections и масштабирование света требуют отдельного consumer |
 | Инструменты/доставка | Редактор и CLI проверки карты; Release/ZIP/updater уже существуют | Расширять действующий workflow под новый контент |
 | Приёмка | H-008/H-009 открыты; blind playtest и другой GPU ранее отложены автором | Инженерный трек может продолжаться; полную игровую и аппаратную приёмку не объявлять |
 
@@ -709,7 +718,7 @@ Jolt уже выбран в [dependency policy](DEPENDENCY_STACK.md#4-physics--j
 
 Зафиксировать текущую версию, source/content/build inputs и релевантные reports. При проверке кандидата использовать существующий подходящий artifact и его manifest; новый ZIP готовить только по прямому запросу на упаковку/выпуск. Коммит не является условием плана. Повторять проверки только при изменениях или сомнениях в соответствии бинарников исходникам.
 
-Проверить расхождения документации с текущими владельцами при следующей содержательной правке: старый editor guide описывает save format 2 и только OBJ/BMP, update guide содержит старое требование save format 3; текущая запись использует format 4 и читает 1–4. Roadmap называет G-011 ближайшим действием, но более поздние записи явно разрешают E-003/E-004 при отложенной человеческой проверке. Сохранять эту развилку явно. Pipeline overlay из старого аудита не назначать задачей до проверки текущих callers.
+Сверка документации выполнена 2026-10-10: editor/update/runtime guides описывают save format 5 с чтением 1–5, native model/collision и RmlUi ownership. Текущий gameplay трек — G-019 и сквозная кампания; ранняя очередь G-011/E-003 ниже сохраняет исторический контекст. Pipeline overlay старого аудита не назначать задачей до проверки текущих callers. Навигация по актуальным инструкциям и историческим evidence — [docs/README](README.md).
 
 **Готово:** известны исходный candidate и результаты проверок, исторические evidence отделены от новых, ни одна неподтверждённая приёмка не закрыта.
 
@@ -741,9 +750,10 @@ bad-product rollback/recovery и standalone ZIP. F7 применяется в о
 и E-007 roughness/metalness factors (2026-10-03). `power_cabinet` использует окрашенную
 сталь и открытый металл с GGX/Smith/Schlick, product v3 читает старые v1/v2 с прежним
 освещением. Evidence в [roadmap](PLAYABLE_SLICE_ROADMAP.md#e-007--roughnessmetalness-n2).
-Emissive/AO/alpha и metallic-roughness textures этому шкафу не нужны и остаются
-неподдерживаемыми с явным отказом importer. Отдельного TextureAsset пока нет;
-normal image встроен в model product. HDR/environment specular относятся к N3.
+В исходном E-007 эти карты шкафу не требовались. Текущий importer v5 поддерживает
+MR/AO/emissive maps в объёме IMG-01–06; alpha остаётся неподдерживаемой с явным
+отказом. Отдельного TextureAsset пока нет; images встроены в model product.
+HDR/environment specular уже реализованы в N3 и последующих IMG slices.
 
 Выбрать один материал из native-комнаты, которому недостаточно base color. Минимальная последовательность: tangent contract и normal map → roughness/metalness в выбранной модели освещения → emissive/AO или alpha только для реально нужного объекта. Каждый шаг включает importer, versioned product, loader, renderer и fixture; изменение product format требует явной версии и определённой политики старых products.
 
@@ -821,7 +831,7 @@ Importer остаётся tool-only. Source 2/CS2 classes и parser types не �
 2. **H-008:** после принятого маршрута снять непрерывный optimized Tracy capture и повторяемые тяжёлые состояния, cold/first-use и повторный проход. Зафиксировать точную сборку/inputs или existing candidate, GPU/driver, resolution, VSync, pipeline, settings; разделить CPU work, GPU и present/waits, first-use uploads, draw counts и world-query cost. Записать p50/p95/p99 и spikes, согласовать целевой FPS и слабый ПК. Например, 60 FPS соответствует 16,67 мс бюджета, но не является уже выбранной целью проекта. Entrance baseline не закрывает полный маршрут; профиль G-012 нужен отдельно при изменении геометрии/workload.
 3. **H-009:** по прямому поручению на candidate/выпуск подготовить точный Release candidate действующими scripts или использовать подходящий существующий, проверить hashes и внешний запуск, полный проход, save/continue и обновление предыдущей standalone версии. На другом согласованном GPU/ПК проверить реальный device/presentation contract, HUD/input/audio; Vulkan loader probe и собственный RTX не заменяют этот тест. Версия/notes относятся к конкретному candidate; публикация — по отдельной команде автора.
 
-G-001 остаётся отдельным незавершённым измерением прежнего эпизода и может выполняться независимо. G-010 возвращается только при наблюдаемом недостатке существующих угроз/геометрии. Пока blind playtest и другой GPU отложены, инженерные итерации допускаются; G-011/H-008/H-009 и полную приёмку не закрывать техническими ZIP или авторским подтверждением startup.
+G-001 остаётся отдельным незавершённым измерением прежнего эпизода и может выполняться независимо. G-010 впоследствии реализована под G-019 и ожидает playtest. Пока blind playtest и другой GPU отложены, отдельно порученные инженерные итерации допускаются; G-011/H-008/H-009 и полную приёмку не закрывать техническими ZIP или авторским подтверждением startup.
 
 ### Историческая точка продолжения после N0/N4
 

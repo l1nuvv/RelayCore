@@ -4,6 +4,8 @@ Status: architecture reference. This document records approved third-party respo
 
 Read this file when a task adds, replaces, upgrades, removes, or exposes a third-party dependency, or when choosing the foundation for rendering, physics, asset processing, navigation, animation, audio, compression, or tooling.
 
+Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime и CMake требуют Vulkan 1.4 на уже установленных headers/vk-bootstrap/VMA. Проверки и открытые gates записаны в плане; dependency baseline и версии библиотек не менялись, новые эффекты и зависимости пока не реализованы.
+
 ## 1. Policy
 
 RelayCore should own engine policy and product-specific behavior, but it should not reimplement mature commodity infrastructure without a concrete reason.
@@ -23,7 +25,7 @@ Rules:
 
 Version numbers below are a **2026-09-30 research snapshot**, not permanent pins. The checked-in vcpkg baseline is authoritative after each accepted dependency update.
 
-Current repository snapshot: RelayCore `1.3.4`, vcpkg manifest baseline `a42757564758c60651ebc616d9b000b7b91249ef`. Vulkan is the sole runtime backend after VK-013; VK-014 review is complete. The VK-D00 OpenGL builds below are historical dependency-refresh evidence. Current Vulkan build/runtime verification is recorded in `VULKAN_MIGRATION_PLAN.md`, sections 27–28. Recheck the manifest and current source before changing dependencies.
+Current vcpkg manifest baseline: `a42757564758c60651ebc616d9b000b7b91249ef`; product version is read from `VERSION`. Vulkan is the sole runtime backend after VK-013; VK-014 review is complete. The VK-D00 OpenGL builds below are historical dependency-refresh evidence. Current Vulkan build/runtime verification is recorded in `VULKAN_MIGRATION_PLAN.md`, sections 27–28. Recheck the manifest and current source before changing dependencies.
 
 ## 2. Keep the current foundations
 
@@ -58,7 +60,7 @@ and its upstream font license are staged with RML/RCSS. See
 [6.3 release](https://github.com/mikke89/RmlUi/releases/tag/6.3) and
 [baseline port](https://github.com/microsoft/vcpkg/blob/a42757564758c60651ebc616d9b000b7b91249ef/ports/rmlui/vcpkg.json).
 
-The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The current ImGui HUD/menu integration below describes the Vulkan migration baseline, not the target game UI contract. VIS-43 owns selection and integration of a focused game UI solution; VIS-44–46 complete screen migration. See [scope and gates](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui).
+The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The ImGui HUD/menu integration below describes the historical Vulkan cutover. VIS-43–46 have completed the technical migration to RmlUi; their visual acceptance remains open. See [scope and gates](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui).
 
 RmlUi types remain within UI implementation; manifest/version policy is unchanged. Gameplay presentation data and actions are RelayCore-owned and independent of ImGui and diagnostics contracts. The implementation uses the selected release's headers/backends rather than master documentation for API signatures.
 
@@ -72,7 +74,7 @@ The ordered migration and loader policy remain in `VULKAN_MIGRATION_PLAN.md`.
 | instance/device/queue/swapchain bootstrap | **vk-bootstrap** | initialization only; do not turn it into renderer architecture |
 | Vulkan memory allocation | **Vulkan Memory Allocator (VMA)** | GPU allocation/suballocation/mapping/budget only |
 | shader language/compiler | **Slang → SPIR-V** | build/offline tool first; runtime compiler optional dev tooling later |
-| UI backend at Vulkan cutover | ImGui SDL3 + Vulkan | current renderer-owned HUD/menu/debug/editor presentation; game UI replacement is planned in VIS-43–46 |
+| player UI / developer UI | RmlUi SDL3 + RelayCore Vulkan adapter / ImGui SDL3 + Vulkan | renderer-owned resources; game supplies presentation/actions; VIS-43–46 technical migration implemented |
 | validation | Khronos Validation Layers | development verification |
 | frame debugging | RenderDoc | external developer tool |
 
@@ -88,7 +90,7 @@ VK-013 removes the ImGui OpenGL binding and vendored glad. The runtime uses SDL 
 
 ## 4. Physics — Jolt Physics
 
-**Approved foundation:** `joltphysics` when the production collision/physics milestone begins.
+**Integrated foundation:** `joltphysics` for the static query world and explicit native collision; dynamics remain outside the current contract.
 
 Why:
 
@@ -119,11 +121,11 @@ Rules:
 
 E-011 integration (2026-10-04): the existing baseline resolves `joltphysics` `5.6.0#1`. `vcpkg-configuration.json` selects the repository overlay at `vcpkg-overlays/joltphysics`, copied from that port and pinned to upstream `v5.6.0` with its SHA512. The overlay changes CPU options, not the release: SSE4.1/4.2, AVX/AVX2/AVX512, FMA, F16C, LZCNT and TZCNT are disabled to retain the x64 SSE2 floor. Single precision, the shared DLL and the existing dynamic MSVC CRT remain in use; optional profiler, C++ RTTI and Jolt debug renderer are disabled. Do not replace the overlay just to chase a newer minor version; keep these CPU/ABI choices explicit when upgrading.
 
-`physics::PhysicsWorld` owns a static query scene behind a Pimpl; `JPH::*` appears only in its implementation. `LevelSessionBuilder::build_physics_fixture` explicitly prepares the isolated fixture. Immutable worlds can be shared by copies of prepared sessions and transferred to `GameWorldRuntime`; ordinary map builds keep the AABB backend. `WorldQuery` borrows either AABB records or the fixture for ray queries. Box casts/overlaps use RelayCore-owned inputs/results on `PhysicsWorld`; FPS axis movement on the fixture fails explicitly until E-013 parity. There is no physics update/job system, dynamics or `CharacterVirtual` integration in E-011. See the E-011 roadmap card for current verification evidence.
+`physics::PhysicsWorld` owns a static query scene behind a Pimpl; `JPH::*` appears only in its implementation. E-011 introduced the isolated fixture; E-012/E-013 added native collision products and movement/gameplay parity. Current `LevelSessionBuilder::build()` constructs a Jolt world when authored props explicitly reference collision products, combining their transformed triangles with world colliders. Other maps retain AABB. Immutable worlds are shared by prepared sessions and transferred to `GameWorldRuntime`; `WorldQuery` borrows RelayCore-owned queries/results. This remains a static query world, with no dynamics, engine job system or `CharacterVirtual` integration. See [COLLISION_ASSETS.md](COLLISION_ASSETS.md) and the E-012–E-014 roadmap cards for contracts/evidence.
 
 ## 5. Authoring interchange — glTF 2.0 + fastgltf
 
-**Approved foundation:** `fastgltf` when the production model/scene importer starts.
+**Integrated tool foundation:** `fastgltf` for static GLB → native model compilation; importer types do not enter the runtime.
 
 ```text
 Blender / DCC

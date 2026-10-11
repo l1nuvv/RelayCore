@@ -1,156 +1,70 @@
 # RelayCore
 
-**RelayCore** — собственный C++20-движок и небольшой GoldSource-inspired indoor FPS. Текущий игровой эпизод посвящён исследованию и восстановлению питания технического сектора. Есть ZIP-упаковка и обновление standalone-сборок из меню; [последняя опубликованная сборка](https://github.com/l1nuvv/RelayCore-releases/releases/latest) доступна в отдельном публичном репозитории. Выпуск с публикацией из CLion: конфигурация **RelayCore — Release** → Run; из терминала: `pwsh -NoProfile -File scripts/release.ps1 -Release`. Устройство и публикация описаны в [UPDATES.md](docs/UPDATES.md).
+RelayCore — собственный C++20-движок и GoldSource-inspired indoor FPS для Windows 11. Runtime требует SDL3 и Vulkan 1.4 для loader/GPU; игровой HUD и меню — RmlUi 6.3, редактор и диагностика — Dear ImGui. Зависимости закреплены через vcpkg manifest mode.
 
-Проект использует SDL3, Vulkan 1.3, CMake, vcpkg manifest mode, Dear ImGui, Tracy и TOML-карты. Vulkan — единственный runtime backend; результаты перехода и дальнейшая проверка архитектуры находятся в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md).
+[Скачать последнюю сборку](https://github.com/l1nuvv/RelayCore-releases/releases/latest) · [Документация](docs/README.md) · [Выпуск и обновления](docs/UPDATES.md)
 
-## Текущее направление
+## Текущее состояние
 
-Единая очередь задач и результаты проверок находятся в [PLAYABLE_SLICE_ROADMAP](docs/PLAYABLE_SLICE_ROADMAP.md). Цель — законченный эпизод на 5–15 минут самостоятельной игры; длительность и понятность маршрута ещё не подтверждены новым игроком. Таблица статусов в roadmap отделяет выполненные технические проверки от игровой приёмки.
+Версия проекта — **1.4.1** (`VERSION`, vcpkg manifest). [Протокол выпуска](docs/playtests/release-1.4.1.md) хранит проверки опубликованного кандидата; последующие изменения рабочего дерева не входят в него автоматически. Версия продукта 1.4.1 не означает поддержку Vulkan API 1.4.
 
-Текущий playtest G-011 — **«Перепуск давления» → «Новый эпизод»**, карта `pressure_transfer.toml`. Для нового участника используйте [инструкцию без решения маршрута](docs/PLAYTEST_GUIDE.txt); этапы и временные отметки записывает наблюдатель в [протокол G-011](docs/playtests/G-011-2026-09-29.md). «Восстановление питания» остаётся предыдущим эпизодом, а «Два сектора» — коротким сценарием проверки переходов между картами.
+Главный игровой трек — G-019, **«Контур сдерживания»** (`containment_loop.toml`): связная глава с подготовкой оборудования, центральной угрозой, обходами и возвращением. Глава принята автором 10 октября (`done`). После замечания о пустом окружении выполнен технический проход наполнения помещений; его итоговая художественная приёмка остаётся открытой. Целевые 20–30 минут не измерены независимым проходом; отдельные AI/UI/material gates сохраняют свои статусы в [roadmap](docs/PLAYABLE_SLICE_ROADMAP.md).
 
-VK-013/014 и VK-F01 завершены: основной runtime использует Vulkan, GL-код удалён; проверки записаны в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md). Автор отложил независимый playtest G-011/другой GPU и поручил первый MeshAsset/ModelAsset slice E-003: статический GLB → native `.rcmodel` с несколькими частями и opaque base-color материалами. Инструмент и пример Sandbox описаны в [DEVELOPMENT.md](docs/DEVELOPMENT.md#статические-модели-glb--native-product). G-011/H-008/H-009 сохраняют незавершённые критерии.
+По умолчанию меню предлагает **«Кампания — весь комплекс»**: восемь связанных карт от восстановления питания до сдерживания Хранителя. Переходы сохраняют инвентарь, здоровье и состояния посещённых карт; «Продолжить» восстанавливает текущую карту. [Маршрут и переходы](docs/EDITOR_AND_CAMPAIGN.md#сквозное-прохождение-комплекса).
 
-## Возможности
+В меню также доступны прежние короткие сценарии: «Восстановление питания», «Перепуск давления», «Два сектора» и другие испытательные карты. Они сохраняются для игры и регрессионных проверок. Карта по умолчанию в `assets/config/engine.toml` — `power_restoration.toml`; нужный сценарий выбирается в меню.
 
-- Фиксированная симуляция, движение, столкновения, приседание, прыжки и фонарик.
-- Взаимодействия, задания, двери, инвентарь, два оружия, турели и охранные роботы.
-- TOML-карты, сохранение состояния мира и переходы между картами.
-- Встроенный редактор, отдельный испытательный полигон и CLI-проверка карт.
-- Подготовленные очереди отрисовки, статические OBJ/BMP-модели, свет, тени и звук.
-- Unit-, content- и graphics-проверки, Tracy, упаковка и обновление standalone-сборок.
+Движок поддерживает fixed-step simulation, движение и столкновения, взаимодействия и задания, два оружия, турели, мобильных противников, сохранения и переходы между TOML-картами. Статические GLB компилируются в native `.rcmodel`; материалы поддерживают normal, metallic/roughness, AO и emissive maps, статические reflection probes. Native collision — отдельный `.rccollision`; карты без явного opt-in используют AABB. OBJ/BMP остаются для прежних ресурсов. Есть встроенный редактор, полигон, CLI-проверка карт, звук, unit/content/graphics tests и Tracy.
 
-## Требования
+Модернизация renderer описана в [отдельном плане](docs/RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04, runtime переведён на обязательный Vulkan 1.4. Там же записаны проверки и открытые hardware/human gates. Новые эффекты остаются следующими этапами.
 
-Для сборки: Windows 11, Visual Studio с C++ workload и Windows SDK, CMake 4.0+, Ninja, Git, PowerShell 7 и vcpkg в manifest mode. SDL3 с Vulkan support, Vulkan headers/loader, vk-bootstrap, VMA и host-tool Slang устанавливаются из закреплённого manifest; `slangc` компилирует shaders в SPIR-V во время сборки. Отдельный глобальный Slang не нужен. Windows tooling-регрессии также требуют `clang-format`.
+## Сборка
 
-Для запуска нужны рабочий Vulkan driver, Vulkan 1.3, features/extensions текущего `VulkanDevice` и рабочая presentation surface. Одной версии API недостаточно: дополнительные требования и порядок проверки GPU описаны в [DEVELOPMENT.md](docs/DEVELOPMENT.md). Оптимизированный playtest ZIP не требует Vulkan SDK. Debug/ASan с validation требуют LunarG Vulkan SDK, validation layers и корректный `VULKAN_SDK`; build dependencies разрешаются через vcpkg. Toolchain probe проверяет loader/layers, а совместимость GPU подтверждают реальные device/presentation/lifecycle проверки. RenderDoc и Tracy используются для углублённой диагностики. Подготовка окружения описана в [плане миграции](docs/VULKAN_MIGRATION_PLAN.md#11-developer-machine-setup-windows-11).
-
-## Сборка и проверки
-
-Проект использует `CMakePresets.json`, а зависимости ставятся через `vcpkg.json` в manifest mode.
-
-Перед первой командой CMake откройте Developer PowerShell или Developer Command Prompt установленной Visual Studio, чтобы `cl.exe`, `rc.exe` и Windows SDK tools были доступны в окружении.
-
-Задайте путь к готовой установке vcpkg и проверьте toolchain file:
+Нужны Visual Studio с C++ workload и Windows SDK, CMake 4.0+, Ninja, Git, PowerShell 7 и vcpkg. Откройте Visual Studio Developer PowerShell для x64 и задайте путь к установленному vcpkg:
 
 ```powershell
 $env:VCPKG_ROOT = 'C:\dev\vcpkg'
 Test-Path "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+cmake --preset msvc-dev
+cmake --build --preset demo-dev
+.\build\msvc-dev\src\relaygame\RelayCore.exe
 ```
 
-`False` означает неверный путь или неготовую установку vcpkg.
+`Test-Path` должен вернуть `True`. `msvc-dev` — оптимизированная инкрементальная сборка с символами, PCH и Tracy. `msvc-debug` служит для отладки/validation, `msvc-relwithdebinfo` — для профилирования с Unity/IPO, `msvc-release` — для раздачи без Tracy. Подробности окружения, CLion и ресурсов — в [DEVELOPMENT.md](docs/DEVELOPMENT.md#сборка-с-нуля).
 
-### Debug demo
+Для запуска нужен драйвер, удовлетворяющий Vulkan device/presentation contract; одной поддержки API 1.3 недостаточно. [Точные требования](docs/ARCHITECTURE.md#graphics-backend-direction). Release не требует Vulkan SDK; Debug validation требует установленных loader/layers LunarG Vulkan SDK. SPIR-V компилируется закреплённым host-tool Slang из vcpkg.
 
-```powershell
-cmake --preset msvc-debug
-cmake --build --preset demo-debug
-```
-
-### Unit-тесты
+## Проверки
 
 ```powershell
 cmake --preset msvc-debug
 cmake --build --preset tests-debug
 ctest --preset test-debug --output-on-failure
-```
-
-### Content validation
-
-```powershell
-cmake --preset msvc-debug
 cmake --build --preset validation-debug
 ctest --preset validation-debug --output-on-failure
 ```
 
-### Полная Debug-проверка
+Для выбранных graphics-проверок сначала соберите нужный target либо `graphics-debug`, затем запустите соответствующий фильтр `ctest --preset graphics-debug`. Они требуют работающего Vulkan GPU и интерактивного Windows desktop. `Skipped` не подтверждает успешную проверку. [Выбор узких проверок и диагностика](docs/DEVELOPMENT.md#узкие-проверки).
+
+## Релиз
 
 ```powershell
-cmake --workflow --preset debug-discipline-workflow
+pwsh -NoProfile -File scripts/release.ps1
 ```
 
-### RelWithDebInfo и ASan
+Команда сама загружает окружение Visual Studio, повышает patch, собирает Release, проверяет контент/updater, создаёт ZIP и проверяет установку/запуск игры. Готовый кандидат фиксируется в `build/release/candidate.json`. Перед подготовкой обновите `release/changes.json` реальными изменениями. Публикация проверенного кандидата:
 
 ```powershell
-cmake --workflow --preset relwithdebinfo-discipline-workflow
-cmake --workflow --preset asan-discipline-workflow
+pwsh -NoProfile -File scripts/release.ps1 -Publish
 ```
 
-CI не запускает графическое demo. ASan workflow проверяет unit-тесты и content validation без сборки или запуска demo.
+**RelayCore — Release** в CLion или `scripts/release.ps1 -Release` объединяет подготовку и публикацию. [Повтор после сбоя, версия, SHA256 и канал](docs/UPDATES.md). Для обычной разработки архив не требуется.
 
-### Локальные graphics-проверки
+## Игра и управление
 
-Требуются Vulkan-capable GPU и обычный интерактивный Windows desktop для screen-pixel tests. Проверяются color pipeline, UI, shadows, uploads, presentation/recreation, gameplay lifecycle и владение ресурсами. 158 фиксированных baselines сохраняют регрессии ранее принятого GL/Vulkan паритета.
+[Инструкция участнику без решения маршрута](docs/PLAYTEST_GUIDE.txt). Прогресс и настройки находятся в `%APPDATA%/RelayCore/RelayCore`, отдельно от установки; логи — в `%APPDATA%/l1nuvv/RelayCore/logs`. Обновление карты может сделать сохранение несовместимым по fingerprint. Текущий формат записи — 5, читаются 1–5.
 
-```powershell
-cmake --build --preset graphics-debug
-ctest --preset graphics-debug --output-on-failure
-```
-
-Недоступный graphics backend даёт `Skipped`, а не подтверждение успешной проверки.
-
-### clang-tidy
-
-```powershell
-cmake --fresh --preset msvc-debug
-pwsh -File scripts/run-clang-tidy.ps1 -BuildDirectory build/msvc-debug
-```
-
-Проверяются production `.cpp` в `src/relaycore` и `src/relaygame`.
-
-## Запуск demo
-
-После `demo-debug` executable находится в target build directory, определяемой текущим CMake target:
-
-```powershell
-.\build\msvc-debug\src\relaygame\RelayCore.exe
-```
-
-Цветовой pipeline выбирается только при startup и по умолчанию остаётся `legacy_gamma`:
-
-```powershell
-.\build\msvc-debug\src\relaygame\RelayCore.exe --config assets\config\rc022_capture.toml --color-pipeline legacy_gamma
-.\build\msvc-debug\src\relaygame\RelayCore.exe --config assets\config\rc022_capture.toml --color-pipeline hardware_srgb
-```
-
-`hardware_srgb` использует линейные scene data и sRGB image view; `legacy_gamma` — UNORM scene view. ImGui намеренно компонуется в encoded space через UNORM view того же target. Presentation переносит готовый encoded кадр в UNORM swapchain. Vulkan color baseline проверяет численные значения, UI и texture filtering; отсутствующие возможности устройства завершают startup ошибкой без fallback.
-
-CMake компилирует объявленные GLB в native модели и синхронизирует их, каталог `assets` и собранные SPIR-V рядом с demo executable. По умолчанию runtime использует `<exe-directory>/assets`; `RELAYCORE_ASSET_ROOT` допускается только как абсолютный override на полный runtime-каталог с моделями и SPIR-V. Основной конфиг — `assets/config/engine.toml`.
-
-## Частный плейтест
-
-В Visual Studio developer environment с настроенным `VCPKG_ROOT`:
-
-```powershell
-cmake --preset msvc-relwithdebinfo
-cmake --build --preset demo-relwithdebinfo
-pwsh -NoProfile -File scripts/package-playtest.ps1
-```
-
-Скрипт создаёт каталог и ZIP в `build/playtest`, включая executable, соседние DLL, ресурсы и `PLAYTEST_GUIDE.txt`. Он отвергает устаревшие staged assets по SHA256, сверяет каждый файл пакета и ZIP, записывает `BUILD_MANIFEST.json` с revision/состоянием исходников и контрольными суммами, а рядом с ZIP — `.sha256`. Перед упаковкой по-прежнему нужна свежая сборка: manifest идентифицирует файлы, но не заменяет компиляцию.
-
-Распакованная игра запускается через `RelayCore.exe`. Требуются Vulkan 1.3 с features/extensions из device contract и Microsoft Visual C++ Redistributable x64. Пользовательские настройки и прогресс в архив не входят. Локальная проверка вне проекта и графический Tracy baseline описаны в [протоколе G-006/H-002](docs/playtests/G-006-H-002-2026-09-28.md). 28 сентября автор принял G-003–G-006 и согласовал закрытие H-002/H-003 с имеющимися проверками. Условия другого ПК и полный живой Tracy-профиль отдельно не зафиксированы; актуальные статусы и ограничения находятся в основной очереди.
-
-Актуальный кандидат M3 после ASan-аудиоисправления и интегрированного Tracy baseline — в [протоколе H-002](docs/playtests/H-002-2026-09-28.md). Исходный кандидат G-001 и его SHA256 сохранены в [старом протоколе](docs/playtests/G-001-2026-09-27.md); для сравнимых наблюдений не заменяйте сборку посередине прохождения.
-
-## Управление
-
-Основная карта — `power_restoration.toml`; запуск начинается с меню. Взаимодействие — **E**. Питание включает рабочий свет, охлаждение запускает вентиляцию и снимает блокировку шлюза. После смерти игрок возвращается к точке появления с восстановленным здоровьем; изменения мира и задания сохраняются. Выход во время смерти также сохраняет актуальное состояние: «Продолжить» завершает ожидание возрождения. Прежний боевой `test_room.toml` остаётся доступен через `game.level_path`.
-
-**F9/F10** — инструменты локального повтора встречи: снимок хранит игрока и его движение, противников, двери, миссию, время, фонарик и эффекты окружения в памяти. Команды не записывают `progress.toml`; дальнейшее штатное автосохранение и выход работают как обычно. Вход в редактор и смена сессии сбрасывают снимок, editor preview не использует снимок кампании. Дисковое «Продолжить» загружает обычное сохранение игры.
-
-Поверхности используют собственные растровые текстуры в духе индустриальных FPS конца 1990-х: бетон, окрашенная сталь, плитка, рифлёный настил, решётки и дерево. Исходник и описание упаковки находятся в `assets/textures/facility_source.png` и `assets/textures/README.md`.
-
-Для проверки освещения и получения кадров до/после:
-
-```powershell
-cmake --build --preset graphics-baseline-debug --target relaycore_power_restoration_graphics
-ctest --test-dir build/msvc-debug -R '^graphics.power_restoration$' --output-on-failure
-```
-
-Кадры сохраняются в `build/msvc-debug/tests/power-captures`. Поле `required_target` у `render_light` и `audio_zone` включает их после активации указанной цели панелью или триггером; отсутствие поля сохраняет постоянное действие.
+1/2 выбирают оружие. F9/F10 сохраняют и восстанавливают локальный снимок встречи в памяти; смена сессии или вход в редактор сбрасывает его. Редакторский preview не заменяет пользовательское сохранение.
 
 | Ввод | Действие |
 | --- | --- |
@@ -175,36 +89,4 @@ ctest --test-dir build/msvc-debug -R '^graphics.power_restoration$' --output-on-
 | F10 | восстановить локальный снимок встречи |
 | V | переключить vsync |
 
-Mouse look и fire требуют relative mouse mode. Gameplay keyboard/mouse input блокируется, когда ImGui захватывает соответствующее устройство; global debug shortcuts остаются доступны.
-
-## Документы
-
-- [Краткая архитектура](docs/ARCHITECTURE.md)
-- [Действующий план playable slice](docs/PLAYABLE_SLICE_ROADMAP.md)
-- [Разработка, полигон и локальные проверки](docs/DEVELOPMENT.md)
-- [Редактор и переходы между картами](docs/EDITOR_AND_CAMPAIGN.md)
-- [Архитектурное направление](docs/ENGINE_ARCHITECTURE_REFERENCE.md)
-- [Миграция Vulkan](docs/VULKAN_MIGRATION_PLAN.md)
-- [Зависимости и условия интеграции](docs/DEPENDENCY_STACK.md)
-- [Арт-направление и style board](docs/ART_DIRECTION.md)
-- [Выпуск и обновление сборок](docs/UPDATES.md)
-
-`Doxyfile` остаётся необязательным локальным developer tool; Doxygen reference не входит в обязательный workflow.
-
-## Структура репозитория
-
-```text
-src/
-  relaycore/   # engine runtime
-  relaygame/   # game/demo layer
-assets/        # shaders, textures, audio, level data
-cmake/         # helper modules and dependency glue
-tests/         # doctest-based tests
-```
-
-## Принципы проекта
-
-- debuggability важнее «умной» архитектуры
-- явные границы между engine / game / data
-- минимум скрытой магии
-- профилирование и диагностика с самого начала
+Mouse look и стрельба требуют relative mouse mode. Игровые меню получают ввод через RmlUi; ImGui обслуживает editor/diagnostics. Владение вводом описано в [DEVELOPMENT.md](docs/DEVELOPMENT.md#игровой-ui-rmlui-63).

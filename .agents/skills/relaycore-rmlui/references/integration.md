@@ -1,6 +1,6 @@
 # Integration decision points
 
-Recheck these against the selected release; they do not describe an already implemented RelayCore integration.
+RelayCore already integrates RmlUi 6.3 through `PlayerUi` and `VulkanRmlRenderer`. These decision points apply when modifying that integration; check current source and release headers before using upstream examples. Current ownership, composition and acceptance limits are documented in `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md` and VIS-43–46 in the roadmap.
 
 ## Sources
 
