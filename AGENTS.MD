@@ -78,6 +78,8 @@
 ## Git and handoff
 
 - Inspect the diff before finishing. Keep it scoped and reviewable.
-- Do not use `git add .`; stage explicit paths only when staging is requested.
-- Do not commit, push, rewrite history, or modify unrelated working-tree changes unless asked.
+- After completing each milestone, feature, fix, or other implementation task, automatically stage and commit its changes without asking for additional permission. Run the relevant verification first; if verification is blocked, report the blocker and do not imply that checks passed.
+- Structure commits around coherent, independently reviewable changes. Use a concise imperative subject naming the affected area and outcome; add a body explaining rationale and verification when useful. Do not mix unrelated work into a commit.
+- Do not use `git add .`; stage explicit task-owned paths or hunks. Preserve unrelated working-tree changes unless the user explicitly asks to include them.
+- Do not push or rewrite history unless asked. Automatic local commits are the default unless the user explicitly requests otherwise.
 - Final handoff should be compact: result, changed paths, checks actually run, and any remaining blocker/risk. Do not paste full logs or repeat the prompt.
