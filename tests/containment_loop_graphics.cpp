@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 
@@ -35,6 +36,7 @@ int main(int argc, char** argv)
         config.renderer.imgui.enabled = false;
         config.audio.enabled = false;
         config.renderer.hdr_enabled = argc > 1 && std::string_view{argv[1]} == "--hdr";
+        const bool color_audit = argc == 2 && std::string_view{argv[1]} == "--color-audit";
         RelayCore::Window window{config.window};
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{config.renderer, RelayCore::render::ColorPipelineMode::hardware_srgb};
@@ -69,6 +71,7 @@ int main(int argc, char** argv)
             SDL_DestroySurface(surface);
             if (!written)
                 throw std::runtime_error(SDL_GetError());
+            return pixels;
         };
         struct View {
             const char* name;
@@ -98,8 +101,7 @@ int main(int argc, char** argv)
             View{"guardian-back", {0, 1.85F, 38}, {0, 1.85F, 34}},
             View{"guardian-side", {4, 1.85F, 34}, {0, 1.85F, 34}},
         };
-        for (const auto& view : views)
-        {
+        const auto draw_view = [&](const View& view) {
             renderer.camera().set_position(view.eye);
             renderer.camera().set_target(view.target);
             renderer.begin_frame();
@@ -121,7 +123,53 @@ int main(int argc, char** argv)
                 {},
                 &*session.containment
             );
-            save_capture(view.name);
+        };
+        const auto set_display = [&](bool hdr, float exposure) {
+            config.renderer.hdr_enabled = hdr;
+            config.renderer.exposure_ev = exposure;
+            auto prepared = renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config());
+            prepared.prepare_resources(scene.resource_items());
+            renderer.commit_live_content_reload(std::move(prepared));
+        };
+        for (const auto& view : views)
+        {
+            draw_view(view);
+            const auto sdr = save_capture(view.name);
+            if (!color_audit
+                || (std::string_view{view.name} != "observation" && std::string_view{view.name} != "laboratory-bench"
+                    && std::string_view{view.name} != "frame"))
+                continue;
+            std::array<RelayCore::render::CpuRgbaTextureData, 3> exposed;
+            for (int ev = -1; ev <= 1; ++ev)
+            {
+                set_display(true, float(ev));
+                draw_view(view);
+                exposed[ev + 1] = save_capture("color-" + std::string{view.name} + "-ev" + std::to_string(ev));
+            }
+            std::uint64_t difference = 0, outliers = 0;
+            std::array<std::uint64_t, 3> brightness{};
+            for (size_t i = 0; i < sdr.pixels.size(); ++i)
+            {
+                if (i % 4 == 3)
+                    continue;
+                const int delta = std::abs(int(sdr.pixels[i]) - int(exposed[1].pixels[i]));
+                difference += delta;
+                outliers += delta > 2;
+                for (size_t ev = 0; ev < exposed.size(); ++ev)
+                    brightness[ev] += exposed[ev].pixels[i];
+                if (exposed[0].pixels[i] > exposed[1].pixels[i] + 2 || exposed[1].pixels[i] > exposed[2].pixels[i] + 2)
+                    throw std::runtime_error("Exposure reversed scene brightness in " + std::string{view.name});
+            }
+            const double channels = double(sdr.width) * sdr.height * 3;
+            std::cout << "color_view=" << view.name << " mean_abs_byte=" << difference / channels
+                      << " outlier_fraction=" << outliers / channels << " exposure_mean=" << brightness[0] / channels
+                      << ',' << brightness[1] / channels << ',' << brightness[2] / channels << '\n';
+            // Permit attachment quantization and sparse transparency/MSAA edge differences.
+            if (difference / channels > .5 || outliers / channels > .01)
+                throw std::runtime_error("SDR/HDR zero-exposure scene mismatch in " + std::string{view.name});
+            if (!(brightness[0] < brightness[1] && brightness[1] < brightness[2]))
+                throw std::runtime_error("Exposure did not change scene brightness in " + std::string{view.name});
+            set_display(false, 0);
         }
 
         RelayCore::AudioSystem audio{config.audio};

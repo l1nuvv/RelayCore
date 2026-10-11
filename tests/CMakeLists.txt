@@ -272,7 +272,8 @@ add_test(NAME graphics.game_hud COMMAND relaycore_vulkan_mesh_tests --ui-only)
 add_test(NAME graphics.player_ui COMMAND relaycore_player_ui_graphics)
 add_test(NAME graphics.containment_loop COMMAND relaycore_containment_loop_graphics)
 add_test(NAME graphics.containment_loop_hdr COMMAND relaycore_containment_loop_graphics --hdr)
-set_tests_properties(graphics.containment_loop graphics.containment_loop_hdr PROPERTIES
+add_test(NAME graphics.containment_color COMMAND relaycore_containment_loop_graphics --color-audit)
+set_tests_properties(graphics.containment_loop graphics.containment_loop_hdr graphics.containment_color PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
