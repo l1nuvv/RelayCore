@@ -32,6 +32,8 @@ namespace RelayCore::render
         [[nodiscard]] auto upload_reflection(const ReflectionProbe& probe) -> VulkanTextureUpload;
         void wait(uint64_t completion) const;
         void collect();
+        [[nodiscard]] auto dependency() const noexcept -> VkSemaphoreSubmitInfo;
+        [[nodiscard]] auto completed() const -> uint64_t;
         // Values belong to this upload timeline; frame/render retirement is a separate lifetime domain.
         void retire(VulkanBuffer&& buffer, uint64_t completion);
         void retire(VulkanTexture&& texture, uint64_t completion);

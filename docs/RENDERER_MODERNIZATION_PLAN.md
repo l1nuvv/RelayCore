@@ -387,6 +387,24 @@ CPU p50 ranges 4.265–6.762 ms; p99
 5.260–8.506 ms. OS/driver caches and other desktop
 activity are uncontrolled; this is a seeded camera sweep, not a grounded playthrough.
 
+**Point 2 complete:** mesh/material uploads publish into cache entries allocated
+before submission; a failed construction drains uploads before erasing the partial
+entry. Successful scene submits wait on the upload timeline at ALL_COMMANDS.
+Prepared-but-undrawn meshes retire through uploads; material bundles require both
+upload and final scene completion. Synchronous renders collect completed staging
+before returning. Ordinary construction has no per-buffer/texture host wait;
+reflection replacement, failure, staging backpressure and teardown retain waits.
+Pending staging is capped at 64 MiB/32 batches (one larger upload runs alone).
+
+`cmake --build --preset graphics-debug --target relaycore_vulkan_upload_tests
+relaycore_vulkan_mesh_tests -j 2` passes in the existing VS x64 environment.
+The focused `vulkan_upload|mesh_pipeline|resource_preparation|material_maps_reflections`
+CTest selection passes **4/4 on each profile**, zero skips, with unchanged validation
+and allocation/lifetime gates. Reports: `vk14-04-upload-{preferred,force13}.xml`.
+The new actual GPU-gated consumer returns before uploads complete, then verifies
+copied mesh bytes after scene completion. Scene scheduling is still synchronous
+at this point; its impact is measured after point 3.
+
 ## 1. Executive decision
 
 1. **Minimum runtime:** Vulkan 1.3, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.

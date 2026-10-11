@@ -4,6 +4,7 @@
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <limits>
 #include <stdexcept>
@@ -72,7 +73,8 @@ namespace RelayCore::render
         vkDestroySemaphore(state_->device.handle(), state_->timeline, nullptr);
     }
 
-    auto VulkanSceneSubmissions::submit(const VkCommandBuffer commands) -> VulkanSceneCompletion
+    auto VulkanSceneSubmissions::submit(const VkCommandBuffer commands, const VkSemaphoreSubmitInfo dependency)
+        -> VulkanSceneCompletion
     {
         if (!commands)
             throw std::invalid_argument("Vulkan scene submission requires a command buffer");
@@ -95,10 +97,13 @@ namespace RelayCore::render
             .value = state_->submitted,
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
         };
+        const std::array waits{previous, dependency};
+        const auto first = state_->submitted ? 0U : 1U;
+        const auto count = (state_->submitted ? 1U : 0U) + (dependency.semaphore ? 1U : 0U);
         const VkSubmitInfo2 info{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .waitSemaphoreInfoCount = state_->submitted ? 1U : 0U,
-            .pWaitSemaphoreInfos = &previous,
+            .waitSemaphoreInfoCount = count,
+            .pWaitSemaphoreInfos = waits.data() + first,
             .commandBufferInfoCount = 1,
             .pCommandBufferInfos = &command,
             .signalSemaphoreInfoCount = 1,

@@ -350,6 +350,52 @@ namespace
             }
             // No explicit scene wait/collect; its destructor must drain before freeing resources.
         }
+        {
+            require_result(vkResetCommandPool(device.handle(), commands.pool, 0), "GPU upload consume reset");
+            VulkanSceneSubmissions scene{device};
+            BlockGraphicsQueue gate{device};
+            auto uploaded = VulkanBufferUpload{};
+            VulkanBuffer destination{device, copy.size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VulkanBufferMemory::readback};
+            gate.block();
+            try
+            {
+                uploaded = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{mesh.vertices}),
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                );
+                require_result(vkBeginCommandBuffer(buffers[0], &begin), "GPU upload consume begin");
+                vkCmdCopyBuffer(buffers[0], uploaded.buffer.handle(), destination.handle(), 1, &copy);
+                const VkMemoryBarrier2 host{
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+                    .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+                    .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT
+                };
+                const VkDependencyInfo host_dependency{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .memoryBarrierCount = 1,
+                    .pMemoryBarriers = &host
+                };
+                vkCmdPipelineBarrier2(buffers[0], &host_dependency);
+                require_result(vkEndCommandBuffer(buffers[0]), "GPU upload consume end");
+                const auto completion = scene.submit(buffers[0], uploads.dependency());
+                if (scene.completed() >= completion.value || uploads.completed() >= uploaded.completion)
+                    throw std::runtime_error("GPU upload dependency required a host wait");
+                gate.release();
+                scene.wait(completion);
+                std::vector<std::byte> bytes(copy.size);
+                destination.read(bytes);
+                check_bytes(bytes, std::as_bytes(std::span{mesh.vertices}));
+            } catch (...)
+            {
+                gate.release();
+                scene.wait(scene.last_submission());
+                uploads.wait(uploads.dependency().value);
+                throw;
+            }
+        }
+        uploads.collect();
         if (allocation_count(device) != 0)
             throw std::runtime_error("Scene shutdown leaked VMA resources");
     }

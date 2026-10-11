@@ -550,6 +550,7 @@ namespace RelayCore::render
             VulkanBuffer vertices, indices;
             uint32_t index_count;
             VulkanSceneCompletion last_use{};
+            uint64_t upload_completion = 0;
             uint64_t recording = 0;
         };
         struct MaterialKey {
@@ -582,6 +583,7 @@ namespace RelayCore::render
         struct Material {
             VkDevice device;
             VulkanSceneCompletion last_use{};
+            uint64_t upload_completion = 0;
             uint64_t recording = 0;
             std::weak_ptr<const CpuRgbaTextureData> source;
             std::weak_ptr<const CpuRgbaTextureData> normal_source;
@@ -688,6 +690,7 @@ namespace RelayCore::render
             try
             {
                 wait();
+                uploads.wait(uploads.dependency().value);
             } catch (const std::exception& error)
             {
                 std::fprintf(stderr, "Vulkan mesh shutdown failed: %s\n", error.what());
@@ -1148,23 +1151,28 @@ namespace RelayCore::render
             auto found = meshes.find(cpu.get());
             if (found != meshes.end())
                 return found->second;
-            auto vertices =
-                uploads.upload_mesh_buffer(std::as_bytes(std::span{cpu->vertices}), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            uploads.wait(vertices.completion);
-            auto indices =
-                uploads.upload_mesh_buffer(std::as_bytes(std::span{cpu->indices}), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-            uploads.wait(indices.completion);
-            return meshes
-                .emplace(
-                    cpu.get(),
-                    Mesh{
-                        cpu,
-                        std::move(vertices.buffer),
-                        std::move(indices.buffer),
-                        static_cast<uint32_t>(cpu->indices.size())
-                    }
-                )
-                .first->second;
+            auto entry = meshes.emplace(cpu.get(), Mesh{cpu, {}, {}, static_cast<uint32_t>(cpu->indices.size())}).first;
+            auto& result = entry->second;
+            try
+            {
+                auto vertices = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{cpu->vertices}),
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                );
+                result.vertices = std::move(vertices.buffer);
+                auto indices = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{cpu->indices}),
+                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+                );
+                result.indices = std::move(indices.buffer);
+                result.upload_completion = indices.completion;
+                return result;
+            } catch (...)
+            {
+                uploads.wait(uploads.dependency().value);
+                meshes.erase(entry);
+                throw;
+            }
         }
 
         void update_reflection(std::shared_ptr<const ReflectionProbe> probe)
@@ -1274,270 +1282,286 @@ namespace RelayCore::render
             const auto found = materials.find(key);
             if (found != materials.end())
                 return *found->second;
-            auto uploaded = uploads.upload_rgba(*cpu, resource.encoding());
-            uploads.wait(uploaded.completion);
-            auto result = std::make_unique<Material>(device);
-            result->texture = std::move(uploaded.texture);
-            result->source = cpu;
-            if (normal)
+            auto entry = materials.emplace(key, std::make_unique<Material>(device)).first;
+            auto* result = entry->second.get();
+            try
             {
-                auto uploaded_normal = uploads.upload_rgba(*normal->cpu_data(), TextureEncoding::linear);
-                uploads.wait(uploaded_normal.completion);
-                result->normal_texture = std::move(uploaded_normal.texture);
-                result->normal_source = normal->cpu_data();
-            }
-            if (mr_map)
+                auto uploaded = uploads.upload_rgba(*cpu, resource.encoding());
+                result->texture = std::move(uploaded.texture);
+                result->source = cpu;
+                if (normal)
+                {
+                    auto uploaded_normal = uploads.upload_rgba(*normal->cpu_data(), TextureEncoding::linear);
+                    result->normal_texture = std::move(uploaded_normal.texture);
+                    result->normal_source = normal->cpu_data();
+                }
+                if (mr_map)
+                {
+                    auto uploaded_map = uploads.upload_rgba(*mr_map->cpu_data(), TextureEncoding::linear);
+                    result->mr_texture = std::move(uploaded_map.texture);
+                    result->mr_source = mr_map->cpu_data();
+                }
+                if (occlusion)
+                {
+                    auto uploaded_map = uploads.upload_rgba(*occlusion->cpu_data(), TextureEncoding::linear);
+                    result->occlusion_texture = std::move(uploaded_map.texture);
+                    result->occlusion_source = occlusion->cpu_data();
+                }
+                if (emissive)
+                {
+                    auto uploaded_map = uploads.upload_rgba(*emissive->cpu_data(), TextureEncoding::srgb);
+                    result->emissive_texture = std::move(uploaded_map.texture);
+                    result->emissive_source = emissive->cpu_data();
+                }
+                const auto values = factors.value_or(MetallicRoughness{1, 0});
+                const std::array surface_parameters{
+                    glm::vec4{
+                        key.normal_scale,
+                        values.roughness,
+                        values.metallic,
+                        color_pipeline == ColorPipelineMode::hardware_srgb ? 1.0F : 0.0F
+                    },
+                    glm::vec4{mr_map ? 1.F : 0.F, occlusion ? 1.F : 0.F, key.occlusion_strength, 0},
+                    glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
+                };
+                result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 7},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
+                };
+                const VkDescriptorPoolCreateInfo pool_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 1,
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data(),
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &result->pool),
+                    "Failed to create mesh material pool"
+                );
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = result->pool,
+                    .descriptorSetCount = 1,
+                    .pSetLayouts = &descriptor_layout,
+                };
+                require_mesh_vk(
+                    vkAllocateDescriptorSets(device.handle(), &allocation, &result->set),
+                    "Failed to allocate mesh material descriptors"
+                );
+                const VkDescriptorBufferInfo buffer{material_data.handle(), 0, material_data.size()};
+                const VkDescriptorBufferInfo lighting{light_data.handle(), 0, light_data.size()};
+                const VkDescriptorBufferInfo irradiance_buffer{irradiance_data.handle(), 0, irradiance_data.size()};
+                const VkDescriptorBufferInfo shadow_buffer{shadow_data.handle(), 0, shadow_data.size()};
+                const VkDescriptorBufferInfo frame_buffer{frame_data.handle(), 0, frame_data.size()};
+                std::array<VkDescriptorImageInfo, 4> shadow_images{};
+                for (size_t i = 0; i < 4; ++i)
+                {
+                    const auto& map = i < 3 ? *shadow_maps[i] : *point_shadows;
+                    shadow_images[i] = {map.sampler, map.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL};
+                }
+                const VkDescriptorImageInfo image{
+                    result->texture.sampler(),
+                    result->texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const auto& normal_image_texture = normal ? result->normal_texture : result->texture;
+                const VkDescriptorImageInfo normal_image{
+                    normal_image_texture.sampler(),
+                    normal_image_texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const auto& mr_image_texture = mr_map ? result->mr_texture : result->texture;
+                const auto& ao_image_texture = occlusion ? result->occlusion_texture : result->texture;
+                const VkDescriptorImageInfo mr_image{
+                    mr_image_texture.sampler(),
+                    mr_image_texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const VkDescriptorImageInfo ao_image{
+                    ao_image_texture.sampler(),
+                    ao_image_texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const VkDescriptorBufferInfo normal_buffer{
+                    result->surface_data.handle(),
+                    0,
+                    result->surface_data.size()
+                };
+                const VkDescriptorImageInfo reflection_image{
+                    reflection_texture.sampler(),
+                    reflection_texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const VkDescriptorBufferInfo reflection_buffer{reflection_data.handle(), 0, reflection_data.size()};
+                const auto& emissive_image_texture = emissive ? result->emissive_texture : result->texture;
+                const VkDescriptorImageInfo emissive_image{
+                    emissive_image_texture.sampler(),
+                    emissive_image_texture.view(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+                const std::array writes{
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 16,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &emissive_image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 14,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &reflection_image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 15,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &reflection_buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 12,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &mr_image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 13,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &ao_image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 11,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &irradiance_buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 9,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &normal_image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 10,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &normal_buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 8,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &frame_buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 1,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &image
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 2,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &lighting
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 3,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &shadow_buffer
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 4,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &shadow_images[0]
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 5,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &shadow_images[1]
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 6,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &shadow_images[2]
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = result->set,
+                        .dstBinding = 7,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &shadow_images[3]
+                    },
+                };
+                vkUpdateDescriptorSets(
+                    device.handle(),
+                    static_cast<uint32_t>(writes.size()),
+                    writes.data(),
+                    0,
+                    nullptr
+                );
+                result->upload_completion = uploads.dependency().value;
+                return *result;
+            } catch (...)
             {
-                auto uploaded_map = uploads.upload_rgba(*mr_map->cpu_data(), TextureEncoding::linear);
-                uploads.wait(uploaded_map.completion);
-                result->mr_texture = std::move(uploaded_map.texture);
-                result->mr_source = mr_map->cpu_data();
+                uploads.wait(uploads.dependency().value);
+                materials.erase(entry);
+                throw;
             }
-            if (occlusion)
-            {
-                auto uploaded_map = uploads.upload_rgba(*occlusion->cpu_data(), TextureEncoding::linear);
-                uploads.wait(uploaded_map.completion);
-                result->occlusion_texture = std::move(uploaded_map.texture);
-                result->occlusion_source = occlusion->cpu_data();
-            }
-            if (emissive)
-            {
-                auto uploaded_map = uploads.upload_rgba(*emissive->cpu_data(), TextureEncoding::srgb);
-                uploads.wait(uploaded_map.completion);
-                result->emissive_texture = std::move(uploaded_map.texture);
-                result->emissive_source = emissive->cpu_data();
-            }
-            const auto values = factors.value_or(MetallicRoughness{1, 0});
-            const std::array surface_parameters{
-                glm::vec4{
-                    key.normal_scale,
-                    values.roughness,
-                    values.metallic,
-                    color_pipeline == ColorPipelineMode::hardware_srgb ? 1.0F : 0.0F
-                },
-                glm::vec4{mr_map ? 1.F : 0.F, occlusion ? 1.F : 0.F, key.occlusion_strength, 0},
-                glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
-            };
-            result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
-            const std::array sizes{
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 7},
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
-            };
-            const VkDescriptorPoolCreateInfo pool_info{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .maxSets = 1,
-                .poolSizeCount = static_cast<uint32_t>(sizes.size()),
-                .pPoolSizes = sizes.data(),
-            };
-            require_mesh_vk(
-                vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &result->pool),
-                "Failed to create mesh material pool"
-            );
-            const VkDescriptorSetAllocateInfo allocation{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = result->pool,
-                .descriptorSetCount = 1,
-                .pSetLayouts = &descriptor_layout,
-            };
-            require_mesh_vk(
-                vkAllocateDescriptorSets(device.handle(), &allocation, &result->set),
-                "Failed to allocate mesh material descriptors"
-            );
-            const VkDescriptorBufferInfo buffer{material_data.handle(), 0, material_data.size()};
-            const VkDescriptorBufferInfo lighting{light_data.handle(), 0, light_data.size()};
-            const VkDescriptorBufferInfo irradiance_buffer{irradiance_data.handle(), 0, irradiance_data.size()};
-            const VkDescriptorBufferInfo shadow_buffer{shadow_data.handle(), 0, shadow_data.size()};
-            const VkDescriptorBufferInfo frame_buffer{frame_data.handle(), 0, frame_data.size()};
-            std::array<VkDescriptorImageInfo, 4> shadow_images{};
-            for (size_t i = 0; i < 4; ++i)
-            {
-                const auto& map = i < 3 ? *shadow_maps[i] : *point_shadows;
-                shadow_images[i] = {map.sampler, map.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL};
-            }
-            const VkDescriptorImageInfo image{
-                result->texture.sampler(),
-                result->texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const auto& normal_image_texture = normal ? result->normal_texture : result->texture;
-            const VkDescriptorImageInfo normal_image{
-                normal_image_texture.sampler(),
-                normal_image_texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const auto& mr_image_texture = mr_map ? result->mr_texture : result->texture;
-            const auto& ao_image_texture = occlusion ? result->occlusion_texture : result->texture;
-            const VkDescriptorImageInfo mr_image{
-                mr_image_texture.sampler(),
-                mr_image_texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const VkDescriptorImageInfo ao_image{
-                ao_image_texture.sampler(),
-                ao_image_texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const VkDescriptorBufferInfo normal_buffer{result->surface_data.handle(), 0, result->surface_data.size()};
-            const VkDescriptorImageInfo reflection_image{
-                reflection_texture.sampler(),
-                reflection_texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const VkDescriptorBufferInfo reflection_buffer{reflection_data.handle(), 0, reflection_data.size()};
-            const auto& emissive_image_texture = emissive ? result->emissive_texture : result->texture;
-            const VkDescriptorImageInfo emissive_image{
-                emissive_image_texture.sampler(),
-                emissive_image_texture.view(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            };
-            const std::array writes{
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 16,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &emissive_image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 14,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &reflection_image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 15,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &reflection_buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 12,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &mr_image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 13,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &ao_image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 11,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &irradiance_buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 9,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &normal_image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 10,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &normal_buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 8,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &frame_buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 0,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 1,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &image
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 2,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &lighting
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 3,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .pBufferInfo = &shadow_buffer
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 4,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &shadow_images[0]
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 5,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &shadow_images[1]
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 6,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &shadow_images[2]
-                },
-                VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = result->set,
-                    .dstBinding = 7,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &shadow_images[3]
-                },
-            };
-            vkUpdateDescriptorSets(device.handle(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-            return *materials.emplace(key, std::move(result)).first->second;
         }
 
         void collect_retired_resources()
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan material retirement collect");
             const auto completed = submissions.completed();
-            std::erase_if(retired_materials, [completed](const auto& material) {
-                return material->last_use.value <= completed;
+            const auto uploaded = uploads.completed();
+            std::erase_if(retired_materials, [completed, uploaded](const auto& material) {
+                return material->last_use.value <= completed && material->upload_completion <= uploaded;
             });
             submissions.collect();
         }
@@ -1560,8 +1584,15 @@ namespace RelayCore::render
                     ++it;
                     continue;
                 }
-                submissions.retire(std::move(mesh.vertices), mesh.last_use);
-                submissions.retire(std::move(mesh.indices), mesh.last_use);
+                if (mesh.last_use.value)
+                {
+                    submissions.retire(std::move(mesh.vertices), mesh.last_use);
+                    submissions.retire(std::move(mesh.indices), mesh.last_use);
+                } else
+                {
+                    uploads.retire(std::move(mesh.vertices), mesh.upload_completion);
+                    uploads.retire(std::move(mesh.indices), mesh.upload_completion);
+                }
                 it = meshes.erase(it);
             }
             for (auto it = materials.begin(); it != materials.end();)
@@ -1951,7 +1982,7 @@ namespace RelayCore::render
         void submit_and_wait()
         {
             require_mesh_vk(vkEndCommandBuffer(commands), "Failed to end mesh frame");
-            pending = submissions.submit(commands);
+            pending = submissions.submit(commands, uploads.dependency());
             // Publish use only after successful submission; failed recording/prepare owns no GPU references.
             for (auto* mesh : used_meshes)
                 mesh->last_use = pending;
@@ -1960,6 +1991,7 @@ namespace RelayCore::render
             used_meshes.clear();
             used_materials.clear();
             wait();
+            uploads.collect();
         }
 
         void record_tone_mapping()

@@ -135,6 +135,28 @@ namespace RelayCore::render
         std::vector<RetiredTexture> textures;
         explicit State(const VulkanDevice& owner) : device(owner) {}
 
+        void reserve_staging(const VkDeviceSize bytes)
+        {
+            constexpr VkDeviceSize budget = 64 * 1024 * 1024;
+            uint64_t completed = 0;
+            require_upload_result(
+                vkGetSemaphoreCounterValue(device.handle(), timeline, &completed),
+                "Vulkan staging completion"
+            );
+            while (!batches.empty() && batches.front()->completion <= completed)
+                batches.pop_front();
+            VkDeviceSize outstanding = 0;
+            for (const auto& batch : batches)
+                outstanding += batch->transfer.size();
+            while (!batches.empty() && (batches.size() >= 32 || bytes > budget || outstanding > budget - bytes))
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan upload backpressure");
+                wait(batches.front()->completion);
+                outstanding -= batches.front()->transfer.size();
+                batches.pop_front();
+            }
+        }
+
         void wait(const uint64_t completion) const
         {
             if (completion > last_submission)
@@ -286,6 +308,7 @@ namespace RelayCore::render
             VulkanBufferMemory::device
         };
         auto batch = state_->begin_batch();
+        state_->reserve_staging(bytes.size_bytes());
         batch->transfer = VulkanBuffer{
             state_->device,
             bytes.size_bytes(),
@@ -331,6 +354,7 @@ namespace RelayCore::render
             throw std::invalid_argument("Vulkan RGBA upload size mismatch");
         VulkanTexture texture{state_->device, data.width, data.height, encoding};
         auto batch = state_->begin_batch();
+        state_->reserve_staging(data.pixels.size());
         batch->transfer =
             VulkanBuffer{state_->device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VulkanBufferMemory::upload};
         batch->transfer.write(std::as_bytes(std::span{data.pixels}));
@@ -433,6 +457,7 @@ namespace RelayCore::render
             bytes.insert(bytes.end(), data.begin(), data.end());
         }
         auto batch = state_->begin_batch();
+        state_->reserve_staging(bytes.size());
         batch->transfer =
             VulkanBuffer{state_->device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VulkanBufferMemory::upload};
         batch->transfer.write(bytes);
@@ -472,6 +497,26 @@ namespace RelayCore::render
     {
         state_->wait(completion);
     }
+    auto VulkanUploads::dependency() const noexcept -> VkSemaphoreSubmitInfo
+    {
+        return {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = state_->timeline,
+            .value = state_->last_submission,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+        };
+    }
+
+    auto VulkanUploads::completed() const -> uint64_t
+    {
+        uint64_t value = 0;
+        require_upload_result(
+            vkGetSemaphoreCounterValue(state_->device.handle(), state_->timeline, &value),
+            "Vulkan upload completion"
+        );
+        return value;
+    }
+
     void VulkanUploads::collect()
     {
         uint64_t completed = 0;
