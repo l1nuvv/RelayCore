@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1] / "assets/audio/environment"
 def build(kind, seconds=6.4):
     rng = random.Random(304)
     samples = []
-    low = medium = 0.0
+    low = medium = steam = 0.0
     for i in range(round(seconds * RATE)):
         t = i / RATE
         noise = rng.uniform(-1, 1)
@@ -26,7 +26,8 @@ def build(kind, seconds=6.4):
             motor = math.sin(2 * math.pi * 50 * t) * 0.028 + math.sin(2 * math.pi * 100 * t) * 0.009
             value = motor + low * 0.25 + medium * 0.025 * (0.85 + 0.15 * math.sin(2 * math.pi * 12.5 * t))
         elif kind == "steam":
-            value = (medium - low) * 0.22 * (0.92 + 0.08 * math.sin(2 * math.pi * 0.3125 * t))
+            steam += (noise - steam) * 0.12
+            value = (steam - low) * 0.16 * (0.92 + 0.08 * math.sin(2 * math.pi * 0.3125 * t))
         else:
             burst = t % 3.2
             envelope = max(0, 1 - burst / 0.38) ** 2

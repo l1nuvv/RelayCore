@@ -1,27 +1,16 @@
 ---
 name: relaycore-verify
-description: Choose and run the narrowest correct RelayCore build/test/validation sequence after edits or while diagnosing a build/test failure. Use for CMake preset selection, focused tests, CI-like verification, and validation evidence; do not run expensive full workflows by default.
+description: Select and run RelayCore CMake/CTest, content, tooling or GPU checks after changes or build/test failures. Use when verification scope, presets, staging or Skipped results need interpretation; not for read-only prose review or automatic release/packaging.
 ---
 
 # RelayCore verification
 
-Verification is a routing problem: use the cheapest check that can falsify the change, then broaden only when needed.
+Read [references/check-matrix.md](references/check-matrix.md) for scope selection. Repository paths there are relative to the root. Current `CMakePresets.json`, affected CMake targets and test registrations own command names; the matrix does not replace them.
 
-Read [references/check-matrix.md](references/check-matrix.md) only when selecting commands beyond the obvious targeted build/test.
+For MSVC builds confirm the developer environment and `VCPKG_ROOT`. Reuse the configured tree; configure only for missing/changed configuration. Discover the selected tests with CTest `-N` before expensive work when the filter is uncertain, then use `--no-tests=error` when executing a selection. Do not interpret an empty selection as verification.
 
-## Rules
+Build the target that provides the selected tests and their current dependencies. CTest filters select registered test names, while doctest filters select cases inside a binary. Do not assume a build preset builds every test selected by the similarly named test preset.
 
-1. Inspect current `CMakePresets.json`, relevant `CMakeLists.txt`, and existing scripts before choosing command names.
-2. Never invent a preset, target, or test regex.
-3. Run `git diff --check` after edits.
-4. Prefer one affected target/test group before a full suite.
-5. Reconfigure only when CMake/configuration/dependencies require it.
-6. Do not delete build trees or caches merely because a build failed.
-7. For compiler failures, fix the first causal error rather than reacting to downstream noise.
-8. For test failures, reproduce the smallest failing test before changing code.
-9. Full debug/RelWithDebInfo/ASan or CI-like workflows are for cross-cutting changes, release confidence, or explicit requests—not every patch.
-10. Never report a check as passed unless its command actually completed successfully in the current work.
+Graphics exit code 77 is `Skipped`, even when CTest exits zero. A graphics gate requires executed cases without failures or skips and clean expected validation output; inspect the summary or JUnit report. Compiling graphics targets and passing the loader/layer probe do not prove device/presentation compatibility. Diagnose graphics failures with `relaycore-vulkan-investigate` when needed.
 
-## Handoff
-
-State the exact commands run, their result, and what remains unverified. Summarize failures; do not paste large build logs unless requested.
+Stop after the affected checks pass; broaden for changed shared contracts, unresolved failures or explicitly requested full validation. Do not manufacture a full-CI, bake or package requirement. Run `git diff --check` and report exact commands, executed/skipped/failed results and remaining blockers. Old build/capture evidence does not validate a changed working tree.

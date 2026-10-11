@@ -1,5 +1,7 @@
 #include "relaycore/core/log.h"
 #include "relaycore/render/render_authoring_config.h"
+#include "relaycore/world/blockout_level.h"
+#include "relaygame/world_scene_renderer.h"
 
 #include <doctest/doctest.h>
 #include <filesystem>
@@ -8,6 +10,66 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+
+TEST_CASE("pickup support height rejects malformed authored data")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::BlockoutLevel level;
+    level.entities.push_back({.classname = "gameplay_entity", .properties = {{"kind", "pickup"}}});
+    const auto authoring = RelayCore::render::load_default_render_authoring_config();
+    const auto prepare = [&] {
+        return RelayGame::build_prepared_world_scene_data(
+            level,
+            authoring,
+            RelayCore::render::ColorPipelineMode::hardware_srgb
+        );
+    };
+    CHECK_FALSE(prepare().pickup_surfaces[0].has_value());
+    level.entities[0].properties["pickup_surface_y"] = "0.92";
+    CHECK(*prepare().pickup_surfaces[0] == doctest::Approx(.92F));
+    for (const auto* value : {"bench", "1.0junk", "nan", "inf"})
+    {
+        level.entities[0].properties["pickup_surface_y"] = value;
+        CHECK_THROWS_WITH(prepare(), doctest::Contains("pickup_surface_y must be a finite height"));
+    }
+}
+
+TEST_CASE("interactive panel presentation preserves authored roles and rejects unknown styles")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayCore::BlockoutLevel level;
+    for (const auto* kind : {"panel", "button", "terminal", "console"})
+        level.entities.push_back({.classname = "gameplay_entity", .properties = {{"kind", kind}}});
+    const auto authoring = RelayCore::render::load_default_render_authoring_config();
+    const auto prepare = [&] {
+        return RelayGame::build_prepared_world_scene_data(
+            level,
+            authoring,
+            RelayCore::render::ColorPipelineMode::hardware_srgb
+        );
+    };
+    using RelayGame::PanelPresentation;
+    CHECK(
+        prepare().panel_presentations
+        == std::
+            vector{PanelPresentation::Door, PanelPresentation::Door, PanelPresentation::Instrument, PanelPresentation::Instrument}
+    );
+    level.entities[0].properties["panel_style"] = "start";
+    level.entities[2].properties["panel_style"] = "isolator";
+    CHECK(
+        prepare().panel_presentations
+        == std::
+            vector{PanelPresentation::Start, PanelPresentation::Door, PanelPresentation::Isolator, PanelPresentation::Instrument}
+    );
+    level.entities[0].properties["panel_style"] = "strat";
+    CHECK_THROWS_WITH_AS(
+        prepare(),
+        doctest::Contains("gameplay_entity #0: panel_style must be door, isolator, start or instrument; got 'strat'"),
+        std::runtime_error
+    );
+}
 
 TEST_CASE("render authoring config loads shipped material and light contract")
 {

@@ -24,6 +24,8 @@ namespace RelayGame
         std::string mark = "arrow";
         float delay = 0;
         float fixture_offset = 0.485F;
+        float fixture_width = 0.56F;
+        float fixture_depth = 0.18F;
         bool damaged = false;
         int light_index = -1;
         float elapsed = 0;

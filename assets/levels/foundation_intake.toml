@@ -1,4 +1,26 @@
 # Two-map foundation scenario: intake workshop.
+[[entity]]
+classname = "prop_static"
+model = "models/foundation_intake.rcmodel"
+origin = [0,0,0]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [3.6,2.5,-1], angles = [270,0,0] },
+  { origin = [3.6,2.5,2], angles = [270,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+origin = [-2.4,1.2,-3.82]
+
+[[entity]]
+classname = "prop_static"
+model = "models/electrical_notes_board.rcmodel"
+origin = [2.2,1.3,-3.82]
 [[solid_group]]
 boxes = [
   { origin = [0,-0.125,1], size = [8,0.25,10], material = "Tile" },
@@ -24,15 +46,21 @@ angles = [180,0,0]
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,0]
+fixture_width = 1.56
+fixture_depth = 0.26
+fixture_offset = 0.3065
 color = [0.85,0.8,0.65]
 radius = 8
-intensity = 1.5
+intensity = 0.7
 [[entity]]
 classname = "render_light"
 origin = [0,2.9,4.5]
+fixture_width = 1.11
+fixture_depth = 0.26
+fixture_offset = 0.3065
 color = [0.6,0.8,0.65]
 radius = 4
-intensity = 1.2
+intensity = 0.6
 [[entity]]
 classname = "prop_static"
 origin = [-3,0,1.5]
@@ -61,29 +89,34 @@ classname = "gameplay_entity"
 kind = "panel"
 targetname = "intake_button"
 target = "intake_door"
-origin = [1.3,1.3,2.75]
+origin = [1.3,1.3,2.875]
 size = [0.3,0.5,0.15]
 mount_axis = "-z"
 label = "Открыть технический проход"
+required_item = "service_key"
+required_item_name = "Сервисный ключ"
+single_use = true
+denied_message = "Ключ насосной лежит на столе слева."
+success_message = "Допуск в сектор 02 открыт. Ключ нужен для пуска насосов; без них служебный выход заблокирован."
 [[entity]]
 classname = "mission_step"
 kind = "pickup"
 target = "service_key"
-title = "Взять сервисный ключ"
-detail = "Ключ лежит на металлическом столе слева. Нажмите E."
+title = "Получить ключ насосной — сектор 01"
+detail = "Нужно восстановить насосы в секторе 02 и открыть служебный выход. Ключ — на столе слева."
 [[entity]]
 classname = "mission_step"
 kind = "door_open"
 target = "intake_door"
-title = "Открыть проход"
-detail = "Нажмите кнопку справа от двери."
+title = "Открыть допуск в сектор 02"
+detail = "Используйте сервисный ключ на пульте справа от двери."
 [[entity]]
 classname = "mission_step"
 kind = "zone"
 origin = [0,0,4.5]
 size = [2,2,1]
-title = "Пройти в насосную"
-detail = "Пройдите через дверь. Ключ останется у вас."
+title = "Перейти к насосам — сектор 02"
+detail = "За дверью насосная. Ключ останется у вас; включите там пусковой пульт."
 [[entity]]
 classname = "level_exit"
 origin = [0,0,4.5]
@@ -98,3 +131,20 @@ angles = [180,0,0]
 health = 60
 speed = 1.6
 detection_range = 10
+
+[[entity]]
+classname = "mission_settings"
+completion_title = "Допуск в насосную получен"
+completion_detail = "Восстановите насосы в секторе 02, чтобы открыть служебный выход."
+
+[[entity]]
+classname = "world_effect"
+kind = "decal"
+origin = [-2.4,2.5,-3.874]
+mark = "01"
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.01, -2]
+angles = [0, 0, 0]

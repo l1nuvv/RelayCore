@@ -2,7 +2,7 @@
 
 `facility_source.png` is original art generated with the built-in ImageGen tool. It contains eight square diffuse textures in a 4 by 2 sheet: concrete, painted steel, mineral floor tiles, diamond tread, ventilation grille, brushed steel, wooden crate and hazard stripes. No Valve assets were used.
 
-`blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically for OpenGL sampling. Unused cells contain neutral steel. No alpha cutouts are required.
+`blockout_atlas.bmp` is the runtime atlas: 2048 by 1024 pixels, 8 by 4 cells in `SurfaceMaterial` order. Each 256-pixel cell has a 224-pixel image and a 16-pixel wrapped gutter. Packing flips each source vertically to preserve the existing atlas UV convention used by the Vulkan renderer. Unused cells contain neutral steel. No alpha cutouts are required.
 
 `wing_materials.png` is an original 2-by-2 source sheet for slots 27–30: blue-gray service access floor, warm maintenance concrete, gray-green ribbed filtration floor, and pale washable filtration wall. These opaque diffuse tiles distinguish the power restoration wings at walking distance. They have no baked lighting or text; their edges repeat through the atlas gutter. Generated with the built-in ImageGen tool using a flat orthographic 2-by-2 seamless industrial texture prompt. The `graphics.power_restoration` captures check them in the game renderer.
 
@@ -12,9 +12,9 @@ Validate with the `graphics.power_restoration` test, which renders intake, servi
 
 ## Generation prompt
 
-### Scientist materials (0.2)
+### Original atlas character materials
 
-`scientist_materials.png` is an original ImageGen source, packed into atlas slots 23–26: ivory cotton, charcoal-brown twill, dark brown shoe leather and charcoal rubber. These materials use object-space mapping, so the fabric moves with each body part. Repeat sizes are 0.20, 0.24, 0.16 and 0.12 metres respectively. All four are opaque diffuse textures; no environment materials are reused on the scientist.
+`scientist_materials.png` is an original ImageGen source, packed into atlas slots 23–26: ivory cotton, charcoal-brown twill, dark brown shoe leather and charcoal rubber. The atlas character/body path uses object-space mapping, so fabric moves with each body part. Repeat sizes are 0.20, 0.24, 0.16 and 0.12 metres respectively. These opaque diffuse swatches remain source material for that path; the current VIS-38 scientist uses its own native model/materials, documented in [the asset report](../../docs/art/vis36-38-pickups-security-scientist.md).
 
 Generation specification: exact 2-by-2 sheet of four seamless square diffuse swatches, ordered cotton / twill / leather / rubber. Restrained late-1990s FPS material art, readable fine weave and grain, neutral uniform albedo illumination. No clothing silhouettes, seams, buttons, text, logos, baked highlights, shadows, AO, perspective or background. Original material art, no copied game assets. Validation: `graphics.power_restoration` renders idle, stepping and turned first-person body views through the game renderer.
 

@@ -1,11 +1,13 @@
 #include "relaycore/gameplay/combat_runtime.h"
 
 #include "relaycore/gameplay/entity_spawn_parsing.h"
+#include "relaycore/gameplay/interaction_descriptors.h"
 #include "relaycore/world/blockout_level.h"
 
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
+#include <stdexcept>
 #include <string_view>
 
 namespace RelayCore::gameplay
@@ -75,49 +77,6 @@ namespace RelayCore::gameplay
         {
             const glm::vec3 extents = solid.maxs - solid.mins;
             return extents.x >= kMinHazardDamageSpan && extents.z >= kMinHazardDamageSpan;
-        }
-
-        [[nodiscard]] auto ray_hits_world_before_distance(
-            const BlockoutLevel& level,
-            std::span<const RuntimeDoor> doors,
-            const glm::vec3& origin,
-            const glm::vec3& direction,
-            const float max_distance
-        ) -> float
-        {
-            float nearest_distance = max_distance;
-
-            for (const auto* solids : {&level.solids, &level.prop_colliders})
-                for (const BlockoutSolid& solid : *solids)
-                {
-                    const auto hit = physics::ray_intersection_distance(
-                        origin,
-                        direction,
-                        physics::Aabb{.mins = solid.mins, .maxs = solid.maxs},
-                        nearest_distance
-                    );
-                    if (hit.has_value())
-                    {
-                        nearest_distance = *hit;
-                    }
-                }
-
-            for (const RuntimeDoor& door : doors)
-            {
-                if (!is_door_blocking(door))
-                {
-                    continue;
-                }
-
-                const auto hit =
-                    physics::ray_intersection_distance(origin, direction, current_door_bounds(door), nearest_distance);
-                if (hit.has_value())
-                {
-                    nearest_distance = *hit;
-                }
-            }
-
-            return nearest_distance;
         }
 
     } // namespace
@@ -229,7 +188,43 @@ namespace RelayCore::gameplay
             turret.enabled = parse_bool_property(entity, "enabled", true);
             turret.destroy_target = property_or(entity, "destroy_target", {});
             turret.destroy_action = parse_target_action(entity);
+            turret.stop_target = property_or(entity, "stop_target", {});
             result.turrets.push_back(std::move(turret));
+        }
+
+        if (std::ranges::any_of(result.turrets, [](const auto& turret) {
+                return !turret.stop_target.empty();
+            }))
+        {
+            const auto interactions = InteractionDescriptorBuilder{level}.build();
+            for (const auto& turret : result.turrets)
+            {
+                if (turret.stop_target.empty())
+                    continue;
+                const bool produced = std::ranges::any_of(
+                                          interactions.usables,
+                                          [&](const auto& usable) {
+                                              return usable.action_kind == UsableActionKind::ActivateTarget
+                                                     && usable.target == turret.stop_target;
+                                          }
+                                      )
+                                      || std::ranges::any_of(
+                                          interactions.triggers,
+                                          [&](const auto& trigger) {
+                                              return trigger.action_kind == TriggerActionKind::ActivateTarget
+                                                     && trigger.target == turret.stop_target;
+                                          }
+                                      )
+                                      || std::ranges::any_of(result.turrets, [&](const auto& source) {
+                                             return source.destroy_action == CombatTargetActionKind::ActivateTarget
+                                                    && source.destroy_target == turret.stop_target;
+                                         });
+                if (!produced)
+                    throw std::runtime_error(
+                        "turret '" + turret.name + "': stop_target '" + turret.stop_target
+                        + "' has no activate_target producer"
+                    );
+            }
         }
 
         return result;
@@ -295,8 +290,7 @@ namespace RelayCore::gameplay
     }
 
     auto apply_player_fire(
-        const BlockoutLevel& level,
-        const std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
@@ -315,13 +309,9 @@ namespace RelayCore::gameplay
         ++player.shots_fired;
 
         const glm::vec3 shot_direction = glm::normalize(direction);
-        const float blocker_distance = ray_hits_world_before_distance(
-            level,
-            doors,
-            origin,
-            shot_direction,
-            std::min(player.weapon_range, max_hit_distance)
-        );
+        const float range = std::min(player.weapon_range, max_hit_distance);
+        const auto blocker = world.raycast(origin, shot_direction, range, physics::WorldQueryMask::All);
+        const float blocker_distance = blocker ? blocker->distance : range;
 
         float best_hit_distance = blocker_distance;
         int best_turret_index = -1;
@@ -348,10 +338,18 @@ namespace RelayCore::gameplay
 
         if (best_turret_index < 0)
         {
+            result.world_impact = blocker;
+            player.shot_trace.impact = blocker;
             return result;
         }
 
         RuntimeTurret& turret = turrets[static_cast<std::size_t>(best_turret_index)];
+        player.shot_trace.impact = physics::WorldQueryHit{
+            .distance = best_hit_distance,
+            .position = player.shot_trace.end,
+            .normal = -shot_direction,
+            .surface = SurfaceMaterial::Metal,
+        };
         result.hit_turret = true;
         result.turret_index = best_turret_index;
         result.hit_distance = best_hit_distance;
@@ -367,17 +365,28 @@ namespace RelayCore::gameplay
     }
 
     auto update_combat_threats(
-        const BlockoutLevel& level,
-        const std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const physics::Aabb& player_bounds,
         const glm::vec3& player_eye_position,
         PlayerCombatState& player,
         const std::span<RuntimeTurret> turrets,
         const std::span<const RuntimeHazardVolume> hazards,
-        const float dt
+        const float dt,
+        const std::span<const std::string> activated_targets
     ) -> CombatThreatResult
     {
         CombatThreatResult result{};
+        for (auto& turret : turrets)
+            if (!turret.stop_target.empty()
+                && std::ranges::find(activated_targets, turret.stop_target) != activated_targets.end())
+            {
+                turret.enabled = false;
+                turret.warming_up = false;
+                turret.warmup_remaining_seconds = 0;
+                turret.cooldown_remaining_seconds = 0;
+                turret.fire_flash_remaining_seconds = 0;
+                turret.shot_trace = {};
+            }
         if (!player.alive)
         {
             return result;
@@ -417,8 +426,8 @@ namespace RelayCore::gameplay
             }
 
             const glm::vec3 aim_direction = to_player / distance;
-            const float blocker_distance =
-                ray_hits_world_before_distance(level, doors, turret_eye_position(turret), aim_direction, distance);
+            const auto blocker = world.raycast(turret_eye_position(turret), aim_direction, distance);
+            const float blocker_distance = blocker ? blocker->distance : distance;
             if (blocker_distance + 0.02F < distance)
             {
                 turret.warming_up = false;

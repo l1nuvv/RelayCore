@@ -1,5 +1,7 @@
 # RC-022p1 visual reference
 
+Historical RC-022 reference. Original measurements, authored values and GL-era commands below retain their original scope; they are not current Vulkan verification evidence. Use [DEVELOPMENT.md](DEVELOPMENT.md) for current commands and [the Vulkan SDR/HDR audit](color_pipeline_baseline.md#vulkan-sdrhdr-audit--2026-10-08) for the later colour-path measurements.
+
 RC-022p1 provides local, reproducible visual-review input for the later legacy-gamma versus hardware-sRGB decision. It does not change the production colour pipeline, and captures are not committed as cross-GPU golden images.
 
 ## Build and launch

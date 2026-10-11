@@ -40,10 +40,18 @@ namespace RelayGame
                 return value;
             };
             StaticProp prop;
+            prop.authored_entity_index = static_cast<int>(i);
             prop.model = RelayCore::core::asset_path(required("model"));
-            prop.texture = RelayCore::core::asset_path(required("texture"));
-            if (prop.model.extension() != ".obj" || prop.texture.extension() != ".bmp")
-                throw std::runtime_error(label + ": expected a triangulated .obj model and a .bmp diffuse texture");
+            if (prop.model.extension() == ".rcmodel")
+            {
+                if (entity.properties.contains("texture"))
+                    throw std::runtime_error(label + ": .rcmodel owns its materials; remove texture");
+            } else
+            {
+                prop.texture = RelayCore::core::asset_path(required("texture"));
+                if (prop.model.extension() != ".obj" || prop.texture.extension() != ".bmp")
+                    throw std::runtime_error(label + ": expected .rcmodel or triangulated .obj with .bmp texture");
+            }
             const auto scale = entity.properties.contains("scale") ? vector("scale") : glm::vec3{1};
             if (glm::any(glm::lessThanEqual(scale, glm::vec3{0})))
                 throw std::runtime_error(label + ": scale must be positive");
@@ -80,6 +88,22 @@ namespace RelayGame
                     collider.maxs = glm::max(collider.maxs, point);
                 }
                 prop.collider = collider;
+            }
+            if (entity.properties.contains("collision_asset"))
+            {
+                const auto& reference = required("collision_asset");
+                const auto relative = std::filesystem::path{reference};
+                if (prop.collider || prop.model.extension() != ".rcmodel" || relative.extension() != ".rccollision"
+                    || relative.parent_path().generic_string() != "collision"
+                    || relative.stem().string().find_first_not_of(
+                           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+                       ) != std::string::npos)
+                    throw std::runtime_error(
+                        label
+                        + ": collision_asset requires collision/<name>.rccollision, a native model and no "
+                          "collision_mins/maxs/material"
+                    );
+                prop.collision_product = RelayCore::core::asset_path(reference);
             }
             props.push_back(std::move(prop));
         }

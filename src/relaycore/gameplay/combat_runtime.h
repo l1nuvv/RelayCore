@@ -1,10 +1,10 @@
 #pragma once
 
-#include "relaycore/gameplay/interaction_runtime.h"
-#include "relaycore/physics/collision.h"
+#include "relaycore/physics/world_query.h"
 
 #include <cstdint>
 #include <glm/vec3.hpp>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -32,6 +32,7 @@ namespace RelayCore::gameplay
         glm::vec3 start{};
         glm::vec3 end{};
         float remaining_seconds = 0.0F;
+        std::optional<physics::WorldQueryHit> impact{};
     };
 
     struct RuntimeTurret {
@@ -39,6 +40,7 @@ namespace RelayCore::gameplay
         std::string name{};
         std::string label{};
         std::string destroy_target{};
+        std::string stop_target{};
         physics::Aabb bounds{};
         glm::vec3 origin{};
         float yaw = 0.0F;
@@ -99,6 +101,7 @@ namespace RelayCore::gameplay
         bool killed_turret = false;
         int turret_index = -1;
         float hit_distance = 0.0F;
+        std::optional<physics::WorldQueryHit> world_impact{};
         CombatTargetEvent target_event{};
     };
 
@@ -120,8 +123,7 @@ namespace RelayCore::gameplay
     void tick_combat_state(float dt, PlayerCombatState& player, std::span<RuntimeTurret> turrets) noexcept;
 
     [[nodiscard]] auto apply_player_fire(
-        const BlockoutLevel& level,
-        std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const glm::vec3& origin,
         const glm::vec3& direction,
         PlayerCombatState& player,
@@ -130,13 +132,13 @@ namespace RelayCore::gameplay
     ) -> CombatFireResult;
 
     [[nodiscard]] auto update_combat_threats(
-        const BlockoutLevel& level,
-        std::span<const RuntimeDoor> doors,
+        const physics::WorldQuery world,
         const physics::Aabb& player_bounds,
         const glm::vec3& player_eye_position,
         PlayerCombatState& player,
         std::span<RuntimeTurret> turrets,
         std::span<const RuntimeHazardVolume> hazards,
-        float dt
+        float dt,
+        std::span<const std::string> activated_targets = {}
     ) -> CombatThreatResult;
 } // namespace RelayCore::gameplay

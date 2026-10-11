@@ -45,8 +45,11 @@ namespace RelayCore::render
         float postfx_scanline_strength = 0.04F;   ///< Scanline modulation strength for retro presentation.
         float postfx_contrast = 1.06F;            ///< Final color-contrast multiplier around mid grey.
         float postfx_saturation = 0.94F;          ///< Final color saturation after lighting and fog.
-        bool shadow_enabled = true;               ///< Enables scene shadow passes.
-        int shadow_map_resolution = 1536;         ///< Square shadow map size in texels.
+        bool hdr_enabled = false;
+        float exposure_ev = 0;
+        int msaa_samples = 1;
+        bool shadow_enabled = true;                            ///< Enables scene shadow passes.
+        int shadow_map_resolution = 1536;                      ///< Square shadow map size in texels.
         glm::vec3 shadow_light_direction{0.28F, -1.0F, 0.22F}; ///< Light-to-scene direction for the key light.
         glm::vec3 shadow_light_color{0.34F, 0.38F, 0.42F};     ///< Tint of the shadowed directional key light.
         float shadow_light_intensity = 0.95F;                  ///< Intensity multiplier for the key light.

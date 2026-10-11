@@ -9,9 +9,10 @@
 namespace RelayGame
 {
     struct StaticProp {
-        std::filesystem::path model, texture;
+        std::filesystem::path model, texture, collision_product;
         glm::mat4 transform{1};
         std::optional<RelayCore::BlockoutSolid> collider;
+        int authored_entity_index = -1;
     };
 
     [[nodiscard]] auto build_static_props(const RelayCore::BlockoutLevel& level) -> std::vector<StaticProp>;

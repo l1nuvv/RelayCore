@@ -140,7 +140,7 @@ namespace RelayCore
         engine_.reset();
     }
 
-    void AudioSystem::play_one_shot(const std::filesystem::path& file_path)
+    void AudioSystem::play_one_shot(const std::filesystem::path& file_path, const std::optional<glm::vec3> position)
     {
         RELAYCORE_PROFILE_FUNCTION();
         if (!engine_ || file_path.empty())
@@ -153,6 +153,14 @@ namespace RelayCore
         if (const auto found = std::ranges::find(one_shots_, file_path, &CachedOneShot::path);
             found != one_shots_.end())
         {
+            ma_sound_set_spatialization_enabled(found->sound.get(), position.has_value());
+            if (position)
+            {
+                ma_sound_set_position(found->sound.get(), position->x, position->y, position->z);
+                ma_sound_set_attenuation_model(found->sound.get(), ma_attenuation_model_linear);
+                ma_sound_set_min_distance(found->sound.get(), 1.0F);
+                ma_sound_set_max_distance(found->sound.get(), 24.0F);
+            }
             ma_sound_seek_to_pcm_frame(found->sound.get(), 0);
             ma_sound_start(found->sound.get());
             return;

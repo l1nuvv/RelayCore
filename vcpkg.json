@@ -1,23 +1,29 @@
 {
   "name": "relaycore",
-  "version-string": "1.3.4",
+  "version-string": "1.4.1",
   "builtin-baseline": "a42757564758c60651ebc616d9b000b7b91249ef",
-  "description": "Starter project for a small retro indoor FPS / engine-programming prototype using SDL3, OpenGL, GLM, spdlog, ImGui, miniaudio, doctest, Tracy, and toml++.",
+  "description": "Starter project for a small retro indoor FPS / engine-programming prototype using SDL3, Vulkan, GLM, spdlog, ImGui, miniaudio, doctest, Tracy, and toml++.",
   "license": "MIT",
   "supports": "windows",
   "dependencies": [
     "doctest",
+    "fastgltf",
     "glm",
+    {
+      "name": "joltphysics",
+      "default-features": false
+    },
     {
       "name": "imgui",
       "default-features": false,
       "features": [
-        "opengl3-binding",
+
         "sdl3-binding",
         "vulkan-binding"
       ]
     },
     "miniaudio",
+    "rmlui",
     {
       "name": "sdl3",
       "features": ["vulkan"]

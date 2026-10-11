@@ -22,9 +22,11 @@
 /vcpkg_installed/
 /.cache/
 /.clangd/
+__pycache__/
+*.pyc
 
 # IDEs and editors
-/.idea/
+.idea/
 /.vs/
 /.vscode/
 /.fleet/
@@ -39,6 +41,7 @@ imgui.ini
 *.gcda
 *.gcno
 *.pdb
+/*-captures/
 
 # OS noise
 .DS_Store
@@ -48,12 +51,4 @@ docs/doxygen/*
 !docs/doxygen/.gitkeep
 !docs/doxygen/README.md
 logs/
-/src/relaycore/render/.idea/.gitignore
 /CMakeUserPresets.json.bak
-/src/relaycore/render/.idea/discord.xml
-/src/relaycore/render/.idea/editor.xml
-/feat(gameplay)__rework_interaction_runtime_and_config-driven_startup__-_split_interaction_.patch
-/src/relaycore/render/.idea/misc.xml
-/src/relaycore/render/.idea/modules.xml
-/src/relaycore/render/.idea/render.iml
-/src/relaycore/render/.idea/vcs.xml

@@ -32,6 +32,8 @@ namespace RelayGame
         const float step = std::max(dt, 0.0F);
         combat_state_.shotgun_cycle_remaining_seconds =
             std::max(0.0F, combat_state_.shotgun_cycle_remaining_seconds - step);
+        combat_state_.pistol_cycle_remaining_seconds =
+            std::max(0.0F, combat_state_.pistol_cycle_remaining_seconds - step);
         for (auto& trace : combat_state_.pellet_traces)
             trace.remaining_seconds = std::max(0.0F, trace.remaining_seconds - step);
     }
@@ -63,6 +65,8 @@ namespace RelayGame
                                       ? audio_cues_.panel_press
                                       : RelayCore::core::asset_path(gameplay_audio.weapon_fire);
         audio_cues_.shotgun_fire = RelayCore::core::asset_path("audio/combat/shotgun_fire.wav");
+        audio_cues_.impact_hard = RelayCore::core::asset_path("audio/combat/impact_hard.wav");
+        audio_cues_.impact_metal = RelayCore::core::asset_path("audio/combat/impact_metal.wav");
         audio_cues_.weapon_hit = gameplay_audio.weapon_hit.empty()
                                      ? std::filesystem::path{}
                                      : RelayCore::core::asset_path(gameplay_audio.weapon_hit);
@@ -97,14 +101,7 @@ namespace RelayGame
 
         RelayCore::gameplay::RuntimeUsable& usable =
             usables_[static_cast<std::size_t>(interaction_state_.focused_usable_index)];
-        const RelayCore::gameplay::InteractionEvent event = RelayGame::apply_usable_interaction(
-            usable,
-            doors_,
-            usables_,
-            inventory_item_ids_,
-            activated_target_ids_,
-            signaled_target_ids_
-        );
+        const RelayCore::gameplay::InteractionEvent event = apply_runtime_usable_interaction(usable);
         remember_interaction_event(event);
         const RelayCore::gameplay::UseInteractionOutcome outcome = event.kind;
 
@@ -192,17 +189,8 @@ namespace RelayGame
             return;
         }
 
-        const auto attack = fire_player_weapon(
-            level_,
-            doors_,
-            player_controller_.eye_position_world(),
-            player_controller_.view_forward(),
-            combat_state_.player,
-            combat_state_.turrets,
-            enemies_,
-            selected_weapon_
-        );
-
+        const auto attack =
+            apply_player_attack(player_controller_.eye_position_world(), player_controller_.view_forward());
         const auto& fire_result = attack.combat;
         if (!fire_result.fired)
         {
@@ -212,12 +200,19 @@ namespace RelayGame
         combat_state_.pellet_traces = attack.pellet_traces;
         if (selected_weapon_ == PlayerWeapon::Shotgun)
             combat_state_.shotgun_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
+        else
+            combat_state_.pistol_cycle_remaining_seconds = combat_state_.player.weapon_cooldown_remaining_seconds;
         play_gameplay_audio(
             services,
             selected_weapon_ == PlayerWeapon::Shotgun ? audio_cues_.shotgun_fire : audio_cues_.weapon_fire
         );
         if (selected_weapon_ == PlayerWeapon::Shotgun)
             player_controller_.apply_weapon_recoil(.035F * camera_motion_);
+        const auto impacts = weapon_impact_feedback(std::span{attack.rays.data(), attack.ray_count});
+        if (impacts.hard)
+            play_gameplay_audio(services, audio_cues_.impact_hard, impacts.hard->position);
+        if (impacts.metal)
+            play_gameplay_audio(services, audio_cues_.impact_metal, impacts.metal->position);
         for (std::size_t i = 0; i < attack.ray_count; ++i)
             if (attack.rays[i].killed_turret)
                 apply_combat_target_event(attack.rays[i].target_event);
@@ -277,8 +272,11 @@ namespace RelayGame
         }
     }
 
-    void
-    GameWorldRuntime::play_gameplay_audio(RelayCore::EngineServices& services, const std::filesystem::path& cue_path)
+    void GameWorldRuntime::play_gameplay_audio(
+        RelayCore::EngineServices& services,
+        const std::filesystem::path& cue_path,
+        const std::optional<glm::vec3> position
+    )
     {
         RELAYCORE_PROFILE_FUNCTION();
         if (cue_path.empty())
@@ -287,7 +285,7 @@ namespace RelayGame
         }
         audio_state_.last_one_shot_path = cue_path;
         ++audio_state_.one_shot_count;
-        services.audio_system().play_one_shot(cue_path);
+        services.audio_system().play_one_shot(cue_path, position);
     }
 
     void GameWorldRuntime::play_door_state_change_audio(RelayCore::EngineServices& services)
@@ -471,7 +469,18 @@ namespace RelayGame
     void GameWorldRuntime::respawn_player_at_spawn() noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
-        player_controller_.initialize(combat_state_.spawn_position, combat_state_.spawn_view_angles);
+        auto position = combat_state_.spawn_position;
+        auto view_angles = combat_state_.spawn_view_angles;
+        const auto progress = mission_runtime_.snapshot().current_step;
+        for (const auto& retry : retry_spawns_)
+            if (progress >= retry.completed_steps)
+            {
+                position = retry.position;
+                view_angles = retry.view_angles;
+            }
+        if (containment_)
+            containment_->reset_threat_after_death();
+        player_controller_.initialize(position, view_angles);
         player_feedback_.reset();
         RelayCore::gameplay::respawn_player_combat_state(combat_state_.player);
         refresh_runtime_usables_and_focus();

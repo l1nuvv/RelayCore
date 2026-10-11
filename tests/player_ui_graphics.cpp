@@ -1,0 +1,366 @@
+#include "relaycore/app/engine_services.h"
+#include "relaycore/audio/audio_system.h"
+#include "relaycore/core/log.h"
+#include "relaycore/core/paths.h"
+#include "relaycore/platform/window.h"
+#include "relaycore/render/renderer.h"
+#include "relaygame/demo_game.h"
+#include "relaygame/player_settings.h"
+#include "relaygame/save_game.h"
+
+#include <RmlUi/Core.h>
+#include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <array>
+#include <cmath>
+#include <iostream>
+#include <optional>
+#include <stdexcept>
+
+#include "scoped_temp_directory.h"
+
+namespace
+{
+    void require(bool condition, const char* message)
+    {
+        if (!condition)
+            throw std::runtime_error(message);
+    }
+    void save(const RelayCore::render::CpuRgbaTextureData& image, const std::filesystem::path& path)
+    {
+        auto* surface = SDL_CreateSurfaceFrom(
+            image.width,
+            image.height,
+            SDL_PIXELFORMAT_RGBA32,
+            const_cast<uint8_t*>(image.pixels.data()),
+            image.width * 4
+        );
+        require(surface != nullptr, "Player UI capture surface failed");
+        const bool written = SDL_SaveBMP(surface, path.string().c_str());
+        SDL_DestroySurface(surface);
+        require(written, "Player UI capture failed");
+    }
+} // namespace
+int main()
+{
+    if (!SDL_Init(SDL_INIT_VIDEO))
+        return 77;
+    int result = 0;
+    RelayCore::test::ScopedTempDirectory directory;
+    RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+    try
+    {
+        auto config = RelayCore::core::load_default_engine_config();
+        config.renderer.imgui.enabled = false;
+        config.audio.enabled = false;
+        config.window.width = 1280;
+        config.window.height = 720;
+        config.window.vsync = false;
+        RelayCore::Window window{config.window};
+        SDL_HideWindow(window.handle());
+        RelayCore::Renderer renderer{config.renderer};
+        renderer.initialize(window);
+        RelayCore::AudioSystem audio{config.audio};
+        bool running = true;
+        RelayCore::EngineServices services{config, window, renderer, audio, running};
+        const auto user_path = directory.path() / "player";
+        constexpr const char* profile_variable = "RELAYCORE_USER_DATA_ROOT";
+        const auto* prior_profile = SDL_getenv_unsafe(profile_variable);
+        const std::optional<std::string> previous_profile =
+            prior_profile ? std::optional<std::string>{prior_profile} : std::nullopt;
+        for (const char* invalid : {"relative/player", ""})
+        {
+            require(SDL_setenv_unsafe(profile_variable, invalid, 1) == 0, "Cannot select invalid profile fixture");
+            bool rejected = false;
+            try
+            {
+                auto invalid_profile = RelayGame::make_demo_game();
+                invalid_profile->on_startup(services);
+            } catch (const std::runtime_error&)
+            {
+                rejected = true;
+            }
+            require(rejected, "Invalid profile override fell back to user progress");
+        }
+        require(
+            SDL_setenv_unsafe(profile_variable, user_path.string().c_str(), 1) == 0,
+            "Cannot isolate playtest profile"
+        );
+        auto delegate = RelayGame::make_demo_game();
+        delegate->on_startup(services);
+        if (previous_profile)
+            require(
+                SDL_setenv_unsafe(profile_variable, previous_profile->c_str(), 1) == 0,
+                "Cannot restore profile environment"
+            );
+        else
+            require(SDL_unsetenv_unsafe(profile_variable) == 0, "Cannot restore default profile environment");
+        auto& game = static_cast<RelayGame::DemoGame&>(*delegate);
+        require(renderer.ui_available() && !renderer.developer_ui_available(), "Player UI requires developer ImGui");
+        const auto captures = std::filesystem::current_path() / "player-ui-captures";
+        std::filesystem::create_directories(captures);
+        const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+        const auto draw = [&](const std::string& name) {
+            renderer.begin_frame();
+            game.on_render(frame, services);
+            require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Player UI unavailable with ImGui disabled");
+            game.on_ui(services);
+            renderer.end_ui();
+            auto image = renderer.capture_frame();
+            if (!name.empty())
+                save(image, captures / (name + ".bmp"));
+            return image;
+        };
+        auto* document = Rml::GetContext("player")->GetDocument("menu");
+        const auto control = [&](const char* id) -> Rml::Element* {
+            auto* element = document->GetElementById(id);
+            require(element != nullptr, "Missing authored player UI control");
+            return element;
+        };
+        const auto key = [&](SDL_Scancode scan, SDL_Keycode code) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_KEY_DOWN;
+            event.key.scancode = scan;
+            event.key.key = code;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            game.on_update({}, services);
+        };
+        const auto click = [&](const char* id) {
+            auto* element = control(id);
+            element->ScrollIntoView();
+            (void) draw("");
+            Rml::Rectanglef bounds;
+            require(
+                Rml::ElementUtilities::GetBoundingBox(bounds, element, Rml::BoxArea::Border),
+                "Menu control has no projected bounds"
+            );
+            const auto center = bounds.Center();
+            auto* hit = Rml::GetContext("player")->GetElementAtPoint(center);
+            while (hit && hit != element)
+                hit = hit->GetParentNode();
+            if (!hit)
+                throw std::runtime_error(std::string{"Menu click is outside the visible control: "} + id);
+            const float density = SDL_GetWindowPixelDensity(window.handle());
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_MOTION;
+            event.motion.x = center.x / density;
+            event.motion.y = center.y / density;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = SDL_BUTTON_LEFT;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            event.type = SDL_EVENT_MOUSE_BUTTON_UP;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            game.on_update({}, services);
+        };
+        const auto change = [&](const char* id, const char* value) {
+            auto* element = dynamic_cast<Rml::ElementFormControl*>(control(id));
+            require(element != nullptr, "Player setting is not a form control");
+            element->SetValue(value);
+            element->DispatchEvent("change", {});
+            game.on_update({}, services);
+        };
+        (void) draw("");
+        for (const auto lost : {SDL_EVENT_WINDOW_FOCUS_LOST, SDL_EVENT_WINDOW_MINIMIZED})
+        {
+            auto* button = control("settings-button");
+            button->ScrollIntoView();
+            (void) draw("");
+            Rml::Rectanglef bounds;
+            require(
+                Rml::ElementUtilities::GetBoundingBox(bounds, button, Rml::BoxArea::Border),
+                "Settings bounds missing"
+            );
+            const auto center = bounds.Center();
+            const float density = SDL_GetWindowPixelDensity(window.handle());
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_MOTION;
+            event.motion.x = center.x / density;
+            event.motion.y = center.y / density;
+            renderer.process_event(event);
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = SDL_BUTTON_LEFT;
+            renderer.process_event(event);
+            require(button->IsPseudoClassSet("active"), "Pressed menu control did not become active");
+            event.type = lost;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            require(!renderer.player_ui().has_focused_control(), "Inactive window retained menu control focus");
+            require(!button->IsPseudoClassSet("active"), "Inactive window retained a pressed menu control");
+            require(renderer.player_ui().consume_actions().empty(), "Focus cancellation activated a menu action");
+            event.type = lost == SDL_EVENT_WINDOW_MINIMIZED ? SDL_EVENT_WINDOW_RESTORED : SDL_EVENT_WINDOW_FOCUS_GAINED;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            event.type = SDL_EVENT_MOUSE_BUTTON_UP;
+            event.button.button = SDL_BUTTON_LEFT;
+            renderer.process_event(event);
+            game.on_event(event, services);
+            game.on_update({}, services);
+            (void) draw("");
+            require(!control("volume")->IsVisible(true), "Focus return completed an interrupted menu click");
+            click("settings-button");
+            (void) draw("");
+            require(control("volume")->IsVisible(true), "Focus return prevented a fresh menu click");
+            click("settings-button");
+            (void) draw("");
+        }
+        for (const auto size : {Rml::Vector2i{1280, 720}, {1920, 1080}, {2560, 1440}, {800, 600}})
+        {
+            require(SDL_SetWindowSize(window.handle(), size.x, size.y), "Player UI resize failed");
+            SDL_PumpEvents();
+            renderer.on_resize(size.x, size.y);
+            (void) draw("menu-" + std::to_string(size.x));
+            require(control("new-game")->IsVisible(true), "Resize hid the main action");
+        }
+        require(SDL_SetWindowSize(window.handle(), 1280, 720), "Restore size failed");
+        renderer.on_resize(1280, 720);
+        SDL_PumpEvents();
+        (void) draw("");
+        require(control("continue")->HasAttribute("disabled"), "Continue without a save must be disabled");
+        require(control("continue")->IsPseudoClassSet("disabled"), "Disabled action lost its visual state");
+        key(SDL_SCANCODE_TAB, SDLK_TAB);
+        require(renderer.player_ui().has_focused_control(), "Tab did not focus a menu control");
+        change("scenario", "levels/pressure_transfer.toml");
+        click("new-game");
+        require(
+            RelayGame::load_saved_game(user_path / "progress.toml").world.level_path
+                == RelayCore::core::asset_path("levels/pressure_transfer.toml").string(),
+            "Factory profile override did not isolate New Game progress"
+        );
+        require(
+            window.relative_mouse_mode() && !renderer.player_ui().captures_input(),
+            "New Game leaked menu input ownership"
+        );
+        game.on_update(frame, services);
+        (void) draw("gameplay");
+        const auto initial = renderer.player_diagnostics();
+        key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+        require(!window.relative_mouse_mode() && renderer.player_ui().captures_input(), "Pause did not block gameplay");
+        (void) draw("pause");
+        require(control("settings-button")->Focus(), "Menu button cannot receive keyboard focus");
+        key(SDL_SCANCODE_RETURN, SDLK_RETURN);
+        (void) draw("settings");
+        require(control("volume")->IsVisible(true), "Keyboard did not open settings");
+        change("volume", "0.35");
+        change("fov", "82");
+        change("sensitivity", "2.5");
+        (void) draw("settings-adjusted");
+        click("save-settings");
+        const auto settings = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
+        std::cout << "Saved settings: volume=" << settings.volume << " fov=" << settings.fov
+                  << " sensitivity=" << settings.sensitivity << '\n';
+        require(
+            std::abs(settings.volume - .35F) < .001F && settings.fov == 82
+                && std::abs(settings.sensitivity - .0025F) < .00001F,
+            "RML settings were not persisted"
+        );
+        SDL_Event input{};
+        input.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        input.button.button = SDL_BUTTON_LEFT;
+        renderer.process_event(input);
+        game.on_event(input, services);
+        input.type = SDL_EVENT_KEY_DOWN;
+        input.key.scancode = SDL_SCANCODE_W;
+        input.key.key = SDLK_W;
+        renderer.process_event(input);
+        game.on_event(input, services);
+        game.on_update(frame, services);
+        require(
+            renderer.player_diagnostics().shots_fired == initial.shots_fired
+                && renderer.player_diagnostics().position == initial.position,
+            "Modal player menu leaked gameplay actions"
+        );
+        input.type = SDL_EVENT_MOUSE_BUTTON_UP;
+        renderer.process_event(input);
+        game.on_event(input, services);
+        key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+        (void) draw("");
+        click("resume");
+        require(
+            window.relative_mouse_mode() && !renderer.player_ui().captures_input(),
+            "Resume click leaked menu ownership"
+        );
+        game.on_update({}, services);
+        require(renderer.player_diagnostics().shots_fired == initial.shots_fired, "Resume click fired a weapon");
+        key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+        (void) draw("");
+        click("to-menu");
+        require(renderer.player_ui().captures_input(), "Save and menu lost UI focus");
+        (void) draw("");
+        click("continue");
+        require(window.relative_mouse_mode(), "Continue did not start saved gameplay");
+        game.transition_to({.destination = RelayCore::core::asset_path("levels/missing-rmlui-test.toml")}, services);
+        (void) draw("transition-error");
+        require(
+            renderer.player_ui().captures_input() && !control("progress-error")->GetInnerRML().empty(),
+            "Failed transition lost its player error"
+        );
+        game.on_shutdown(services);
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Finale);
+        renderer.player_ui().set_text(
+            "finale-text",
+            "Питание и охлаждение в норме. Следующий маршрут: исследовательский блок."
+        );
+        renderer.begin_frame();
+        renderer.finish_scene();
+        require(renderer.begin_ui(frame, audio), "Finale UI unavailable");
+        renderer.end_ui();
+        save(renderer.capture_frame(), captures / "finale.bmp");
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hud);
+        renderer.player_ui().set_hud({.visible = true, .health = 100, .max_health = 100});
+        RelayCore::render::HudPresentation combat_hud{.visible = true, .health = 100, .max_health = 100};
+        combat_hud.world_markers = {{50, 40, .58F, 1, true, false, "35 / 60"}, {50, 34, 0, 1, false, true, "−25"}};
+        renderer.player_ui().set_hud(combat_hud);
+        renderer.begin_frame();
+        require(renderer.begin_ui(frame, audio), "Combat HUD unavailable");
+        renderer.end_ui();
+        save(renderer.capture_frame(), captures / "enemy-health-damage.bmp");
+        renderer.player_ui().set_hud({.visible = true, .health = 100, .max_health = 100});
+        std::array<uint8_t, 3> reference{};
+        int mode_index = 0;
+        for (const auto mode :
+             {RelayCore::render::ColorPipelineMode::legacy_gamma,
+              RelayCore::render::ColorPipelineMode::hardware_srgb,
+              RelayCore::render::ColorPipelineMode::hardware_srgb})
+        {
+            auto display = renderer.config();
+            display.hdr_enabled = mode_index == 2;
+            display.exposure_ev = 3;
+            renderer.commit_live_content_reload(
+                renderer.prepare_live_content_reload(display, renderer.authoring_config(), mode)
+            );
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio), "UI color composition unavailable");
+            renderer.end_ui();
+            const auto image = renderer.capture_frame();
+            const size_t center = size_t(image.height / 2 * image.width + image.width / 2) * 4;
+            const std::array<uint8_t, 3> pixel{
+                image.pixels[center],
+                image.pixels[center + 1],
+                image.pixels[center + 2]
+            };
+            require(
+                pixel == std::array<uint8_t, 3>{210, 213, 196},
+                "RmlUi color transfer altered an opaque reticle pixel"
+            );
+            if (mode_index == 0)
+                reference = pixel;
+            else
+                require(pixel == reference, "SDR/HDR/exposure changed opaque RmlUi color");
+            save(image, captures / ("color-" + std::to_string(mode_index++) + ".bmp"));
+        }
+        std::cout << "Player UI: ImGui disabled, four sizes, SDL mouse/keyboard, "
+                     "new/continue/pause/settings/save/error/cleanup passed\n";
+    } catch (const std::exception& error)
+    {
+        std::cerr << error.what() << '\n';
+        result = 1;
+    }
+    RelayCore::log::shutdown();
+    SDL_Quit();
+    return result;
+}

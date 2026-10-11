@@ -13,6 +13,7 @@
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -620,7 +621,7 @@ TEST_CASE("closing door overlapping actor is excluded from dynamic blockers")
     std::vector<RuntimeDoor> doors{door};
 
     const Aabb actor_bounds = make_bounds({0.65F, 0.9F, 0.0F}, {0.30F, 0.90F, 0.30F});
-    std::vector<Aabb> blockers;
+    std::vector<RelayCore::physics::WorldCollider> blockers;
 
     RelayCore::gameplay::collect_blocking_doors(doors, actor_bounds, blockers);
 
@@ -636,13 +637,13 @@ TEST_CASE("closed door overlapping actor remains in dynamic blockers")
     std::vector<RuntimeDoor> doors{door};
 
     const Aabb actor_bounds = make_bounds({0.65F, 0.9F, 0.0F}, {0.30F, 0.90F, 0.30F});
-    std::vector<Aabb> blockers;
+    std::vector<RelayCore::physics::WorldCollider> blockers;
 
     RelayCore::gameplay::collect_blocking_doors(doors, actor_bounds, blockers);
 
     REQUIRE(blockers.size() == 1);
-    CHECK(blockers[0].mins.x == doctest::Approx(door.closed_bounds.mins.x));
-    CHECK(blockers[0].maxs.z == doctest::Approx(door.closed_bounds.maxs.z));
+    CHECK(blockers[0].bounds.mins.x == doctest::Approx(door.closed_bounds.mins.x));
+    CHECK(blockers[0].bounds.maxs.z == doctest::Approx(door.closed_bounds.maxs.z));
 }
 
 TEST_CASE("runtime interactions read target links from entity properties")
@@ -1607,15 +1608,25 @@ TEST_CASE("shipped test_room use flow preserves required item and terminal activ
     const glm::vec3 shot_origin = turrets[0].origin + glm::vec3{-1.8F, 0.0F, -1.2F};
     const glm::vec3 shot_direction = turrets[0].origin - shot_origin;
 
-    const auto first_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, shot_origin, shot_direction, player_combat, turrets);
+    const auto first_shot = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        shot_origin,
+        shot_direction,
+        player_combat,
+        turrets
+    );
     CHECK(first_shot.fired);
     CHECK(first_shot.hit_turret);
     CHECK_FALSE(first_shot.killed_turret);
 
     RelayCore::gameplay::tick_combat_state(0.30F, player_combat, turrets);
-    const auto second_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, shot_origin, shot_direction, player_combat, turrets);
+    const auto second_shot = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        shot_origin,
+        shot_direction,
+        player_combat,
+        turrets
+    );
     CHECK(second_shot.fired);
     CHECK(second_shot.hit_turret);
     CHECK(second_shot.killed_turret);
@@ -1994,7 +2005,7 @@ TEST_CASE("shipped test_room fully open bulkheads are excluded from blockers")
         door.open_fraction = 1.0F;
     }
 
-    std::vector<Aabb> blockers;
+    std::vector<RelayCore::physics::WorldCollider> blockers;
     RelayCore::gameplay::collect_blocking_doors(doors, make_bounds({0.0F, 1.0F, 0.0F}, {0.3F, 0.9F, 0.3F}), blockers);
 
     CHECK(blockers.empty());

@@ -257,8 +257,15 @@ namespace RelayGame::detail
                        }
                        return false;
                    });
+            const bool containment_consumes_target =
+                binding.kind == RuntimeBindingKind::ActivateTarget
+                && (binding.target == "grip_ready" || binding.target == "limiter_ready"
+                    || binding.target == "containment_engaged")
+                && std::ranges::any_of(level.entities, [](const auto& entity) {
+                       return entity.classname == "containment_apparatus";
+                   });
             if (binding.resolved_target_count > 0 || mission_declares_target(mission_definition, binding.target)
-                || environment_consumes_target)
+                || environment_consumes_target || containment_consumes_target)
             {
                 continue;
             }

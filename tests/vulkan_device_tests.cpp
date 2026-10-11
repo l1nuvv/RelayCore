@@ -16,6 +16,11 @@ namespace
         const auto& capabilities = device.capabilities();
         if (capabilities.physical_api_version < RelayCore::render::kVulkanApiVersion)
             throw std::runtime_error("Selected GPU does not meet the Vulkan API baseline");
+        if (capabilities.instance_api_version != RelayCore::render::kVulkanApiVersion
+            || capabilities.effective_api_version != RelayCore::render::kVulkanApiVersion
+            || capabilities.effective_api_version > capabilities.physical_api_version
+            || capabilities.effective_api_version > capabilities.loader_api_version)
+            throw std::runtime_error("Vulkan 1.4 startup did not preserve the required loader/device limits");
 #if RELAYCORE_VULKAN_VALIDATION
         if (!capabilities.validation_enabled)
             throw std::runtime_error("Development startup did not enable Vulkan validation");
@@ -84,11 +89,7 @@ namespace
 
     void run_checks(const bool expect_missing_validation)
     {
-        RelayCore::Window window{
-            RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false},
-            RelayCore::render::ColorPipelineMode::legacy_gamma,
-            RelayCore::WindowGraphicsApi::vulkan
-        };
+        RelayCore::Window window{RelayCore::WindowConfig{.width = 64, .height = 64, .vsync = false}};
         if (expect_missing_validation)
         {
             try

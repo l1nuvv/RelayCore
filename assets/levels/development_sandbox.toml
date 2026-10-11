@@ -192,8 +192,7 @@ entries = [
 [[entity]]
 classname = "prop_static"
 origin = [29,0,2.5]
-model = "models/service_cylinder.obj"
-texture = "models/service_cylinder.bmp"
+model = "models/service_cylinder.rcmodel"
 collision_mins = [-0.25,0,-0.25]
 collision_maxs = [0.25,1.52,0.25]
 collision_material = "Metal"

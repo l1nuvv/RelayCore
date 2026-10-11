@@ -61,7 +61,7 @@ namespace RelayCore
             config_path.empty() ? core::load_default_engine_config() : core::load_engine_config(config_path)
         );
         log::info("Loaded engine config: {}", config_->source_path.string());
-        window_.emplace(config_->window, color_pipeline_mode);
+        window_.emplace(config_->window);
         renderer_.emplace(config_->renderer, color_pipeline_mode);
         audio_system_.emplace(config_->audio);
 
@@ -127,6 +127,7 @@ namespace RelayCore
             {
                 RELAYCORE_PROFILE_ZONE_N("render_world");
                 app_delegate_->on_render(frame, services);
+                renderer_->finish_scene();
             }
             {
                 RELAYCORE_PROFILE_ZONE_N("render_ui");
@@ -138,8 +139,8 @@ namespace RelayCore
             }
             const auto present_start = Clock::now();
             {
-                RELAYCORE_PROFILE_ZONE_N("swap_buffers");
-                window_->swap_buffers();
+                RELAYCORE_PROFILE_ZONE_N("present");
+                static_cast<void>(renderer_->present());
             }
 
             const auto present_end = Clock::now();

@@ -2,7 +2,7 @@
 
 #include "relaycore/core/spatial_index_2d.h"
 #include "relaycore/gameplay/interaction_descriptors.h"
-#include "relaycore/physics/collision.h"
+#include "relaycore/physics/world_query.h"
 
 #include <cstdint>
 #include <glm/vec3.hpp>
@@ -151,12 +151,13 @@ namespace RelayCore::gameplay
 
     [[nodiscard]] auto door_overlaps_actor(const RuntimeDoor& door, const physics::Aabb& actor_bounds) -> bool;
 
-    void collect_blocking_doors(const std::vector<RuntimeDoor>& doors, std::vector<physics::Aabb>& out_blockers);
+    void
+    collect_blocking_doors(const std::span<const RuntimeDoor> doors, std::vector<physics::WorldCollider>& out_blockers);
 
     void collect_blocking_doors(
-        const std::vector<RuntimeDoor>& doors,
+        const std::span<const RuntimeDoor> doors,
         const physics::Aabb& actor_bounds,
-        std::vector<physics::Aabb>& out_blockers
+        std::vector<physics::WorldCollider>& out_blockers
     );
 
     void update_runtime_usables(const std::vector<RuntimeDoor>& doors, std::vector<RuntimeUsable>& usables);
@@ -185,7 +186,7 @@ namespace RelayCore::gameplay
         std::span<const std::uint32_t> candidate_indices,
         float max_distance = 2.25F,
         float min_facing_dot = 0.75F,
-        physics::CollisionWorld blockers = {}
+        physics::WorldQuery blockers = {}
     ) -> InteractionQueryResult;
 
     [[nodiscard]] auto find_focused_usable(
@@ -194,7 +195,7 @@ namespace RelayCore::gameplay
         const std::vector<RuntimeUsable>& usables,
         float max_distance = 2.25F,
         float min_facing_dot = 0.75F,
-        physics::CollisionWorld blockers = {}
+        physics::WorldQuery blockers = {}
     ) -> InteractionQueryResult;
 
     [[nodiscard]] auto activate_target(std::string_view target, std::vector<RuntimeDoor>& doors) -> bool;

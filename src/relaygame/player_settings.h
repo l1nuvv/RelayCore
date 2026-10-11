@@ -10,6 +10,7 @@ namespace RelayGame
         float fov = 70.0F;
         float camera_motion = 0.6F;
         bool vsync = true;
+        bool hdr_enabled = false;
     };
 
     [[nodiscard]] auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults)

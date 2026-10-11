@@ -4,6 +4,8 @@
 
 #include <doctest/doctest.h>
 
+#include "world_query_fixture.h"
+
 namespace
 {
     using RelayCore::BlockoutLevel;
@@ -22,6 +24,28 @@ namespace
         return {center - half_extents, center + half_extents};
     }
 } // namespace
+
+TEST_CASE("player bullets stop at actor geometry before a turret behind it")
+{
+    PlayerCombatState player;
+    RelayCore::gameplay::reset_player_combat_state(player);
+    RuntimeTurret turret;
+    turret.bounds = {{-1, 0, 8}, {1, 3, 9}};
+    turret.health = turret.max_health = 60;
+    const RelayCore::physics::WorldCollider actor{
+        {{-1, 0, 4}, {1, 3, 5}},
+        SurfaceMaterial::Rubber,
+        {RelayCore::physics::WorldObjectKind::Enemy, 0, 42}
+    };
+    const auto result =
+        RelayCore::gameplay::apply_player_fire({{}, {}, {&actor, 1}}, {0, 1.65F, 0}, {0, 0, 1}, player, {&turret, 1});
+    REQUIRE(result.fired);
+    REQUIRE(result.world_impact);
+    CHECK(result.world_impact->object == actor.object);
+    CHECK(result.world_impact->distance == doctest::Approx(4));
+    CHECK_FALSE(result.hit_turret);
+    CHECK(turret.health == 60);
+}
 
 TEST_CASE("combat runtime builds authored turrets and hazard volumes")
 {
@@ -128,10 +152,22 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
         },
     };
 
-    const RelayCore::gameplay::CombatFireResult blocked_shot =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult blocked_shot = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(blocked_shot.fired);
     CHECK_FALSE(blocked_shot.hit_turret);
+    REQUIRE(blocked_shot.world_impact);
+    CHECK(blocked_shot.world_impact->surface == RelayCore::SurfaceMaterial::Metal);
+    CHECK(blocked_shot.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Door);
+    CHECK(blocked_shot.world_impact->position == player.shot_trace.end);
+    REQUIRE(player.shot_trace.impact);
+    CHECK(player.shot_trace.impact->normal == blocked_shot.world_impact->normal);
+    CHECK(player.shot_trace.impact->surface == blocked_shot.world_impact->surface);
     CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
     CHECK(player.shot_trace.end.z == doctest::Approx(2.85F));
     CHECK(turrets[0].health == doctest::Approx(50.0F));
@@ -140,18 +176,32 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     doors[0].state = RelayCore::gameplay::DoorState::Open;
     RelayCore::gameplay::tick_combat_state(0.30F, player, turrets);
 
-    const RelayCore::gameplay::CombatFireResult first_hit =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult first_hit = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(first_hit.fired);
     CHECK(first_hit.hit_turret);
+    CHECK_FALSE(first_hit.world_impact);
+    REQUIRE(player.shot_trace.impact);
+    CHECK(player.shot_trace.impact->surface == RelayCore::SurfaceMaterial::Metal);
+    CHECK(player.shot_trace.impact->normal == glm::vec3{0, 0, -1});
     CHECK(player.hit_confirmation_remaining_seconds > 0.0F);
     CHECK(player.shot_trace.end.z == doctest::Approx(first_hit.hit_distance));
     CHECK_FALSE(first_hit.killed_turret);
     CHECK(turrets[0].health == doctest::Approx(25.0F));
 
     RelayCore::gameplay::tick_combat_state(0.30F, player, turrets);
-    const RelayCore::gameplay::CombatFireResult second_hit =
-        RelayCore::gameplay::apply_player_fire(level, doors, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, player, turrets);
+    const RelayCore::gameplay::CombatFireResult second_hit = RelayCore::gameplay::apply_player_fire(
+        RelayCore::test::WorldQueryFixture{level, doors},
+        {0.0F, 1.0F, 0.0F},
+        {0.0F, 0.0F, 1.0F},
+        player,
+        turrets
+    );
     CHECK(second_hit.fired);
     CHECK(second_hit.hit_turret);
     CHECK(second_hit.killed_turret);
@@ -164,6 +214,76 @@ TEST_CASE("player fire respects blocking doors and emits turret destroy events")
     CHECK(player.shots_hit == 2);
     RelayCore::gameplay::tick_combat_state(0.17F, player, turrets);
     CHECK(player.hit_confirmation_remaining_seconds == 0.0F);
+}
+
+TEST_CASE("a missed shot clears the previous surface impact")
+{
+    RelayCore::gameplay::PlayerCombatState player;
+    const std::array colliders{RelayCore::physics::WorldCollider{
+        .bounds = {{-1, -1, 2}, {1, 1, 3}},
+        .surface = RelayCore::SurfaceMaterial::Concrete
+    }};
+    (void) RelayCore::gameplay::apply_player_fire(RelayCore::physics::WorldQuery{colliders}, {}, {0, 0, 1}, player, {});
+    REQUIRE(player.shot_trace.impact);
+    CHECK(player.shot_trace.impact->surface == RelayCore::SurfaceMaterial::Concrete);
+    CHECK(player.shot_trace.impact->normal == glm::vec3{0, 0, -1});
+    RelayCore::gameplay::tick_combat_state(.3F, player, {});
+    (void) RelayCore::gameplay::apply_player_fire({}, {}, {1, 0, 0}, player, {});
+    CHECK_FALSE(player.shot_trace.impact);
+}
+
+TEST_CASE("activated equipment stops a turret before its pending shot without awarding a kill")
+{
+    std::array<RuntimeTurret, 1> turrets;
+    auto& turret = turrets[0];
+    turret.stop_target = "transfer_running";
+    turret.origin = {0, 1, 0};
+    turret.bounds = {{-.4F, .5F, -.4F}, {.4F, 1.5F, .4F}};
+    turret.warming_up = true;
+    turret.warmup_remaining_seconds = 0;
+    turret.shot_trace.remaining_seconds = .08F;
+    PlayerCombatState player;
+    const std::array<std::string, 1> activated{"transfer_running"};
+    const auto result = RelayCore::gameplay::update_combat_threats(
+        {},
+        {{-.3F, 0, 3}, {.3F, 1.8F, 3.6F}},
+        {0, 1.6F, 3.3F},
+        player,
+        turrets,
+        {},
+        .1F,
+        activated
+    );
+    CHECK(result.turret_shots == 0);
+    CHECK(player.health == 100);
+    CHECK(player.kills == 0);
+    CHECK_FALSE(turret.enabled);
+    CHECK_FALSE(turret.destroyed);
+    CHECK_FALSE(turret.warming_up);
+    CHECK(turret.shot_trace.remaining_seconds == 0);
+    CHECK(turret.health == turret.max_health);
+}
+
+TEST_CASE("turret stop target requires an authored activation producer")
+{
+    BlockoutLevel level;
+    RelayCore::EntitySpawnData turret;
+    turret.classname = "gameplay_entity";
+    turret.properties = {{"kind", "turret"}, {"targetname", "sentry"}, {"stop_target", "typo"}};
+    level.entities.push_back(turret);
+    CHECK_THROWS_WITH(
+        static_cast<void>(RelayCore::gameplay::build_runtime_combat(level)),
+        "turret 'sentry': stop_target 'typo' has no activate_target producer"
+    );
+    RelayCore::EntitySpawnData control;
+    control.classname = "gameplay_entity";
+    control.properties = {{"kind", "terminal"}, {"target", "typo"}, {"action", "activate_target"}};
+    level.entities.push_back(control);
+    CHECK(RelayCore::gameplay::build_runtime_combat(level).turrets[0].stop_target == "typo");
+    level.entities.back().properties["kind"] = "door";
+    CHECK_THROWS(static_cast<void>(RelayCore::gameplay::build_runtime_combat(level)));
+    level.entities.back().properties["kind"] = "trigger";
+    CHECK(RelayCore::gameplay::build_runtime_combat(level).turrets[0].stop_target == "typo");
 }
 
 TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn state")
@@ -200,8 +320,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     const glm::vec3 player_eye_position{0.0F, 1.6F, 4.0F};
 
     const auto first_tick = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,
@@ -214,8 +333,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     CHECK(first_tick.turret_windups == 1);
     CHECK(turrets[0].shot_trace.remaining_seconds == 0);
     const auto waiting = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,
@@ -233,8 +351,7 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     RelayCore::gameplay::tick_combat_state(0.10F, player, turrets);
 
     const auto second_tick = RelayCore::gameplay::update_combat_threats(
-        level,
-        {},
+        RelayCore::test::WorldQueryFixture{level, {}},
         player_bounds,
         player_eye_position,
         player,

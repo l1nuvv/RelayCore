@@ -26,7 +26,7 @@ TEST_CASE("startup options retain the default engine config")
 {
     const RelayCore::StartupOptions options = parse({"RelayCore.exe"});
     CHECK(options.config_path == RelayCore::core::asset_path("config/engine.toml"));
-    CHECK(options.color_pipeline_mode == RelayCore::render::ColorPipelineMode::legacy_gamma);
+    CHECK(options.color_pipeline_mode == RelayCore::render::ColorPipelineMode::hardware_srgb);
 }
 
 TEST_CASE("startup options accept explicit colour pipeline modes")

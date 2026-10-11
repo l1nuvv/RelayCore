@@ -52,11 +52,6 @@ if (MSVC)
         $<$<CONFIG:RelWithDebInfo>:/Zo>
     )
 
-    add_link_options(
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/OPT:REF>
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/OPT:ICF>
-        $<$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>:/INCREMENTAL:NO>
-    )
 endif()
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -66,6 +61,15 @@ include(RelayCoreOptions)
 include(RelayCoreDependencies)
 
 relaycore_initialize_project()
+if(MSVC)
+    # Non-IPO iteration builds keep incremental linking; final/profile builds keep COMDAT optimization.
+    add_link_options(
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/OPT:REF>
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/OPT:ICF>
+        $<$<OR:$<CONFIG:Release>,$<AND:$<CONFIG:RelWithDebInfo>,$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/INCREMENTAL:NO>
+        $<$<AND:$<CONFIG:RelWithDebInfo>,$<NOT:$<BOOL:${RELAYCORE_ENABLE_IPO}>>>:/INCREMENTAL>
+    )
+endif()
 relaycore_find_dependencies()
 relaycore_create_dependency_targets()
 
@@ -98,12 +102,82 @@ foreach(stage IN ITEMS vert frag)
         COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
-        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang" "${SLANGC_EXECUTABLE}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang" "${SLANGC_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang"
         COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(stage IN ITEMS vert frag)
+    if(stage STREQUAL "vert")
+        set(entry vertex_main)
+        set(shader_stage vertex)
+    else()
+        set(entry fragment_main)
+        set(shader_stage fragment)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/tone_mapping.${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/tone_mapping.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/tone_mapping.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling tone_mapping.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(shadow IN ITEMS shadow point_shadow)
+    if(shadow STREQUAL "point_shadow")
+        set(point_shadow 1)
+    else()
+        set(point_shadow 0)
+    endif()
+    foreach(stage IN ITEMS vert frag)
+        if(stage STREQUAL "vert")
+            set(entry vertex_main)
+            set(shader_stage vertex)
+        else()
+            set(entry fragment_main)
+            set(shader_stage fragment)
+        endif()
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/${shadow}.${stage}.spv")
+        add_custom_command(OUTPUT "${output}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+            COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
+                -DPOINT_SHADOW=${point_shadow} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+                -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang" "${SLANGC_EXECUTABLE}"
+            COMMENT "Compiling shadow.slang (${shadow}, ${entry}) to SPIR-V" VERBATIM)
+        list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+    endforeach()
+endforeach()
+foreach(stage IN ITEMS vert frag)
+    if(stage STREQUAL "vert")
+        set(entry vertex_main)
+        set(shader_stage vertex)
+    else()
+        set(entry fragment_main)
+        set(shader_stage fragment)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/player_ui.${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/player_ui.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/player_ui.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
 add_custom_target(relaycore_vulkan_shaders ALL
     DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})
+set(runtime_shader_names)
+foreach(shader IN LISTS RELAYCORE_MESH_SPIRV)
+    get_filename_component(shader_name "${shader}" NAME)
+    list(APPEND runtime_shader_names "${shader_name}")
+endforeach()
+list(JOIN runtime_shader_names "\n" runtime_shader_manifest)
+file(GENERATE OUTPUT "${RELAYCORE_SPIRV_DIRECTORY}/runtime-shaders.txt" CONTENT "${runtime_shader_manifest}\n")
 set_target_properties(relaycore_vulkan_shaders PROPERTIES FOLDER "render")
 
 add_executable(relaycore_vulkan_toolchain_check EXCLUDE_FROM_ALL tools/vulkan_toolchain_check.cpp)
@@ -150,6 +224,29 @@ if (CLANG_FORMAT_EXE AND Git_FOUND)
 endif()
 
 add_subdirectory(src/relaycore)
+add_library(relaycore_model_importer STATIC tools/model_import.cpp)
+target_link_libraries(relaycore_model_importer PRIVATE RelayCore::engine fastgltf::fastgltf windowscodecs ole32)
+target_include_directories(relaycore_model_importer PUBLIC "${PROJECT_SOURCE_DIR}/tools")
+target_compile_definitions(relaycore_model_importer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+relaycore_apply_standard_target_settings(relaycore_model_importer)
+set_target_properties(relaycore_model_importer PROPERTIES FOLDER "tools" UNITY_BUILD OFF)
+add_executable(relaycore_model_import tools/model_import_main.cpp)
+target_link_libraries(relaycore_model_import PRIVATE relaycore_model_importer RelayCore::engine)
+relaycore_apply_standard_target_settings(relaycore_model_import)
+set_target_properties(relaycore_model_import PROPERTIES FOLDER "tools")
+add_custom_command(TARGET relaycore_model_import POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_model_import>" $<TARGET_RUNTIME_DLLS:relaycore_model_import>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(cmake/RelayCoreModelAssets.cmake)
+add_executable(relaycore_collision_compile tools/collision_compile.cpp)
+target_link_libraries(relaycore_collision_compile PRIVATE RelayCore::engine RelayCore::toml_headers)
+relaycore_apply_standard_target_settings(relaycore_collision_compile)
+set_target_properties(relaycore_collision_compile PROPERTIES FOLDER "tools" UNITY_BUILD OFF)
+add_custom_command(TARGET relaycore_collision_compile POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_collision_compile>"
+        $<TARGET_RUNTIME_DLLS:relaycore_collision_compile>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(cmake/RelayCoreCollisionAssets.cmake)
 add_subdirectory(src/relaygame)
 
 if (BUILD_TESTING)

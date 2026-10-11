@@ -23,6 +23,7 @@
 #include "acceptance_slice_harness.h"
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+#include "world_query_fixture.h"
 
 namespace
 {
@@ -436,7 +437,15 @@ TEST_CASE("power restoration return passage opens with cooling and remains walka
     blockers.push_back(RelayCore::gameplay::current_door_bounds(runtime.doors()[1]));
     auto position = glm::vec3{7, 0.01F, 8};
     for (int i = 0; i < 120; ++i)
-        position = RelayCore::physics::move_and_collide(blockers, position, {-2, 0, 0}, 1.0F / 60, {}, true).position;
+        position = RelayCore::physics::move_and_collide(
+                       RelayCore::test::WorldQueryFixture{blockers},
+                       position,
+                       {-2, 0, 0},
+                       1.0F / 60,
+                       {},
+                       true
+        )
+                       .position;
     CHECK(position.x > 5.3F);
     for (const auto name :
          {"spare_fuse", "maintenance_isolator", "bus_relay", "power_breaker", "filter_purge", "cooling_control"})
@@ -461,7 +470,15 @@ TEST_CASE("power restoration return passage opens with cooling and remains walka
         position = route[i - 1];
         const auto velocity = (route[i] - position) * 0.5F;
         for (int frame = 0; frame < 120; ++frame)
-            position = RelayCore::physics::move_and_collide(blockers, position, velocity, 1.0F / 60, {}, true).position;
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{blockers},
+                           position,
+                           velocity,
+                           1.0F / 60,
+                           {},
+                           true
+            )
+                           .position;
         CHECK(glm::distance(position, route[i]) < 0.03F);
     }
     runtime.debug_set_player_position({3.5F, 0.01F, 7});
@@ -501,25 +518,45 @@ TEST_CASE("power restoration return turret threatens the player only after the c
     PlayerCombatState player{};
     const auto bounds = RelayCore::physics::make_player_aabb({6.4F, 0.01F, 8.5F}, 0.3F, 1.8F);
     const glm::vec3 eye{6.4F, 1.6F, 8.5F};
-    const auto closed =
-        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    const auto closed = RelayCore::gameplay::update_combat_threats(
+        RelayCore::test::WorldQueryFixture{session.level, doors},
+        bounds,
+        eye,
+        player,
+        turrets,
+        {},
+        0.1F
+    );
     CHECK(closed.turret_shots == 0);
     CHECK_FALSE(turrets[0].warming_up);
 
     doors[1].state = DoorState::Open;
     doors[1].open_fraction = 1.0F;
-    const auto sighted =
-        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    const auto sighted = RelayCore::gameplay::update_combat_threats(
+        RelayCore::test::WorldQueryFixture{session.level, doors},
+        bounds,
+        eye,
+        player,
+        turrets,
+        {},
+        0.1F
+    );
     CHECK(sighted.turret_shots == 0);
     CHECK(turrets[0].warming_up);
     RelayCore::gameplay::tick_combat_state(0.8F, player, turrets);
-    const auto exposed =
-        RelayCore::gameplay::update_combat_threats(session.level, doors, bounds, eye, player, turrets, {}, 0.1F);
+    const auto exposed = RelayCore::gameplay::update_combat_threats(
+        RelayCore::test::WorldQueryFixture{session.level, doors},
+        bounds,
+        eye,
+        player,
+        turrets,
+        {},
+        0.1F
+    );
     CHECK(exposed.turret_shots == 1);
     CHECK(exposed.damage_taken == doctest::Approx(8.0F));
     const auto shot = RelayCore::gameplay::apply_player_fire(
-        session.level,
-        doors,
+        RelayCore::test::WorldQueryFixture{session.level, doors},
         eye,
         glm::normalize(turrets[0].origin - eye),
         player,
@@ -530,8 +567,7 @@ TEST_CASE("power restoration return turret threatens the player only after the c
     const auto exit_bounds = RelayCore::physics::make_player_aabb({0, .01F, 3.5F}, .3F, 1.8F);
     RelayCore::gameplay::tick_combat_state(2, player, turrets);
     const auto escaped = RelayCore::gameplay::update_combat_threats(
-        session.level,
-        doors,
+        RelayCore::test::WorldQueryFixture{session.level, doors},
         exit_bounds,
         {0, 1.6F, 3.5F},
         player,
@@ -562,7 +598,14 @@ TEST_CASE("power restoration service route is walkable in both directions")
     {
         auto position = glm::vec3{x, 0.01F, 0};
         for (int frame = 0; frame < 120; ++frame)
-            position = RelayCore::physics::move_and_collide(blockers, position, {0, 0, -3.0F}, 1.0F / 60.0F, {}, true)
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{blockers},
+                           position,
+                           {0, 0, -3.0F},
+                           1.0F / 60.0F,
+                           {},
+                           true
+            )
                            .position;
         CAPTURE(x);
         CHECK(position.z > -1.1F);
@@ -589,8 +632,15 @@ TEST_CASE("power restoration service route is walkable in both directions")
             const auto velocity = (finish - start) * 0.5F;
             for (int frame = 0; frame < 120; ++frame)
             {
-                position =
-                    RelayCore::physics::move_and_collide(blockers, position, velocity, 1.0F / 60.0F, {}, true).position;
+                position = RelayCore::physics::move_and_collide(
+                               RelayCore::test::WorldQueryFixture{blockers},
+                               position,
+                               velocity,
+                               1.0F / 60.0F,
+                               {},
+                               true
+                )
+                               .position;
             }
             CAPTURE(index);
             CAPTURE(reverse);
@@ -615,7 +665,14 @@ TEST_CASE("power restoration corridor edges keep the player grounded")
         RelayCore::physics::PlayerMotionState state{};
         state.position = {point.x, 0.01F, point.y};
         for (int frame = 0; frame < 120; ++frame)
-            RelayCore::physics::update_grounded(state, {}, 0, 1.0F / 60.0F, blockers, {});
+            RelayCore::physics::update_grounded(
+                state,
+                {},
+                0,
+                1.0F / 60.0F,
+                RelayCore::test::WorldQueryFixture{blockers},
+                {}
+            );
         CAPTURE(point.x);
         CAPTURE(point.y);
         CHECK(state.grounded);
@@ -636,8 +693,7 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
     PlayerCombatState player{};
     const auto spill = RelayCore::physics::make_player_aabb({6.8F, 0.01F, 18}, 0.3F, 1.8F);
     const auto hazard = RelayCore::gameplay::update_combat_threats(
-        session.level,
-        session.doors,
+        RelayCore::test::WorldQueryFixture{session.level, session.doors},
         spill,
         {6.8F, 1.62F, 18},
         player,
@@ -651,8 +707,7 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
 
     const auto approach = RelayCore::physics::make_player_aabb({7.5F, 0.01F, 26}, 0.3F, 1.8F);
     const auto sighted = RelayCore::gameplay::update_combat_threats(
-        session.level,
-        session.doors,
+        RelayCore::test::WorldQueryFixture{session.level, session.doors},
         approach,
         {7.5F, 1.62F, 26},
         player,
@@ -666,8 +721,7 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
     const auto retreat = RelayCore::physics::make_player_aabb({7.5F, .01F, 22}, .3F, 1.8F);
     RelayCore::gameplay::tick_combat_state(1, player, turrets);
     const auto safe = RelayCore::gameplay::update_combat_threats(
-        session.level,
-        session.doors,
+        RelayCore::test::WorldQueryFixture{session.level, session.doors},
         retreat,
         {7.5F, 1.62F, 22},
         player,
@@ -682,8 +736,7 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
         RelayCore::gameplay::tick_combat_state(.3F, player, turrets);
         const glm::vec3 eye{7.5F, 1.62F, 26};
         const auto hit = RelayCore::gameplay::apply_player_fire(
-            session.level,
-            session.doors,
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
             eye,
             glm::normalize(turrets[1].origin - eye),
             player,
@@ -693,9 +746,16 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
     }
     CHECK(turrets[1].destroyed);
     CHECK(
-        RelayCore::gameplay::
-            update_combat_threats(session.level, session.doors, approach, {7.5F, 1.62F, 26}, player, turrets, {}, 1)
-                .turret_shots
+        RelayCore::gameplay::update_combat_threats(
+            RelayCore::test::WorldQueryFixture{session.level, session.doors},
+            approach,
+            {7.5F, 1.62F, 26},
+            player,
+            turrets,
+            {},
+            1
+        )
+            .turret_shots
         == 0
     );
 }
@@ -714,8 +774,15 @@ TEST_CASE("power restoration reserve room stays sealed until the isolator opens 
     const auto walk_to_relay = [&] {
         auto position = glm::vec3{15.5F, 0.01F, 34.0F};
         for (int frame = 0; frame < 180; ++frame)
-            position =
-                RelayCore::physics::move_and_collide(blockers, position, {3, 0, 0}, 1.0F / 60, {}, true).position;
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{blockers},
+                           position,
+                           {3, 0, 0},
+                           1.0F / 60,
+                           {},
+                           true
+            )
+                           .position;
         return position;
     };
     for (const auto& door : doors)
@@ -758,7 +825,14 @@ TEST_CASE("power restoration final threshold needs no jump at walking speed")
     {
         glm::vec3 position{x, 0.001F, 3.5F};
         for (int tick = 0; tick < 180; ++tick)
-            position = RelayCore::physics::move_and_collide(blockers, position, {0, -0.1F, 3.5F}, 1.0F / 120, {}, true)
+            position = RelayCore::physics::move_and_collide(
+                           RelayCore::test::WorldQueryFixture{blockers},
+                           position,
+                           {0, -0.1F, 3.5F},
+                           1.0F / 120,
+                           {},
+                           true
+            )
                            .position;
         CAPTURE(x);
         CHECK(position.z > 8.5F);

@@ -1,0 +1,349 @@
+# B-17: corridor, glazed observation bay and a working resonance laboratory. Metres, +Y up.
+[[entity]]
+classname = "prop_static"
+targetname = "b17_fitted_lining"
+model = "models/b17_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "irradiance_volume"
+product = "lighting/occult_lab_b17.rcprobe"
+mins = [-4.2,0.35,-4.45]
+maxs = [4.2,2.95,4.45]
+dimensions = [3,2,3]
+rays = 256
+
+[[solid_group]]
+boxes = [
+  { origin = [-5.58,1.65,-2.8], size = [0.45,3.3,0.45], material = "Concrete" },
+  { origin = [5.58,1.65,-2.8], size = [0.45,3.3,0.45], material = "Concrete" },
+  { origin = [-5.58,1.65,2.6], size = [0.45,3.3,0.45], material = "Concrete" },
+  { origin = [5.58,1.65,2.6], size = [0.45,3.3,0.45], material = "Concrete" },
+  { origin = [0,3.31,-2.8], size = [11.5,0.4,0.45], material = "Concrete" },
+  { origin = [0,3.31,2.6], size = [11.5,0.4,0.45], material = "Concrete" },
+  { origin = [0,-0.15,0], size = [12,0.3,10], material = "Tile" },
+  { origin = [0,3.6,0], size = [12,0.25,10], material = "Ceiling" },
+  { origin = [-6,1.8,0], size = [0.3,3.6,10], material = "Concrete" },
+  { origin = [6,1.8,0], size = [0.3,3.6,10], material = "Concrete" },
+  { origin = [0,1.8,5], size = [12,3.6,0.3], material = "Concrete" },
+  { origin = [-3.7,1.8,-5], size = [4.6,3.6,0.3], material = "Concrete" },
+  { origin = [3.7,1.8,-5], size = [4.6,3.6,0.3], material = "Concrete" },
+  { origin = [0,3.12,-5], size = [2.8,0.96,0.3], material = "Concrete" },
+  { origin = [-5.8,0.55,0], size = [0.08,1.1,9.6], material = "WallPanel", tint = [0.72,0.78,0.70] },
+  { origin = [5.8,0.55,0], size = [0.08,1.1,9.6], material = "WallPanel", tint = [0.72,0.78,0.70] },
+  { origin = [0,0.55,4.8], size = [11.6,1.1,0.08], material = "WallPanel", tint = [0.72,0.78,0.70] },
+  { origin = [0,0.08,4.74], size = [11.6,0.16,0.06], material = "Metal", tint = [0.38,0.42,0.38] },
+  { origin = [0,-0.15,-7], size = [3.2,0.3,4], material = "service_floor" },
+  { origin = [0,3.6,-7], size = [3.2,0.25,4], material = "Ceiling" },
+  { origin = [-1.6,1.8,-7], size = [0.3,3.6,4], material = "Concrete" },
+  { origin = [1.6,1.8,-7], size = [0.3,3.6,4], material = "Concrete" },
+  { origin = [0,1.8,-9], size = [3.2,3.6,0.3], material = "WallPanel" },
+  { origin = [-1.45,0.55,-7], size = [0.06,1.1,3.7], material = "WallPanel" },
+  { origin = [1.45,0.55,-7], size = [0.06,1.1,3.7], material = "WallPanel" },
+  { origin = [-1.42,1.32,-5], size = [0.12,2.64,0.35], material = "Metal" },
+  { origin = [1.42,1.32,-5], size = [0.12,2.64,0.35], material = "Metal" },
+  { origin = [0,2.64,-5], size = [2.96,0.12,0.35], material = "Metal" },
+  # Observation glazing leaves a wide passage at its southern end.
+  { origin = [-2,0.52,2.8], size = [0.18,1.04,4.1], material = "WallPanel" },
+  { origin = [-2,2.86,2.8], size = [0.18,1.38,4.1], material = "Concrete" },
+  { origin = [-2,1.61,2.8], size = [0.045,1.1,4], material = "Glass", tint = [0.65,0.68,0.60] },
+  { origin = [-2,1.61,0.78], size = [0.14,1.2,0.08], material = "Metal" },
+  { origin = [-2,1.61,2.8], size = [0.14,1.2,0.06], material = "Metal" },
+  { origin = [-2,1.61,4.78], size = [0.14,1.2,0.08], material = "Metal" },
+  # Suspended fluorescent fixtures and exposed utility services.
+  { origin = [3.9,3.15,-3.15], size = [0.025,0.55,0.025], material = "Metal" },
+  { origin = [4.9,3.15,-3.15], size = [0.025,0.55,0.025], material = "Metal" },
+  { origin = [5.65,2.9,0], size = [0.10,0.10,9.5], material = "Metal", tint = [0.62,0.54,0.38] },
+  { origin = [5.65,2.66,0], size = [0.07,0.07,9.5], material = "Metal", tint = [0.45,0.48,0.42] },
+  { origin = [0,3.02,4.64], size = [11.3,0.14,0.22], material = "Metal" },
+  { origin = [1.0,0.014,2.85], size = [0.035,0.025,3.4], material = "Metal", tint = [0.62,0.43,0.23] },
+]
+
+[[entity]]
+classname = "player_spawn"
+origin = [0,0.02,-8]
+angles = [0,0,0]
+
+[[entity_group]]
+classname = "level_entry"
+entries = [
+  { targetname = "entrance", origin = [0,0.02,-8] },
+  { targetname = "observation", origin = [-3.5,0.02,-1.8], angles = [320,0,0] },
+  { targetname = "containment", origin = [0,0.02,-1.8], angles = [25,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/lab_bench.rcmodel"
+collision_asset = "collision/lab_bench.rccollision"
+entries = [
+  { targetname = "observation_bench", origin = [-4.7,0,0.7], angles = [90,0,0] },
+  { targetname = "sample_bench", origin = [4.4,0,-3.6] },
+  { targetname = "calibration_bench", origin = [-4.2,0,4.25], angles = [180,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/crt_terminal.rcmodel"
+entries = [
+  { targetname = "observation_terminal", origin = [-4.7,0.92,0.7], angles = [90,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/surveillance_monitor.rcmodel"
+scale = [1.2,1.2,1.2]
+entries = [
+  { targetname = "sample_terminal", origin = [4.4,0.92,-3.6] },
+  { targetname = "calibration_terminal", origin = [-4.0,0.92,4.25], angles = [180,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "b17_power_cabinet"
+model = "models/power_cabinet.rcmodel"
+origin = [4.9,0,4.25]
+angles = [180,0,0]
+collision_mins = [-0.6,0,-0.4]
+collision_maxs = [0.6,2.1,0.51]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/instrument_rack.rcmodel"
+collision_mins = [-0.4,0,-0.4]
+collision_maxs = [0.4,2.1,0.4]
+collision_material = "Metal"
+entries = [
+  { targetname = "field_instruments", origin = [3.5,0,4.25], angles = [180,0,0] },
+  { targetname = "observation_instruments", origin = [-5.2,0,3.2], angles = [90,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "containment_apparatus"
+model = "models/resonance_apparatus.rcmodel"
+origin = [2,0,1.2]
+angles = [180,0,0]
+collision_mins = [-0.90,0,-0.90]
+collision_maxs = [0.90,2.34,0.90]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [-5.55,2.5,-2.7], angles = [90,0,0] },
+  { origin = [5.55,2.5,2.2], angles = [270,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/facility_sign.rcmodel"
+entries = [
+  { targetname = "entrance_sign", origin = [-2.35,1.55,-5.18], angles = [180,0,0] },
+  { targetname = "containment_sign", origin = [-1.87,0.55,2.5], angles = [90,0,0], scale = [0.75,0.75,0.75] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "protected_observer"
+model = "models/scientist_hazmat.rcmodel"
+origin = [-3.0,0,3.8]
+angles = [115,0,0]
+collision_mins = [-0.45,0,-0.30]
+collision_maxs = [0.45,1.82,0.30]
+collision_material = "Matte"
+
+[[entity]]
+classname = "prop_static"
+targetname = "observation_console"
+model = "models/control_console.rcmodel"
+origin = [-4.8,0,-2.1]
+angles = [90,0,0]
+collision_mins = [-0.75,0,-0.5]
+collision_maxs = [0.75,1.9,0.5]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "render_light"
+color = [0.72,0.75,0.66]
+intensity = 1.25
+radius = 6
+entries = [
+  { origin = [0,3.05,-7], radius = 4, fixture_width = 1.58, fixture_depth = 0.29, fixture_offset = 0.2190, angles = [90,0,0] },
+  { origin = [-4,3.05,0], fixture_width = 2.08, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [90,0,0] },
+  { origin = [2,3.05,-2], fixture_width = 2.08, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [0,0,0] },
+  { origin = [3.8,3.05,3.4], fixture_width = 1.78, fixture_depth = 0.31, fixture_offset = 0.2190, angles = [0,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/concrete_arch.rcmodel"
+entries = [
+  { origin = [0,0,-6.1] },
+  { origin = [0,0,-8.5] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [-1.23,2.45,-7], angles = [90,0,0] },
+  { origin = [4,2.45,4.55] },
+  { origin = [1,2.45,4.55] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/lab_notes_board.rcmodel"
+entries = [
+  { targetname = "observation_notes", origin = [-4.2,1.45,4.80], angles = [180,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/safety_notice.rcmodel"
+entries = [
+  { origin = [2.1,1.05,-4.80] },
+  { origin = [5.76,1.25,0.0], angles = [270,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/lab_accessories.rcmodel"
+entries = [
+  { origin = [3.70,0.92,-3.69] },
+  { origin = [-4.85,0.92,4.25], angles = [180,0,0] },
+]
+
+[[entity]]
+classname = "render_light"
+origin = [2,1.35,1.2]
+fixture_width = 0
+fixture_depth = 0.18
+fixture_offset = 0.0000
+color = [0.42,0.28,0.11]
+radius = 2.5
+intensity = 0.85
+
+[[entity]]
+classname = "render_light"
+origin = [4.4,2.70,-3.10]
+fixture_width = 1.14
+fixture_depth = 0.19
+fixture_offset = 0.0890
+color = [0.85,0.78,0.64]
+radius = 3.2
+intensity = 1.0
+
+[[entity]]
+classname = "render_light"
+origin = [-2.65,2.21,3.15]
+fixture_width = 0.16
+fixture_depth = 0.12
+fixture_offset = 0.0465
+color = [0.80,0.78,0.68]
+radius = 2.8
+intensity = 1.1
+
+[[entity]]
+classname = "render_light"
+origin = [2,2.65,0.15]
+fixture_width = 0.74
+fixture_depth = 0.27
+fixture_offset = 0.1390
+color = [0.73,0.76,0.70]
+radius = 2.8
+intensity = 0.85
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_microscope.rcmodel"
+origin = [5.15,0.92,-3.60]
+angles = [20,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_multimeter.rcmodel"
+origin = [4.98,0.92,-3.15]
+angles = [15,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/analog_navigation_instrument.rcmodel"
+origin = [-3.35,0.92,4.25]
+angles = [180,0,0]
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "terminal"
+targetname = "b17_isolator"
+panel_style = "isolator"
+origin = [4.65,1.45,3.68]
+size = [0.30,0.34,0.10]
+mount_axis = "-z"
+target = "b17_isolated"
+action = "activate_target"
+single_use = true
+use_radius = 1.8
+label = "Изолировать резонансную установку"
+success_message = "Контур изолирован. Проверка B-17 завершена."
+
+[[entity]]
+classname = "mission_settings"
+completion_title = "Лаборатория B-17 проверена"
+completion_detail = "Лаборатория изолирована. Вернитесь в входной коридор и пройдите в контур сдерживания Хранителя."
+
+[[entity_group]]
+classname = "mission_step"
+entries = [
+  { kind = "zone", origin = [-3.6,0.01,0], size = [3,2.5,3], title = "Осмотреть наблюдательный пост", detail = "Пройдите к терминалу за стеклом слева." },
+  { kind = "activate_target", target = "b17_isolated", title = "Проверить изолятор", detail = "Пульт на силовом шкафу у дальней стены лаборатории." },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [-4,3.4,0], angles = [90,0,0], scale = [1.769231,1,1.277778] },
+  { origin = [2,3.4,-2], angles = [0,0,0], scale = [1.769231,1,1.277778] },
+  { origin = [3.8,3.4,3.4], angles = [0,0,0], scale = [1.538462,1,1.277778] },
+  { origin = [0,3.4,-7], angles = [90,0,0], scale = [1.384615,1,1.277778] },
+  { origin = [4.4,2.92,-3.15], angles = [0,0,0], scale = [1.000000,1,1.277778] },
+  { origin = [2,2.92,0.15], angles = [0,0,0], scale = [0.65,1,1] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "b17_fitted_services"
+model = "models/b17_services.rcmodel"
+origin = [0,0,0]
+
+# Unfinished red-marker glyph research beside the sampling workstation.
+[[entity]]
+classname = "prop_static"
+targetname = "sample_notes"
+model = "models/occult_research_board.rcmodel"
+origin = [4.4,1.50,-4.80]
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [0, 0.02, -8]
+angles = [0, 0, 0]
+
+# Lens position/orientation is authored in content/graphics/instruments/observation_camera.json.
+[[entity]]
+classname = "prop_static"
+targetname = "b17_observation_camera_02"
+model = "models/b17_observation_camera.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.02, -6.5]
+size = [2, 2.5, 1]
+next_map = "levels/containment_loop.toml"
+next_entry = "campaign_arrival"
+requires_completion = true

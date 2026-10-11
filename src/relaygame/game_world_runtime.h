@@ -1,9 +1,9 @@
 #pragma once
-
 #include "relaycore/app/frame_timer.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/physics/collision.h"
+#include "relaycore/render/player_ui_data.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaygame/fixed_simulation_loop.h"
@@ -62,6 +62,9 @@ namespace RelayGame
         void begin_ending();
         void update_ending(float delta_seconds, RelayCore::EngineServices& services);
         void load_level_session(const RelayCore::core::EngineConfig& config, LevelSession session);
+        [[nodiscard]] auto
+        query_physics_fixture(const glm::vec3& origin, const glm::vec3& direction, float max_distance) const
+            -> std::optional<RelayCore::physics::WorldQueryHit>;
 
         void prepare_level_session_activation(
             RelayCore::EngineServices& services,
@@ -84,6 +87,8 @@ namespace RelayGame
         void update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services);
 
         void publish_diagnostics(RelayCore::Renderer& renderer) const;
+        [[nodiscard]] auto build_hud_presentation(const RelayCore::render::PerspectiveCamera* camera = nullptr)
+            -> RelayCore::render::HudPresentation;
 
         [[nodiscard]] auto level() const noexcept -> const RelayCore::BlockoutLevel&;
 
@@ -97,6 +102,11 @@ namespace RelayGame
         {
             return enemies_;
         }
+        [[nodiscard]] auto containment() const noexcept -> const std::optional<ContainmentEncounter>&
+        {
+            return containment_;
+        }
+        void debug_update_containment(float dt);
         [[nodiscard]] auto turrets() const noexcept -> const std::vector<RelayCore::gameplay::RuntimeTurret>&;
 
         [[nodiscard]] auto focused_usable_index() const noexcept -> int;
@@ -157,6 +167,10 @@ namespace RelayGame
         {
             return combat_state_.shotgun_cycle_remaining_seconds;
         }
+        [[nodiscard]] auto pistol_cycle_remaining_seconds() const noexcept -> float
+        {
+            return combat_state_.pistol_cycle_remaining_seconds;
+        }
 
         [[nodiscard]] auto scientist_pose() const noexcept -> ScientistPose;
 
@@ -206,6 +220,8 @@ namespace RelayGame
             std::filesystem::path weapon_fire{};
             std::filesystem::path shotgun_fire{};
             std::filesystem::path weapon_hit{};
+            std::filesystem::path impact_hard{};
+            std::filesystem::path impact_metal{};
             std::filesystem::path threat_windup{};
             std::filesystem::path rover_attack{};
             std::filesystem::path turret_fire{};
@@ -252,6 +268,7 @@ namespace RelayGame
             RelayCore::gameplay::PlayerCombatState player{};
             std::array<RelayCore::gameplay::CombatShotTrace, 7> pellet_traces{};
             float shotgun_cycle_remaining_seconds = 0;
+            float pistol_cycle_remaining_seconds = 0;
             std::vector<RelayCore::gameplay::RuntimeTurret> turrets{};
             std::vector<RelayCore::gameplay::RuntimeHazardVolume> hazards{};
             std::string fire_binding_label{"Mouse1"};
@@ -292,6 +309,9 @@ namespace RelayGame
 
         void configure_audio_cues(const RelayCore::core::GameplayAudioConfig& gameplay_audio);
 
+        void update_containment(float dt);
+        auto apply_runtime_usable_interaction(RelayCore::gameplay::RuntimeUsable& usable)
+            -> RelayCore::gameplay::InteractionEvent;
         void process_use_input(bool use_pressed_this_step, RelayCore::EngineServices& services);
 
         void process_fire_input(bool fire_pressed_this_step, RelayCore::EngineServices& services);
@@ -299,13 +319,19 @@ namespace RelayGame
 
         void apply_combat_target_event(const RelayCore::gameplay::CombatTargetEvent& event);
 
-        void play_gameplay_audio(RelayCore::EngineServices& services, const std::filesystem::path& cue_path);
+        void play_gameplay_audio(
+            RelayCore::EngineServices& services,
+            const std::filesystem::path& cue_path,
+            std::optional<glm::vec3> position = std::nullopt
+        );
 
         void play_door_state_change_audio(RelayCore::EngineServices& services);
 
         void sync_door_audio_state();
 
         void update_ambient_audio(RelayCore::EngineServices& services);
+
+        auto apply_player_attack(const glm::vec3& origin, const glm::vec3& direction) -> PlayerAttackResult;
 
         void tick_transient_hud_event(float delta_seconds) noexcept;
 
@@ -392,7 +418,10 @@ namespace RelayGame
         RelayGame::GroundedPlayerController player_controller_{};
         PlayerFeedback player_feedback_{};
         PlayerWeapon selected_weapon_ = PlayerWeapon::Precise;
-        std::vector<RelayCore::physics::Aabb> interaction_occluders_;
+        [[nodiscard]] auto world_query(bool include_guardian = true) -> RelayCore::physics::WorldQuery;
+        std::vector<RelayCore::physics::WorldCollider> world_colliders_;
+        std::shared_ptr<const RelayCore::physics::PhysicsWorld> physics_fixture_;
+        std::vector<RelayCore::physics::WorldCollider> query_doors_;
         float camera_motion_ = 0.6F;
         bool paused_ = false;
         std::array<std::filesystem::path, 16> player_sounds_{};
@@ -406,7 +435,7 @@ namespace RelayGame
         RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index_{};
         std::vector<std::uint32_t> trigger_candidates_{};
         std::vector<std::uint32_t> usable_candidates_{};
-        std::vector<RelayCore::physics::Aabb> dynamic_blockers_{};
+        std::vector<RelayCore::physics::WorldCollider> dynamic_blockers_{};
         std::vector<std::string> inventory_item_ids_{};
         std::vector<std::string> activated_target_ids_{};
         std::vector<std::string> signaled_target_ids_{};
@@ -415,6 +444,11 @@ namespace RelayGame
         InspectorState inspector_state_{};
         CombatState combat_state_{};
         TransientHudEvent transient_hud_event_{};
+        struct DamageNumber {
+            glm::vec3 position{};
+            float amount = 0, remaining_seconds = 0;
+        };
+        std::vector<DamageNumber> damage_numbers_;
         RelayGame::MissionRuntime mission_runtime_{};
         AudioCueSet audio_cues_{};
         AudioState audio_state_{};
@@ -424,9 +458,12 @@ namespace RelayGame
         std::vector<RelayGame::RuntimeAudioZone> audio_zones_{};
         std::vector<EnvironmentEffect> environment_{};
         RelayGame::MissionDefinition loaded_mission_definition_{};
+        std::vector<MissionRetrySpawn> retry_spawns_{};
         std::vector<RelayCore::gameplay::RuntimeTurret> loaded_level_turrets_{};
+        std::optional<ContainmentEncounter> containment_;
+        std::array<RelayCore::physics::WorldCollider, 1> guardian_collider_;
         std::vector<RuntimeEnemy> enemies_;
-        std::vector<RelayCore::physics::Aabb> enemy_blockers_;
+        std::vector<RelayCore::physics::WorldCollider> enemy_blockers_;
         std::vector<RelayCore::gameplay::RuntimeHazardVolume> loaded_level_hazards_{};
         std::vector<RelayCore::gameplay::DoorState> previous_door_states_{};
         FrameGameplayActions frame_actions_{};

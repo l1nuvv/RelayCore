@@ -13,6 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 
+struct ImDrawData;
+
 namespace RelayCore
 {
     class Window;
@@ -23,6 +25,7 @@ namespace RelayCore::render
 {
     class PerspectiveCamera;
     struct RendererConfig;
+    class VulkanDevice;
 } // namespace RelayCore::render
 
 namespace RelayCore::debug
@@ -59,7 +62,8 @@ namespace RelayCore::debug
 
         auto operator=(const ImGuiOverlay&) -> ImGuiOverlay& = delete;
 
-        void initialize(const Window& window);
+        // Vulkan device outlives the overlay; submitted UI draws must complete before shutdown.
+        void initialize(const Window& window, const render::VulkanDevice& device);
 
         void shutdown() noexcept;
 
@@ -83,7 +87,7 @@ namespace RelayCore::debug
             const render::IterationDiagnostics& iteration
         );
 
-        void render() const;
+        [[nodiscard]] auto finish_frame() const -> ImDrawData*;
 
         [[nodiscard]] auto is_initialized() const noexcept -> bool;
 
@@ -119,8 +123,6 @@ namespace RelayCore::debug
         void push_frame_time_sample(float frame_time_ms) noexcept;
 
         [[nodiscard]] auto average_frame_time_ms() const noexcept -> float;
-
-        [[nodiscard]] static auto vsync_label(int swap_interval) -> const char*;
 
         ImGuiOverlayConfig config_{};
         const Window* window_ = nullptr;

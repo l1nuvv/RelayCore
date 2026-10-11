@@ -1,5 +1,56 @@
 # Exploration slice: intake -> switch room -> pump -> return passage -> airlock.
 
+# VIS-05--07 visual shells; authored solids below retain physical ownership.
+[[entity_group]]
+classname = "prop_static"
+entries = [
+  { model = "models/power_intake.rcmodel", origin = [0,0,0] },
+  { model = "models/power_service.rcmodel", origin = [0,0,0] },
+  { model = "models/power_switchgear.rcmodel", origin = [0,0,0] },
+  { model = "models/power_maintenance.rcmodel", origin = [0,0,0] },
+  { model = "models/power_filtration.rcmodel", origin = [0,0,0] },
+  { model = "models/power_pump.rcmodel", origin = [0,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/control_console.rcmodel"
+origin = [-4,0,2.5]
+angles = [90,0,0]
+collision_mins = [-0.75,0,-0.5]
+collision_maxs = [0.75,1.9,0.5]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [-4.58,2.55,1.8], angles = [90,0,0] },
+  { origin = [12.0,2.55,-1.02] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [2,2.65,-4.65] },
+  { origin = [4.65,2.65,2.8], angles = [270,0,0] },
+  { origin = [12.17,2.65,8], angles = [90,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/power_safety_notice.rcmodel"
+entries = [
+  { origin = [-1.9,1.15,-4.83] },
+  { origin = [2.13,1.15,6.25], angles = [90,0,0] },
+]
+
+[[entity]]
+classname = "prop_static"
+model = "models/power_lab_notes_board.rcmodel"
+origin = [2.75,1.45,-4.83]
+
 [[entity]]
 classname = "prop_static"
 origin = [-4, 0, -3]
@@ -40,7 +91,9 @@ boxes = [
 [[entity]]
 classname = "render_light"
 origin = [0,2.7,14.5]
-fixture_offset = 0.695
+fixture_width = 0.56
+fixture_depth = 0.18
+fixture_offset = 0.6990
 color = [0.32,0.43,0.42]
 radius = 6
 intensity = 0.9
@@ -49,6 +102,9 @@ required_target = "sector_airlock"
 [[entity]]
 classname = "render_light"
 origin = [3.5,2.7,8]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.7490
 color = [0.3,0.43,0.32]
 radius = 4
 intensity = 0.8
@@ -196,12 +252,8 @@ boxes = [
   { origin = [16.48,2.7,19.3], size = [0.06,0.72,0.055], material = "Trim", tint = [0.88,0.88,0.81], brightness = 1 },
   { origin = [9.8,0.5,17.4], size = [1.1,1,1.3], material = "Crate", tint = [0.64,0.65,0.59], brightness = 1 },
   { origin = [12.5,3.1,6.5], size = [0.45,0.35,11], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
-  { origin = [-2.8,3.48,-0.7], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35], brightness = 0.7 },
-  { origin = [8,3.48,0], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35], brightness = 0.7 },
-  { origin = [12.5,3.48,11], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35], brightness = 0.7 },
-  { origin = [13,3.48,20], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35], brightness = 0.7 },
   { origin = [0,3.48,4.1], size = [0.7,0.12,0.3], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
-  { origin = [12.5,3.48,5], size = [0.7,0.12,0.3], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
+  { origin = [12.5,2.985,5], size = [0.7,0.12,0.3], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
   { origin = [12.5,3.48,19], size = [0.7,0.12,0.3], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
   { origin = [0,3.48,8], size = [0.7,0.12,0.3], material = "metal", tint = [0.64,0.65,0.59], brightness = 1 },
   { origin = [13,-0.12,27], size = [3.3,0.24,8.3], material = "service_floor" },
@@ -211,7 +263,6 @@ boxes = [
   { origin = [11.5,0.55,27], size = [0.22,1.1,8], material = "WallPanel" },
   { origin = [14.5,0.55,27], size = [0.22,1.1,8], material = "WallPanel" },
   { origin = [13,2.85,27], size = [0.12,0.12,7.5], material = "metal", tint = [1.1,0.8,0.38], brightness = 1.2 },
-  { origin = [13,3.48,27], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35] },
   { origin = [13,-0.12,35], size = [8.3,0.24,8.3], material = "maintenance_floor" },
   { origin = [13,3.72,35], size = [8,0.24,8], material = "Ceiling" },
   { origin = [10.25,1.8,31], size = [2.5,3.6,0.2], material = "concrete" },
@@ -241,8 +292,6 @@ boxes = [
   { origin = [24.63,2.9,34], size = [0.12,0.8,0.12], material = "metal", tint = [0.42,0.58,0.56] },
   { origin = [21,2.9,36.25], size = [8,0.12,0.12], material = "metal", tint = [0.42,0.58,0.56] },
   { origin = [17.2,2.9,35.1], size = [0.12,0.12,2.2], material = "metal", tint = [0.42,0.58,0.56] },
-  { origin = [13,3.48,35], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35] },
-  { origin = [22,3.48,34], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.7,0.57,0.35] },
   { origin = [7.5,-0.12,17], size = [3.3,0.24,12.3], material = "filtration_floor" },
   { origin = [7.5,3.72,17], size = [3,0.24,12], material = "Ceiling" },
   { origin = [6,1.8,17], size = [0.2,3.6,12], material = "filtration_wall" },
@@ -267,8 +316,6 @@ boxes = [
   { origin = [6.8,0.08,18], size = [1.3,0.16,2], material = "Hazard", tint = [0.72,0.66,0.48] },
   { origin = [3,1.45,30.78], size = [1.35,1.6,0.2], material = "WallPanel", tint = [0.43,0.52,0.51] },
   { origin = [3,0.5,30.7], size = [1.45,1,0.35], material = "metal" },
-  { origin = [7.5,3.48,17], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.42,0.58,0.56] },
-  { origin = [5.25,3.48,27], size = [0.7,0.12,0.3], material = "LightStrip", tint = [0.42,0.58,0.56] },
 ]
 
 [[entity]]
@@ -329,6 +376,7 @@ origin = [-3.6,1.12,-0.5]
 size = [0.24,0.12,0.14]
 use_radius = 1.8
 targetname = "spare_fuse"
+pickup_surface_y = 1.065
 item_id = "power_fuse"
 item_name = "Силовой предохранитель"
 label = "Взять запасной предохранитель"
@@ -342,6 +390,7 @@ size = [0.38,0.5,0.12]
 mount_axis = "-z"
 use_radius = 1.8
 targetname = "maintenance_isolator"
+panel_style = "isolator"
 target = "maintenance_shutter"
 action = "activate_target"
 required_item = "power_fuse"
@@ -374,6 +423,7 @@ size = [0.38,0.5,0.12]
 mount_axis = "-z"
 use_radius = 2
 targetname = "power_breaker"
+panel_style = "start"
 target = "facility_power"
 action = "activate_target"
 chain_target = "filter_purge"
@@ -395,6 +445,7 @@ size = [0.38,0.5,0.12]
 mount_axis = "-z"
 use_radius = 1.8
 targetname = "filter_purge"
+panel_style = "start"
 target = "filter_flushed"
 action = "activate_target"
 chain_target = "cooling_control"
@@ -413,6 +464,7 @@ size = [0.38,0.5,0.12]
 mount_axis = "+z"
 use_radius = 1.8
 targetname = "cooling_control"
+panel_style = "start"
 target = "cooling_running"
 action = "activate_target"
 chain_target = "airlock_reader"
@@ -481,6 +533,9 @@ entries = [
 [[entity]]
 classname = "render_light"
 origin = [-2.8,2.6,-0.7]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.8440
 color = [0.52,0.36,0.18]
 radius = 5
 intensity = 1.1
@@ -488,6 +543,9 @@ intensity = 1.1
 [[entity]]
 classname = "render_light"
 origin = [8,2.7,0]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.7440
 color = [0.48,0.31,0.14]
 radius = 4.3
 intensity = 1
@@ -495,6 +553,9 @@ intensity = 1
 [[entity]]
 classname = "render_light"
 origin = [12.5,2.65,11]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.2740
 color = [0.4,0.31,0.19]
 radius = 4.4
 intensity = 1
@@ -502,13 +563,19 @@ intensity = 1
 [[entity]]
 classname = "render_light"
 origin = [13,2.8,20]
-color = [0.52,0.38,0.21]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
+color = [0.66,0.61,0.48]
 radius = 5
-intensity = 1.05
+intensity = 1.15
 
 [[entity]]
 classname = "render_light"
 origin = [13,2.8,27]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
 color = [0.44,0.33,0.18]
 radius = 5
 intensity = 0.9
@@ -516,27 +583,39 @@ intensity = 0.9
 [[entity]]
 classname = "render_light"
 origin = [13,2.8,35]
-color = [0.48,0.34,0.17]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
+color = [0.60,0.49,0.30]
 radius = 5
-intensity = 1
+intensity = 1.1
 
 [[entity]]
 classname = "render_light"
 origin = [22,2.8,34]
-color = [0.32,0.38,0.37]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
+color = [0.60,0.66,0.61]
 radius = 5
-intensity = 0.8
+intensity = 1.2
 
 [[entity]]
 classname = "render_light"
 origin = [7.5,2.8,17]
-color = [0.3,0.42,0.4]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
+color = [0.60,0.65,0.60]
 radius = 5
-intensity = 0.8
+intensity = 1.15
 
 [[entity]]
 classname = "render_light"
 origin = [5.25,2.8,27]
+fixture_width = 1.18
+fixture_depth = 0.28
+fixture_offset = 0.6440
 color = [0.4,0.35,0.2]
 radius = 5
 intensity = 0.85
@@ -544,43 +623,56 @@ intensity = 0.85
 [[entity]]
 classname = "render_light"
 origin = [0,2.93,4.1]
-fixture_offset = 0.4
+fixture_width = 0.56
+fixture_depth = 0.18
+fixture_offset = 0.4890
 start_delay = 0.65
-color = [0.42,0.48,0.42]
+color = [0.62,0.68,0.62]
 radius = 5.5
-intensity = 1.5
+intensity = 1.15
 required_target = "facility_power"
 
 [[entity]]
 classname = "render_light"
 origin = [12.5,2.9,5]
+fixture_width = 0.56
+fixture_depth = 0.18
+fixture_offset = 0.0240
 start_delay = 0.35
-color = [0.38,0.4,0.37]
+color = [0.66,0.71,0.66]
 radius = 6
-intensity = 0.95
+intensity = 1.2
 required_target = "facility_power"
 
 [[entity]]
 classname = "render_light"
 origin = [12.5,2.9,19]
+fixture_width = 0.56
+fixture_depth = 0.18
+fixture_offset = 0.5190
 start_delay = 0.1
-color = [0.38,0.4,0.37]
+color = [0.66,0.71,0.66]
 radius = 6
-intensity = 0.95
+intensity = 1.2
 required_target = "facility_power"
 
 [[entity]]
 classname = "render_light"
 origin = [0,2.65,8]
-fixture_offset = 0.765
-color = [0.36,0.48,0.38]
+fixture_width = 0.56
+fixture_depth = 0.18
+fixture_offset = 0.7690
+color = [0.58,0.68,0.60]
 radius = 5
-intensity = 0.95
+intensity = 1.15
 required_target = "cooling_running"
 
 [[entity]]
 classname = "render_light"
 origin = [8,2.9,8]
+fixture_width = 0.62
+fixture_depth = 0.25
+fixture_offset = 0.4890
 state = "damaged"
 color = [0.34,0.31,0.22]
 radius = 4.5
@@ -631,14 +723,14 @@ stop_target = "cooling_running"
 [[entity]]
 classname = "world_effect"
 kind = "sparks"
-origin = [14.05,1.68,21.60]
+origin = [14.43,1.70,21.66]
 angles = [180,0,0]
 stop_target = "facility_power"
 
 [[entity]]
 classname = "world_effect"
 kind = "sparks"
-origin = [24.7,1.65,34]
+origin = [24.43,1.72,34.13]
 angles = [-90,0,0]
 stop_target = "bus_reconnected"
 
@@ -653,39 +745,41 @@ stop_target = "filter_flushed"
 classname = "world_effect"
 kind = "decal"
 mark = "arrow"
-origin = [2,2.1,4.892]
+origin = [2.0,2.81,4.752]
 angles = [180,0,0]
-scale = 0.9
+scale = 0.65
 
 [[entity]]
 classname = "world_effect"
 kind = "decal"
 mark = "arrow"
-origin = [2.108,1.8,8]
+origin = [2.188,3.0,7.55]
 angles = [90,0,0]
-scale = 1.2
+scale = 0.65
 
 [[entity]]
 classname = "world_effect"
 kind = "decal"
 mark = "arrow"
-origin = [4.892,1.8,-2.1]
+origin = [4.652,2.45,-4.35]
 angles = [-90,0,0]
-scale = 0.7
+scale = 0.65
 
 [[entity]]
 classname = "world_effect"
 kind = "decal"
 mark = "02"
-origin = [11.108,1.9,6]
+origin = [11.188,2.2,5.55]
+scale = 0.65
 angles = [90,0,0]
 
 [[entity]]
 classname = "world_effect"
 kind = "decal"
 mark = "03"
-origin = [15.3,2.0,14.892]
-angles = [180,0,0]
+origin = [13.652,2.2,12.55]
+scale = 0.65
+angles = [270,0,0]
 
 [[entity]]
 classname = "world_effect"
@@ -708,3 +802,56 @@ mark = "warning"
 origin = [16.4,1.7,22.892]
 angles = [180,0,0]
 scale = 0.65
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [-2.8,3.58,-0.7] },
+  { origin = [8,3.58,0] },
+  { origin = [12.5,3.055,11] },
+  { origin = [13,3.58,20] },
+  { origin = [13,3.58,27] },
+  { origin = [13,3.58,35] },
+  { origin = [22,3.58,34] },
+  { origin = [7.5,3.58,17] },
+  { origin = [5.25,3.58,27] },
+]
+
+# VIS-25: painted occult intrusion; no backing or gameplay collision.
+[[entity]]
+classname = "prop_static"
+model = "models/blood_pentagram.rcmodel"
+origin = [0,1.15,-4.80]
+scale = [0.82,0.82,0.82]
+
+# VIS-26: retained route glyphs mounted on local physical carriers.
+[[entity]]
+classname = "prop_static"
+model = "models/power_route_signage.rcmodel"
+origin = [0,0,0]
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [0, 0.01, 14.5]
+size = [2,2.5,1.2]
+next_map = "levels/foundation_intake.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+# Cooling reference beside the pump equipment, facing the service aisle.
+[[entity]]
+classname = "prop_static"
+model = "models/cooling_notes_board.rcmodel"
+origin = [11.12,0.75,5.0]
+angles = [90,0,0]
+scale = [0.85,0.85,0.85]
+
+# VIS-30: practical housings for the existing local lights.
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [3.5,3.58,8] },
+]

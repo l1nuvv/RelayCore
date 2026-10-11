@@ -1,10 +1,13 @@
 #include "relaycore/core/paths.h"
+#include "relaycore/physics/collision_asset.h"
 #include "relaycore/render/static_model.h"
 #include "relaygame/level_editor_document.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/static_props.h"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <queue>
 #include <sstream>
 #include <stdexcept>
@@ -27,6 +30,23 @@ namespace RelayGame
     {
         if (model_bounds_.contains(path))
             return;
+        if (std::filesystem::path{path}.extension() == ".rcmodel")
+        {
+            const auto model = RelayCore::render::read_model_asset(RelayCore::core::asset_path(path));
+            RelayCore::physics::Aabb box{
+                glm::vec3{std::numeric_limits<float>::max()},
+                glm::vec3{-std::numeric_limits<float>::max()}
+            };
+            for (const auto& part : model.parts)
+                for (const auto& vertex : model.meshes[part.mesh].geometry.vertices)
+                {
+                    const auto position = glm::vec3{part.transform * glm::vec4{vertex.position, 1}};
+                    box.mins = glm::min(box.mins, position);
+                    box.maxs = glm::max(box.maxs, position);
+                }
+            model_bounds_.emplace(path, box);
+            return;
+        }
         const auto mesh = RelayCore::render::load_obj_mesh(RelayCore::core::asset_path(path));
         RelayCore::physics::Aabb box{mesh.vertices.front().position, mesh.vertices.front().position};
         for (const auto& vertex : mesh.vertices)
@@ -40,13 +60,16 @@ namespace RelayGame
     void LevelEditorDocument::add_model(glm::vec3 position, const std::string& model, const std::string& texture)
     {
         cache_model(model);
-        if (!std::filesystem::is_regular_file(RelayCore::core::asset_path(texture)))
+        const bool native = std::filesystem::path{model}.extension() == ".rcmodel";
+        if (!native && !std::filesystem::is_regular_file(RelayCore::core::asset_path(texture)))
             throw std::runtime_error("Текстура не найдена: " + texture);
         checkpoint();
         RelayCore::EntitySpawnData entity;
         entity.classname = "prop_static";
         entity.origin = position;
-        entity.properties = {{"model", model}, {"texture", texture}, {"scale", "1 1 1"}};
+        entity.properties = {{"model", model}, {"scale", "1 1 1"}};
+        if (!native)
+            entity.properties["texture"] = texture;
         level_.entities.push_back(std::move(entity));
         selection_ = EditorSelection{true, level_.entities.size() - 1};
         changed();
@@ -141,6 +164,7 @@ namespace RelayGame
         auto& entity = level_.entities[selection_->index];
         if (enabled)
         {
+            entity.properties.erase("collision_asset");
             const auto box = model_bounds_.at(entity.properties.at("model"));
             const auto encode = [](glm::vec3 v) {
                 return std::to_string(v.x) + ' ' + std::to_string(v.y) + ' ' + std::to_string(v.z);
@@ -151,6 +175,26 @@ namespace RelayGame
         } else
             for (const char* key : {"collision_mins", "collision_maxs", "collision_material"})
                 entity.properties.erase(key);
+        changed();
+    }
+
+    void LevelEditorDocument::set_model_collision_asset(const std::string& reference)
+    {
+        if (!selection_ || !selection_->entity || level_.entities[selection_->index].classname != "prop_static")
+            return;
+        auto candidate = level_;
+        auto& properties = candidate.entities[selection_->index].properties;
+        for (const char* key : {"collision_mins", "collision_maxs", "collision_material", "collision_asset"})
+            properties.erase(key);
+        if (!reference.empty())
+            properties["collision_asset"] = reference;
+        for (const auto& prop : build_static_props(candidate))
+            if (prop.authored_entity_index == static_cast<int>(selection_->index) && !prop.collision_product.empty())
+                static_cast<void>(
+                    RelayCore::physics::read_collision_asset(prop.collision_product, properties.at("model"))
+                );
+        checkpoint();
+        level_ = std::move(candidate);
         changed();
     }
 
@@ -275,7 +319,10 @@ namespace RelayGame
         {
             for (const auto& entity : level_.entities)
                 if (entity.properties.contains("kind")
-                    && (entity.properties.at("kind") == "panel" || entity.properties.at("kind") == "door_open"))
+                    && (entity.properties.at("kind") == "door_open"
+                        || (entity.properties.at("kind") == "panel"
+                            && (!entity.properties.contains("action")
+                                || entity.properties.at("action") != "activate_target"))))
                 {
                     const auto target = entity.properties.find("target");
                     if (target == entity.properties.end()
@@ -311,7 +358,27 @@ namespace RelayGame
                     && std::ranges::none_of(
                         session.usables,
                         [&](const auto& usable) {
-                            return usable.target == door.name && usable.enabled && !usable.locked;
+                            if (usable.target != door.name || !usable.enabled)
+                                return false;
+                            if (!usable.locked)
+                                return true;
+                            using namespace RelayCore::gameplay;
+                            if (usable.signal_action != UsableSignalAction::Unlock
+                                && usable.signal_action != UsableSignalAction::ToggleLock)
+                                return false;
+                            return std::ranges::any_of(
+                                       session.usables,
+                                       [&](const auto& source) {
+                                           return source.enabled && !source.locked
+                                                  && (source.chain_target == usable.name
+                                                      || (source.action_kind == UsableActionKind::SignalTarget
+                                                          && source.target == usable.name));
+                                       }
+                                   )
+                                   || std::ranges::any_of(session.triggers, [&](const auto& trigger) {
+                                          return trigger.action_kind == TriggerActionKind::SignalTarget
+                                                 && trigger.target == usable.name;
+                                      });
                         }
                     )
                     && std::ranges::none_of(session.triggers, [&](const auto& trigger) {
@@ -321,12 +388,25 @@ namespace RelayGame
             // A bounded walkability check at the spawn elevation; stairs/jumps remain a playtest concern.
             if (spawn != level_.entities.end())
             {
-                constexpr int width = 129;
                 constexpr float cell = .5F;
-                std::vector<unsigned char> reachable(width * width, 0);
+                constexpr int limit = 128;
+                int min_x = 0, max_x = 0, min_z = 0, max_z = 0;
+                for (const auto* solids : {&session.level.solids, &session.level.prop_colliders})
+                    for (const auto& solid : *solids)
+                    {
+                        min_x = std::min(min_x, static_cast<int>(std::floor((solid.mins.x - spawn->origin.x) / cell)));
+                        max_x = std::max(max_x, static_cast<int>(std::ceil((solid.maxs.x - spawn->origin.x) / cell)));
+                        min_z = std::min(min_z, static_cast<int>(std::floor((solid.mins.z - spawn->origin.z) / cell)));
+                        max_z = std::max(max_z, static_cast<int>(std::ceil((solid.maxs.z - spawn->origin.z) / cell)));
+                    }
+                min_x = std::max(-limit, min_x);
+                max_x = std::min(limit, max_x);
+                min_z = std::max(-limit, min_z);
+                max_z = std::min(limit, max_z);
+                const int width = max_x - min_x + 1, depth = max_z - min_z + 1;
+                std::vector<unsigned char> reachable(width * depth, 0);
                 const auto position = [&](int index) {
-                    return spawn->origin
-                           + glm::vec3{(index % width - width / 2) * cell, 0, (index / width - width / 2) * cell};
+                    return spawn->origin + glm::vec3{(index % width + min_x) * cell, 0, (index / width + min_z) * cell};
                 };
                 const auto walkable = [&](glm::vec3 feet) {
                     bool floor = false;
@@ -343,7 +423,7 @@ namespace RelayGame
                     return floor;
                 };
                 std::queue<int> pending;
-                const int start = width * width / 2;
+                const int start = -min_z * width - min_x;
                 if (walkable(spawn->origin))
                 {
                     reachable[start] = 1;
@@ -357,7 +437,7 @@ namespace RelayGame
                     for (int delta : {-1, 1, -width, width})
                     {
                         const int next = index + delta;
-                        if (next < 0 || next >= width * width || (std::abs(delta) == 1 && index / width != next / width)
+                        if (next < 0 || next >= width * depth || (std::abs(delta) == 1 && index / width != next / width)
                             || reachable[next])
                             continue;
                         reachable[next] = 2;
@@ -372,7 +452,7 @@ namespace RelayGame
                     if (step.kind == MissionStepKind::EnterZone)
                     {
                         bool reached = false;
-                        for (int i = 0; i < width * width && !reached; ++i)
+                        for (int i = 0; i < width * depth && !reached; ++i)
                             reached = reachable[i] == 1
                                       && RelayCore::physics::overlaps(
                                           RelayCore::physics::make_player_aabb(position(i), .3F, 1.8F),

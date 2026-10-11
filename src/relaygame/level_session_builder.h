@@ -3,8 +3,10 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/gameplay/combat_runtime.h"
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/physics/physics_world.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
+#include "relaygame/containment_encounter.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/mission_runtime.h"
 #include "relaygame/runtime_model.h"
@@ -12,6 +14,7 @@
 #include "relaygame/world_environment.h"
 
 #include <filesystem>
+#include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <optional>
@@ -39,12 +42,22 @@ namespace RelayGame
         std::size_t closing_door = 0;
     };
 
+    struct MissionRetrySpawn {
+        std::size_t completed_steps = 0;
+        glm::vec3 position{};
+        std::optional<glm::vec2> view_angles{};
+    };
+
     struct LevelSession {
+        std::optional<ContainmentEncounter> containment;
         std::vector<RuntimeEnemy> enemies;
         std::vector<LevelExit> exits;
         std::optional<EpisodeEnding> ending;
         std::filesystem::path level_path{};
         RelayCore::BlockoutLevel level{};
+        std::vector<RelayCore::physics::WorldCollider> world_colliders;
+        // Immutable query geometry can be shared by copies of a prepared fixture session.
+        std::shared_ptr<const RelayCore::physics::PhysicsWorld> physics_fixture;
         glm::vec3 spawn_position{0.0F, 0.3F, 0.0F};
         std::optional<glm::vec2> spawn_view_angles{}; // x = yaw radians, y = pitch radians
         std::vector<RelayCore::gameplay::RuntimeDoor> doors{};
@@ -56,6 +69,7 @@ namespace RelayGame
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
         RelayCore::gameplay::CombatBuildResult combat{};
         RelayGame::MissionDefinition mission_definition{};
+        std::vector<MissionRetrySpawn> retry_spawns{};
         std::vector<RelayGame::RuntimeAudioZone> audio_zones{};
         std::vector<EnvironmentEffect> environment{};
     };
@@ -70,6 +84,18 @@ namespace RelayGame
             -> LevelSession;
 
         [[nodiscard]] auto build(RelayCore::BlockoutLevel level, std::filesystem::path path) const -> LevelSession;
+        [[nodiscard]] auto build_physics_fixture(
+            RelayCore::BlockoutLevel level,
+            std::filesystem::path path,
+            std::span<const RelayCore::physics::PhysicsMesh> meshes
+        ) const -> LevelSession;
+        [[nodiscard]] auto build_collision_fixture(
+            RelayCore::BlockoutLevel level,
+            std::filesystem::path path,
+            const std::filesystem::path& collision_product,
+            std::string_view model_reference,
+            const glm::mat4& transform = glm::mat4{1}
+        ) const -> LevelSession;
 
     private:
         const RelayCore::core::GameplayConfig& config_;

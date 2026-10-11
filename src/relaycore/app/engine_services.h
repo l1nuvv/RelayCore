@@ -32,7 +32,7 @@ namespace RelayCore
         /**
          * @brief Builds a service view over live engine subsystems.
          * @param config Loaded engine configuration.
-         * @param window Window and OpenGL context owner.
+         * @param window SDL window owner.
          * @param renderer Rendering subsystem.
          * @param audio_system Audio subsystem.
          * @param is_running Reference to the application running flag.

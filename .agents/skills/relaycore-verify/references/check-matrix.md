@@ -1,16 +1,24 @@
-# Verification routing
+# Verification selection
 
-Always confirm names against the current repository before running them. This file describes selection logic, not immutable preset names.
+Use current `CMakePresets.json` and affected `CMakeLists.txt` to confirm names and dependencies. `docs/DEVELOPMENT.md` owns setup and diagnostic procedures.
 
-| Change type | Start with | Broaden when |
+| Change | Start with | Expand when |
 | --- | --- | --- |
-| One C++ implementation/header | affected target + nearest doctest filter/group | shared API, multiple subsystems, or failure suggests wider impact |
-| Gameplay/runtime behavior | tests covering that behavior, then demo build | integration/startup/content path changed |
-| Renderer/shader path | renderer/demo target + focused tests/validation | GPU state, startup, framebuffer, asset loading, or cross-pass behavior changed |
-| Config/TOML/content validation | parser/validation tests + validation target | defaults, shipped content, startup, or runtime reload behavior changed |
-| CMake/presets/vcpkg | configure + affected target | preset inheritance, dependency, CI, or packaging behavior changed |
-| Test infrastructure | smallest affected test binary/group | shared fixture/logger/temp-path behavior changed |
-| Documentation/comments only | `git diff --check` | generated docs or tooling is itself part of the change |
-| Performance optimization | correctness tests + same workload/capture before/after | result is noisy or hot path spans multiple systems |
+| Local C++ behavior | Affected target and nearest discovered CTest/doctest cases | Shared API or integration behavior changes |
+| Gameplay/map/config | Parser/session/content cases, affected map via `relaycore_level_check` | Continue/snapshot/editor/session transitions change: add relevant lifecycle checks |
+| Model/import/staging | Importer/product cases and `relaycore.tooling.model_assets` | Runtime consumption changes: stage and check affected content/render view |
+| Native collision | `relaycore_physics_tests` and relevant `relaycore.physics.*` / `relaycore.tooling.collision_assets` | Placement/movement/editor integration changes: add affected content/lifecycle checks |
+| Shader/render/device/presentation | Affected target and selected `graphics.*` with validation | Cross-pass/lifetime/color contracts change: expand graphics coverage/capture |
+| Hook/release scripts | Corresponding `tests/*_tests.ps1` isolated fixture | Entry points, candidate retry or installation contract changes |
+| CMake/dependencies | Configure affected preset, affected target and tests | Inheritance, ABI or deployment changes: relevant optimized/ASan/CI configurations |
+| Performance patch | Correctness checks plus comparable workload before/after | Noise or unmeasured scenario prevents a conclusion |
+| Prose/skill-only | Link/frontmatter/routing inspection and `git diff --check` | Executable tooling is also changed |
 
-Known historical RelayCore presets have included `msvc-debug`, `demo-debug`, `tests-debug`, `validation-debug`, `test-debug`, `debug-discipline-workflow`, RelWithDebInfo, and ASan variants. Treat these as hints only; current repository files are authoritative.
+## Non-obvious boundaries
+
+- `tests-debug` and `test-debug` are different preset kinds. `test-debug` includes tooling and isolated physics cases; inspect dependencies before choosing a smaller build target. Tooling needs PowerShell 7 and some fixtures need `clang-format`.
+- CTest normally sets staged `RELAYCORE_ASSET_ROOT`. Manual runtime checks need the complete staged root, not source `assets/`. `relaycore_level_check` reports warnings alongside success and does not prove human reachability/readability.
+- Model/collision targets and isolated physics fixtures can avoid full runtime irradiance work. Demo/runtime staging can depend on expensive bakes; inspect the target graph before selecting it for a pure format/physics change.
+- A full discipline workflow is broader than routine verification but is not necessarily every gate: the current RelWithDebInfo discipline workflow omits content validation; graphics execution is separate from default hosted CI. Inspect workflow steps rather than treating the name as proof.
+- `scripts/run-clang-tidy.ps1` analyzes all production `.cpp` files, despite the CI step's word “targeted”. Use for relevant static-analysis work or a requested broader check, not every edit. ASan targets project boundaries; third-party binaries may be uninstrumented.
+- Release scripts can change versions/create archives/publish. Their regression fixtures simulate these operations; running a fixture is different from invoking `scripts/release.ps1`. Packaging is outside routine verification.

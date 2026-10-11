@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "scoped_temp_directory.h"
+#include "world_query_fixture.h"
 
 TEST_CASE("footsteps follow traveled ground distance, not airborne or blocked movement")
 {
@@ -38,6 +39,21 @@ TEST_CASE("footsteps follow traveled ground distance, not airborne or blocked mo
     CHECK(steps == 3);
 }
 
+TEST_CASE("body travel direction follows ground displacement and survives stopping")
+{
+    RelayGame::PlayerFeedback feedback;
+    (void) feedback.update(.1F, {-.3F, 0, -.4F}, 0, true, true, false);
+    CHECK(feedback.travel_direction().x == doctest::Approx(-.6F));
+    CHECK(feedback.travel_direction().z == doctest::Approx(-.8F));
+    (void) feedback.update(.1F, {}, 0, true, true, false);
+    CHECK(feedback.travel_direction().x == doctest::Approx(-.6F));
+    (void) feedback.update(.1F, {.3F, .2F, 0}, 2, false, false, false);
+    CHECK(feedback.travel_direction().z == doctest::Approx(-.8F));
+    feedback.reset();
+    CHECK(feedback.stride() == 0);
+    CHECK(feedback.travel_direction() == glm::vec3{0, 0, 1});
+}
+
 TEST_CASE("footstep material comes from the support directly below the feet")
 {
     RelayCore::BlockoutLevel level;
@@ -59,15 +75,19 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.camera_motion = 0;
     settings.volume = 0.25F;
     settings.vsync = false;
+    settings.hdr_enabled = true;
     RelayGame::save_player_settings(path, settings);
     auto loaded = RelayGame::load_player_settings(path, {});
     CHECK(loaded.fov == 85);
     CHECK(loaded.camera_motion == 0);
     CHECK(loaded.volume == 0.25F);
     CHECK_FALSE(loaded.vsync);
+    CHECK(loaded.hdr_enabled);
     settings.fov = 63;
+    settings.hdr_enabled = false;
     RelayGame::save_player_settings(path, settings);
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
+    CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
     settings.volume = std::numeric_limits<float>::quiet_NaN();
     CHECK_THROWS(RelayGame::save_player_settings(path, settings));
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
@@ -81,6 +101,22 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
         output << "vsync = 'yes'\n";
     }
     CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+    {
+        std::ofstream output{path};
+        output << "hdr_enabled = 'HDR'\n";
+    }
+    CHECK_THROWS_WITH(
+        static_cast<void>(RelayGame::load_player_settings(path, {})),
+        "player_settings.hdr_enabled must be a boolean"
+    );
+    {
+        std::ofstream output{path};
+        output << "vsync = true\n";
+    }
+    settings.hdr_enabled = true;
+    settings.volume = 0.25F;
+    CHECK(RelayGame::load_player_settings(path, settings).hdr_enabled);
+    CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
 }
 
 TEST_CASE("interaction respects occlusion while allowing a panel on a wall face")
@@ -89,7 +125,14 @@ TEST_CASE("interaction respects occlusion while allowing a panel on a wall face"
     std::vector<gameplay::RuntimeUsable> usables{{.origin = {0, 1, -2}, .use_radius = 3}};
     std::vector<physics::Aabb> blockers{{{-1, 0, -1.1F}, {1, 2, -1}}};
     const auto query = [&] {
-        return gameplay::find_focused_usable({0, 1, 0}, {0, 0, -1}, usables, 3, 0.75F, blockers);
+        return gameplay::find_focused_usable(
+            {0, 1, 0},
+            {0, 0, -1},
+            usables,
+            3,
+            0.75F,
+            RelayCore::test::WorldQueryFixture{blockers}
+        );
     };
     CHECK(query().usable_index == -1);
     blockers[0] = {{-1, 0, -2.2F}, {1, 2, -2}};

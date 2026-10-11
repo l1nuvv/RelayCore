@@ -108,7 +108,7 @@ namespace RelayGame
         auto decode(const toml::table& table, bool visited = false) -> SavedGame
         {
             const auto version = required<std::int64_t>(table, "format_version");
-            if (version != 1 && version != 2 && version != 3 && version != saved_game_format_version)
+            if (version != 1 && version != 2 && version != 3 && version != 4 && version != saved_game_format_version)
                 throw std::runtime_error(
                     "Save: unsupported format version " + std::to_string(version) + "; expected "
                     + std::to_string(saved_game_format_version)
@@ -212,17 +212,32 @@ namespace RelayGame
                 else
                     throw std::runtime_error("Save: invalid or unavailable selected_weapon");
             }
+            if (version >= 5 && table.contains("containment"))
+            {
+                const auto& data = table_at(*table.get("containment"));
+                const auto mode = count(data, "mode");
+                if (mode > static_cast<unsigned>(GuardianMode::Contained))
+                    throw std::runtime_error("Save: invalid Guardian mode");
+                world.containment = ContainmentState{
+                    vector(data, "position"),
+                    vector(data, "strike_target"),
+                    number(data, "timer", 0, 4),
+                    number(data, "grip_fraction", 0, 1),
+                    number(data, "capture_fraction", 0, 1),
+                    static_cast<GuardianMode>(mode)
+                };
+            }
             if (version >= 3)
             {
-                std::unordered_set<int> ids;
+                std::unordered_set<int> enemy_ids;
                 for (const auto& node : array(table, "enemies"))
                 {
                     const auto& data = table_at(node);
                     EnemyState enemy;
                     const auto id = count(data, "entity");
                     const auto mode = count(data, "mode");
-                    if (id > 100000 || mode > static_cast<unsigned>(EnemyMode::Dead)
-                        || !ids.insert(static_cast<int>(id)).second)
+                    if (id > 100000 || mode > static_cast<unsigned>(EnemyMode::Lunging)
+                        || !enemy_ids.insert(static_cast<int>(id)).second)
                         throw std::runtime_error("Save: invalid enemy identity or mode");
                     enemy.entity_index = static_cast<int>(id);
                     enemy.mode = static_cast<EnemyMode>(mode);
@@ -300,6 +315,9 @@ namespace RelayGame
             std::ranges::sort(properties);
             for (const auto& [key, value] : properties)
             {
+                // Render presentation does not change saved gameplay state.
+                if (key == "panel_style" || key == "pickup_surface_y")
+                    continue;
                 bytes(key);
                 bytes(value);
             }
@@ -359,6 +377,21 @@ namespace RelayGame
                  {"last_damage_source", combat.last_damage_source}
              }}
         };
+        if (world.containment)
+        {
+            const auto& state = *world.containment;
+            table.insert(
+                "containment",
+                toml::table{
+                    {"position", toml::array{state.position.x, state.position.y, state.position.z}},
+                    {"strike_target", toml::array{state.strike_target.x, state.strike_target.y, state.strike_target.z}},
+                    {"timer", state.timer},
+                    {"grip_fraction", state.grip_fraction},
+                    {"capture_fraction", state.capture_fraction},
+                    {"mode", static_cast<int>(state.mode)}
+                }
+            );
+        }
         toml::array enemy_data;
         for (const auto& enemy : save.enemies)
             enemy_data.push_back(toml::table{

@@ -6,22 +6,40 @@
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
 #include "relaygame/demo_game_debug_commands_internal.h"
+#include "relaygame/player_controller_config.h"
 #include "relaygame/usable_interaction.h"
 
+#include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControl.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <glad/gl.h>
+#include <imgui_internal.h>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#include "native_collision_fixture.h"
 #include "scoped_temp_directory.h"
 
 namespace
 {
+    auto read_rgb(RelayCore::Renderer& renderer) -> std::vector<unsigned char>
+    {
+        const auto image = renderer.capture_frame();
+        std::vector<unsigned char> rgb(size_t(image.width) * image.height * 3);
+        for (size_t i = 0; i < rgb.size() / 3; ++i)
+            std::copy_n(image.pixels.data() + i * 4, 3, rgb.data() + i * 3);
+        return rgb;
+    }
+
     void require(bool condition, const char* message)
     {
         if (!condition)
@@ -35,29 +53,576 @@ namespace
         return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     }
 
-    void capture_frame(const char* filename)
+    void capture_frame(RelayCore::Renderer& renderer, const char* filename)
     {
-        std::vector<unsigned char> pixels(640 * 480 * 3);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-        require(glGetError() == GL_NO_ERROR, "Frame capture failed");
-        for (int y = 0; y < 240; ++y)
-            std::swap_ranges(
-                pixels.begin() + y * 640 * 3,
-                pixels.begin() + (y + 1) * 640 * 3,
-                pixels.begin() + (479 - y) * 640 * 3
-            );
+        auto pixels = read_rgb(renderer);
         SDL_Surface* surface = SDL_CreateSurfaceFrom(640, 480, SDL_PIXELFORMAT_RGB24, pixels.data(), 640 * 3);
         require(surface != nullptr, "Capture surface failed");
         const bool written = SDL_SaveBMP(surface, filename);
         SDL_DestroySurface(surface);
         require(written, "Capture save failed");
     }
+
+    auto test_hdr_settings() -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 800;
+            config.window.height = 900;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = true;
+            config.audio.enabled = false;
+            config.gameplay.level_path = "levels/power_restoration.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(800, 900);
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            const auto player_path = directory.path() / "player";
+            RelayGame::DemoGame game{player_path};
+            const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            SDL_Event held_key{};
+            held_key.type = SDL_EVENT_KEY_DOWN;
+            held_key.key.scancode = SDL_SCANCODE_W;
+            held_key.key.key = SDLK_W;
+            held_key.key.windowID = SDL_GetWindowID(window.handle());
+            renderer.process_event(held_key);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, true), "Developer input frame unavailable");
+            require(ImGui::IsKeyDown(ImGuiKey_W), "Developer key press did not reach ImGui");
+            renderer.end_ui();
+            renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Menu);
+            held_key.type = SDL_EVENT_KEY_UP;
+            renderer.process_event(held_key);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, true), "Modal input frame unavailable");
+            require(!ImGui::IsKeyDown(ImGuiKey_W), "RmlUi menu swallowed the developer key release");
+            renderer.end_ui();
+            renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hidden);
+            game.on_startup(services);
+            const auto draw = [&] {
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                require(renderer.begin_ui(frame, audio, true), "HDR settings UI was unavailable");
+                game.on_ui(services);
+                renderer.end_ui();
+                return renderer.capture_frame();
+            };
+            const auto activate_menu = [&](const char* label) {
+                auto* context = Rml::GetContext("player");
+                require(context != nullptr, "RmlUi player context was unavailable");
+                const auto id = std::string_view{label} == "Настройки" ? "settings-button" : "save-settings";
+                auto* control = context->GetDocument("menu")->GetElementById(id);
+                require(control != nullptr, "RmlUi settings control was unavailable");
+                control->DispatchEvent("click", {});
+                game.on_update({}, services);
+                (void) draw();
+            };
+            const auto choose_range = [&](const char* label) {
+                auto* control = dynamic_cast<Rml::ElementFormControl*>(
+                    Rml::GetContext("player")->GetDocument("menu")->GetElementById("hdr")
+                );
+                require(control != nullptr, "RmlUi HDR/SDR selector was unavailable");
+                control->SetValue(std::string_view{label} == "HDR" ? "1" : "0");
+                control->DispatchEvent("change", {});
+                game.on_update({}, services);
+                (void) draw();
+            };
+            const auto key = [&](SDL_Scancode code) {
+                SDL_Event event{};
+                event.type = SDL_EVENT_KEY_DOWN;
+                event.key.scancode = code;
+                game.on_event(event, services);
+            };
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
+            const auto scene_image = [&] {
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                return renderer.capture_frame();
+            };
+            const auto shadow_contrast = [&](const char* name) {
+                auto shadowed = scene_image();
+                auto unshadowed_config = renderer.config();
+                unshadowed_config.shadow_enabled = false;
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(unshadowed_config, renderer.authoring_config())
+                );
+                const auto unshadowed = scene_image();
+                auto restored = unshadowed_config;
+                restored.shadow_enabled = true;
+                renderer.commit_live_content_reload(
+                    renderer.prepare_live_content_reload(restored, renderer.authoring_config())
+                );
+                int pixels = 0, maximum = 0;
+                long long total = 0;
+                for (size_t i = 0; i < shadowed.pixels.size(); i += 4)
+                {
+                    int difference = 0;
+                    for (int c = 0; c < 3; ++c)
+                        difference = std::max(difference, int(unshadowed.pixels[i + c]) - int(shadowed.pixels[i + c]));
+                    pixels += difference > 2;
+                    maximum = std::max(maximum, difference);
+                    total += difference;
+                }
+                auto* surface = SDL_CreateSurfaceFrom(
+                    shadowed.width,
+                    shadowed.height,
+                    SDL_PIXELFORMAT_RGBA32,
+                    shadowed.pixels.data(),
+                    shadowed.width * 4
+                );
+                require(surface != nullptr, "Shadow comparison capture surface failed");
+                const auto filename = std::string{"hdr-settings-shadow-"} + name + ".bmp";
+                const bool captured = SDL_SaveBMP(surface, filename.c_str());
+                SDL_DestroySurface(surface);
+                require(captured, "Shadow comparison capture failed");
+                std::cout << name << " shadows: pixels=" << pixels << "; max=" << maximum << "; total=" << total
+                          << '\n';
+                require(pixels > 100 && maximum > 10, "Shadow comparison did not render a shadowed scene");
+                return total;
+            };
+
+            (void) draw();
+            (void) shadow_contrast("SDR");
+            const auto original_sdr = scene_image();
+            activate_menu("Настройки");
+            const auto before = draw();
+            const auto camera = renderer.camera().position();
+            const auto tone_shader = RelayCore::core::asset_path("shaders/vulkan/tone_mapping.frag.spv");
+            auto backup = tone_shader;
+            backup += ".settings-test";
+            std::filesystem::rename(tone_shader, backup);
+            try
+            {
+                choose_range("HDR");
+                require(
+                    !renderer.config().hdr_enabled && !config.renderer.hdr_enabled,
+                    "Failed HDR switch changed the active configuration"
+                );
+                require(
+                    renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                    "Failed HDR switch changed the color pipeline"
+                );
+            } catch (...)
+            {
+                std::filesystem::rename(backup, tone_shader);
+                throw;
+            }
+            std::filesystem::rename(backup, tone_shader);
+            choose_range("HDR");
+            require(
+                renderer.config().hdr_enabled && config.renderer.hdr_enabled,
+                "Settings did not enable HDR without CLI arguments"
+            );
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::hardware_srgb,
+                "HDR settings did not select the linear color pipeline"
+            );
+            require(renderer.camera().position() == camera, "HDR switch moved the player camera");
+            const auto hdr_shadows = shadow_contrast("HDR");
+            const auto hdr_camera = renderer.camera();
+            const auto capture_material = [&](const char* path, glm::vec3 eye, glm::vec3 target) {
+                renderer.camera().set_position(eye);
+                renderer.camera().set_target(target);
+                auto image = scene_image();
+                auto* surface = SDL_CreateSurfaceFrom(
+                    image.width,
+                    image.height,
+                    SDL_PIXELFORMAT_RGBA32,
+                    image.pixels.data(),
+                    image.width * 4
+                );
+                require(surface != nullptr, "HDR material capture failed");
+                const bool saved = SDL_SaveBMP(surface, path);
+                SDL_DestroySurface(surface);
+                require(saved, "HDR material capture save failed");
+            };
+            capture_material("hdr-settings-door.bmp", {0, 1.65F, .5F}, {0, 1.5F, 5});
+            capture_material("hdr-settings-fan.bmp", {-2, 1.8F, 2.8F}, {-4.77F, 2.5F, 2.8F});
+            capture_material("hdr-settings-ceiling.bmp", {0, 1.65F, 12}, {0, 3.2F, 16});
+            renderer.camera() = hdr_camera;
+            auto hdr_menu = draw();
+            require(hdr_menu.pixels != before.pixels, "HDR switch did not change the rendered image");
+            auto* surface = SDL_CreateSurfaceFrom(
+                hdr_menu.width,
+                hdr_menu.height,
+                SDL_PIXELFORMAT_RGBA32,
+                hdr_menu.pixels.data(),
+                hdr_menu.width * 4
+            );
+            require(surface != nullptr, "HDR settings capture surface failed");
+            const bool captured = SDL_SaveBMP(surface, "hdr-settings-menu.bmp");
+            SDL_DestroySurface(surface);
+            require(captured, "HDR settings menu capture failed");
+            activate_menu("Сохранить настройки");
+            require(
+                RelayGame::load_player_settings(player_path / "player_settings.toml", {}).hdr_enabled,
+                "HDR choice was not persisted"
+            );
+            choose_range("SDR");
+            require(!renderer.config().hdr_enabled, "SDR settings did not disable tone mapping");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                "Returning to SDR did not restore the startup color pipeline"
+            );
+            require(
+                scene_image().pixels == original_sdr.pixels,
+                "SDR -> HDR -> SDR changed the original scene colors or shadows"
+            );
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("HDR");
+            require(game.has_custom_ui() && !window.relative_mouse_mode(), "HDR switch disturbed pause");
+            key(SDL_SCANCODE_ESCAPE);
+            key(SDL_SCANCODE_ESCAPE);
+            require(!game.has_custom_ui(), "Game could not resume after HDR switch");
+            game.return_to_menu(services);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("SDR");
+            activate_menu("Сохранить настройки");
+            game.on_shutdown(services);
+
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::legacy_gamma
+            ));
+            game.on_startup(services);
+            game.begin_episode(false, services);
+            game.enter_editor(services);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("HDR");
+            choose_range("SDR");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
+                "Editor did not restore the SDR color pipeline"
+            );
+            choose_range("HDR");
+            key(SDL_SCANCODE_ESCAPE);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            game.begin_editor_preview(services);
+            require(!game.has_custom_ui(), "HDR switch prevented editor preview");
+            (void) draw();
+            game.return_from_editor(services);
+            require(
+                !game.has_custom_ui() && renderer.config().hdr_enabled,
+                "HDR switch prevented restoring the suspended game"
+            );
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+
+            config.renderer.hdr_enabled = false;
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::legacy_gamma
+            ));
+            game.on_startup(services);
+            require(
+                renderer.config().hdr_enabled && config.renderer.hdr_enabled,
+                "Restart did not restore HDR from player settings"
+            );
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_F7);
+            game.on_update(frame, services);
+            require(
+                renderer.iteration_diagnostics().last_reload_succeeded && renderer.config().hdr_enabled,
+                "F7 discarded the player's HDR choice"
+            );
+            game.return_to_menu(services);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_range("SDR");
+            activate_menu("Сохранить настройки");
+            game.on_shutdown(services);
+            game.on_startup(services);
+            require(!renderer.config().hdr_enabled, "Restart did not restore SDR from player settings");
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+
+            renderer.commit_live_content_reload(renderer.prepare_live_content_reload(
+                config.renderer,
+                renderer.authoring_config(),
+                RelayCore::render::ColorPipelineMode::hardware_srgb
+            ));
+            game.on_startup(services);
+            game.begin_episode(false, services);
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            const auto hardware_sdr = scene_image();
+            require(
+                hdr_shadows * 2 >= shadow_contrast("hardware-SDR"),
+                "HDR washed out shadows relative to the same linear lighting in SDR"
+            );
+            activate_menu("Настройки");
+            choose_range("HDR");
+            choose_range("SDR");
+            require(
+                renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::hardware_srgb,
+                "SDR switch discarded the explicitly selected startup color pipeline"
+            );
+            require(
+                scene_image().pixels == hardware_sdr.pixels,
+                "Hardware-sRGB SDR -> HDR -> SDR changed the original scene"
+            );
+            game.on_shutdown(services);
+            std::cout << "HDR/SDR settings: UI, rollback, pause, editor, persistence and F7 passed\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
+    }
+#ifdef _WIN32
+    auto test_update_readiness(const std::string_view mode) -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            const bool failed = mode == "failed-ui" || mode == "failed-no-ui";
+            const bool ui_enabled = mode == "ui" || mode == "failed-ui";
+            require(failed || mode == "ui" || mode == "no-ui", "Unknown readiness test mode");
+            const std::string event_name = "Local\\RelayCore-update-test-" + std::to_string(GetCurrentProcessId());
+            const std::unique_ptr<void, decltype(&CloseHandle)> ready{
+                CreateEventA(nullptr, TRUE, FALSE, event_name.c_str()),
+                CloseHandle
+            };
+            require(ready != nullptr, "Cannot create readiness event");
+            require(
+                SDL_SetEnvironmentVariable(
+                    SDL_GetEnvironment(),
+                    "RELAYCORE_UPDATE_READY_EVENT",
+                    event_name.c_str(),
+                    true
+                ),
+                "Cannot set readiness event name"
+            );
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 640;
+            config.window.height = 480;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = ui_enabled;
+            config.audio.enabled = false;
+            config.gameplay.level_path = failed ? "levels/missing-update-test.toml" : "levels/test_room.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(640, 480);
+            require(renderer.ui_available(), "Readiness requires an independent player UI");
+            require(
+                renderer.developer_ui_available() == ui_enabled,
+                "Readiness test developer UI availability differs from its mode"
+            );
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            RelayGame::DemoGame game{directory.path() / "player"};
+            bool startup_threw = false;
+            try
+            {
+                game.on_startup(services);
+            } catch (const std::exception&)
+            {
+                startup_threw = true;
+            }
+            require(!startup_threw, "Player UI must present startup errors independently of developer UI");
+            require(WaitForSingleObject(ready.get(), 0) == WAIT_TIMEOUT, "Readiness sent before a runtime frame");
+            if (!startup_threw)
+            {
+                renderer.begin_frame();
+                game.on_render({.delta_seconds = 1.0 / 60.0}, services);
+            }
+            const DWORD expected = failed ? WAIT_TIMEOUT : WAIT_OBJECT_0;
+            require(
+                WaitForSingleObject(ready.get(), 0) == expected,
+                "Runtime readiness does not match startup success"
+            );
+            game.on_shutdown(services);
+            std::cout << "Update readiness " << mode << " passed without on_ui\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
+    }
+#endif
 } // namespace
 
-int main()
+namespace
 {
+    auto test_campaign_route() -> int
+    {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            return 77;
+        int result = 0;
+        RelayCore::test::ScopedTempDirectory directory;
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .enable_timestamped_log = false});
+        try
+        {
+            auto config = RelayCore::core::load_default_engine_config();
+            config.window.width = 640;
+            config.window.height = 480;
+            config.window.vsync = false;
+            config.renderer.imgui.enabled = true;
+            config.audio.enabled = false;
+            config.gameplay.level_path = "levels/power_restoration.toml";
+            RelayCore::Window window{config.window};
+            SDL_HideWindow(window.handle());
+            RelayCore::Renderer renderer{config.renderer};
+            renderer.initialize(window);
+            renderer.on_resize(640, 480);
+            RelayCore::AudioSystem audio{config.audio};
+            bool running = true;
+            RelayCore::EngineServices services{config, window, renderer, audio, running};
+            const auto player_dir = directory.path() / "player";
+            const auto progress = player_dir / "progress.toml";
+            const RelayGame::LevelSessionBuilder builder{config.gameplay};
+            RelayGame::GameWorldRuntime seed;
+            seed.load_level_session(config, builder.build());
+            auto initial = seed.capture_saved_game(42, true);
+            initial.world.player_combat.health = 73;
+            initial.world.inventory_item_ids = {"power_fuse", "service_key", "weapon_shotgun"};
+            initial.world.selected_weapon = RelayGame::PlayerWeapon::Shotgun;
+            RelayGame::write_saved_game(progress, initial);
+            const std::array maps{
+                "power_restoration",
+                "foundation_intake",
+                "foundation_pump",
+                "bench_relay",
+                "pressure_transfer",
+                "cooling_loop",
+                "occult_lab_b17",
+                "containment_loop"
+            };
+            const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+            RelayGame::DemoGame game{player_dir};
+            game.on_startup(services);
+            game.begin_episode(true, services);
+            for (std::size_t i = 0; i < maps.size(); ++i)
+            {
+                const auto current = RelayGame::load_saved_game(progress);
+                require(std::filesystem::path(current.world.level_path).stem() == maps[i], "Wrong campaign chapter");
+                require(current.visited_levels.size() == i, "Campaign history lost a chapter");
+                require(current.world.player_combat.health == 73, "Chapter transition lost health");
+                require(
+                    current.world.inventory_item_ids == initial.world.inventory_item_ids,
+                    "Chapter transition lost inventory"
+                );
+                require(
+                    current.world.selected_weapon == RelayGame::PlayerWeapon::Shotgun,
+                    "Chapter transition lost weapon"
+                );
+                require(current.flashlight && current.played_seconds >= 42, "Chapter transition lost player state");
+                require(!game.has_custom_ui(), "Intermediate chapter unexpectedly finished the campaign");
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                const auto image = std::string{"campaign-"} + maps[i] + ".bmp";
+                capture_frame(renderer, image.c_str());
+                const auto session = builder.build(current.world.level_path);
+                if (i + 1 < maps.size())
+                {
+                    const auto next = std::ranges::find_if(session.exits, [](const auto& exit) {
+                        return exit.requires_completion;
+                    });
+                    require(next != session.exits.end(), "Campaign chapter has no forward exit");
+                    game.transition_to(*next, services);
+                    game.on_update(frame, services);
+                    require(
+                        std::filesystem::path(RelayGame::load_saved_game(progress).world.level_path).stem()
+                            == maps[i + 1],
+                        "Arrival immediately bounced into a different chapter"
+                    );
+                    game.return_to_menu(services);
+                    game.on_shutdown(services);
+                    game.on_startup(services);
+                    game.begin_episode(true, services);
+                    require(!game.has_custom_ui(), "Continue failed after a campaign transition");
+                }
+            }
+            game.return_to_menu(services);
+            game.on_shutdown(services);
+            auto final_save = RelayGame::load_saved_game(progress);
+            const auto final_session = builder.build(final_save.world.level_path);
+            final_save.world
+                .mission = {true, true, static_cast<std::uint32_t>(final_session.mission_definition.steps.size())};
+            RelayGame::write_saved_game(progress, final_save);
+            game.on_startup(services);
+            game.begin_episode(true, services);
+            require(game.has_custom_ui(), "The final Guardian chapter did not finish the campaign");
+            renderer.begin_frame();
+            game.on_render(frame, services);
+            require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Completion UI unavailable");
+            game.on_ui(services);
+            renderer.end_ui();
+            auto* completion = Rml::GetContext("player")->GetDocument("menu");
+            require(
+                completion->GetElementById("complete-actions")->IsVisible()
+                    && !completion->GetElementById("complete-title")->GetInnerRML().empty(),
+                "Campaign completion lost its player presentation"
+            );
+            capture_frame(renderer, "campaign-complete.bmp");
+            completion->GetElementById("complete-menu")->Click();
+            game.on_update(frame, services);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Return menu unavailable");
+            game.on_ui(services);
+            renderer.end_ui();
+            require(
+                renderer.player_ui().captures_input() && completion->GetElementById("main-actions")->IsVisible()
+                    && !completion->GetElementById("complete-actions")->IsVisible(),
+                "Completion action did not return to main menu"
+            );
+            game.on_shutdown(services);
+            std::cout << "campaign_route=passed (seven chapters, six transitions, disk continue, carried player state, "
+                         "final completion)\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            result = 1;
+        }
+        RelayCore::log::shutdown();
+        SDL_Quit();
+        return result;
+    }
+} // namespace
+
+int main(int argc, char** argv)
+{
+    if (argc == 2 && std::string_view{argv[1]} == "--campaign-route")
+        return test_campaign_route();
+    if (argc == 2 && std::string_view{argv[1]} == "--hdr-settings")
+        return test_hdr_settings();
+#ifdef _WIN32
+    if (argc == 3 && std::string_view{argv[1]} == "--update-readiness")
+        return test_update_readiness(argv[2]);
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -83,6 +648,84 @@ int main()
         RelayGame::DemoGame game{directory.path() / "player"};
         const auto progress_path = directory.path() / "player/progress.toml";
         const RelayCore::FrameInfo frame{.delta_seconds = 1.0 / 60.0};
+        {
+            renderer.begin_frame();
+            const auto before_reload = renderer.capture_frame();
+            require(renderer.begin_ui(frame, audio, true), "Vulkan UI was not initialized");
+            auto changed = config.renderer;
+            changed.clear_r = 0.8F;
+            renderer.commit_live_content_reload(
+                renderer.prepare_live_content_reload(changed, renderer.authoring_config())
+            );
+            renderer.end_ui();
+            require(
+                renderer.capture_frame().pixels == before_reload.pixels,
+                "UI reload replaced the GPU target still owned by the current frame"
+            );
+            require(
+                SDL_ShowWindow(window.handle()) && SDL_SyncWindow(window.handle()),
+                "Could not show Vulkan surface"
+            );
+            bool presented = false;
+            for (int retry = 0; retry < 8 && !presented; ++retry)
+            {
+                SDL_PumpEvents();
+                presented = renderer.present();
+            }
+            require(
+                presented && renderer.capture_frame().pixels == before_reload.pixels,
+                "Presentation lost the scene target retained across UI reload"
+            );
+            require(SDL_HideWindow(window.handle()), "Could not hide lifecycle window");
+            renderer.begin_frame();
+            require(
+                renderer.capture_frame().pixels != before_reload.pixels,
+                "Committed Vulkan reload did not take effect on the next frame"
+            );
+            renderer.commit_live_content_reload(
+                renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config())
+            );
+        }
+        const bool previous_advanced_diagnostics = renderer.advanced_diagnostics_visible();
+        renderer.set_advanced_diagnostics_visible(true);
+        for (const auto material : {RelayCore::SurfaceMaterial::Concrete, RelayCore::SurfaceMaterial::Metal})
+        {
+            RelayCore::BlockoutLevel level;
+            level.solids.push_back({{-5, -.2F, -5}, {5, 0, 5}, RelayCore::SurfaceMaterial::Concrete});
+            level.solids.push_back({{4, 0, -5}, {4.2F, 3, 5}, material});
+            RelayGame::GameWorldRuntime impacts;
+            impacts.load_level_session(
+                config,
+                RelayGame::LevelSessionBuilder{config.gameplay}
+                    .build(std::move(level), directory.path() / "impact.toml")
+            );
+            auto save = impacts.capture_saved_game(0, true);
+            save.player.position = {0, .01F, 0};
+            save.player.view_angles = {};
+            impacts.restore_saved_game(save);
+            impacts.prepare_level_session_activation(services);
+            impacts.activate_level_session(services);
+            impacts.publish_diagnostics(renderer);
+            const auto before = renderer.audio_diagnostics().one_shot_count;
+            ImGui::GetIO().WantCaptureMouse = false;
+            SDL_Event fire{};
+            fire.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            fire.button.button = RelayGame::build_player_controller_config(config).bindings.primary_attack_button;
+            impacts.on_event(fire, services);
+            impacts.update({.delta_seconds = 1.0 / 120}, services);
+            impacts.publish_diagnostics(renderer);
+            const auto expected =
+                material == RelayCore::SurfaceMaterial::Metal ? "impact_metal.wav" : "impact_hard.wav";
+            require(impacts.player_combat_state().shots_fired == 1, "Impact fixture did not fire from input");
+            require(impacts.pistol_cycle_remaining_seconds() > 0, "Successful SDL shot did not animate the pistol");
+            require(
+                renderer.audio_diagnostics().one_shot_count == before + 2
+                    && std::filesystem::path{renderer.audio_diagnostics().last_one_shot_path}.filename() == expected,
+                "World impact did not dispatch the matching cue after the weapon report"
+            );
+            impacts.shutdown(services);
+        }
+        renderer.set_advanced_diagnostics_visible(previous_advanced_diagnostics);
         {
             RelayGame::GameWorldRuntime encounter;
             encounter.load_level_session(
@@ -240,7 +883,15 @@ int main()
                     renderer.authoring_config(),
                     renderer.color_pipeline_mode()
                 );
-                require(data.props.size() == 2, "Two model instances expected in each model acceptance map");
+                require(
+                    std::ranges::count_if(
+                        data.props,
+                        [](const auto& prop) {
+                            return prop.model.filename() == "service_cylinder.obj";
+                        }
+                    ) == 2,
+                    "Two service-cylinder instances expected in each model acceptance map"
+                );
                 RelayGame::WorldSceneRenderer scene;
                 scene.initialize(data, models);
                 scene.initialize(data, models);
@@ -252,17 +903,7 @@ int main()
                 renderer.camera().set_target({-4, .9F, -3.15F});
                 renderer.begin_frame();
                 scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false);
-                std::vector<unsigned char> pixels(640 * 480 * 3);
-                glPixelStorei(GL_PACK_ALIGNMENT, 1);
-                glReadBuffer(GL_BACK);
-                glReadPixels(0, 0, 640, 480, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-                require(glGetError() == GL_NO_ERROR, "Static-model frame produced GL error");
-                for (int y = 0; y < 240; ++y)
-                    std::swap_ranges(
-                        pixels.begin() + y * 640 * 3,
-                        pixels.begin() + (y + 1) * 640 * 3,
-                        pixels.begin() + (479 - y) * 640 * 3
-                    );
+                auto pixels = read_rgb(renderer);
                 SDL_Surface* surface = SDL_CreateSurfaceFrom(640, 480, SDL_PIXELFORMAT_RGB24, pixels.data(), 640 * 3);
                 require(surface != nullptr, "Cannot create model screenshot");
                 const bool saved = SDL_SaveBMP(surface, (std::string("model_") + map + ".bmp").c_str());
@@ -289,7 +930,7 @@ int main()
                 renderer.camera().set_target(enemy + glm::vec3{0, .5F, 0});
                 renderer.begin_frame();
                 scene.render(renderer, renderer.camera(), 0, {}, {}, {}, -1, {}, false, {}, {}, {}, level.enemies);
-                capture_frame((std::string("rover_") + map + ".bmp").c_str());
+                capture_frame(renderer, (std::string("rover_") + map + ".bmp").c_str());
             }
             const auto copied = directory.path() / "reload.obj";
             std::filesystem::copy_file(mesh, copied);
@@ -337,7 +978,12 @@ int main()
         renderer.set_diagnostics_visible(true);
         require(game.has_custom_ui() && !window.relative_mouse_mode(), "Startup must show menu and release mouse");
 
-        for (const auto* map : {"levels/test_room.toml", "levels/rc022_reference.toml"})
+        const auto native_map = directory.path() / "native_collision.toml";
+        RelayCore::test::write_native_collision_fixture(native_map);
+        const auto native_map_name = native_map.string();
+        for (const auto* map :
+             {"levels/test_room.toml", "levels/rc022_reference.toml", native_map_name.c_str(), "levels/bench_relay.toml"
+             })
         {
             config.gameplay.level_path = map;
             config.input.capture_mouse_on_start = std::string_view{map} == "levels/test_room.toml";
@@ -370,7 +1016,28 @@ int main()
                 );
             }
             game.on_update(frame, services);
-            if (std::string_view{map} == "levels/test_room.toml")
+            if (std::string_view{map} == native_map_name)
+            {
+                auto moving = RelayGame::load_saved_game(progress_path);
+                moving.player.position = {0, .001F, 2};
+                moving.player.velocity = {0, 0, 8};
+                game.return_to_menu(services);
+                game.on_shutdown(services);
+                RelayGame::write_saved_game(progress_path, moving);
+                game.on_startup(services);
+                renderer.set_diagnostics_visible(true);
+                game.begin_episode(true, services);
+                for (int i = 0; i < 60; ++i)
+                    game.on_update(frame, services);
+                require(
+                    renderer.player_diagnostics().position.z > 3.5F,
+                    "Native opening blocked standing player traversal"
+                );
+                renderer.begin_frame();
+                game.on_render(frame, services);
+                capture_frame(renderer, "native_collision_traversal.bmp");
+            }
+            if (std::string_view{map} == "levels/test_room.toml" || std::string_view{map} == native_map_name)
             {
                 const auto camera_before_reload = services.camera().position();
                 const auto config_path = config.source_path;
@@ -380,7 +1047,7 @@ int main()
                     invalid_config << "broken = [\n";
                 }
                 key(SDL_SCANCODE_F7);
-                game.on_update(frame, services);
+                game.on_update({}, services);
                 config.source_path = config_path;
                 require(
                     !game.has_custom_ui() && window.relative_mouse_mode()
@@ -392,6 +1059,35 @@ int main()
                         && !renderer.iteration_diagnostics().last_reload_succeeded,
                     "Failed reload was not reported"
                 );
+            }
+            if (std::string_view{map} == native_map_name)
+            {
+                const auto authored = read_file(native_map);
+                auto broken = authored;
+                const std::string reference = "collision/lab_bench.rccollision";
+                broken.replace(broken.find(reference), reference.size(), "collision/missing.rccollision");
+                std::ofstream{native_map, std::ios::binary} << broken;
+                const auto source_path = config.source_path;
+                config.source_path = directory.path() / "native-reload.toml";
+                std::ofstream{config.source_path} << "[game]\nlevel_path = \"" << native_map.generic_string() << "\"\n";
+                const auto before = services.camera().position();
+                key(SDL_SCANCODE_F7);
+                game.on_update({}, services);
+                require(
+                    !renderer.iteration_diagnostics().last_reload_succeeded
+                        && renderer.iteration_diagnostics().last_reload_error.find("missing.rccollision")
+                               != std::string::npos
+                        && services.camera().position() == before && !game.has_custom_ui(),
+                    "Missing collision product damaged the active native session"
+                );
+                std::ofstream{native_map, std::ios::binary} << authored;
+                key(SDL_SCANCODE_F7);
+                game.on_update({}, services);
+                require(
+                    renderer.iteration_diagnostics().last_reload_succeeded,
+                    "Native session did not recover after restoring collision reference"
+                );
+                config.source_path = source_path;
             }
             const auto disk_before_snapshot = read_file(progress_path);
             key(SDL_SCANCODE_F9);
@@ -488,6 +1184,14 @@ int main()
                 renderer.runtime_diagnostics().simulation_tick == editor_checkpoint.world.simulation_tick,
                 "Editor lost campaign simulation state"
             );
+            if (std::string_view{map} == native_map_name)
+            {
+                game.transition_to({{}, native_map, "arrival", false}, services);
+                require(
+                    !game.has_custom_ui() && renderer.player_diagnostics().position.z < .05F,
+                    "Native collision session transition did not activate its entry"
+                );
+            }
             game.return_to_menu(services);
             require(game.has_custom_ui() && !window.relative_mouse_mode(), "Menu retained gameplay input");
             require(renderer.runtime_diagnostics().level_name.empty(), "Menu retained old level diagnostics");
@@ -567,10 +1271,38 @@ int main()
             require(window.relative_mouse_mode(), "Level transition lost mouse capture");
             renderer.begin_frame();
             campaign.on_render(frame, services);
-            capture_frame("campaign_pump.bmp");
+            capture_frame(renderer, "campaign_pump.bmp");
             auto pump_session = RelayGame::LevelSessionBuilder{config.gameplay}.build(b);
             auto carried_inventory = pump.world.inventory_item_ids;
             std::vector<std::string> activated, signaled;
+            const auto control =
+                std::ranges::find(pump_session.usables, "pump_control", &RelayCore::gameplay::RuntimeUsable::name);
+            require(control != pump_session.usables.end(), "Pump startup control is missing");
+            require(
+                RelayGame::apply_usable_interaction(
+                    pump_session.usables[0],
+                    pump_session.doors,
+                    pump_session.usables,
+                    carried_inventory,
+                    activated,
+                    signaled
+                )
+                        .kind
+                    == RelayCore::gameplay::UseInteractionOutcome::Locked,
+                "Pump exit opened before equipment startup"
+            );
+            require(
+                RelayGame::apply_usable_interaction(
+                    *control,
+                    pump_session.doors,
+                    pump_session.usables,
+                    carried_inventory,
+                    activated,
+                    signaled
+                )
+                    .primary_applied,
+                "Key carried from intake did not start the pumps"
+            );
             require(
                 RelayGame::apply_usable_interaction(
                     pump_session.usables[0],
@@ -608,7 +1340,7 @@ int main()
             campaign.on_update(frame, services);
             renderer.begin_frame();
             campaign.on_render(frame, services);
-            capture_frame("campaign_intake.bmp");
+            capture_frame(renderer, "campaign_intake.bmp");
             require(
                 std::filesystem::path(RelayGame::load_saved_game(campaign_path).world.level_path) == a,
                 "Return entry immediately bounced into another transition"
@@ -714,8 +1446,60 @@ int main()
                 editor.draw_ui(services);
                 renderer.end_ui();
             }
-            require(glGetError() == GL_NO_ERROR, "Editor UI/render produced GL error");
-            capture_frame("editor_workshop.bmp");
+
+            capture_frame(renderer, "editor_workshop.bmp");
+            editor.open_map(native_map, services, true);
+            editor.set_collision_debug_visible(true);
+            services.camera().set_position({0, 1.0F, -1});
+            services.camera().set_orientation(1.5707963268F, 0);
+            for (int i = 0; i < 2; ++i)
+            {
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            capture_frame(renderer, "editor_collision_opening.bmp");
+            services.camera().set_position({1.05F, 1.0F, -1});
+            for (int i = 0; i < 2; ++i)
+            {
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            capture_frame(renderer, "editor_collision_support.bmp");
+            ImGui::GetIO().AddMousePosEvent(320, 240);
+            for (int i = 0; i < 4; ++i)
+            {
+                if (i == 1)
+                    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+                if (i == 2)
+                    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+                renderer.begin_frame();
+                editor.render(frame, services);
+                if (renderer.begin_ui(frame, audio, true))
+                {
+                    editor.draw_ui(services);
+                    renderer.end_ui();
+                }
+            }
+            require(
+                editor.document().selection() == RelayGame::EditorSelection{true, 2},
+                "Editor collision picking lost mesh authored identity"
+            );
+            capture_frame(renderer, "editor_collision_selected.bmp");
+            editor.save_map(directory.path() / "native_editor_saved.toml", services);
+            require(
+                RelayGame::LevelSessionBuilder{config.gameplay}.build(editor.save_path()).physics_fixture != nullptr,
+                "Editor collision overlay/save lost native collision product"
+            );
             editor.shutdown();
             std::cout << "0.8/0.9: editor map roundtrip and campaign A -> B -> restart -> A passed\n";
         }
@@ -789,17 +1573,20 @@ int main()
             );
             reload_game.on_shutdown(reload_services);
         }
+        for (const bool native_collision : {false, true})
         {
             auto death_config = config;
-            death_config.gameplay.level_path = RelayCore::core::asset_path("levels/power_restoration.toml").string();
+            death_config.gameplay.level_path =
+                native_collision ? native_map_name
+                                 : RelayCore::core::asset_path("levels/power_restoration.toml").string();
             RelayCore::EngineServices death_services{death_config, window, renderer, audio, running};
             const auto session = RelayGame::LevelSessionBuilder{death_config.gameplay}.build();
             RelayGame::GameWorldRuntime seed;
             seed.load_level_session(death_config, session);
-            seed.debug_set_player_position({6.8F, .01F, 18});
+            seed.debug_set_player_position(native_collision ? glm::vec3{2.5F, .03F, 0} : glm::vec3{6.8F, .01F, 18});
             auto save = seed.capture_saved_game(60, true);
             save.world.player_combat.health = 1;
-            const auto user_path = directory.path() / "death_continue";
+            const auto user_path = directory.path() / (native_collision ? "native_death_continue" : "death_continue");
             std::filesystem::create_directories(user_path);
             RelayGame::write_saved_game(user_path / "progress.toml", save);
             RelayGame::DemoGame dying{user_path};

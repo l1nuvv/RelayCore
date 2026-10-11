@@ -1,6 +1,7 @@
 #pragma once
 
 #include "relaycore/gameplay/interaction_runtime.h"
+#include "relaycore/physics/world_query.h"
 #include "relaycore/render/render_diagnostics.h"
 #include "relaycore/world/blockout_level.h"
 #include "relaygame/runtime_model.h"
@@ -11,6 +12,12 @@
 
 namespace RelayGame
 {
+    [[nodiscard]] auto build_collision_inspector_diagnostics(
+        const RelayCore::BlockoutLevel& level,
+        const RelayCore::physics::WorldQueryHit& hit,
+        const RelayCore::physics::Aabb& bounds
+    ) -> RelayCore::render::InspectorDiagnostics;
+
     [[nodiscard]] auto build_world_inspector_diagnostics(
         const RelayCore::BlockoutLevel& level,
         std::span<const RelayCore::gameplay::RuntimeDoor> doors,
@@ -39,7 +46,8 @@ namespace RelayGame
         std::span<const RelayCore::gameplay::RuntimeUsable> usables,
         std::string_view object_kind,
         std::string_view primary_source_reference,
-        const glm::vec3& eye_position
+        const glm::vec3& eye_position,
+        const RelayCore::physics::PhysicsWorld* physics = nullptr
     ) -> RelayCore::render::InspectorDiagnostics;
 
     [[nodiscard]] auto find_world_inspector_diagnostics_by_runtime_id(

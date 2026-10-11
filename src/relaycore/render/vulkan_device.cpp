@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
+#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 #include <string_view>
@@ -84,7 +85,7 @@ namespace RelayCore::render
         );
         if (system.instance_api_version < kVulkanApiVersion)
             throw std::runtime_error(
-                "RelayCore requires Vulkan loader API 1.3 or newer; update the Vulkan driver/loader"
+                "RelayCore requires Vulkan loader API 1.4 or newer; update the Vulkan driver/loader"
             );
 
 #if RELAYCORE_VULKAN_VALIDATION
@@ -119,7 +120,7 @@ namespace RelayCore::render
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
             );
 #endif
-        state_->instance = require_bootstrap(builder.build(), "Failed to create Vulkan 1.3 instance");
+        state_->instance = require_bootstrap(builder.build(), "Failed to create Vulkan 1.4 instance");
         core::require_sdl(
             SDL_Vulkan_CreateSurface(window.handle(), state_->instance.instance, nullptr, &state_->surface),
             "Failed to create SDL Vulkan surface"
@@ -127,6 +128,9 @@ namespace RelayCore::render
 
         VkPhysicalDeviceVulkan12Features features12{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         features12.timelineSemaphore = VK_TRUE;
+#if defined(TRACY_ENABLE)
+        features12.hostQueryReset = VK_TRUE;
+#endif
         VkPhysicalDeviceVulkan13Features features13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
         features13.dynamicRendering = VK_TRUE;
         features13.synchronization2 = VK_TRUE;
@@ -135,18 +139,19 @@ namespace RelayCore::render
             .swapchainMaintenance1 = VK_TRUE,
         };
         vkb::PhysicalDeviceSelector selector{state_->instance, state_->surface};
-        const auto physical = require_bootstrap(
-            selector.set_minimum_version(1, 3)
+        auto physical = require_bootstrap(
+            selector.set_minimum_version(1, 4)
                 .add_required_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
                 .add_required_extension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)
                 .add_required_extension_features(maintenance)
                 .set_required_features_12(features12)
                 .set_required_features_13(features13)
                 .select(),
-            "No suitable Vulkan GPU: require API 1.3, dynamicRendering, synchronization2, timelineSemaphore, "
+            "No suitable Vulkan GPU: require API 1.4, dynamicRendering, synchronization2, timelineSemaphore, "
             "VK_KHR_swapchain, VK_KHR_swapchain_maintenance1 (swapchainMaintenance1) and graphics/present "
             "queues for the SDL surface"
         );
+        const bool anisotropy = physical.enable_features_if_present({.samplerAnisotropy = VK_TRUE});
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -178,24 +183,43 @@ namespace RelayCore::render
 
         state_->capabilities = {
             .device_name = physical.name,
+            .loader_api_version = system.instance_api_version,
+            .instance_api_version = state_->instance.api_version,
             .physical_api_version = physical.properties.apiVersion,
+            .effective_api_version = kVulkanApiVersion,
             .driver_version = physical.properties.driverVersion,
             .graphics_queue_family = graphics.second,
             .present_queue_family = present.second,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
+            .max_texture_anisotropy =
+                anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
         log::info(
-            "Vulkan device created: {} | GPU API {}.{}.{} | required API 1.3 | graphics family={} | present family={} "
+            "Vulkan device created: {} | loader API {}.{}.{} | instance API {}.{} | GPU API {}.{}.{} "
+            "| effective API {}.{} | required API 1.4 | driver={} | graphics family={} | present "
+            "family={} "
             "| "
-            "dynamicRendering/synchronization2/timelineSemaphore/swapchainMaintenance1 enabled | validation={}",
+            "dynamicRendering/synchronization2/timelineSemaphore/swapchainMaintenance1 enabled | validation={} "
+            "| texture anisotropy={}",
             physical.name,
+            VK_API_VERSION_MAJOR(system.instance_api_version),
+            VK_API_VERSION_MINOR(system.instance_api_version),
+            VK_API_VERSION_PATCH(system.instance_api_version),
+            VK_API_VERSION_MAJOR(state_->instance.api_version),
+            VK_API_VERSION_MINOR(state_->instance.api_version),
             VK_API_VERSION_MAJOR(physical.properties.apiVersion),
             VK_API_VERSION_MINOR(physical.properties.apiVersion),
             VK_API_VERSION_PATCH(physical.properties.apiVersion),
+            VK_API_VERSION_MAJOR(kVulkanApiVersion),
+            VK_API_VERSION_MINOR(kVulkanApiVersion),
+            physical.properties.driverVersion,
             graphics.second,
             present.second,
-            state_->capabilities.validation_enabled
+            state_->capabilities.validation_enabled,
+            state_->capabilities.max_texture_anisotropy
         );
+        for (const auto& extension : physical.get_extensions())
+            log::info("Vulkan enabled device extension: {}", extension);
     }
 
     VulkanDevice::~VulkanDevice() noexcept = default;

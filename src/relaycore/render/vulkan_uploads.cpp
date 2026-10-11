@@ -1,6 +1,7 @@
 #include "relaycore/render/vulkan_uploads.h"
 
 #include "relaycore/core/profiling.h"
+#include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
@@ -27,7 +28,8 @@ namespace RelayCore::render
             const uint32_t first_mip,
             const uint32_t mip_count,
             const VkImageLayout old_layout,
-            const VkImageLayout new_layout
+            const VkImageLayout new_layout,
+            const uint32_t layers = 1
         )
         {
             VkImageMemoryBarrier2 barrier{
@@ -37,7 +39,7 @@ namespace RelayCore::render
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = image,
-                .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, first_mip, mip_count, 0, 1},
+                .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, first_mip, mip_count, 0, layers},
             };
             switch (old_layout)
             {
@@ -132,6 +134,28 @@ namespace RelayCore::render
         std::vector<RetiredBuffer> buffers;
         std::vector<RetiredTexture> textures;
         explicit State(const VulkanDevice& owner) : device(owner) {}
+
+        void reserve_staging(const VkDeviceSize bytes)
+        {
+            constexpr VkDeviceSize budget = 64 * 1024 * 1024;
+            uint64_t completed = 0;
+            require_upload_result(
+                vkGetSemaphoreCounterValue(device.handle(), timeline, &completed),
+                "Vulkan staging completion"
+            );
+            while (!batches.empty() && batches.front()->completion <= completed)
+                batches.pop_front();
+            VkDeviceSize outstanding = 0;
+            for (const auto& batch : batches)
+                outstanding += batch->transfer.size();
+            while (!batches.empty() && (batches.size() >= 32 || bytes > budget || outstanding > budget - bytes))
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan upload backpressure");
+                wait(batches.front()->completion);
+                outstanding -= batches.front()->transfer.size();
+                batches.pop_front();
+            }
+        }
 
         void wait(const uint64_t completion) const
         {
@@ -284,6 +308,7 @@ namespace RelayCore::render
             VulkanBufferMemory::device
         };
         auto batch = state_->begin_batch();
+        state_->reserve_staging(bytes.size_bytes());
         batch->transfer = VulkanBuffer{
             state_->device,
             bytes.size_bytes(),
@@ -329,6 +354,7 @@ namespace RelayCore::render
             throw std::invalid_argument("Vulkan RGBA upload size mismatch");
         VulkanTexture texture{state_->device, data.width, data.height, encoding};
         auto batch = state_->begin_batch();
+        state_->reserve_staging(data.pixels.size());
         batch->transfer =
             VulkanBuffer{state_->device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VulkanBufferMemory::upload};
         batch->transfer.write(std::as_bytes(std::span{data.pixels}));
@@ -407,10 +433,90 @@ namespace RelayCore::render
         return {std::move(texture), completion};
     }
 
+    auto VulkanUploads::upload_reflection(const ReflectionProbe& probe) -> VulkanTextureUpload
+    {
+        validate_reflection_probe(probe);
+        VulkanTexture texture{
+            state_->device,
+            static_cast<int>(probe.settings.resolution),
+            static_cast<int>(probe.settings.resolution),
+            TextureEncoding::linear,
+            true
+        };
+        std::vector<VkBufferImageCopy> copies;
+        std::vector<std::byte> bytes;
+        for (uint32_t mip = 0; mip < texture.mip_levels(); ++mip)
+        {
+            const auto size = probe.settings.resolution >> mip;
+            copies.push_back(
+                {.bufferOffset = bytes.size(),
+                 .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 6},
+                 .imageExtent = {size, size, 1}}
+            );
+            const auto data = std::as_bytes(std::span{probe.mips[mip]});
+            bytes.insert(bytes.end(), data.begin(), data.end());
+        }
+        auto batch = state_->begin_batch();
+        state_->reserve_staging(bytes.size());
+        batch->transfer =
+            VulkanBuffer{state_->device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VulkanBufferMemory::upload};
+        batch->transfer.write(bytes);
+        transition_rgba(
+            batch->commands,
+            texture.image(),
+            0,
+            texture.mip_levels(),
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            6
+        );
+        vkCmdCopyBufferToImage(
+            batch->commands,
+            batch->transfer.handle(),
+            texture.image(),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            static_cast<uint32_t>(copies.size()),
+            copies.data()
+        );
+        transition_rgba(
+            batch->commands,
+            texture.image(),
+            0,
+            texture.mip_levels(),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            6
+        );
+        const auto completion = state_->submit(std::move(batch));
+        texture.state_->upload_timeline = state_->timeline;
+        texture.state_->upload_completion = completion;
+        return {std::move(texture), completion};
+    }
+
     void VulkanUploads::wait(const uint64_t completion) const
     {
         state_->wait(completion);
     }
+    auto VulkanUploads::dependency() const noexcept -> VkSemaphoreSubmitInfo
+    {
+        return {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = state_->timeline,
+            .value = state_->last_submission,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+        };
+    }
+
+    auto VulkanUploads::completed() const -> uint64_t
+    {
+        uint64_t value = 0;
+        require_upload_result(
+            vkGetSemaphoreCounterValue(state_->device.handle(), state_->timeline, &value),
+            "Vulkan upload completion"
+        );
+        return value;
+    }
+
     void VulkanUploads::collect()
     {
         uint64_t completed = 0;
@@ -477,6 +583,8 @@ namespace RelayCore::render
     {
         if (!texture.state_ || texture.state_->allocator != state_->device.allocator())
             throw std::invalid_argument("Vulkan texture readback requires a texture from this device");
+        const uint32_t layers = texture.state_->cube ? 6u : 1u;
+        const uint32_t bytes_per_texel = texture.state_->cube ? 16u : 4u;
         std::vector<VkBufferImageCopy> copies;
         auto extent = texture.extent();
         VkDeviceSize size = 0;
@@ -484,10 +592,10 @@ namespace RelayCore::render
         {
             copies.push_back(
                 {.bufferOffset = size,
-                 .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1},
+                 .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, layers},
                  .imageExtent = {extent.width, extent.height, 1}}
             );
-            size += static_cast<VkDeviceSize>(extent.width) * extent.height * 4;
+            size += static_cast<VkDeviceSize>(extent.width) * extent.height * bytes_per_texel * layers;
             extent.width = std::max(1U, extent.width / 2);
             extent.height = std::max(1U, extent.height / 2);
         }
@@ -501,7 +609,8 @@ namespace RelayCore::render
             0,
             texture.mip_levels(),
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            layers
         );
         vkCmdCopyImageToBuffer(
             batch->commands,
@@ -517,7 +626,8 @@ namespace RelayCore::render
             0,
             texture.mip_levels(),
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            layers
         );
         transfer_to_host(batch->commands);
         auto* submitted = batch.get();

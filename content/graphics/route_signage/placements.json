@@ -1,0 +1,212 @@
+{
+  "pressure": {
+    "map": "pressure_transfer",
+    "cues": [
+      {
+        "old": [
+          33.5,
+          2.65,
+          26.101
+        ],
+        "mark": "03",
+        "center": [
+          33.5,
+          2.65,
+          26.19
+        ],
+        "facing": "+z",
+        "title": "PRESSURE",
+        "subtitle": "BYPASS / PT-03"
+      }
+    ],
+    "returns": [
+      {
+        "center": [
+          26.19,
+          2.65,
+          29.3
+        ],
+        "facing": "+x",
+        "title": "02 / GALLERY  >",
+        "subtitle": "RETURN / SERVICE HALL"
+      }
+    ]
+  },
+  "cooling": {
+    "map": "cooling_loop",
+    "cues": [
+      {
+        "old": [
+          -6.899,
+          2.6,
+          18.5
+        ],
+        "mark": "01",
+        "center": [
+          -6.83,
+          2.65,
+          16.8
+        ],
+        "facing": "+x",
+        "title": "ISOLATE",
+        "subtitle": "LEAK / ACCESS GATE"
+      },
+      {
+        "old": [
+          6.899,
+          2.6,
+          23
+        ],
+        "mark": "02",
+        "center": [
+          6.83,
+          2.8,
+          21.4
+        ],
+        "facing": "-x",
+        "title": "COOLING",
+        "subtitle": "START / CL-02"
+      },
+      {
+        "old": [
+          3,
+          2.6,
+          25.899
+        ],
+        "mark": "03",
+        "center": [
+          3.4,
+          2.65,
+          25.8
+        ],
+        "facing": "-z",
+        "title": "EXIT",
+        "subtitle": "RELEASE / SECTOR GATE"
+      }
+    ],
+    "returns": [
+      {
+        "center": [
+          -6.83,
+          2.0,
+          11.5
+        ],
+        "facing": "+x",
+        "title": "<  01 / ISOLATE",
+        "subtitle": "SERVICE AISLE"
+      },
+      {
+        "center": [
+          -4.3,
+          2.65,
+          20.19
+        ],
+        "facing": "+z",
+        "title": "INTAKE  >",
+        "subtitle": "RETURN / SERVICE AISLE"
+      }
+    ]
+  },
+  "power": {
+    "map": "power_restoration",
+    "cues": [
+      {
+        "old": [
+          2,
+          2.1,
+          4.892
+        ],
+        "mark": "arrow",
+        "center": [
+          2,
+          2.65,
+          4.76
+        ],
+        "facing": "-z",
+        "title": "AIRLOCK",
+        "subtitle": "",
+        "width": 0.9,
+        "glyph_u": 0,
+        "glyph_v": 0.16
+      },
+      {
+        "old": [
+          2.108,
+          1.8,
+          8
+        ],
+        "mark": "arrow",
+        "center": [
+          2.18,
+          3.0,
+          6.8
+        ],
+        "facing": "+x",
+        "title": "INTAKE",
+        "subtitle": "RETURN / AIRLOCK"
+      },
+      {
+        "old": [
+          4.892,
+          1.8,
+          -2.1
+        ],
+        "mark": "arrow",
+        "center": [
+          4.66,
+          2.45,
+          -3.6
+        ],
+        "facing": "-x",
+        "title": "SERVICE",
+        "subtitle": "PUMP / SWITCHGEAR",
+        "stand_off": 0.24
+      },
+      {
+        "old": [
+          11.108,
+          1.9,
+          6
+        ],
+        "mark": "02",
+        "center": [
+          11.18,
+          2.2,
+          4.8
+        ],
+        "facing": "+x",
+        "title": "PUMP",
+        "subtitle": "COOLING / P-02"
+      },
+      {
+        "old": [
+          15.3,
+          2.0,
+          14.892
+        ],
+        "mark": "03",
+        "center": [
+          13.66,
+          2.2,
+          13.3
+        ],
+        "facing": "-x",
+        "title": "SWITCHGEAR",
+        "subtitle": "SECTOR DISTRIBUTION",
+        "stand_off": 0.22
+      }
+    ],
+    "returns": [
+      {
+        "center": [
+          13.81,
+          2.6,
+          10.5
+        ],
+        "facing": "-x",
+        "title": "03 / SWITCHGEAR  >",
+        "subtitle": "RESERVE BUS / POWER"
+      }
+    ]
+  }
+}

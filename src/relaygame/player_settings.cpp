@@ -46,6 +46,13 @@ namespace RelayGame
                 throw std::runtime_error("player_settings.vsync must be a boolean");
             defaults.vsync = *value;
         }
+        if (table.contains("hdr_enabled"))
+        {
+            const auto value = table["hdr_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.hdr_enabled must be a boolean");
+            defaults.hdr_enabled = *value;
+        }
         validate(defaults);
         return defaults;
     }
@@ -58,7 +65,8 @@ namespace RelayGame
             {"sensitivity", settings.sensitivity},
             {"fov", settings.fov},
             {"camera_motion", settings.camera_motion},
-            {"vsync", settings.vsync}
+            {"vsync", settings.vsync},
+            {"hdr_enabled", settings.hdr_enabled}
         };
         std::filesystem::create_directories(path.parent_path());
         auto temporary = path;

@@ -47,6 +47,11 @@ int main()
                 for (const auto& cue : std::array{
                          cues.weapon_fire,
                          std::string{"audio/combat/shotgun_fire.wav"},
+                         std::string{"audio/combat/impact_hard.wav"},
+                         std::string{"audio/combat/impact_metal.wav"},
+                         std::string{"audio/environment/steam.wav"},
+                         std::string{"audio/environment/ventilation.wav"},
+                         std::string{"audio/environment/electrical.wav"},
                          cues.weapon_hit,
                          cues.threat_windup,
                          cues.rover_attack,
@@ -55,12 +60,16 @@ int main()
                          cues.player_hurt
                      })
                 {
-                    require(!cue.empty(), "Shipped combat cue is missing");
+                    require(!cue.empty(), "Shipped audio cue is missing");
                     const auto path = RelayCore::core::asset_path(cue);
                     audio.preload_one_shots(std::span{&path, 1});
                     audio.play_one_shot(path);
+                    audio.set_listener({0, 1, 0}, {0, 0, -1});
+                    audio.play_one_shot(path, glm::vec3{-2, 1, -3});
+                    audio.play_one_shot(path, glm::vec3{2, 1, -3});
+                    audio.play_one_shot(path);
                     audio.play_loop(path, 0);
-                    require(audio.current_loop_path() == path && audio.has_active_loop(), "Combat WAV did not decode");
+                    require(audio.current_loop_path() == path && audio.has_active_loop(), "Audio WAV did not decode");
                     audio.set_paused(true);
                     audio.stop_one_shots();
                     audio.set_paused(false);

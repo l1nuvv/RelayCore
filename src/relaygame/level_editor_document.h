@@ -27,6 +27,7 @@ namespace RelayGame
         add_level_link(glm::vec3 position, bool entry, const std::string& map, const std::string& destination_entry);
         void move_mission_step(int direction);
         void set_model_collision(bool enabled);
+        void set_model_collision_asset(const std::string& reference);
         auto place_on_surface(glm::vec3 origin, glm::vec3 direction, float grid) -> bool;
         [[nodiscard]] auto validation_messages(const std::filesystem::path& source_map = {}) const
             -> std::vector<std::string>;

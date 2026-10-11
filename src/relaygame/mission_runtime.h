@@ -30,6 +30,7 @@ namespace RelayGame
         std::string detail{};
         std::string target{};
         RelayCore::physics::Aabb bounds{};
+        std::string retry_entry{};
     };
 
     struct MissionDefinition {

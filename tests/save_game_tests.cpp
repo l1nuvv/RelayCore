@@ -105,7 +105,7 @@ TEST_CASE("version one progress remains loadable without map history")
     std::ifstream input(path);
     std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     input.close();
-    const auto version = text.find("format_version = 4");
+    const auto version = text.find("format_version = 5");
     REQUIRE(version != std::string::npos);
     text.replace(version, 18, "format_version = 1");
     const auto history = text.find("visited_levels = []");
@@ -126,7 +126,7 @@ TEST_CASE("version two progress remains loadable without enemies")
     std::ifstream input(path);
     std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     input.close();
-    const auto version = text.find("format_version = 4");
+    const auto version = text.find("format_version = 5");
     REQUIRE(version != std::string::npos);
     text.replace(version, 18, "format_version = 2");
     const auto enemies = text.find("enemies = []");
@@ -135,6 +135,23 @@ TEST_CASE("version two progress remains loadable without enemies")
     std::ofstream(path) << text;
     const auto loaded = RelayGame::load_saved_game(path);
     CHECK(loaded.enemies.empty());
+    CHECK(loaded.world.player_combat.health == 75);
+}
+
+TEST_CASE("version four progress remains loadable without containment state")
+{
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "progress.toml";
+    RelayGame::write_saved_game(path, sample_save());
+    std::ifstream input(path);
+    std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    input.close();
+    const auto version = text.find("format_version = 5");
+    REQUIRE(version != std::string::npos);
+    text.replace(version, 18, "format_version = 4");
+    std::ofstream(path) << text;
+    const auto loaded = RelayGame::load_saved_game(path);
+    CHECK_FALSE(loaded.world.containment);
     CHECK(loaded.world.player_combat.health == 75);
 }
 
@@ -153,7 +170,7 @@ TEST_CASE("selected weapon survives disk and version three selects the precise w
     std::ifstream input(path);
     std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     input.close();
-    const auto version = text.find("format_version = 4");
+    const auto version = text.find("format_version = 5");
     REQUIRE(version != std::string::npos);
     text.replace(version, 18, "format_version = 3");
     const auto selection = text.find("selected_weapon = 'shotgun'");
@@ -163,7 +180,7 @@ TEST_CASE("selected weapon survives disk and version three selects the precise w
     text.erase(start, text.find('\n', start) - start + 1);
     std::ofstream(path) << text;
     CHECK(RelayGame::load_saved_game(path).world.selected_weapon == RelayGame::PlayerWeapon::Precise);
-    text.replace(text.find("format_version = 3"), 18, "format_version = 4");
+    text.replace(text.find("format_version = 3"), 18, "format_version = 5");
     std::ofstream(path) << text;
     CHECK_THROWS_WITH(
         static_cast<void>(RelayGame::load_saved_game(path)),
@@ -221,7 +238,7 @@ TEST_CASE("malformed and unsupported saves fail explicitly")
     std::ofstream(path) << "format_version = 99";
     CHECK_THROWS_WITH(
         static_cast<void>(RelayGame::load_saved_game(path)),
-        doctest::Contains("unsupported format version 99; expected 4")
+        doctest::Contains("unsupported format version 99; expected 5")
     );
 }
 
@@ -236,6 +253,15 @@ TEST_CASE("save compatibility follows geometry and entity properties")
     const auto fingerprint = RelayGame::fingerprint_level(level);
     level.entities[0].properties = {{"second", "two"}, {"first", "one"}};
     CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["panel_style"] = "isolator";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["panel_style"] = "start";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["pickup_surface_y"] = "0.92";
+    CHECK(RelayGame::fingerprint_level(level) == fingerprint);
+    level.entities[0].properties["first"] = "changed";
+    CHECK(RelayGame::fingerprint_level(level) != fingerprint);
+    level.entities[0].properties["first"] = "one";
     level.entities[0].origin.x = 2;
     CHECK(RelayGame::fingerprint_level(level) != fingerprint);
     level.entities[0].origin.x = 0;

@@ -74,6 +74,34 @@ TEST_CASE("engine config keeps defaults for absent keys")
     CHECK(config.window.title == "Configured");
     CHECK(config.window.width == 1280);
     CHECK(config.source_path == path);
+    CHECK_FALSE(config.renderer.hdr_enabled);
+    CHECK(config.renderer.exposure_ev == 0);
+}
+
+TEST_CASE("engine config validates explicit HDR exposure")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = write_engine_config(temp.path(), "[render]\nhdr_enabled = true\nexposure_ev = -1.5\n");
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.renderer.hdr_enabled);
+    CHECK(config.renderer.exposure_ev == -1.5F);
+    for (const auto value : {"nan", "inf", "10.1", "-10.1", "'bright'"})
+        check_invalid_config(temp.path(), std::string{"[render]\nexposure_ev = "} + value + "\n", "render.exposure_ev");
+    check_invalid_config(temp.path(), "[render]\nhdr_enabled = 1\n", "render.hdr_enabled");
+}
+
+TEST_CASE("engine config validates MSAA sample counts")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    for (const auto samples : {1, 2, 4})
+    {
+        const auto path = write_engine_config(temp.path(), "[render]\nmsaa_samples = " + std::to_string(samples));
+        CHECK(RelayCore::core::load_engine_config(path).renderer.msaa_samples == samples);
+    }
+    for (const auto value : {"0", "3", "8", "-1", "true", "1.5"})
+        check_invalid_config(temp.path(), std::string{"[render]\nmsaa_samples = "} + value, "render.msaa_samples");
 }
 
 TEST_CASE("engine config ignores unsupported copy inspector source binding")

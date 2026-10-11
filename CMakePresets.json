@@ -14,6 +14,7 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_DISABLE_PRECOMPILE_HEADERS": "ON",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "RELAYCORE_ENABLE_IPO": "OFF",
         "RELAYCORE_ENABLE_ASAN": "OFF",
@@ -50,7 +51,8 @@
       "description": "Debug build for day-to-day development.",
       "inherits": "msvc-base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_DISABLE_PRECOMPILE_HEADERS": "OFF"
       }
     },
     {
@@ -63,6 +65,17 @@
         "CMAKE_UNITY_BUILD": "ON",
         "RELAYCORE_ENABLE_IPO": "ON",
         "RELAYCORE_ENABLE_TRACY": "ON"
+      }
+    },
+    {
+      "name": "msvc-dev",
+      "displayName": "MSVC Development",
+      "description": "Optimized iteration build with symbols and PCH, without IPO/LTO or unity batches.",
+      "inherits": "msvc-relwithdebinfo",
+      "cacheVariables": {
+        "RELAYCORE_ENABLE_IPO": "OFF",
+        "CMAKE_UNITY_BUILD": "OFF",
+        "CMAKE_DISABLE_PRECOMPILE_HEADERS": "OFF"
       }
     },
     {
@@ -101,6 +114,24 @@
       "targets": ["relaycore_demo"]
     },
     {
+      "name": "demo-dev",
+      "displayName": "Build Demo (Development)",
+      "configurePreset": "msvc-dev",
+      "targets": ["relaycore_demo"]
+    },
+    {
+      "name": "tests-dev",
+      "displayName": "Build Tests (Development)",
+      "configurePreset": "msvc-dev",
+      "targets": ["relaycore_tests", "relaycore_audio_lifetime"]
+    },
+    {
+      "name": "validation-dev",
+      "displayName": "Build Content Validation (Development)",
+      "configurePreset": "msvc-dev",
+      "targets": ["relaycore_content_validation"]
+    },
+    {
       "name": "demo-release",
       "displayName": "Build Demo (Release)",
       "configurePreset": "msvc-release",
@@ -122,7 +153,7 @@
       "name": "graphics-baseline-debug",
       "displayName": "Build Graphics Baseline (Debug)",
       "configurePreset": "msvc-debug",
-      "targets": ["relaycore_graphics_baseline"]
+      "targets": ["relaycore_vulkan_mesh_tests"]
     },
     {
       "name": "graphics-debug",
@@ -136,9 +167,8 @@
         "relaycore_vulkan_upload_tests",
         "relaycore_vulkan_mesh_tests",
         "relaycore_game_lifecycle",
-        "relaycore_power_restoration_graphics",
-        "relaycore_graphics_baseline",
-        "relaycore_default_framebuffer_probe"
+        "relaycore_bench_relay_run",
+        "relaycore_power_restoration_graphics"
       ]
     },
     {
@@ -208,6 +238,16 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "test-dev",
+      "inherits": "test-relwithdebinfo",
+      "configurePreset": "msvc-dev"
+    },
+    {
+      "name": "validation-dev",
+      "inherits": "validation-relwithdebinfo",
+      "configurePreset": "msvc-dev"
     },
     {
       "name": "test-asan",
@@ -323,6 +363,13 @@
         { "type": "build", "name": "tests-relwithdebinfo" },
         { "type": "test", "name": "test-relwithdebinfo" },
         { "type": "build", "name": "demo-relwithdebinfo" }
+      ]
+    },
+    {
+      "name": "demo-dev-workflow",
+      "steps": [
+        { "type": "configure", "name": "msvc-dev" },
+        { "type": "build", "name": "demo-dev" }
       ]
     },
     {

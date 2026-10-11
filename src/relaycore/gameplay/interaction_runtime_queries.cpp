@@ -20,7 +20,7 @@ namespace RelayCore::gameplay
             IndexProvider&& index_provider,
             const float max_distance,
             const float min_facing_dot,
-            const physics::CollisionWorld blockers
+            const physics::WorldQuery blockers
         ) -> InteractionQueryResult
         {
             RELAYCORE_PROFILE_FUNCTION();
@@ -89,15 +89,7 @@ namespace RelayCore::gameplay
                 }
 
                 const auto sight_direction = (eye_target - eye_position) / distance;
-                if (std::ranges::any_of(blockers, [&](const physics::Aabb& bounds) {
-                        return physics::ray_intersection_distance(
-                                   eye_position,
-                                   sight_direction,
-                                   bounds,
-                                   std::max(0.0F, distance - 0.025F)
-                        )
-                            .has_value();
-                    }))
+                if (blockers.raycast(eye_position, sight_direction, std::max(0.0F, distance - 0.025F)))
                     continue;
 
                 if (distance < best_distance)
@@ -271,7 +263,7 @@ namespace RelayCore::gameplay
         const std::span<const std::uint32_t> candidate_indices,
         const float max_distance,
         const float min_facing_dot,
-        const physics::CollisionWorld blockers
+        const physics::WorldQuery blockers
     ) -> InteractionQueryResult
     {
         RELAYCORE_PROFILE_FUNCTION();
@@ -295,7 +287,7 @@ namespace RelayCore::gameplay
         const std::vector<RuntimeUsable>& usables,
         const float max_distance,
         const float min_facing_dot,
-        const physics::CollisionWorld blockers
+        const physics::WorldQuery blockers
     ) -> InteractionQueryResult
     {
         RELAYCORE_PROFILE_FUNCTION();

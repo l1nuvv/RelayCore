@@ -67,10 +67,14 @@ namespace RelayGame
             install_level_session(std::move(prepared), services);
         } catch (const std::exception& error)
         {
+            progress_message_.clear();
+            set_pause(true, services);
+            const auto save_error = std::move(progress_message_);
             progress_message_ = "Переход из '" + source_level_path + "' в '" + exit.destination.string() + "', вход '"
                                 + exit.entry + "' не выполнен: " + error.what();
+            if (!save_error.empty())
+                progress_message_ += "\n" + save_error;
             RelayCore::log::error("{}", progress_message_);
-            set_pause(true, services);
             return;
         }
 

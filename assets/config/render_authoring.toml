@@ -9,16 +9,16 @@ bounce_neutral_color = [0.06, 0.06, 0.07]
 bounce_floor = 0.04
 bounce_underside = 0.18
 bounce_darkness = 0.06
-ambient_floor = 0.38
-ambient_zenith = 0.56
-ambient_min = 0.24
+ambient_floor = 0.14
+ambient_zenith = 0.22
+ambient_min = 0.08
 ambient_max = 1.02
 cavity_broad_strength = 0.0
 cavity_micro_strength = 0.0
 cavity_underside_strength = 0.10
 cavity_ambient_darken = 0.78
-local_light_wrap = 0.55
-local_light_fill = 0.45
+local_light_wrap = 0.85
+local_light_fill = 0.15
 local_light_gain = 2.0
 
 [render_light]

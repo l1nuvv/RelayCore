@@ -1,6 +1,147 @@
 # Pressure transfer: equipment bay -> rover hall -> long gallery -> mixed relay room -> exit.
 # Metres, +Y up; clear rover lanes use the existing direct pursuit behavior.
 
+[[entity]]
+classname = "prop_static"
+model = "models/equipment_bay_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/equipment_bay_furniture.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/service_hall_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/isolation_gallery_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_exit_lining.rcmodel"
+origin = [0,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [14,0,21.5]
+angles = [270,0,0]
+scale = [0.833333,1,1]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [22,0,24.5]
+angles = [270,0,0]
+scale = [0.666667,1,1]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_room_lining.rcmodel"
+origin = [24,0,26]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [31.3,0,32.5]
+
+[[entity]]
+classname = "prop_static"
+model = "models/transfer_cover_casing.rcmodel"
+origin = [36.5,0,37]
+scale = [0.833333,1,0.8]
+
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_control_casing.rcmodel"
+origin = [39.65,0,40]
+angles = [270,0,0]
+
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_manifold.rcmodel"
+origin = [39.87,0,35.5]
+angles = [270,0,0]
+collision_mins = [-1.82,1.45,-0.05]
+collision_maxs = [1.82,3.5,0.82]
+collision_material = "Metal"
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/fluorescent_fixture.rcmodel"
+entries = [
+  { origin = [4,3.8,5] },
+  { origin = [4,3.8,16] },
+  { origin = [16,3.8,22] },
+  { origin = [27,3.8,22] },
+  { origin = [28,3.8,29] },
+  { origin = [36,3.8,40] },
+  { origin = [38,3.8,35.5] },
+  { origin = [28,3.8,48] },
+]
+
+[[entity]]
+classname = "prop_static"
+targetname = "transfer_workbench"
+model = "models/lab_bench.rcmodel"
+collision_asset = "collision/lab_bench.rccollision"
+origin = [28,0,32.8]
+scale = [1,1.25,1]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_accessories.rcmodel"
+origin = [1.35,1.04,4.22]
+
+[[entity]]
+classname = "prop_static"
+model = "models/lab_microscope.rcmodel"
+origin = [2.74,1.04,4.18]
+angles = [180,0,0]
+scale = [0.8,0.8,0.8]
+
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_lab_notes_board.rcmodel"
+origin = [0.1175,1.55,4]
+angles = [90,0,0]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/ventilation_unit.rcmodel"
+entries = [
+  { origin = [7.65,3.1,6], angles = [270,0,0] },
+  { origin = [30.5,2.8,18.35] },
+  { origin = [39.65,2.8,42], angles = [270,0,0] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/utility_pipe.rcmodel"
+entries = [
+  { origin = [7.66,2.65,4], angles = [270,0,0] },
+  { origin = [7.66,2.65,7], angles = [270,0,0] },
+  { origin = [0.34,2.65,13], angles = [90,0,0] },
+  { origin = [0.34,2.65,16], angles = [90,0,0] },
+  { origin = [0.34,2.65,19], angles = [90,0,0] },
+  { origin = [12,2.65,18.34] },
+  { origin = [15,2.65,18.34] },
+  { origin = [18,2.65,18.34] },
+]
+
+[[entity_group]]
+classname = "prop_static"
+model = "models/pressure_safety_notice.rcmodel"
+entries = [
+  { origin = [7.3,1.15,9.8875], angles = [180,0,0] },
+  { origin = [33.5,1.15,26.1125] },
+]
+
 [[solid_group]]
 boxes = [
   { origin = [4,-0.12,12], size = [8,0.24,24], material = "service_floor" },
@@ -15,8 +156,6 @@ boxes = [
   { origin = [2,0.5,4], size = [1.8,1,0.8], material = "metal" },
   { origin = [2,0.99,4], size = [1.9,0.08,0.9], material = "Platform" },
   { origin = [0.25,1.1,7], size = [0.3,2.2,1.5], material = "metal" },
-  { origin = [4,3.65,5], size = [2,0.12,0.3], material = "LightStrip", tint = [0.6,0.58,0.48] },
-  { origin = [4,3.65,16], size = [2,0.12,0.3], material = "LightStrip", tint = [0.6,0.58,0.48] },
 
   { origin = [20,-0.12,22], size = [24,0.24,8], material = "maintenance_floor" },
   { origin = [20,3.9,22], size = [24,0.2,8], material = "Ceiling" },
@@ -26,29 +165,27 @@ boxes = [
   { origin = [18,1.9,26], size = [20,3.8,0.2], material = "WallPanel" },
   { origin = [14,1.1,21.5], size = [2,2.2,2], material = "metal" },
   { origin = [22,1.1,24.5], size = [2,2.2,1.6], material = "WallPanel" },
-  { origin = [16,3.65,22], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
-  { origin = [27,3.65,22], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
+  { origin = [30,1.2,22.5744], size = [1.2,2.4,0.4], material = "metal" },
 
   { origin = [32,-0.12,35], size = [16,0.24,18], material = "filtration_floor" },
   { origin = [32,3.9,35], size = [16,0.2,18], material = "Ceiling" },
   { origin = [24,1.9,35], size = [0.2,3.8,18], material = "concrete" },
   { origin = [40,1.9,35], size = [0.2,3.8,18], material = "filtration_wall" },
   { origin = [36,1.9,26], size = [8,3.8,0.2], material = "WallPanel" },
+  { origin = [30,3.45,26], size = [4,0.7,0.2], material = "metal" },
   { origin = [25,1.9,44], size = [2,3.8,0.2], material = "WallPanel" },
   { origin = [35,1.9,44], size = [10,3.8,0.2], material = "WallPanel" },
   { origin = [28,3.45,44], size = [4,0.7,0.2], material = "metal" },
   { origin = [31.3,1.1,32.5], size = [2.4,2.2,2], material = "metal" },
   { origin = [36.5,1.1,37], size = [2,2.2,1.6], material = "WallPanel" },
   { origin = [39.65,1,40], size = [0.5,2,2], material = "metal" },
-  { origin = [28,3.65,29], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
-  { origin = [36,3.65,40], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.55,0.57,0.51] },
+  { origin = [36,1.2,41.5744], size = [1.2,2.4,0.4], material = "metal" },
 
   { origin = [28,-0.12,48], size = [4,0.24,8], material = "service_floor" },
   { origin = [28,3.9,48], size = [4,0.2,8], material = "Ceiling" },
   { origin = [26,1.9,48], size = [0.2,3.8,8], material = "WallPanel" },
   { origin = [30,1.9,48], size = [0.2,3.8,8], material = "WallPanel" },
   { origin = [28,1.9,52], size = [4,3.8,0.2], material = "concrete" },
-  { origin = [28,3.65,48], size = [1.8,0.12,0.3], material = "LightStrip", tint = [0.42,0.58,0.48] },
 ]
 
 [[entity]]
@@ -60,6 +197,7 @@ angles = [0,0,0]
 classname = "gameplay_entity"
 kind = "pickup"
 targetname = "transfer_shotgun"
+pickup_surface_y = 1.039
 origin = [2,1.105,4]
 size = [1.08,0.21,0.14]
 item_id = "weapon_shotgun"
@@ -96,9 +234,9 @@ success_message = "Служебный зал открыт. За ним гале�
 
 [[entity]]
 classname = "enemy_rover"
-origin = [4,0.01,19]
+origin = [4,0.01,15]
 health = 60
-speed = 1.8
+speed = 2.6
 detection_range = 10
 
 [[entity]]
@@ -107,18 +245,20 @@ kind = "turret"
 origin = [30,1.55,22]
 size = [0.78,0.92,0.78]
 targetname = "gallery_turret"
+angles = [180,0,0]
 label = "Турель перепускной галереи"
 health = 60
 damage = 6
 attack_range = 20
 warmup = 0.9
-fire_interval = 1.6
+fire_interval = 1.1
 
 [[entity]]
 classname = "enemy_rover"
 origin = [28,0.01,37]
+attack_style = "lunge"
 health = 60
-speed = 1.8
+speed = 2.3
 detection_range = 12
 
 [[entity]]
@@ -127,12 +267,14 @@ kind = "turret"
 origin = [36,1.55,41]
 size = [0.78,0.92,0.78]
 targetname = "relay_turret"
+stop_target = "transfer_running"
+angles = [180,0,0]
 label = "Турель перепускного зала"
 health = 60
-damage = 6
+damage = 12
 attack_range = 17
 warmup = 0.9
-fire_interval = 1.6
+fire_interval = 1.1
 
 [[entity]]
 classname = "gameplay_entity"
@@ -141,13 +283,14 @@ origin = [39.34,1.4,40]
 size = [0.12,0.5,0.38]
 mount_axis = "-x"
 targetname = "transfer_control"
+panel_style = "start"
 target = "transfer_running"
 action = "activate_target"
 chain_target = "exit_reader"
 use_radius = 1.8
 single_use = true
 label = "Включить перепуск давления"
-success_message = "Перепуск работает. Пульт выхода на дальней стене разблокирован."
+success_message = "Перепуск работает: утечка остановлена, питание турели сброшено. Робот автономен. Пульт выхода разблокирован."
 
 [[entity]]
 classname = "gameplay_entity"
@@ -176,18 +319,48 @@ locked_message = "Сначала включите перепуск на пуль
 success_message = "Выход открыт. Пройдите через дверь слева от пульта."
 
 [[entity]]
+classname = "gameplay_entity"
+kind = "door"
+origin = [30,0,26]
+size = [3.98,3.1,0.22]
+targetname = "gallery_gate"
+move_offset = [0,3.3,0]
+move_speed = 1.8
+activation_policy = "open_only"
+
+[[entity]]
+classname = "gameplay_entity"
+kind = "panel"
+origin = [20,1.4,18.24]
+size = [0.38,0.5,0.12]
+mount_axis = "+z"
+targetname = "gallery_reader"
+target = "gallery_gate"
+use_radius = 1.8
+single_use = true
+label = "Открыть перепускной зал"
+success_message = "Зал 03 открыт. Перепускной пульт — справа за оборудованием."
+
+[[entity]]
 classname = "mission_settings"
 completion_title = "Давление выровнено"
 completion_detail = "Перепуск запущен. Путь в технический сектор открыт."
+
+[[entity]]
+classname = "level_entry"
+targetname = "mixed_retry"
+origin = [28,0.01,29]
+angles = [0,0,0]
 
 [[entity_group]]
 classname = "mission_step"
 entries = [
   { kind = "pickup_item", target = "weapon_shotgun", title = "Взять дробовик", detail = "Возьмите оружие со стола слева. Клавиши 1/2 выбирают оружие." },
   { kind = "door_open", target = "service_gate", title = "Открыть служебный зал", detail = "Пульт справа от двери. За дверью — охранный робот; оставьте место для отхода." },
-  { kind = "zone", origin = [11,0.01,22], size = [4,2.5,7], title = "Пройти в перепускную галерею", detail = "В конце служебного зала поверните направо. Длинную галерею контролирует турель." },
-  { kind = "zone", origin = [30,0.01,28], size = [4,2.5,3], title = "Дойти до перепускного зала", detail = "Используйте шкафы как укрытие. В конце галереи поверните налево." },
-  { kind = "activate_target", target = "transfer_running", title = "Включить перепуск давления", detail = "В зале работают турель и охранный робот. Пульт перепуска на правой стене, рядом со шкафом." },
+  { kind = "zone", origin = [11,0.01,22], size = [4,2.5,7], title = "Пройти в перепускную галерею", detail = "В конце служебного зала войдите в галерею по указателю 02. Длинную галерею контролирует турель." },
+  { kind = "door_open", target = "gallery_gate", title = "Снять блокировку зала 03", detail = "Пульт на левой стене галереи, между защитными блоками. Турель контролирует центральный проход." },
+  { kind = "zone", origin = [30,0.01,28], size = [4,2.5,3], retry_entry = "mixed_retry", title = "Дойти до перепускного зала", detail = "Зал 03 открыт. В конце галереи войдите в него по указателю; обходите опору турели." },
+  { kind = "activate_target", target = "transfer_running", title = "Включить перепуск давления", detail = "Перепуск на правой стене сбрасывает питание турели. Зачистите зал или доберитесь до пульта под огнём. Робот автономен: после сигнала рывка уйдите вбок." },
   { kind = "door_open", target = "transfer_exit", title = "Открыть выход", detail = "Перепуск разблокировал пульт на дальней стене рядом с дверью." },
   { kind = "zone", origin = [28,0.01,49], size = [3.6,2.5,2], title = "Войти в технический сектор", detail = "Пройдите через открытую дверь до конца коридора." },
 ]
@@ -201,13 +374,14 @@ close_door = "transfer_exit"
 [[entity_group]]
 classname = "render_light"
 entries = [
-  { origin = [4,3.3,5], color = [0.48,0.46,0.38], radius = 9, intensity = 1.2 },
-  { origin = [4,3.3,16], color = [0.48,0.46,0.38], radius = 9, intensity = 1.2 },
-  { origin = [16,3.3,22], color = [0.4,0.43,0.38], radius = 10, intensity = 1.3 },
-  { origin = [27,3.3,22], color = [0.4,0.43,0.38], radius = 9, intensity = 1.3 },
-  { origin = [28,3.3,29], color = [0.4,0.43,0.38], radius = 10, intensity = 1.3 },
-  { origin = [36,3.3,40], color = [0.4,0.43,0.38], radius = 10, intensity = 1.3 },
-  { origin = [28,3.3,48], color = [0.32,0.46,0.36], radius = 7, intensity = 1.1, required_target = "transfer_running" },
+  { origin = [4,3.3,5], color = [0.67,0.72,0.70], radius = 9, intensity = 1.35, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [4,3.3,16], color = [0.67,0.72,0.70], radius = 9, intensity = 1.35, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [16,3.3,22], color = [0.67,0.72,0.70], radius = 10, intensity = 1.3, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [27,3.3,22], color = [0.67,0.72,0.70], radius = 9, intensity = 1.3, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [28,3.3,29], color = [0.67,0.72,0.70], radius = 10, intensity = 1.25, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [36,3.3,40], color = [0.67,0.72,0.70], radius = 10, intensity = 1.4, fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [38,3.3,35.5], color = [0.64,0.43,0.22], radius = 4.5, intensity = 1.25, state = "damaged", stop_target = "transfer_running", fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
+  { origin = [28,3.3,48], color = [0.67,0.72,0.70], radius = 7, intensity = 1.25, required_target = "transfer_running", fixture_width = 1.2, fixture_depth = 0.24, fixture_offset = 0.3790 },
 ]
 
 [[entity]]
@@ -217,20 +391,62 @@ origin = [32,1.8,38]
 size = [16,3.6,12]
 loop = "audio/ambient_airlock_hum.wav"
 volume = 0.18
+priority = 10
 required_target = "transfer_running"
+
+[[entity]]
+classname = "audio_zone"
+name = "transfer_standby"
+origin = [32,1.8,35]
+size = [16,3.6,18]
+loop = "audio/environment/electrical.wav"
+volume = 0.06
+
+[[entity]]
+classname = "world_effect"
+kind = "steam"
+origin = [39.30,1.68,34.6]
+angles = [270,0,0]
+scale = 0.45
+stop_target = "transfer_running"
 
 [[entity]]
 classname = "world_effect"
 kind = "fan"
-origin = [39.75,2.8,40]
-angles = [90,0,0]
+origin = [39.78,2.8,40]
+angles = [270,0,0]
 required_target = "transfer_running"
 
 [[entity_group]]
 classname = "world_effect"
 kind = "decal"
 entries = [
-  { origin = [6.7,2.1,9.88], angles = [0,0,0], mark = "01" },
-  { origin = [8.12,2.1,24.7], angles = [90,0,0], mark = "02" },
-  { origin = [32.12,2.1,26], angles = [180,0,0], mark = "03" },
+  { origin = [32.75,2.65,26.198], scale = 0.65, angles = [0,0,0], mark = "03" },
 ]
+
+# VIS-25: painted occult intrusion; no backing or gameplay collision.
+[[entity]]
+classname = "prop_static"
+model = "models/blood_pentagram.rcmodel"
+origin = [36,1.15,26.135]
+
+# VIS-26: retained route glyphs mounted on local physical carriers.
+[[entity]]
+classname = "prop_static"
+model = "models/pressure_route_signage.rcmodel"
+origin = [0,0,0]
+
+# Completion advances to the next authored chapter; the existing two-sector return remains.
+[[entity]]
+classname = "level_exit"
+origin = [28, 0.01, 49]
+size = [2,2.5,1.2]
+next_map = "levels/cooling_loop.toml"
+next_entry = "campaign_arrival"
+requires_completion = true
+
+[[entity]]
+classname = "level_entry"
+targetname = "campaign_arrival"
+origin = [4, 0.02, 2]
+angles = [0, 0, 0]

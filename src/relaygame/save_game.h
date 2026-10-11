@@ -8,7 +8,7 @@
 
 namespace RelayGame
 {
-    inline constexpr std::int64_t saved_game_format_version = 4;
+    inline constexpr std::int64_t saved_game_format_version = 5;
     struct SavedGame {
         RelayGame::RuntimeLevelSnapshot world;
         GroundedPlayerController::State player;

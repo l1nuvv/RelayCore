@@ -1,0 +1,34 @@
+[
+  {
+    "asset": "blue_metal_plate",
+    "role": "Diffuse",
+    "size": 1518621,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/blue_metal_plate/blue_metal_plate_diff_2k.jpg",
+    "md5": "6189f7c443f0b7767d3e046f021b5495",
+    "sha256": "82855f6297ad07ea7ea4d1c501e6b56ed4c9c758653ca126bda9fd0ebba63c59"
+  },
+  {
+    "asset": "blue_metal_plate",
+    "role": "nor_gl",
+    "size": 948237,
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/blue_metal_plate/blue_metal_plate_nor_gl_2k.jpg",
+    "md5": "c460b1b25b5d418218982d8b100822b8",
+    "sha256": "4cd3069a918cf891295b369b26f47c0a0631c634d0fd1006b6b7412a8f2b3550"
+  },
+  {
+    "asset": "green_metal_rust",
+    "role": "Diffuse",
+    "size": 787402,
+    "md5": "fed1afb0e3b6f5a5710cee229fd54897",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_diff_2k.jpg",
+    "sha256": "727515554ffb6410be82d3625a2837fe46612cb186ec391f77c50bd52c4d7ab2"
+  },
+  {
+    "asset": "green_metal_rust",
+    "role": "nor_gl",
+    "size": 357436,
+    "md5": "379dfb43f495a44569674717e974b920",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_nor_gl_2k.jpg",
+    "sha256": "45ec5d256c91ccf4a87dd4c4a90f6c58b460f3862287f014bfde432055ece239"
+  }
+]

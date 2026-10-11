@@ -1,5 +1,6 @@
 #pragma once
 
+#include "relaycore/physics/physics_world.h"
 #include "relaycore/render/camera.h"
 #include "relaygame/level_editor_document.h"
 #include "relaygame/world_scene_renderer.h"
@@ -22,6 +23,14 @@ namespace RelayGame
         void leave(RelayCore::EngineServices& services);
         void leave_scene() noexcept;
         void resume(RelayCore::EngineServices& services);
+        [[nodiscard]] auto
+        prepare_color_pipeline(RelayCore::render::ColorPipelineMode pipeline, RelayCore::EngineServices& services) const
+            -> WorldSceneRenderer;
+        void commit_color_pipeline(WorldSceneRenderer scene) noexcept;
+        [[nodiscard]] auto resource_items() const -> std::vector<RelayCore::render::RenderItem>
+        {
+            return scene_.resource_items();
+        }
         [[nodiscard]] auto exit_requested() const noexcept -> bool
         {
             return exit_requested_;
@@ -50,6 +59,10 @@ namespace RelayGame
         void request_play()
         {
             play_requested_ = true;
+        }
+        void set_collision_debug_visible(bool visible) noexcept
+        {
+            collision_debug_visible_ = visible;
         }
         void report_error(std::string message)
         {
@@ -83,10 +96,21 @@ namespace RelayGame
         void draw_map_tools(RelayCore::EngineServices& services);
         void draw_object_properties(RelayCore::EngineServices& services);
         void draw_asset_tools(glm::vec3 position);
+        void draw_collision_tools(RelayCore::EngineServices& services);
         void refresh_catalogs();
         void draw_selection(RelayCore::EngineServices& services);
         LevelEditorDocument document_;
         WorldSceneRenderer scene_;
+        struct CollisionMeshOverlay {
+            std::vector<RelayCore::physics::PhysicsTriangle> triangles;
+            int authored_entity_index = -1;
+        };
+        std::vector<CollisionMeshOverlay> collision_meshes_;
+        std::vector<RelayCore::physics::WorldCollider> collision_boxes_;
+        std::shared_ptr<const RelayCore::physics::PhysicsWorld> collision_world_;
+        bool collision_debug_visible_ = false;
+        bool collision_preview_valid_ = false;
+        std::string collision_receipt_, collision_receipt_product_;
         std::vector<RelayCore::gameplay::RuntimeDoor> doors_;
         std::vector<RelayCore::gameplay::RuntimeUsable> usables_;
         std::vector<RelayCore::gameplay::RuntimeTurret> turrets_;
@@ -98,7 +122,7 @@ namespace RelayGame
         std::filesystem::path pending_map_;
         std::shared_ptr<OpenDialogResult> open_dialog_;
         std::vector<std::filesystem::path> map_files_;
-        std::vector<std::string> model_files_, texture_files_, validation_;
+        std::vector<std::string> model_files_, texture_files_, collision_files_, validation_;
         std::string selected_model_ = "models/service_cylinder.obj", selected_texture_ = "models/service_cylinder.bmp";
         std::string next_map_ = "levels/foundation_pump.toml", next_entry_ = "arrival";
         std::vector<std::string> entry_names_{"arrival"};

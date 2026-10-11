@@ -12,19 +12,9 @@
 
 namespace RelayCore
 {
-    Window::Window(
-        const WindowConfig& config,
-        const render::ColorPipelineMode color_pipeline_mode,
-        const WindowGraphicsApi graphics_api
-    )
+    Window::Window(const WindowConfig& config) : vsync_requested_(config.vsync)
     {
-        if (graphics_api == WindowGraphicsApi::opengl)
-        {
-            OpenGlContext::configure_window(color_pipeline_mode);
-        }
-
-        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
-        flags |= graphics_api == WindowGraphicsApi::opengl ? SDL_WINDOW_OPENGL : SDL_WINDOW_VULKAN;
+        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN;
         if (config.high_dpi)
         {
             flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -49,11 +39,6 @@ namespace RelayCore
             core::require_sdl(SDL_MaximizeWindow(window_.get()), "Failed to fit window to display");
             core::require_sdl(SDL_SyncWindow(window_.get()), "Failed to synchronize fitted window");
         }
-
-        if (graphics_api == WindowGraphicsApi::opengl)
-        {
-            gl_context_.emplace(window_.get(), config.vsync, color_pipeline_mode);
-        }
     }
 
     Window::~Window() noexcept = default;
@@ -63,31 +48,8 @@ namespace RelayCore
         return window_.get();
     }
 
-    auto Window::gl_context() const noexcept -> SDL_GLContext
-    {
-        return gl_context_ ? gl_context_->handle() : nullptr;
-    }
-
-    auto Window::require_gl_context() const -> const OpenGlContext&
-    {
-        if (!gl_context_)
-        {
-            throw std::logic_error("OpenGL presentation requested for a Vulkan window");
-        }
-        return *gl_context_;
-    }
-
-    auto Window::framebuffer_srgb_capable() const -> int
-    {
-        return require_gl_context().framebuffer_srgb_capable();
-    }
-
     auto Window::vulkan_instance_extensions() const -> std::span<const char* const>
     {
-        if ((SDL_GetWindowFlags(window_.get()) & SDL_WINDOW_VULKAN) == 0)
-        {
-            throw std::logic_error("Vulkan instance extensions requested for an OpenGL window");
-        }
         Uint32 count = 0;
         const auto extensions = SDL_Vulkan_GetInstanceExtensions(&count);
         if (extensions == nullptr)
@@ -138,24 +100,15 @@ namespace RelayCore
         return mode->refresh_rate;
     }
 
-    auto Window::swap_interval() const -> int
-    {
-        return require_gl_context().swap_interval();
-    }
-
     auto Window::vsync_enabled() const -> bool
     {
-        return swap_interval() != 0;
-    }
-
-    auto Window::set_swap_interval(const int interval) -> bool
-    {
-        return require_gl_context().set_swap_interval(interval);
+        return vsync_requested_;
     }
 
     auto Window::toggle_vsync() -> bool
     {
-        return require_gl_context().toggle_vsync();
+        vsync_requested_ = !vsync_requested_;
+        return true;
     }
 
     void Window::set_relative_mouse_mode(const bool enabled) const
@@ -163,8 +116,4 @@ namespace RelayCore
         core::require_sdl(SDL_SetWindowRelativeMouseMode(window_.get(), enabled), "Failed to set relative mouse mode");
     }
 
-    void Window::swap_buffers() const
-    {
-        require_gl_context().swap_buffers();
-    }
 } // namespace RelayCore

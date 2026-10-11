@@ -2,6 +2,8 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game.cpp
         demo_game_session.cpp
         demo_game_transition.cpp
+        containment_encounter.cpp
+        enemy_navigation.cpp
         mission_runtime.cpp
         runtime_model.cpp
         usable_interaction.cpp
@@ -10,6 +12,7 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game_progress.cpp
         save_game.cpp
         player_feedback.cpp
+        scientist_pose.cpp
         player_settings.cpp
         demo_game_debug_command_helpers.cpp
         demo_game_debug_commands.cpp
@@ -20,6 +23,7 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game_source_debug_commands.cpp
         game_world_runtime.cpp
         game_world_runtime_diagnostics.cpp
+        game_world_runtime_hud.cpp
         game_world_runtime_feedback.cpp
         game_world_runtime_update.cpp
         level_session_builder.cpp
@@ -37,6 +41,7 @@ set(RELAYCORE_DEMO_SOURCES
         world_scene_renderer_environment.cpp
         world_inspector.cpp
         world_scene_renderer.cpp
+        world_irradiance.cpp
         world_scene_renderer_interactives.cpp
         world_scene_renderer_props.cpp
 )
@@ -44,6 +49,7 @@ set(RELAYCORE_DEMO_SOURCES
 set(RELAYCORE_DEMO_HEADERS
         demo_game.h
         game_updates.h
+        containment_encounter.h
         mission_runtime.h
         runtime_model.h
         usable_interaction.h
@@ -65,11 +71,16 @@ set(RELAYCORE_DEMO_HEADERS
         world_audio_zones.h
         world_inspector.h
         world_scene_renderer.h
+        world_irradiance.h
         scientist_pose.h
 )
 
 add_library(relaygame_runtime STATIC)
 add_library(RelayGame::runtime ALIAS relaygame_runtime)
+target_precompile_headers(relaygame_runtime PRIVATE
+    <algorithm> <array> <filesystem> <memory> <optional> <span>
+    <string> <unordered_map> <vector> <glm/glm.hpp> <spdlog/spdlog.h>)
+set_source_files_properties(game_world_runtime_hud.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 add_executable(relaycore_demo main.cpp)
 
 target_sources(
@@ -85,6 +96,10 @@ target_sources(
 target_compile_features(relaygame_runtime PUBLIC cxx_std_20)
 configure_file(game_version.h.in generated/relaygame/game_version.h @ONLY)
 target_include_directories(relaygame_runtime PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/inspect_collision.cmake" CONTENT
+    "set(COLLISION_PROJECT_ROOT [==[${PROJECT_SOURCE_DIR}]==])\nset(COLLISION_BUILD_ROOT [==[${PROJECT_BINARY_DIR}]==])\nset(COLLISION_COMPILER [==[$<TARGET_FILE:relaycore_collision_compile>]==])\ninclude([==[${PROJECT_SOURCE_DIR}/cmake/check_collision_assets.cmake]==])\n")
+set_source_files_properties(level_editor_tools.cpp PROPERTIES COMPILE_DEFINITIONS
+    "RELAYCORE_INSPECT_CMAKE=\"${CMAKE_COMMAND}\";RELAYCORE_INSPECT_COLLISION_SCRIPT=\"${CMAKE_CURRENT_BINARY_DIR}/generated/inspect_collision.cmake\"")
 
 target_include_directories(relaygame_runtime PUBLIC ${PROJECT_SOURCE_DIR}/src)
 
@@ -115,11 +130,35 @@ relaycore_apply_standard_target_settings(relaycore_demo)
 relaycore_apply_standard_target_settings(relaygame_runtime)
 set_target_properties(relaygame_runtime PROPERTIES FOLDER "game")
 
+add_executable(relaycore_irradiance_bake ${PROJECT_SOURCE_DIR}/tools/irradiance_bake_main.cpp)
+target_link_libraries(relaycore_irradiance_bake PRIVATE RelayGame::runtime)
+relaycore_apply_standard_target_settings(relaycore_irradiance_bake)
+set_target_properties(relaycore_irradiance_bake PROPERTIES FOLDER "tools")
+add_custom_command(TARGET relaycore_irradiance_bake POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_irradiance_bake>" $<TARGET_RUNTIME_DLLS:relaycore_irradiance_bake>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(${PROJECT_SOURCE_DIR}/cmake/RelayCoreIrradianceAssets.cmake)
+
+add_executable(relaycore_reflection_bake ${PROJECT_SOURCE_DIR}/tools/reflection_bake_main.cpp)
+target_link_libraries(relaycore_reflection_bake PRIVATE RelayGame::runtime)
+relaycore_apply_standard_target_settings(relaycore_reflection_bake)
+set_target_properties(relaycore_reflection_bake PROPERTIES
+    FOLDER "tools" RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools/reflection-bake")
+add_custom_command(TARGET relaycore_reflection_bake POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_reflection_bake>" $<TARGET_RUNTIME_DLLS:relaycore_reflection_bake>
+    COMMAND_EXPAND_LISTS VERBATIM)
+include(${PROJECT_SOURCE_DIR}/cmake/RelayCoreReflectionAssets.cmake)
+
 add_custom_target(
         relaycore_demo_assets ALL
         COMMAND
         ${CMAKE_COMMAND}
         "-DRELAYCORE_ASSET_SOURCE=${PROJECT_SOURCE_DIR}/assets"
+        "-DCOLLISION_PROJECT_ROOT=${PROJECT_SOURCE_DIR}"
+        "-DCOLLISION_BUILD_ROOT=${PROJECT_BINARY_DIR}"
+        "-DCOLLISION_COMPILER=$<TARGET_FILE:relaycore_collision_compile>"
+        "-DRELAYCORE_GENERATED_ASSETS=${RELAYCORE_MODEL_ASSET_ROOT}"
+        "-DRELAYCORE_GENERATED_ASSET_MANIFEST=${PROJECT_BINARY_DIR}/generated/runtime-assets.txt"
         "-DRELAYCORE_ASSET_OUTPUT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
         "-DRELAYCORE_ASSET_MANIFEST=${CMAKE_CURRENT_BINARY_DIR}/relaycore_demo_assets.manifest"
         -P "${PROJECT_SOURCE_DIR}/cmake/sync_runtime_assets.cmake"
@@ -130,6 +169,10 @@ add_custom_target(
 
 add_dependencies(relaycore_demo relaycore_demo_assets)
 add_dependencies(relaycore_demo_assets relaycore_vulkan_shaders)
+add_dependencies(relaycore_demo_assets relaycore_model_assets)
+add_dependencies(relaycore_demo_assets relaycore_collision_assets)
+add_dependencies(relaycore_demo_assets relaycore_irradiance_assets)
+add_dependencies(relaycore_demo_assets relaycore_reflection_assets)
 add_custom_command(TARGET relaycore_demo_assets POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RELAYCORE_MESH_SPIRV}
         "$<TARGET_FILE_DIR:relaycore_demo>/assets/shaders/vulkan"
@@ -137,6 +180,15 @@ add_custom_command(TARGET relaycore_demo_assets POST_BUILD
 add_dependencies(relaycore_demo relaycore_vulkan_shaders)
 
 add_executable(relaycore_level_check EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/level_check.cpp)
+add_executable(relaycore_physics_fixture EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/physics_fixture.cpp)
+target_link_libraries(relaycore_physics_fixture PRIVATE RelayCore::engine)
+add_dependencies(relaycore_physics_fixture relaycore_collision_fixture_assets)
+relaycore_apply_standard_target_settings(relaycore_physics_fixture)
+set_target_properties(relaycore_physics_fixture PROPERTIES FOLDER "tools")
+add_custom_command(TARGET relaycore_physics_fixture POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t "$<TARGET_FILE_DIR:relaycore_physics_fixture>"
+        $<TARGET_RUNTIME_DLLS:relaycore_physics_fixture>
+    COMMAND_EXPAND_LISTS)
 target_link_libraries(relaycore_level_check PRIVATE RelayGame::runtime RelayCore::toml_headers
     RelayCore::project_options RelayCore::warnings)
 add_executable(relaycore_sandbox EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/tools/sandbox_main.cpp)

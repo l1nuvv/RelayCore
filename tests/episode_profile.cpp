@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <fstream>
-#include <glad/gl.h>
 #include <iostream>
 #include <stdexcept>
 #include <toml++/toml.hpp>
@@ -44,7 +43,6 @@ namespace
 
         void on_startup(RelayCore::EngineServices& services) override
         {
-            glGenQueries(static_cast<GLsizei>(queries_.size()), queries_.data());
             start_stage(services);
         }
 
@@ -99,19 +97,7 @@ namespace
 
         void on_render(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services) override
         {
-            collect_queries();
-            const std::size_t slot = query_cursor_++ % queries_.size();
-            const bool sample = !pending_[slot];
-            if (sample)
-                glBeginQuery(GL_TIME_ELAPSED, queries_[slot]);
             game_->on_render(frame, services);
-            if (sample)
-            {
-                glEndQuery(GL_TIME_ELAPSED);
-                pending_[slot] = true;
-                query_stage_[slot] = stage_;
-                query_settled_[slot] = elapsed_ > 0.5;
-            }
         }
 
         auto has_custom_ui() const noexcept -> bool override
@@ -127,18 +113,6 @@ namespace
         {
             if (game_)
                 game_->on_shutdown(services);
-            glFinish();
-            collect_queries();
-            glDeleteQueries(static_cast<GLsizei>(queries_.size()), queries_.data());
-            for (std::size_t i = 0; i < stages.size(); ++i)
-            {
-                auto& samples = gpu_[i];
-                if (samples.empty())
-                    continue;
-                std::ranges::sort(samples);
-                std::cout << "gpu_world; stage=" << stages[i].name << "; samples=" << samples.size()
-                          << "; p95_ms=" << samples[samples.size() * 95 / 100] << '\n';
-            }
         }
 
     private:
@@ -201,7 +175,6 @@ namespace
             used_ = false;
             frames_.clear();
             frames_.reserve(8192);
-            gpu_[stage_].reserve(8192);
             std::cout << "stage_begin=" << stage_ << "; name=" << stage.name << '\n';
         }
 
@@ -215,34 +188,12 @@ namespace
                       << "; max_ms=" << frames_.back() << '\n';
         }
 
-        void collect_queries() noexcept
-        {
-            for (std::size_t i = 0; i < queries_.size(); ++i)
-            {
-                if (!pending_[i])
-                    continue;
-                GLint available = 0;
-                glGetQueryObjectiv(queries_[i], GL_QUERY_RESULT_AVAILABLE, &available);
-                if (!available)
-                    continue;
-                GLuint64 nanoseconds = 0;
-                glGetQueryObjectui64v(queries_[i], GL_QUERY_RESULT, &nanoseconds);
-                if (query_settled_[i])
-                    gpu_[query_stage_[i]].push_back(static_cast<double>(nanoseconds) / 1e6);
-                pending_[i] = false;
-            }
-        }
-
         std::filesystem::path data_;
         std::unique_ptr<RelayGame::DemoGame> game_;
-        std::size_t stage_ = 0, query_cursor_ = 0;
+        std::size_t stage_ = 0;
         double elapsed_ = 0, next_shot_ = 0;
         bool used_ = false;
         std::vector<double> frames_;
-        std::array<std::vector<double>, stages.size()> gpu_;
-        std::array<GLuint, 8> queries_{};
-        std::array<bool, 8> pending_{}, query_settled_{};
-        std::array<std::size_t, 8> query_stage_{};
     };
 } // namespace
 
