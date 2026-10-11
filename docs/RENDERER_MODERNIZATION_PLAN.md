@@ -1,6 +1,6 @@
 # RelayCore — Vulkan 1.4 Migration and Advanced Renderer Modernization Plan
 
-**Status:** Owner authorized sequential execution through `NEXT_STEPS_2026-10-11.md` on 2026-10-11. VK14-00 baseline captured; VK14-01 negotiation and VK14-02 SDR/HDR correctness pass covered local technical gates. VK14-03 completion/retirement is implemented; its desktop presentation acceptance remains open because the active screensaver prevents pixel readback. Evidence and limitations are recorded below; the historical presentation pixel failure remains unexplained.
+**Status:** VK14-00/01/02/03 are committed separately. The 2026-10-12 prerequisite recheck passes covered local gates on both effective API profiles; VK14-04 is in progress. Native 1.3-only hardware and the historical presentation discrepancy retain their recorded limits.
 **Prepared:** 2026-10-11
 **Repository:** [`l1nuvv/RelayCore`](https://github.com/l1nuvv/RelayCore), branch `dev`
 **Verified source baseline:** `c9b4dcb619def034f81eca0cca5604bb5e63709c` (2026-10-10 21:44:15 UTC), checked through the connected GitHub repository.
@@ -338,6 +338,54 @@ its Debug macro is disabled and existing wait operations are unchanged. Formatti
 and `git diff --check` passed. No commit, push, package, host-wait removal or
 VK14-04 implementation. Full VK14-03 acceptance remains open until the two
 strict desktop cases execute successfully on both effective profiles.
+
+## VK14-04 execution — 2026-10-12
+
+Owner selected VK14-04 and requested a commit after each plan point, with the
+pending VK14-00/01/02/03 work committed separately. Unrelated working-tree edits
+are excluded. Prerequisite commits: `ce5fbd3`, `82afaf2`, `a6fda78`, `03a38e9`.
+
+**Bounded plan and rollback:**
+
+1. Recheck prerequisites on preferred 1.4 and forced 1.3; capture the current
+   optimized `msvc-dev` workload before changing its executable. Use the same
+   G-019 fixture, assets, settings and capture boundaries for the comparison.
+2. Replace ordinary mesh/material construction host waits with an upload-timeline
+   dependency at scene submission. Bound pending staging to 64 MiB/32 batches;
+   an individually larger upload runs alone. Retain deliberate backpressure,
+   reflection replacement, readback, failed preparation and shutdown waits.
+   Protect resources prepared but never drawn in the upload completion domain.
+3. Use two scene slots, each owning mutable uniforms/descriptors, targets and
+   command buffers. Keep shared shadows/pipelines behind the serialized scene
+   timeline. Chain scene → RmlUi → presentation copy on that timeline; retain
+   RmlUi draw resources until the slot completes. Keep ImGui/readback synchronous.
+   Wait for a slot before rewriting it, and drain both slots on reconfiguration
+   and shutdown. No API/dependency/shader/content-format change.
+4. Run validation/lifetime/UI/G-019/presentation and image parity on both API
+   profiles, then repeat the optimized workload. Retain scheduling only if
+   comparable measurements support its complexity. Record limits separately
+   from native 1.3/other GPU and human acceptance. Commit each completed point.
+
+Rollback is each local implementation commit; no asset/save migration or package.
+Build, CTest, traces and parity evidence live in `build/vk14-04/` and
+`build/msvc-debug/vk14-04-*.xml`. Initial sandbox profiling failed on the fixture's
+temporary save rename; the retry uses the ordinary desktop outside that sandbox.
+
+**Point 1 complete:** unchanged prerequisite binaries passed 15/15 selected cases
+on preferred 1.4 and 15/15 on forced 1.3, zero failures/skips; the strict desktop
+presentation/recreation cases now execute. Reports are
+`vk14-04-prerequisite-{preferred,force13}.xml`. This supersedes VK14-03's unavailable
+desktop gate without explaining the historical white pixel. Process-local OBS
+isolation and unchanged validation/pixel gates were retained.
+
+The before workload exits 0 and captures real CPU/GPU intervals in
+`before/runtime-final.tracy`; `before/analysis.json` separates loading/readback,
+first use and resize. It uses the existing `msvc-dev` VK14-03 executable, RTX
+4060 Ti/NVIDIA 596.49, effective 1.4, 1920×1080/VSync off/internal HDR/EV 0,
+4× MSAA/default shadows/FOV 70/sound on, validation/IPO/unity off. Warm fixed-state
+CPU p50 ranges 4.265–6.762 ms; p99
+5.260–8.506 ms. OS/driver caches and other desktop
+activity are uncontrolled; this is a seeded camera sweep, not a grounded playthrough.
 
 ## 1. Executive decision
 
