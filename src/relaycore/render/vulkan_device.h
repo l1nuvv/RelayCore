@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vk_mem_alloc.h>
@@ -47,6 +48,12 @@ namespace RelayCore::render
         [[nodiscard]] auto graphics_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto present_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto allocator() const noexcept -> VmaAllocator;
+        // Render-thread access, shared by scene, HDR and UI pipeline creation.
+        [[nodiscard]] auto pipeline_cache() const noexcept -> VkPipelineCache;
+        [[nodiscard]] auto
+        load_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const -> bool;
+        [[nodiscard]] auto
+        save_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const -> bool;
 
     private:
         struct State;

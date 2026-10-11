@@ -242,7 +242,14 @@ namespace RelayCore::render
                     .layout = gpu->layout
                 };
                 require_ui_vk(
-                    vkCreateGraphicsPipelines(device.handle(), {}, 1, &info, nullptr, &gpu->pipeline),
+                    vkCreateGraphicsPipelines(
+                        device.handle(),
+                        device.pipeline_cache(),
+                        1,
+                        &info,
+                        nullptr,
+                        &gpu->pipeline
+                    ),
                     "RmlUi pipeline"
                 );
             } catch (...)

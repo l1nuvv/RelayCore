@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -811,6 +812,7 @@ namespace
         const auto authoring = load_render_authoring_config(
             std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "render_authoring.toml"
         );
+        const auto start = std::chrono::steady_clock::now();
         VulkanMeshRenderer renderer{
             device,
             RELAYCORE_TEST_SPIRV_DIRECTORY,
@@ -819,8 +821,61 @@ namespace
             TextureEncoding::linear,
             RendererConfig{}
         };
+        const auto initialized = std::chrono::steady_clock::now();
+        renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+        const auto reloaded = std::chrono::steady_clock::now();
+        std::cout << "pipeline_creation_ms=" << std::chrono::duration<double, std::milli>(initialized - start).count()
+                  << "; reload_ms=" << std::chrono::duration<double, std::milli>(reloaded - initialized).count()
+                  << '\n';
         check_pipeline(renderer, captures, device);
         check_passes(renderer, captures);
+    }
+
+    void check_pipeline_cache(
+        const VulkanDevice& device,
+        const RelayCore::Window& window,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        RelayCore::test::ScopedTempDirectory temp;
+        const auto file = temp.path() / "pipelines.cache";
+        const auto shaders = temp.path() / "shaders";
+        std::filesystem::copy(RELAYCORE_TEST_SPIRV_DIRECTORY, shaders, std::filesystem::copy_options::recursive);
+        require(device.save_pipeline_cache(file, shaders), "Pipeline cache save failed");
+        std::ifstream input(file, std::ios::binary);
+        const std::vector<char> original{std::istreambuf_iterator<char>{input}, {}};
+        input.close();
+        require(original.size() > 56, "Pipeline cache contains no Vulkan payload");
+        const auto write = [&](const std::vector<char>& bytes) {
+            std::ofstream output(file, std::ios::binary | std::ios::trunc);
+            output.write(bytes.data(), bytes.size());
+            output.close();
+            require(!output.fail(), "Could not write pipeline cache fixture");
+        };
+        VulkanDevice warm{window};
+        require(warm.load_pipeline_cache(file, shaders), "Compatible pipeline cache rejected");
+        check_mesh_pipeline(warm, atlas, captures);
+        for (const size_t offset : {0u, 4u, 8u, 12u, 16u, 32u, 40u, 48u, 56u})
+        {
+            auto corrupted = original;
+            corrupted[offset] ^= 1;
+            write(corrupted);
+            require(!warm.load_pipeline_cache(file, shaders), "Incompatible/corrupt pipeline cache accepted");
+        }
+        write(std::vector<char>{original.begin(), original.begin() + 20});
+        require(!warm.load_pipeline_cache(file, shaders), "Truncated pipeline cache accepted");
+        write(original);
+        {
+            std::ofstream changed(shaders / "mesh.vert.spv", std::ios::binary | std::ios::app);
+            changed.put('x');
+        }
+        require(!warm.load_pipeline_cache(file, shaders), "Changed shader cache accepted");
+        std::filesystem::remove(file);
+        require(!warm.load_pipeline_cache(file, shaders), "Missing pipeline cache accepted");
+        // Rejected data leaves the live cache and working pipeline path usable.
+        check_mesh_pipeline(warm, atlas, captures);
+        std::cout << "pipeline_cache=passed (warm restart, schema/vendor/device/driver/UUID/shaders/corruption)\n";
     }
 
     void check_lighting(
@@ -3262,8 +3317,10 @@ int main(int argc, char** argv)
         else if (shotgun_only)
             check_shotgun_viewmodel(device, authoring, atlas, captures);
         else if (pipeline_only)
+        {
             check_mesh_pipeline(device, atlas, captures);
-        else if (ui_only)
+            check_pipeline_cache(device, vk_window, atlas, captures);
+        } else if (ui_only)
             check_ui(device, vk_window, authoring, atlas, captures);
         else if (resources_only || descriptors_only)
         {

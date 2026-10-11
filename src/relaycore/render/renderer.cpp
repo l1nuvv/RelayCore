@@ -61,6 +61,7 @@ namespace RelayCore
     struct Renderer::State {
         const Window* window = nullptr;
         std::unique_ptr<render::VulkanDevice> device;
+        std::filesystem::path pipeline_cache_file;
         std::unique_ptr<render::VulkanSwapchain> swapchain;
         std::shared_ptr<render::VulkanMeshRenderer> backend;
         // UI reload may replace backend after scene submission. Keep that frame alive through present.
@@ -90,6 +91,9 @@ namespace RelayCore
         state_->backend.reset();
         player_ui_.reset();
         imgui_overlay_.shutdown();
+        if (state_->device && !state_->pipeline_cache_file.empty()
+            && !state_->device->save_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan")))
+            log::warn("Could not persist Vulkan pipeline cache: {}", state_->pipeline_cache_file.string());
     }
 
     void Renderer::initialize(const Window& window)
@@ -98,6 +102,17 @@ namespace RelayCore
             return;
         state_->window = &window;
         state_->device = std::make_unique<render::VulkanDevice>(window);
+        if (auto* preferences = SDL_GetPrefPath("RelayCore", "RelayCore"))
+        {
+            state_->pipeline_cache_file = std::filesystem::path{preferences} / "vulkan-pipelines.cache";
+            SDL_free(preferences);
+            log::info(
+                "Vulkan pipeline cache: {}",
+                state_->device->load_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan"))
+                    ? "loaded"
+                    : "fresh (missing, incompatible or corrupt)"
+            );
+        }
         state_->swapchain = std::make_unique<render::VulkanSwapchain>(*state_->device, window, window.vsync_enabled());
         commit_live_content_reload(prepare_live_content_reload(config_, render::load_default_render_authoring_config())
         );

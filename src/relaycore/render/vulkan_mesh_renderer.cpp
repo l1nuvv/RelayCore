@@ -373,13 +373,14 @@ namespace RelayCore::render
 
         struct ToneMapping {
             VkDevice device;
+            VkPipelineCache cache;
             VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
             VkPipelineLayout layout = VK_NULL_HANDLE;
             VkDescriptorPool pool = VK_NULL_HANDLE;
             std::array<VkDescriptorSet, 2> sets{};
             VkSampler sampler = VK_NULL_HANDLE;
             VkPipeline pipeline = VK_NULL_HANDLE;
-            explicit ToneMapping(const VkDevice owner) : device(owner) {}
+            explicit ToneMapping(const VulkanDevice& owner) : device(owner.handle()), cache(owner.pipeline_cache()) {}
             ~ToneMapping() noexcept
             {
                 if (pipeline)
@@ -533,7 +534,7 @@ namespace RelayCore::render
                     .layout = layout
                 };
                 VkPipeline replacement = VK_NULL_HANDLE;
-                const auto result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &replacement);
+                const auto result = vkCreateGraphicsPipelines(device, cache, 1, &info, nullptr, &replacement);
                 if (result != VK_SUCCESS)
                 {
                     if (replacement)
@@ -1098,7 +1099,7 @@ namespace RelayCore::render
             }
             if (config.hdr_enabled)
             {
-                tone_mapping = std::make_unique<ToneMapping>(device.handle());
+                tone_mapping = std::make_unique<ToneMapping>(device);
                 tone_mapping->initialize();
             }
         }
@@ -1217,7 +1218,7 @@ namespace RelayCore::render
             };
             VkPipeline replacement = VK_NULL_HANDLE;
             const auto result =
-                vkCreateGraphicsPipelines(device.handle(), VK_NULL_HANDLE, 1, &info, nullptr, &replacement);
+                vkCreateGraphicsPipelines(device.handle(), device.pipeline_cache(), 1, &info, nullptr, &replacement);
             if (result != VK_SUCCESS)
             {
                 if (replacement)

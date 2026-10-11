@@ -6,7 +6,7 @@ VK14-00–04 have covered local technical evidence. Since the owner revision of 
 
 ## Execution reports
 
-[Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Material pooling](renderer/VK14-05a.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md).
+[Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Material pooling](renderer/VK14-05a.md) · [Pipelines and portability](renderer/VK14-05.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md).
 
 <a id="9-ordered-milestone-sequence-and-deliverables"></a>
 ## Milestones and acceptance
@@ -20,7 +20,7 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 | **VK14-02** | [Local technical gate](renderer/VK14-02.md) | SDR/HDR correctness | Isolated color-pipeline corrections, output-stage contracts and test captures | Existing SDR/HDR scene-image comparison, UI colors, readback, no unintended regressions; physical HDR separate |
 | **VK14-03** | [Local technical gate](renderer/VK14-03.md) | Completion/lifetime foundations + profiler data | Explicit GPU-resource last-use/deferred retirement; wait-zone instrumentation. [Implemented; local desktop gate completed during VK14-04](renderer/VK14-04.md#vk14-04-execution--2026-10-12) | Clean sync validation during reload, resize, resource churn, failed prepare and shutdown |
 | **VK14-04** | [Local technical gate](renderer/VK14-04.md) | Scene scheduling and upload fixes | Two scene slots and GPU timeline waits for resource consumption. [Local technical gate complete; measured benefit and tail limit](renderer/VK14-04.md#vk14-04-execution--2026-10-12) | Measured first-use/frame benefit; no lifetime regressions; rollback if not beneficial |
-| **VK14-05** | [05a local technical gate](renderer/VK14-05a.md); 05b–e `pending` | Descriptors/pipelines/portability | Shared allocator, pipeline cache, format candidates, surface-loss policy, VMA telemetry | Stable churn, tested cache invalidation, clear errors, validation-clean |
+| **VK14-05** | [05a local technical gate](renderer/VK14-05a.md); [05b local technical gate](renderer/VK14-05.md); 05c–e in progress | Descriptors/pipelines/portability | Shared allocator, pipeline cache, format candidates, surface-loss policy, VMA telemetry | Stable churn, tested cache invalidation, clear errors, validation-clean |
 | **VK14-06** | `pending` | Compute/pass inputs | Compute shader toolchain, depth/normals/motion/temporal history targets as needed, debug visualizers | Single correct compute consumer; known synchronization and history-reset behavior |
 | **VK14-07** | `pending` | Visual quality I | Bloom, GTAO/SSAO, optional volumetrics and SSR with probe fallback | Visible improvement on real G-019 scenes; effect-off parity and GPU budgets |
 | **VK14-08** | `pending` | Temporal and resolution | TAA, optional TAAU/spatial upscaler, dynamic resolution and evaluated FSR integration | Moving-enemy/viewmodel tests, camera cuts, ghosting/shimmer review, no UI blur, predictable quality/performance |
@@ -39,7 +39,7 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 
 ### Execution slices and dependency clarification
 
-The parent milestone IDs above group a program; they are not single implementation patches. Use these bounded child tasks and keep status/evidence here rather than duplicating them in the gameplay queue. VK14-05a was selected on 2026-10-12; further tasks remain pending until selected.
+The parent milestone IDs above group a program; they are not single implementation patches. Use these bounded child tasks and keep status/evidence here rather than duplicating them in the gameplay queue. The owner selected all remaining VK14-05 tasks on 2026-10-12; execute and verify them in bounded slices.
 
 | Parent | Separate implementation tasks |
 |---|---|

@@ -7,15 +7,73 @@
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
 #include <algorithm>
+#include <array>
 #include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace RelayCore::render
 {
     namespace
     {
+        constexpr uint32_t cache_schema = 1;
+        constexpr size_t max_cache_bytes = 64 * 1024 * 1024;
+        struct CacheHeader {
+            uint32_t schema = cache_schema;
+            uint32_t vendor = 0, device = 0, driver = 0;
+            uint8_t uuid[VK_UUID_SIZE]{};
+            uint64_t shaders = 0, bytes = 0, checksum = 0;
+        };
+        static_assert(sizeof(CacheHeader) == 56);
+
+        auto hash_bytes(const std::span<const char> bytes, uint64_t hash = 14695981039346656037ULL) -> uint64_t
+        {
+            for (const auto byte : bytes)
+                hash = (hash ^ static_cast<unsigned char>(byte)) * 1099511628211ULL;
+            return hash;
+        }
+
+        auto shader_hash(const std::filesystem::path& directory) -> uint64_t
+        {
+            std::vector<std::filesystem::path> paths;
+            for (const auto& entry : std::filesystem::directory_iterator(directory))
+                if (entry.is_regular_file() && entry.path().extension() == ".spv")
+                    paths.push_back(entry.path());
+            std::sort(paths.begin(), paths.end());
+            if (paths.empty())
+                throw std::runtime_error("Pipeline cache shader directory contains no SPIR-V");
+            uint64_t hash = 14695981039346656037ULL;
+            for (const auto& path : paths)
+            {
+                hash = hash_bytes(path.filename().string(), hash);
+                std::ifstream stream(path, std::ios::binary);
+                std::array<char, 4096> bytes{};
+                while (stream.read(bytes.data(), bytes.size()) || stream.gcount())
+                    hash = hash_bytes(std::span{bytes.data(), static_cast<size_t>(stream.gcount())}, hash);
+                if (!stream.eof())
+                    throw std::runtime_error("Cannot read pipeline cache shader: " + path.string());
+            }
+            return hash;
+        }
+
+        auto cache_header(const VkPhysicalDevice physical, const std::filesystem::path& shaders) -> CacheHeader
+        {
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(physical, &properties);
+            CacheHeader header{};
+            header.vendor = properties.vendorID;
+            header.device = properties.deviceID;
+            header.driver = properties.driverVersion;
+            std::memcpy(header.uuid, properties.pipelineCacheUUID, VK_UUID_SIZE);
+            header.shaders = shader_hash(shaders);
+            return header;
+        }
+
         template<typename T>
         auto require_bootstrap(vkb::Result<T> result, const std::string_view operation) -> T
         {
@@ -55,6 +113,7 @@ namespace RelayCore::render
         VkQueue graphics_queue = VK_NULL_HANDLE;
         VkQueue present_queue = VK_NULL_HANDLE;
         VmaAllocator allocator = nullptr;
+        VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
         VulkanDeviceCapabilities capabilities{};
 
         ~State() noexcept
@@ -67,6 +126,8 @@ namespace RelayCore::render
             }
             if (allocator != nullptr)
                 vmaDestroyAllocator(allocator);
+            if (pipeline_cache != VK_NULL_HANDLE)
+                vkDestroyPipelineCache(device.device, pipeline_cache, nullptr);
             if (device.device != VK_NULL_HANDLE)
                 vkb::destroy_device(device);
             if (surface != VK_NULL_HANDLE)
@@ -164,6 +225,14 @@ namespace RelayCore::render
         state_->graphics_queue = graphics.first;
         state_->present_queue = present.first;
 
+        const VkPipelineCacheCreateInfo cache_info{.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        const auto cache_result =
+            vkCreatePipelineCache(state_->device.device, &cache_info, nullptr, &state_->pipeline_cache);
+        if (cache_result != VK_SUCCESS)
+            throw std::runtime_error(
+                "Failed to create Vulkan pipeline cache: VkResult " + std::to_string(cache_result)
+            );
+
         const VmaVulkanFunctions functions{
             .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
             .vkGetDeviceProcAddr = state_->device.fp_vkGetDeviceProcAddr,
@@ -258,5 +327,95 @@ namespace RelayCore::render
     auto VulkanDevice::allocator() const noexcept -> VmaAllocator
     {
         return state_->allocator;
+    }
+
+    auto VulkanDevice::pipeline_cache() const noexcept -> VkPipelineCache
+    {
+        return state_->pipeline_cache;
+    }
+
+    auto
+    VulkanDevice::load_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const
+        -> bool
+    {
+        try
+        {
+            if (!std::filesystem::exists(file))
+                return false;
+            const auto expected = cache_header(physical_device(), shaders);
+            std::ifstream stream(file, std::ios::binary | std::ios::ate);
+            const auto size = stream.tellg();
+            if (!stream || size < static_cast<std::streamoff>(sizeof(CacheHeader))
+                || size > static_cast<std::streamoff>(max_cache_bytes))
+                return false;
+            CacheHeader header{};
+            stream.seekg(0);
+            stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+            if (!stream || std::memcmp(&header, &expected, offsetof(CacheHeader, bytes)) != 0
+                || header.bytes != static_cast<size_t>(size) - sizeof(header)
+                || header.bytes < sizeof(VkPipelineCacheHeaderVersionOne))
+                return false;
+            std::vector<char> bytes(static_cast<size_t>(header.bytes));
+            stream.read(bytes.data(), bytes.size());
+            if (!stream || hash_bytes(bytes) != header.checksum)
+                return false;
+            VkPipelineCacheHeaderVersionOne vk_header{};
+            std::memcpy(&vk_header, bytes.data(), sizeof(vk_header));
+            if (vk_header.headerSize != sizeof(vk_header)
+                || vk_header.headerVersion != VK_PIPELINE_CACHE_HEADER_VERSION_ONE
+                || vk_header.vendorID != header.vendor || vk_header.deviceID != header.device
+                || std::memcmp(vk_header.pipelineCacheUUID, header.uuid, VK_UUID_SIZE) != 0)
+                return false;
+            const VkPipelineCacheCreateInfo info{
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+                .initialDataSize = bytes.size(),
+                .pInitialData = bytes.data()
+            };
+            VkPipelineCache loaded = VK_NULL_HANDLE;
+            const auto result = vkCreatePipelineCache(handle(), &info, nullptr, &loaded);
+            if (result != VK_SUCCESS)
+                return false;
+            const auto merged = vkMergePipelineCaches(handle(), pipeline_cache(), 1, &loaded);
+            vkDestroyPipelineCache(handle(), loaded, nullptr);
+            return merged == VK_SUCCESS;
+        } catch (const std::filesystem::filesystem_error&)
+        {
+            return false;
+        } catch (const std::runtime_error&)
+        {
+            return false;
+        }
+    }
+
+    auto
+    VulkanDevice::save_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const
+        -> bool
+    {
+        try
+        {
+            auto header = cache_header(physical_device(), shaders);
+            size_t size = 0;
+            if (vkGetPipelineCacheData(handle(), pipeline_cache(), &size, nullptr) != VK_SUCCESS
+                || size > max_cache_bytes - sizeof(header))
+                return false;
+            std::vector<char> bytes(size);
+            if (vkGetPipelineCacheData(handle(), pipeline_cache(), &size, bytes.data()) != VK_SUCCESS)
+                return false;
+            bytes.resize(size);
+            header.bytes = size;
+            header.checksum = hash_bytes(bytes);
+            std::filesystem::create_directories(file.parent_path());
+            std::ofstream stream(file, std::ios::binary | std::ios::trunc);
+            stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+            stream.write(bytes.data(), bytes.size());
+            stream.close();
+            return !stream.fail();
+        } catch (const std::filesystem::filesystem_error&)
+        {
+            return false;
+        } catch (const std::runtime_error&)
+        {
+            return false;
+        }
     }
 } // namespace RelayCore::render

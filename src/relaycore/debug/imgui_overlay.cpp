@@ -57,6 +57,7 @@ namespace RelayCore::debug
             info.Instance = device.instance();
             info.PhysicalDevice = device.physical_device();
             info.Device = device.handle();
+            info.PipelineCache = device.pipeline_cache();
             info.QueueFamily = device.capabilities().graphics_queue_family;
             info.Queue = device.graphics_queue();
             info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
