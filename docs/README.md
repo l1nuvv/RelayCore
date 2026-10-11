@@ -41,6 +41,8 @@
 | [Assessment 2026-10-11](ASSESSMENT_SCOPE_2026-10-11.md), [handoff 2026-10-11](NEXT_STEPS_2026-10-11.md) | Границы исходного статического обзора и ссылки на продолжение |
 | [Graphics baselines](../tests/graphics-baselines/README.md), [RC-022 baseline](color_pipeline_baseline.md) | Authority отдельных samples и численные цветовые проверки |
 
+Пути в командах и code blocks считаются от корня репозитория, если явно не указана другая working directory.
+
 Source/export records рядом с ресурсами: [модели](../assets/models/README.md), [текстуры](../assets/textures/README.md), [графика](../content/graphics/README.md), [звук](../assets/audio/player/README.md), [third-party sources](../content/third_party/). Их provenance и adaptation evidence сохраняются независимо от task status.
 
 `Doxyfile` генерирует API-справочник из README/`src`; `docs/doxygen` — generated output, а не ещё один источник контрактов. Repo-local skills находятся в `.agents/skills`; [Blender sources](../.agents/skills/BLENDER_SOURCES.md) сохраняют их upstream pins.

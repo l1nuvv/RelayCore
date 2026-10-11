@@ -5,7 +5,7 @@ description: Create or refine RelayCore models with Blender and Python, includin
 
 # RelayCore Blender modeling
 
-Paths are relative to the repository root. Use `relaycore-art-direction` for visual decisions and `relaycore-assets` for source/export/native delivery. Read `docs/ART_DIRECTION.md` and the static-model section of `docs/DEVELOPMENT.md` for the requested asset. Their project constraints override the generic workflows below.
+Paths are relative to the repository root. Use `relaycore-art-direction` for visual decisions and `relaycore-assets` for source/export/native delivery. Read `docs/ART_DIRECTION.md` and the relevant section of `docs/MODEL_ASSETS.md` for the requested asset. Their project constraints override the generic workflows below.
 
 For external textures, HDRIs and models, follow `docs/ASSET_SOURCES.md`: it maps each asset need to suitable sites and records the private-project workflow. Keep search/adaptation within the requested asset task.
 

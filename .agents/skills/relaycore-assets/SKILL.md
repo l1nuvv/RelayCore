@@ -11,7 +11,7 @@ For external texture/model discovery and source selection, follow `docs/ASSET_SO
 
 ## Find the owning pipeline
 
-- Native models: read the static-model section of `docs/DEVELOPMENT.md`, current importer diagnostics and `cmake/RelayCoreModelAssets.cmake`. The importer supports a deliberate subset of glTF; a valid GLB is not necessarily a supported RelayCore model.
+- Native models: read `docs/MODEL_ASSETS.md`, current importer diagnostics and `cmake/RelayCoreModelAssets.cmake`. The importer supports a deliberate subset of glTF; a valid GLB is not necessarily a supported RelayCore model.
 - Collision: read `docs/COLLISION_ASSETS.md` and `cmake/RelayCoreCollisionAssets.cmake`. Collision is authored separately and explicitly paired with a model, not inferred from render triangles.
 - Irradiance: inspect `cmake/RelayCoreIrradianceAssets.cmake` and the affected bake inputs. Use current fingerprint/staleness checks before reusing products; unchanged-looking files or old reports are insufficient evidence.
 - Other assets: inspect the adjacent asset README, generator and runtime consumer for dimensions, units, channels, color space, alpha, tiling and naming. Run only the generator needed by the request; some exporters regenerate multiple assets.

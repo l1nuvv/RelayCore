@@ -81,62 +81,62 @@ P0 — crash/UB/broken build/corrupt state; P1 — приёмка slice; P2 — 
 
 Статусы отдельных slices не изменены общей приёмкой G-019. Результаты и ограничения каждой строки — в [visual results](art/visual-slice-results.md); для VIS-43–46 есть [общая карточка UI](tickets/VIS-43-46.md).
 
-| ID | Статус | Результат / evidence |
-| --- | --- | --- |
-| IMG-01 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-01) |
-| IMG-02 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-02) |
-| IMG-03 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-03) |
-| IMG-04 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-04) |
-| IMG-05 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-05) |
-| IMG-06 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-06) |
-| VIS-03 | `done` | [Детали](art/visual-slice-results.md#vis-03) |
-| VIS-04 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-04) |
-| VIS-05 | `done` | [Детали](art/visual-slice-results.md#vis-05) |
-| VIS-06 | `done` | [Детали](art/visual-slice-results.md#vis-06) |
-| VIS-07 | `done` | [Детали](art/visual-slice-results.md#vis-07) |
-| VIS-08 | `done` | [Детали](art/visual-slice-results.md#vis-08) |
-| VIS-09 | `done` | [Детали](art/visual-slice-results.md#vis-09) |
-| VIS-10 | `done` | [Детали](art/visual-slice-results.md#vis-10) |
-| VIS-11 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-11) |
-| VIS-12 | `done` | [Детали](art/visual-slice-results.md#vis-12) |
-| VIS-13 | `done` | [Детали](art/visual-slice-results.md#vis-13) |
-| VIS-14 | `done` | [Детали](art/visual-slice-results.md#vis-14) |
-| VIS-15 | `done` | [Детали](art/visual-slice-results.md#vis-15) |
-| VIS-16 | `done` | [Детали](art/visual-slice-results.md#vis-16) |
-| VIS-17 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-17) |
-| VIS-18 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-18) |
-| VIS-19 | `done` | [Детали](art/visual-slice-results.md#vis-19) |
-| VIS-20 | `done` | [Детали](art/visual-slice-results.md#vis-20) |
-| VIS-21 | `done` | [Детали](art/visual-slice-results.md#vis-21) |
-| VIS-22 | `done` | [Детали](art/visual-slice-results.md#vis-22) |
-| VIS-23 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-23) |
-| VIS-24 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-24) |
-| VIS-25 | `done` | [Детали](art/visual-slice-results.md#vis-25) |
-| VIS-26 | `done` | [Детали](art/visual-slice-results.md#vis-26) |
-| VIS-27 | `done` | [Детали](art/visual-slice-results.md#vis-27) |
-| VIS-28 | `done` | [Детали](art/visual-slice-results.md#vis-28) |
-| VIS-29 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-29) |
-| VIS-30 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-30) |
-| VIS-31 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-31) |
-| VIS-32 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-32) |
-| VIS-33 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-33) |
-| VIS-34 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-34) |
-| VIS-35 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-35) |
-| VIS-36 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-36) |
-| VIS-37 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-37) |
-| VIS-38 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-38) |
-| VIS-39 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-39) |
-| VIS-40 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-40) |
-| VIS-41 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-41) |
-| VIS-42 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-42) |
-| VIS-43 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-43) |
-| VIS-44 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-44) |
-| VIS-45 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-45) |
-| VIS-46 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-46) |
-| VIS-47 | `done` | [Детали](art/visual-slice-results.md#vis-47) |
-| VIS-48 | `done` | [Детали](art/visual-slice-results.md#vis-48) |
-| VIS-49 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-49) |
-| VIS-50 | `done` | [Детали](art/visual-slice-results.md#vis-50) |
+| ID | Задача | Статус | Evidence |
+| --- | --- | --- | --- |
+| IMG-01 | Metallic/roughness maps | `awaiting_playtest` | [Отчёт](art/img01-03-materials-reflections-ao.md) |
+| IMG-02 | Static reflection probes | `awaiting_playtest` | [Отчёт](art/img01-03-materials-reflections-ao.md) |
+| IMG-03 | Material AO | `awaiting_playtest` | [Отчёт](art/img01-03-materials-reflections-ao.md) |
+| IMG-04 | Свет containment hall | `awaiting_playtest` | [Отчёт](art/img04-06-lighting-stability-emission.md) |
+| IMG-05 | Стабильность mapped-normal highlights | `awaiting_playtest` | [Отчёт](art/img04-06-lighting-stability-emission.md) |
+| IMG-06 | Native emissive maps | `awaiting_playtest` | [Отчёт](art/img04-06-lighting-stability-emission.md) |
+| VIS-03 | Выход pressure_transfer | `done` | [Отчёт](art/pressure-transfer-visual-slice.md) |
+| VIS-04 | Стыки и обратные виды маршрута | `awaiting_playtest` | [Отчёт](art/pressure-transfer-visual-slice.md) |
+| VIS-05 | Вход power_restoration | `done` | [Отчёт](art/power-restoration-visual-slice.md) |
+| VIS-06 | Служебные крылья power | `done` | [Отчёт](art/power-restoration-visual-slice.md) |
+| VIS-07 | Насосная power | `done` | [Отчёт](art/power-restoration-visual-slice.md) |
+| VIS-08 | Bench relay | `done` | [Отчёт](art/bench-cooling-visual-slice.md) |
+| VIS-09 | Cooling loop | `done` | [Отчёт](art/bench-cooling-visual-slice.md) |
+| VIS-10 | Cooling signage | `done` | [Отчёт](art/bench-cooling-visual-slice.md#vis-10--cooling-signage-2026-10-08) |
+| VIS-11 | Foundation intake | `awaiting_playtest` | [Отчёт](art/foundation-intake-visual-slice.md) |
+| VIS-12 | Foundation pump | `done` | [Отчёт](art/foundation-pump-visual-slice.md) |
+| VIS-13 | Occult lab B-17 | `done` | [Отчёт](art/b17-visual-slice.md) |
+| VIS-14 | Отделка B-17 и входного коридора | `done` | [Отчёт](art/vis14-16-facility-finish.md) |
+| VIS-15 | Соединения труб и вентиляции | `done` | [Отчёт](art/vis14-16-facility-finish.md) |
+| VIS-16 | Детали шкафов и насосных корпусов | `done` | [Отчёт](art/vis14-16-facility-finish.md) |
+| VIS-17 | Двери | `awaiting_playtest` | [Отчёт](art/vis17-19-interactive-hardware.md) |
+| VIS-18 | Интерактивное оборудование | `awaiting_playtest` | [Отчёт](art/vis17-19-interactive-hardware.md) |
+| VIS-19 | Service key | `done` | [Отчёт](art/vis17-19-interactive-hardware.md) |
+| VIS-20 | Материалы архитектуры | `done` | [Отчёт](art/vis20-22-material-pass.md) |
+| VIS-21 | Масштаб UV и повтор текстур | `done` | [Отчёт](art/vis20-22-material-pass.md) |
+| VIS-22 | Normal maps и material factors | `done` | [Отчёт](art/vis20-22-material-pass.md) |
+| VIS-23 | Причинный износ | `awaiting_playtest` | [Отчёт](art/vis23-causal-wear.md) |
+| VIS-24 | Особые материалы | `awaiting_playtest` | [Отчёт](art/vis24-special-materials.md) |
+| VIS-25 | Sector signage | `done` | [Отчёт](art/vis25-sector-signage.md) |
+| VIS-26 | Route signage | `done` | [Отчёт](art/vis26-route-signage.md) |
+| VIS-27 | Экраны и схемы | `done` | [Отчёт](art/vis27-28-instruments-language.md) |
+| VIS-28 | Язык обозначений | `done` | [Отчёт](art/vis27-28-instruments-language.md) |
+| VIS-29 | Свет помещений | `awaiting_playtest` | [Отчёт](art/vis29-room-lighting.md) |
+| VIS-30 | Корпуса и состояния светильников | `awaiting_playtest` | [Отчёт](art/vis30-light-fixtures.md) |
+| VIS-31 | Контакт и тени | `awaiting_playtest` | [Отчёт](art/vis31-33-contact-atmosphere-focus.md) |
+| VIS-32 | Атмосфера маршрута | `awaiting_playtest` | [Отчёт](art/vis31-33-contact-atmosphere-focus.md) |
+| VIS-33 | Визуальный фокус | `awaiting_playtest` | [Отчёт](art/vis31-33-contact-atmosphere-focus.md) |
+| VIS-34 | Служебный пистолет | `awaiting_playtest` | [Отчёт](art/vis34-service-pistol.md) |
+| VIS-35 | Дробовик | `awaiting_playtest` | [Отчёт](art/vis35-shotgun.md) |
+| VIS-36 | Pickups | `awaiting_playtest` | [Отчёт](art/vis36-38-pickups-security-scientist.md) |
+| VIS-37 | Противники | `awaiting_playtest` | [Отчёт](art/vis36-38-pickups-security-scientist.md) |
+| VIS-38 | Учёный | `awaiting_playtest` | [Отчёт](art/vis36-38-pickups-security-scientist.md) |
+| VIS-39 | Тело игрока | `awaiting_playtest` | [Отчёт](art/vis39-player-body.md) |
+| VIS-40 | Боевые эффекты | `awaiting_playtest` | [Отчёт](art/vis40-41-combat-environment-effects.md) |
+| VIS-41 | Эффекты окружения | `awaiting_playtest` | [Отчёт](art/vis40-41-combat-environment-effects.md) |
+| VIS-42 | Состояния оборудования | `awaiting_playtest` | [Отчёт](art/vis42-equipment-states.md) |
+| VIS-43 | Player HUD / RmlUi integration | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
+| VIS-44 | Меню и настройки | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
+| VIS-45 | Игровые экраны | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
+| VIS-46 | Разделение игры и developer UI | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
+| VIS-47 | Asset chain | `done` | [Отчёт](VISUAL_REVAMP_AUDIT.md#vis-47--vis-50--проверка-pipeline-и-документации-2026-10-09) |
+| VIS-48 | Стоимость kit | `done` | [Отчёт](art/vis48-49-cost-and-review.md#vis-48-one-current-measurement) |
+| VIS-49 | Graphics regression / art review | `awaiting_playtest` | [Отчёт](art/vis48-49-cost-and-review.md) |
+| VIS-50 | Pipeline documentation | `done` | [Отчёт](VISUAL_REVAMP_AUDIT.md#vis-47--vis-50--проверка-pipeline-и-документации-2026-10-09) |
 
 ## Проверки и обновление evidence
 
