@@ -1,13 +1,13 @@
 # RelayCore — Vulkan 1.4 Migration and Advanced Renderer Modernization Plan
 
-**Status:** VK14-00/01/02/03 are committed separately. The 2026-10-12 prerequisite recheck passes covered local gates on both effective API profiles; VK14-04 is in progress. Native 1.3-only hardware and the historical presentation discrepancy retain their recorded limits.
+**Status:** VK14-00/01/02/03 are committed separately; VK14-04's four execution points are complete. Covered local technical gates pass on both effective API profiles, with measured scheduling benefit and unchanged image parity. Native 1.3-only/other-GPU and human acceptance remain separate; the historical presentation discrepancy is not explained by the current passing checks.
 **Prepared:** 2026-10-11
 **Repository:** [`l1nuvv/RelayCore`](https://github.com/l1nuvv/RelayCore), branch `dev`
 **Verified source baseline:** `c9b4dcb619def034f81eca0cca5604bb5e63709c` (2026-10-10 21:44:15 UTC), checked through the connected GitHub repository.
 **Audience:** project owner and coding agents (including Codex).
 **Scope:** upgrade the preferred Vulkan runtime to **1.4 while retaining a fully usable Vulkan 1.3 baseline**; improve Vulkan correctness, GPU scheduling/resource management, the renderer, and the asset pipeline; implement the advanced rendering features listed here in controlled, verifiable slices.
 
-> **Important:** Execution evidence for VK14-00/01/02 is recorded below; later features remain planned. Existing project plans, current source, tests and runtime traces take priority over historical assumptions. The project owner's new Vulkan 1.4/1.3 modernization objective expands the previously deferred capability scope; it does not cancel the accepted gameplay/art direction or automatically authorize a single giant implementation pass.
+> **Important:** Execution evidence for VK14-00 through VK14-04 is recorded below; later features remain planned. Existing project plans, current source, tests and runtime traces take priority over historical assumptions. The project owner's new Vulkan 1.4/1.3 modernization objective expands the previously deferred capability scope; it does not cancel the accepted gameplay/art direction or automatically authorize a single giant implementation pass.
 
 ---
 
@@ -431,6 +431,70 @@ context without losing its draw or prematurely destroying GPU objects. Existing
 HUD checks include four resolutions, Cyrillic, hit/hurt/death and ImGui coexistence.
 The common test queue gate is shared by the upload and mesh fixtures.
 
+**Point 4 complete — retain scheduling:** the existing Debug targets and optimized
+`cmake --build --preset demo-dev --target relaycore_containment_profile relaycore_demo -j 2`
+build successfully. The final selection in `build/vk14-04/run-final.ps1` passes
+**17/17 on preferred 1.4 and 17/17 on forced 1.3**, zero failures/skips. It covers
+uploads, meshes/resource churn, HUD/player UI, SDR/HDR/MSAA/reflections/shadows,
+G-019, lifecycle and strict presentation/recreation. Core/synchronization validation
+and pixel/lifetime assertions remain enabled. Reports are
+`build/msvc-debug/vk14-04-{preferred,force13}.xml`; each profile matches all **134**
+original G-019 BMP SHA-256 hashes, with zero differences. This completes the
+previously unavailable VK14-03 local desktop gate without resolving its historical
+white-pixel observation.
+
+The single after workload and Tracy capture exit 0. Before/after executable hashes,
+source revisions and **189 identical optimized staged assets** are recorded in
+`build/vk14-04/{before,after}/provenance.json`. Both runs use the point 1 settings
+and fixture boundaries, with loading, readback, the initial 0.5 seconds and resize
+separated from settled fixed-state results. The source revisions are `03a38e9`
+before and `166369f` after; full intervals are in `runtime-final.tracy`, per-stage
+statistics in `analysis.json`, and frame-start cadence in `comparison.json`.
+
+CPU frame times in milliseconds (p50 / p95 / p99):
+
+| Pass / state | Before | After |
+|---|---|---|
+| 0 observation | 5.438 / 6.224 / 6.518 | 3.301 / 3.910 / 4.296 |
+| 0 workshop | 4.402 / 5.035 / 5.548 | 2.776 / 6.020 / 10.505 |
+| 0 archive | 4.265 / 4.845 / 5.260 | 2.538 / 3.034 / 3.325 |
+| 0 return | 5.034 / 5.767 / 6.232 | 3.356 / 3.924 / 4.248 |
+| 0 retry | 4.692 / 5.730 / 7.357 | 2.881 / 3.657 / 4.033 |
+| 0 pause | 5.974 / 6.639 / 7.044 | 5.024 / 6.016 / 6.668 |
+| 1 observation | 5.446 / 6.185 / 6.656 | 3.265 / 3.856 / 4.224 |
+| 1 workshop | 4.369 / 5.003 / 6.267 | 2.473 / 2.928 / 3.242 |
+| 1 archive | 4.420 / 5.292 / 6.004 | 2.293 / 2.828 / 3.193 |
+| 1 return | 5.000 / 5.794 / 6.338 | 3.063 / 3.549 / 3.803 |
+| 1 retry | 4.765 / 6.455 / 7.691 | 2.732 / 3.430 / 3.955 |
+| 1 pause | 6.762 / 7.863 / 8.506 | 5.293 / 6.139 / 6.742 |
+| 0 resize | 4.978 / 5.934 / 6.544 | 2.422 / 3.631 / 3.879 |
+| 1 resize | 5.335 / 6.331 / 8.460 | 2.812 / 3.951 / 5.891 |
+
+The 12 fixed-state windows contain 8,260 before and 13,282 after frame samples.
+Every state's p50 decreases **15.9–48.1%**, and frame-start p50 agrees within
+0.015 ms with the CPU measurement, supporting improved throughput rather than
+only shorter submission spans. The first-pass workshop tail regresses (p95 +19.6%,
+p99 +89.3%); its second pass improves. Eleven of twelve fixed-state p99 values
+improve. This single paired capture does not establish universal tail stability or
+input/display latency. The initial load/first frame are 3740.178/361.126 ms before
+and 3402.385/154.965 ms after; uncontrolled caches prevent attributing those cold
+differences solely to this patch. First-use results across later stages are mixed.
+
+Unconditional source-image host waits fall from 8,260 to zero in the fixed windows.
+Slot-reuse scene-fence CPU fractions range 15.6–55.3% after versus 51.8–60.2% before;
+remaining slot/WSI waits are intentional backpressure. GPU scene p99 is 2.894–4.358
+ms after, so no reduced GPU-work claim is made. Two targets/UBO/descriptor/profiler
+sets increase resident ownership; resource-preparation tests verify settled VMA
+allocations, without claiming an exact runtime memory budget.
+
+All seven after captures were visually inspected together, including world/HUD,
+death/retry, pause and resized output (`after/visual-review.png`). Technical image
+parity is established by the deterministic 134-image gate; subjective art/HDR,
+native 1.3-only hardware, other GPUs and queue topologies remain unverified.
+Evidence supports retaining points 2/3; rollback is not selected. Point commits:
+`bf4e45b` (baseline), `9391903` (uploads), `166369f` (slots/UI/copy), followed by
+the point 4 verification record. Later VK14 milestones are outside this task.
+
 ## 1. Executive decision
 
 1. **Minimum runtime:** Vulkan 1.3, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.
@@ -736,8 +800,8 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 | **VK14-00** | Source, hardware and performance baseline | Inventory current Vulkan code/SDK versions, selected GPUs and tests; screenshots/Tracy baseline; initial version/capability matrix | Exact commit, build commands, data and bottlenecks documented; no speculative performance claims |
 | **VK14-01** | Preferred Vulkan 1.4 + guaranteed 1.3 fallback | Version negotiation, feature chain/capability report, force-1.3 test mode, tests and docs | Launch/render/resize/UI/content on both effective profiles; 1.3 device never invokes 1.4-only entry points |
 | **VK14-02** | SDR/HDR correctness | Isolated color-pipeline corrections, output-stage contracts and test captures | Existing SDR/HDR scene-image comparison, UI colors, readback, no unintended regressions; physical HDR separate |
-| **VK14-03** | Completion/lifetime foundations + profiler data | Explicit GPU-resource last-use/deferred retirement; wait-zone instrumentation. [Implemented; desktop acceptance open](#vk14-03-execution--2026-10-11) | Clean sync validation during reload, resize, resource churn, failed prepare and shutdown |
-| **VK14-04** | Scene scheduling and upload fixes | Conditional 2 scene frames-in-flight and GPU timeline waits for resource consumption | Measured first-use/frame benefit; no lifetime regressions; rollback if not beneficial |
+| **VK14-03** | Completion/lifetime foundations + profiler data | Explicit GPU-resource last-use/deferred retirement; wait-zone instrumentation. [Implemented; local desktop gate completed during VK14-04](#vk14-04-execution--2026-10-12) | Clean sync validation during reload, resize, resource churn, failed prepare and shutdown |
+| **VK14-04** | Scene scheduling and upload fixes | Two scene slots and GPU timeline waits for resource consumption. [Local technical gate complete; measured benefit and tail limit](#vk14-04-execution--2026-10-12) | Measured first-use/frame benefit; no lifetime regressions; rollback if not beneficial |
 | **VK14-05** | Descriptors/pipelines/portability | Shared allocator, pipeline cache, format candidates, surface-loss policy, VMA telemetry | Stable churn, tested cache invalidation, clear errors, validation-clean |
 | **VK14-06** | Compute/pass inputs | Compute shader toolchain, depth/normals/motion/temporal history targets as needed, debug visualizers | Single correct compute consumer; known synchronization and history-reset behavior |
 | **VK14-07** | Visual quality I | Bloom, GTAO/SSAO, optional volumetrics and SSR with probe fallback | Visible improvement on real G-019 scenes; effect-off parity and GPU budgets |
