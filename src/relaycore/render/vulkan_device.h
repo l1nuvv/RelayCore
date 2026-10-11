@@ -45,6 +45,8 @@ namespace RelayCore::render
         [[nodiscard]] auto physical_device() const noexcept -> VkPhysicalDevice;
         [[nodiscard]] auto handle() const noexcept -> VkDevice;
         [[nodiscard]] auto surface() const noexcept -> VkSurfaceKHR;
+        // Only after the swapchain owner drains presentation and destroys every old swapchain.
+        void recreate_surface(const Window& window) const;
         [[nodiscard]] auto graphics_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto present_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto allocator() const noexcept -> VmaAllocator;

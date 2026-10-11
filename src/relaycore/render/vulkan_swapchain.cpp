@@ -70,6 +70,7 @@ namespace RelayCore::render
         const Window& window;
         bool vsync;
         VkAllocationCallbacks* host_allocator;
+        VulkanPresentationCalls calls;
         std::unique_ptr<SwapchainImages> active;
         std::array<Frame, 2> frames{};
         size_t frame_index = 0;
@@ -77,6 +78,8 @@ namespace RelayCore::render
         bool needs_recreation = true;
         bool stopped = false;
         bool reset_frames = false;
+        bool surface_lost = false;
+        bool device_lost = false;
         PFN_vkCmdBeginDebugUtilsLabelEXT begin_label = nullptr;
         PFN_vkCmdEndDebugUtilsLabelEXT end_label = nullptr;
 
@@ -84,17 +87,31 @@ namespace RelayCore::render
             const VulkanDevice& device_in,
             const Window& window_in,
             const bool vsync_in,
-            VkAllocationCallbacks* allocator_in
+            VkAllocationCallbacks* allocator_in,
+            const VulkanPresentationCalls calls_in
         ) :
             device(device_in), profiler(device_in, "RelayCore Vulkan presentation"), window(window_in), vsync(vsync_in),
-            host_allocator(allocator_in)
+            host_allocator(allocator_in), calls(calls_in)
         {}
+
+        void require_result(const VkResult result, const char* operation)
+        {
+            if (result == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost = true;
+                stopped = true;
+                throw std::runtime_error(
+                    std::string(operation) + ": VK_ERROR_DEVICE_LOST; rendering stopped, restart the application"
+                );
+            }
+            require_vk(result, operation);
+        }
 
         void wait_fence(const VkFence fence, bool& pending)
         {
             if (!pending)
                 return;
-            require_vk(
+            require_result(
                 vkWaitForFences(device.handle(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
                 "Failed to wait for Vulkan frame"
             );
@@ -152,7 +169,7 @@ namespace RelayCore::render
                     .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                     .queueFamilyIndex = device.capabilities().graphics_queue_family,
                 };
-                require_vk(
+                require_result(
                     vkCreateCommandPool(device.handle(), &pool_info, nullptr, &frame.pool),
                     "Failed to create Vulkan frame command pool"
                 );
@@ -162,22 +179,22 @@ namespace RelayCore::render
                     .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                     .commandBufferCount = 1,
                 };
-                require_vk(
+                require_result(
                     vkAllocateCommandBuffers(device.handle(), &commands_info, &frame.commands),
                     "Failed to allocate Vulkan frame commands"
                 );
                 const VkSemaphoreCreateInfo semaphore_info{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-                require_vk(
+                require_result(
                     vkCreateSemaphore(device.handle(), &semaphore_info, nullptr, &frame.acquired),
                     "Failed to create Vulkan acquire semaphore"
                 );
-                require_vk(
+                require_result(
                     vkCreateSemaphore(device.handle(), &semaphore_info, nullptr, &frame.rendered),
                     "Failed to create Vulkan render semaphore"
                 );
                 const VkFenceCreateInfo fence_info{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
                 for (auto* fence : {&frame.acquire_fence, &frame.render_fence, &frame.present_fence})
-                    require_vk(
+                    require_result(
                         vkCreateFence(device.handle(), &fence_info, nullptr, fence),
                         "Failed to create Vulkan frame fence"
                     );
@@ -200,6 +217,8 @@ namespace RelayCore::render
         void recreate()
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan swapchain recreation");
+            if (device_lost)
+                throw std::runtime_error("VK_ERROR_DEVICE_LOST; presentation stopped, restart the application");
             if (!can_present(window.presentation_state()))
             {
                 needs_recreation = true;
@@ -207,6 +226,12 @@ namespace RelayCore::render
             }
             stopped = true;
             drain();
+            if (surface_lost)
+            {
+                active.reset();
+                device.recreate_surface(window);
+                surface_lost = false;
+            }
             if (reset_frames)
             {
                 destroy_frames();
@@ -224,7 +249,7 @@ namespace RelayCore::render
                 device.capabilities().present_queue_family
             };
             // Even failed creation retires oldSwapchain. Dropping this owner cannot roll that back.
-            replacement->swapchain = require_swapchain_result(
+            auto built =
                 builder.set_old_swapchain(previous ? previous->swapchain.swapchain : VK_NULL_HANDLE)
                     .set_desired_extent(static_cast<uint32_t>(pixels.width), static_cast<uint32_t>(pixels.height))
                     .set_desired_format({VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
@@ -234,7 +259,18 @@ namespace RelayCore::render
                     .set_desired_min_image_count(3)
                     .set_image_usage_flags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
                     .set_allocation_callbacks(host_allocator)
-                    .build(),
+                    .build();
+            if (!built && built.vk_result() == VK_ERROR_SURFACE_LOST_KHR)
+            {
+                surface_lost = true;
+                needs_recreation = true;
+                stopped = false;
+                return;
+            }
+            if (!built && built.vk_result() == VK_ERROR_DEVICE_LOST)
+                require_result(built.vk_result(), "Failed to recreate Vulkan swapchain");
+            replacement->swapchain = require_swapchain_result(
+                std::move(built),
                 "Failed to recreate Vulkan swapchain; presentation stopped, call recreate to retry"
             );
             auto& swapchain = replacement->swapchain;
@@ -257,7 +293,7 @@ namespace RelayCore::render
                     .format = swapchain.image_format,
                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
                 };
-                require_vk(
+                require_result(
                     vkCreateImageView(device.handle(), &view_info, nullptr, &replacement->views[i]),
                     "Failed to create Vulkan swapchain image view; presentation stopped"
                 );
@@ -277,12 +313,12 @@ namespace RelayCore::render
         )
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan record clear");
-            require_vk(vkResetCommandPool(device.handle(), frame.pool, 0), "Failed to reset Vulkan frame commands");
+            require_result(vkResetCommandPool(device.handle(), frame.pool, 0), "Failed to reset Vulkan frame commands");
             const VkCommandBufferBeginInfo begin_info{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
             };
-            require_vk(vkBeginCommandBuffer(frame.commands, &begin_info), "Failed to begin Vulkan frame commands");
+            require_result(vkBeginCommandBuffer(frame.commands, &begin_info), "Failed to begin Vulkan frame commands");
             {
                 RELAYCORE_PROFILE_VK_ZONE(profiler, frame.commands, "Presentation copy/clear");
                 if (begin_label != nullptr)
@@ -374,7 +410,7 @@ namespace RelayCore::render
                 if (end_label != nullptr)
                     end_label(frame.commands);
             }
-            require_vk(vkEndCommandBuffer(frame.commands), "Failed to end Vulkan frame commands");
+            require_result(vkEndCommandBuffer(frame.commands), "Failed to end Vulkan frame commands");
         }
 
         auto draw_clear(
@@ -388,6 +424,8 @@ namespace RelayCore::render
         ) -> bool
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan frame");
+            if (device_lost)
+                throw std::runtime_error("VK_ERROR_DEVICE_LOST; presentation stopped, restart the application");
             if (stopped)
                 throw std::runtime_error("Vulkan presentation stopped after failure; call recreate to retry");
             if (!can_present(window.presentation_state()))
@@ -410,12 +448,15 @@ namespace RelayCore::render
             const auto source_extent = renderer ? renderer->prepared_extent() : VkExtent2D{};
             auto& frame = frames[frame_index];
             wait_frame(frame);
-            require_vk(vkResetFences(device.handle(), 1, &frame.acquire_fence), "Failed to reset Vulkan acquire fence");
+            require_result(
+                vkResetFences(device.handle(), 1, &frame.acquire_fence),
+                "Failed to reset Vulkan acquire fence"
+            );
             uint32_t image_index = 0;
             VkResult acquisition;
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan acquire");
-                acquisition = vkAcquireNextImageKHR(
+                acquisition = calls.acquire(
                     device.handle(),
                     active->swapchain.swapchain,
                     std::numeric_limits<uint64_t>::max(),
@@ -424,16 +465,20 @@ namespace RelayCore::render
                     &image_index
                 );
             }
-            if (acquisition == VK_ERROR_OUT_OF_DATE_KHR)
+            if (acquisition == VK_ERROR_OUT_OF_DATE_KHR || acquisition == VK_ERROR_SURFACE_LOST_KHR)
             {
+                surface_lost = acquisition == VK_ERROR_SURFACE_LOST_KHR;
                 needs_recreation = true;
                 return false;
             }
             if (acquisition != VK_SUCCESS && acquisition != VK_SUBOPTIMAL_KHR)
-                require_vk(acquisition, "Failed to acquire Vulkan swapchain image");
+                require_result(acquisition, "Failed to acquire Vulkan swapchain image");
             frame.acquire_pending = true;
             record(frame, image_index, color, scene_image, source_extent);
-            require_vk(vkResetFences(device.handle(), 1, &frame.render_fence), "Failed to reset Vulkan render fence");
+            require_result(
+                vkResetFences(device.handle(), 1, &frame.render_fence),
+                "Failed to reset Vulkan render fence"
+            );
             const VkSemaphoreSubmitInfo wait{
                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                 .semaphore = frame.acquired,
@@ -463,13 +508,16 @@ namespace RelayCore::render
                 if (renderer)
                     renderer->submit_presentation(frame.commands, wait, signal, frame.render_fence);
                 else
-                    require_vk(
+                    require_result(
                         vkQueueSubmit2(device.graphics_queue(), 1, &submission, frame.render_fence),
                         "Failed to submit Vulkan frame"
                     );
             }
             frame.render_pending = true;
-            require_vk(vkResetFences(device.handle(), 1, &frame.present_fence), "Failed to reset Vulkan present fence");
+            require_result(
+                vkResetFences(device.handle(), 1, &frame.present_fence),
+                "Failed to reset Vulkan present fence"
+            );
             const VkSwapchainPresentFenceInfoKHR present_fence{
                 .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,
                 .swapchainCount = 1,
@@ -487,18 +535,19 @@ namespace RelayCore::render
             VkResult presentation;
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan present");
-                presentation = vkQueuePresentKHR(device.present_queue(), &present_info);
+                presentation = calls.present(device.present_queue(), &present_info);
             }
             frame.present_pending = presentation == VK_SUCCESS || presentation == VK_SUBOPTIMAL_KHR
                                     || presentation == VK_ERROR_OUT_OF_DATE_KHR
                                     || presentation == VK_ERROR_SURFACE_LOST_KHR;
             if (presentation != VK_SUCCESS && presentation != VK_SUBOPTIMAL_KHR
-                && presentation != VK_ERROR_OUT_OF_DATE_KHR)
-                require_vk(presentation, "Failed to present Vulkan frame");
+                && presentation != VK_ERROR_OUT_OF_DATE_KHR && presentation != VK_ERROR_SURFACE_LOST_KHR)
+                require_result(presentation, "Failed to present Vulkan frame");
+            surface_lost = presentation == VK_ERROR_SURFACE_LOST_KHR;
             needs_recreation = acquisition == VK_SUBOPTIMAL_KHR || presentation != VK_SUCCESS;
             // The scene timeline retains the source slot until this copy completes.
             frame_index = (frame_index + 1) % frames.size();
-            return presentation != VK_ERROR_OUT_OF_DATE_KHR;
+            return presentation != VK_ERROR_OUT_OF_DATE_KHR && presentation != VK_ERROR_SURFACE_LOST_KHR;
         }
     };
 
@@ -506,8 +555,9 @@ namespace RelayCore::render
         const VulkanDevice& device,
         const Window& window,
         const bool vsync,
-        VkAllocationCallbacks* host_allocator
-    ) : state_(std::make_unique<State>(device, window, vsync, host_allocator))
+        VkAllocationCallbacks* host_allocator,
+        const VulkanPresentationCalls calls
+    ) : state_(std::make_unique<State>(device, window, vsync, host_allocator, calls))
     {
         if (device.capabilities().validation_enabled)
         {

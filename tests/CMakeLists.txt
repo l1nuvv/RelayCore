@@ -318,7 +318,8 @@ set_tests_properties(graphics.vulkan_upload PROPERTIES
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed"
 )
 add_test(NAME graphics.vulkan_recreation_failure COMMAND relaycore_vulkan_presentation_tests --allocation-failure)
-set_tests_properties(graphics.vulkan_presentation graphics.vulkan_recreation_failure PROPERTIES
+add_test(NAME graphics.surface_loss COMMAND relaycore_vulkan_presentation_tests --surface-loss)
+set_tests_properties(graphics.vulkan_presentation graphics.vulkan_recreation_failure graphics.surface_loss PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77

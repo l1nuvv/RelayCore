@@ -316,6 +316,32 @@ namespace RelayCore::render
     {
         return state_->surface;
     }
+    void VulkanDevice::recreate_surface(const Window& window) const
+    {
+        if (state_->surface != VK_NULL_HANDLE)
+            SDL_Vulkan_DestroySurface(instance(), state_->surface, nullptr);
+        state_->surface = VK_NULL_HANDLE;
+        core::require_sdl(
+            SDL_Vulkan_CreateSurface(window.handle(), instance(), nullptr, &state_->surface),
+            "Failed to recreate SDL Vulkan surface; presentation stopped"
+        );
+        VkBool32 supported = VK_FALSE;
+        const auto result = vkGetPhysicalDeviceSurfaceSupportKHR(
+            physical_device(),
+            capabilities().present_queue_family,
+            surface(),
+            &supported
+        );
+        if (result != VK_SUCCESS || !supported)
+            throw std::runtime_error(
+                "Recreated SDL Vulkan surface is incompatible with the selected present queue: VkResult "
+                + std::to_string(result) + "; restart the application to select a device"
+            );
+        log::info(
+            "Vulkan SDL surface recreated; present queue family {} remains compatible",
+            capabilities().present_queue_family
+        );
+    }
     auto VulkanDevice::graphics_queue() const noexcept -> VkQueue
     {
         return state_->graphics_queue;
