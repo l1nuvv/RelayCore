@@ -56,6 +56,44 @@ Any SSR, AO or volumetric implementation using temporal accumulation depends on 
 
 For each selected child task record fixture, baseline settings, measurable budget, fallback, affected files and evidence. Execution and remaining child tasks are recorded in the table. Routine verification does not create a ZIP or release; packaging requires an explicit packaging/release request.
 
+### Effort и экономия токенов — предпочтение автора, 2026-10-12
+
+Стартовые уровни для реализации отдельных задач, а не всего parent milestone сразу.
+Названия задач и зависимости находятся выше; эта таблица не меняет их статусы.
+Для следующего шага **05b ставить `high`**. Effort выбирается в настройках запуска;
+этот файл сам настройку не переключает.
+
+| Пункты VK14 | `medium` | `high` | `xhigh` |
+|---|---|---|---|
+| 00–01 | — | 00 baseline; 01 Vulkan 1.4 | — |
+| 02–04 | — | — | 02 SDR/HDR; 03 lifetime; 04 scheduling/uploads |
+| 05 | 05c depth formats; 05e memory telemetry | 05a material pools; 05b pipeline cache; 05d surface loss | — |
+| 06 | — | 06a compute consumer; 06b depth/normals | 06c motion/history |
+| 07 | — | 07a bloom; 07b AO | 07c SSR; 07d volumetrics |
+| 08 | — | 08c dynamic resolution; оценка FSR | 08a TAA; 08b upscaler; внедрение FSR |
+| 09 | — | DoF; motion blur | 09a SSGI; улучшение отражений |
+| 10 | — | 10a CPU instancing; 10b indirect draws | 10c GPU culling |
+| 11 | — | 11c VRS | 11a descriptor indexing; 11b meshlets/shaders; 11d async compute |
+| 12 | — | — | 12a BLAS/TLAS + первый RT effect/fallback |
+| 13–14 | — | — | 13 physical HDR; 14 cross-feature integration |
+
+- Отдельный запуск готовых проверок и запись evidence: `medium`. Исправление
+  обнаруженной ошибки оценивается по её причине, а не по effort запуска тестов.
+- Повышать `high` до `xhigh` при конкретном препятствии: неясная GPU lifetime,
+  synchronization или temporal проблема. `max` оставлять для ограниченного разбора
+  сложного сбоя, который не удалось разрешить на `xhigh`; заранее его не назначать.
+- Соблюдать [AGENTS](../AGENTS.MD#evidence-and-scope): читать выбранный slice,
+  нужные контракты и прямые call sites; переиспользовать собранное evidence и
+  выполнять узкие проверки. Не пересказывать весь план и не повторять успешные
+  дорогие проверки без новых изменений или нерешённого вопроса.
+- Ответы и отчёты держать краткими: результат, значимый риск, фактически выполненные
+  проверки, commit и ссылка на evidence. Экономия токенов не отменяет acceptance gates.
+
+Это рабочая оценка сложности RelayCore, а не измеренное сравнение моделей.
+Общие tradeoffs уровней описаны в
+[OpenAI reasoning effort](https://developers.openai.com/api/docs/guides/reasoning#reasoning-effort).
+Поддерживаемые уровни зависят от выбранной модели.
+
 ## 1. Executive decision
 
 1. **Minimum runtime:** Vulkan 1.4, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.
