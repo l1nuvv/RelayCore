@@ -175,6 +175,11 @@ namespace RelayCore::render
         state_->buffers.emplace_back(last_use.value, std::move(buffer));
     }
 
+    auto VulkanSceneSubmissions::pending_retirements() const noexcept -> size_t
+    {
+        return state_->buffers.size() + state_->textures.size();
+    }
+
     void VulkanSceneSubmissions::retire(VulkanTexture&& texture, const VulkanSceneCompletion last_use)
     {
         state_->validate(last_use);

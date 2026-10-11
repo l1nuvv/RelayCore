@@ -14,6 +14,7 @@
 #include <cmath>
 #include <glm/trigonometric.hpp>
 #include <imgui.h>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -62,6 +63,9 @@ namespace RelayCore
         const Window* window = nullptr;
         std::unique_ptr<render::VulkanDevice> device;
         std::filesystem::path pipeline_cache_file;
+        std::optional<render::VulkanMemoryUsage> memory_snapshot;
+        render::VulkanResourceUsage resource_snapshot{};
+        render::VulkanMaterialDescriptorUsage descriptor_snapshot{};
         std::unique_ptr<render::VulkanSwapchain> swapchain;
         std::shared_ptr<render::VulkanMeshRenderer> backend;
         // UI reload may replace backend after scene submission. Keep that frame alive through present.
@@ -406,6 +410,73 @@ namespace RelayCore
                 audio_diagnostics_,
                 iteration_diagnostics_
             );
+            if (imgui_overlay_.advanced_diagnostics_visible() && ImGui::Begin("Vulkan memory"))
+            {
+                if (ImGui::Button("Refresh GPU memory"))
+                {
+                    state_->memory_snapshot = state_->device->memory_usage();
+                    state_->resource_snapshot = state_->backend->resource_usage();
+                    state_->descriptor_snapshot = state_->backend->material_descriptor_usage();
+                    if (state_->frame_backend && state_->frame_backend != state_->backend)
+                    {
+                        const auto previous = state_->frame_backend->resource_usage();
+                        state_->resource_snapshot.staging_bytes += previous.staging_bytes;
+                        state_->resource_snapshot.upload_batches += previous.upload_batches;
+                        state_->resource_snapshot.upload_retirements += previous.upload_retirements;
+                        state_->resource_snapshot.scene_retirements += previous.scene_retirements;
+                        state_->resource_snapshot.material_retirements += previous.material_retirements;
+                        const auto descriptors = state_->frame_backend->material_descriptor_usage();
+                        state_->descriptor_snapshot.pools += descriptors.pools;
+                        state_->descriptor_snapshot.materials += descriptors.materials;
+                    }
+                }
+                if (state_->memory_snapshot)
+                {
+                    ImGui::TextUnformatted(
+                        state_->memory_snapshot->driver_budget ? "Driver heap budgets (VK_EXT_memory_budget)"
+                                                               : "Estimated heap budgets (VMA fallback)"
+                    );
+                    constexpr double mib = 1024.0 * 1024.0;
+                    for (size_t i = 0; i < state_->memory_snapshot->heaps.size(); ++i)
+                    {
+                        const auto& heap = state_->memory_snapshot->heaps[i];
+                        ImGui::Text(
+                            "Heap %zu (%s): usage %.1f / budget %.1f MiB",
+                            i,
+                            heap.device_local ? "device local" : "host",
+                            heap.usage_bytes / mib,
+                            heap.budget_bytes / mib
+                        );
+                        ImGui::Text(
+                            "VMA: %u allocations, %.1f MiB; %u blocks, %.1f MiB",
+                            heap.allocations,
+                            heap.allocation_bytes / mib,
+                            heap.blocks,
+                            heap.block_bytes / mib
+                        );
+                    }
+                    const auto& resources = state_->resource_snapshot;
+                    ImGui::Text(
+                        "Retained staging: %.2f MiB, %zu batches",
+                        resources.staging_bytes / mib,
+                        resources.upload_batches
+                    );
+                    ImGui::Text(
+                        "Pending retirement: upload %zu, scene %zu, materials %zu",
+                        resources.upload_retirements,
+                        resources.scene_retirements,
+                        resources.material_retirements
+                    );
+                    ImGui::Text(
+                        "Materials: %zu; descriptor pools: %zu",
+                        state_->descriptor_snapshot.materials,
+                        state_->descriptor_snapshot.pools
+                    );
+                } else
+                    ImGui::TextUnformatted("Press Refresh GPU memory to capture a snapshot.");
+                ImGui::End();
+            } else if (imgui_overlay_.advanced_diagnostics_visible())
+                ImGui::End();
         }
         if (show_shadow_debug_banner)
         {

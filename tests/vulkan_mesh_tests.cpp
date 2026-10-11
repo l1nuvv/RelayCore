@@ -548,6 +548,10 @@ namespace
                 renderer.prepare_frame(retained_items, {}, camera, size, size);
                 const auto pending = renderer.material_descriptor_usage();
                 require(
+                    renderer.resource_usage().material_retirements == count,
+                    "Material telemetry lost GPU-pending retirements"
+                );
+                require(
                     pending.pools == peak.pools && pending.materials == peak.materials,
                     "In-flight material descriptors were reclaimed early"
                 );
@@ -559,6 +563,13 @@ namespace
             );
             renderer.prepare_resources(retained_items);
             const auto reclaimed = renderer.material_descriptor_usage();
+            const auto resource_usage = renderer.resource_usage();
+            require(
+                resource_usage.staging_bytes == 0 && resource_usage.upload_batches == 0
+                    && resource_usage.upload_retirements == 0 && resource_usage.scene_retirements == 0
+                    && resource_usage.material_retirements == 0,
+                "Resource telemetry retained collected materials/uploads"
+            );
             require(
                 reclaimed.pools == settled.pools && reclaimed.materials == settled.materials
                     && allocation_count(device) == settled_allocations,

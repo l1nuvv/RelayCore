@@ -1,5 +1,6 @@
 #include "relaycore/render/vulkan_resources.h"
 
+#include "relaycore/core/profiling.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@ namespace RelayCore::render
         const VulkanBufferMemory memory
     ) : allocator_(device.allocator()), size_(size), usage_(usage), memory_(memory)
     {
+        RELAYCORE_PROFILE_ZONE_N("Vulkan buffer allocation");
         if (size == 0)
             throw std::invalid_argument("Vulkan buffer requires a nonzero size");
         const VkBufferCreateInfo buffer_info{
@@ -46,6 +48,13 @@ namespace RelayCore::render
         require_resource_result(
             vmaCreateBuffer(allocator_, &buffer_info, &allocation_info, &buffer_, &allocation_, nullptr),
             "Failed to allocate Vulkan buffer"
+        );
+        vmaSetAllocationName(
+            allocator_,
+            allocation_,
+            memory == VulkanBufferMemory::upload     ? "Upload staging buffer"
+            : memory == VulkanBufferMemory::readback ? "GPU readback buffer"
+                                                     : "Scene/mesh buffer"
         );
     }
 
@@ -187,6 +196,11 @@ namespace RelayCore::render
                 nullptr
             ),
             "Failed to allocate Vulkan texture"
+        );
+        vmaSetAllocationName(
+            device.allocator(),
+            state_->allocation,
+            cube ? "Reflection probe cube" : "Material/UI texture"
         );
         const VkImageViewCreateInfo view_info{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,

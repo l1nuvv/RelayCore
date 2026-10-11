@@ -30,6 +30,12 @@ namespace RelayCore::render
         VkFormat shadow = VK_FORMAT_UNDEFINED;
     };
 
+    struct VulkanResourceUsage {
+        uint64_t staging_bytes = 0;
+        size_t upload_batches = 0, upload_retirements = 0;
+        size_t scene_retirements = 0, material_retirements = 0;
+    };
+
     class VulkanMeshRenderer {
     public:
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
@@ -47,6 +53,7 @@ namespace RelayCore::render
         void prepare_resources(std::span<const RenderItem> items);
         // Includes retired materials until their final GPU use completes.
         [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
+        [[nodiscard]] auto resource_usage() const noexcept -> VulkanResourceUsage;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 

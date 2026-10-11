@@ -29,6 +29,7 @@ namespace RelayCore::render
         [[nodiscard]] auto completed() const -> uint64_t;
         void wait(VulkanSceneCompletion completion) const;
         void collect();
+        [[nodiscard]] auto pending_retirements() const noexcept -> size_t;
         // The supplied final scene use must depend on the resource's upload.
         void retire(VulkanBuffer&& buffer, VulkanSceneCompletion last_use);
         void retire(VulkanTexture&& texture, VulkanSceneCompletion last_use);

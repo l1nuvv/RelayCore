@@ -62,11 +62,32 @@ namespace
             throw std::runtime_error("VMA could not allocate the device lifetime probe buffer");
         VmaTotalStatistics allocated{};
         vmaCalculateStatistics(device.allocator(), &allocated);
+        const auto snapshot = device.memory_usage();
         vmaDestroyBuffer(device.allocator(), buffer, allocation);
+        const auto after = device.memory_usage();
         VmaTotalStatistics released{};
         vmaCalculateStatistics(device.allocator(), &released);
         if (allocated.total.statistics.allocationCount != 1 || released.total.statistics.allocationCount != 0)
             throw std::runtime_error("VMA probe allocation was not released");
+        uint32_t snapshot_allocations = 0, after_allocations = 0;
+        uint64_t snapshot_bytes = 0;
+        if (snapshot.driver_budget != capabilities.memory_budget_enabled || snapshot.heaps.empty()
+            || snapshot.heaps.size() != after.heaps.size())
+            throw std::runtime_error("VMA heap telemetry lost capability/heap identity");
+        for (const auto& heap : snapshot.heaps)
+        {
+            snapshot_allocations += heap.allocations;
+            snapshot_bytes += heap.allocation_bytes;
+            if (heap.block_bytes < heap.allocation_bytes || (heap.blocks == 0 && heap.allocations != 0)
+                || heap.budget_bytes == 0)
+                throw std::runtime_error("VMA heap snapshot has inconsistent allocation/budget statistics");
+        }
+        for (const auto& heap : after.heaps)
+            after_allocations += heap.allocations;
+        if (snapshot_allocations != 1 || snapshot_bytes != 256 || after_allocations != 0)
+            throw std::runtime_error("VMA heap telemetry did not track probe allocation/release");
+        std::cout << "memory_snapshot: heaps=" << snapshot.heaps.size() << "; driver_budget=" << snapshot.driver_budget
+                  << "; allocation_bytes=" << snapshot_bytes << "; released_allocations=" << after_allocations << '\n';
 
         const VkSemaphoreTypeCreateInfo type_info{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,

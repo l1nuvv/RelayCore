@@ -108,6 +108,27 @@ Direct Vulkan — единственный runtime backend после VK-013; с
 
 E-003 вводит первый native MeshAsset/ModelAsset product: GLB компилируется отдельным инструментом в `.rcmodel`, engine читает CPU geometry, opaque RGBA материалы и transforms частей. `StaticModelCache` разделяет неизменяемые ресурсы; game передаёт части в существующую очередь, backend владеет GPU uploads. OBJ/BMP остаются действующим путём прежних моделей.
 
+`VulkanDevice` owns the shared scene/HDR/UI pipeline cache and VMA allocator.
+The renderer persists the cache in its SDL preference directory; incompatible
+identity/shader data or corrupt files leave a fresh cache. The swapchain owner
+drains presentation and destroys its swapchain before asking the device to
+recreate the SDL surface and recheck present support. Device loss requires restart.
+Depth formats are selected once for the backend and shared by target allocation,
+pipeline declarations and normalized shadow readback. The current policy is:
+
+| Class | Capability | Alternative / failure |
+|---|---|---|
+| Required | Existing Vulkan 1.4 device/WSI contract above | Explicit startup rejection |
+| Required | Scene depth attachment at selected MSAA; sampled shadow attachment, linear filtering, transfer source/destination, 48 layers and authored extents | Explicit format/extent diagnostic |
+| Preferred | Scene D32 → D24 → D16; shadow D24 → D32 → D16, without stencil | Next compatible candidate; fail if none |
+| Preferred | samplerAnisotropy | 1x sampling when unavailable |
+| Optional | VK_EXT_memory_budget | Labelled VMA estimates; no device rejection |
+
+Memory statistics and retention counters are explicit diagnostic snapshots, with
+no heap queries in the normal frame loop. [Development](DEVELOPMENT.md#vulkan-capture-и-validation)
+owns the UI procedure; [VK14-05 evidence](renderer/VK14-05.md) owns the fixtures and
+tested hardware limits.
+
 IMG-01–03 extend native v4 materials with linear metallic/roughness and AO maps,
 preserving v1–3 lighting. A game-owned prepared scene may supply one static
 reflection cube with bounds; the engine owns its validated CPU product, Vulkan

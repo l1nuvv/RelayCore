@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
@@ -26,7 +27,20 @@ namespace RelayCore::render
         uint32_t graphics_queue_family = 0;
         uint32_t present_queue_family = 0;
         bool validation_enabled = false;
+        bool memory_budget_enabled = false;
         float max_texture_anisotropy = 1.0F;
+    };
+
+    struct VulkanMemoryHeapUsage {
+        uint64_t usage_bytes = 0, budget_bytes = 0;
+        uint64_t block_bytes = 0, allocation_bytes = 0;
+        uint32_t blocks = 0, allocations = 0;
+        bool device_local = false;
+    };
+
+    struct VulkanMemoryUsage {
+        bool driver_budget = false;
+        std::vector<VulkanMemoryHeapUsage> heaps;
     };
 
     class VulkanDevice {
@@ -50,6 +64,8 @@ namespace RelayCore::render
         [[nodiscard]] auto graphics_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto present_queue() const noexcept -> VkQueue;
         [[nodiscard]] auto allocator() const noexcept -> VmaAllocator;
+        // Explicit diagnostic snapshot; never collected automatically by the frame loop.
+        [[nodiscard]] auto memory_usage() const -> VulkanMemoryUsage;
         // Render-thread access, shared by scene, HDR and UI pipeline creation.
         [[nodiscard]] auto pipeline_cache() const noexcept -> VkPipelineCache;
         [[nodiscard]] auto select_depth_format(

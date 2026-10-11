@@ -205,6 +205,15 @@ scene HDR, изолированные Continue/бой/respawn/пауза/resize.
 
 ### Vulkan: capture и validation
 
+В Advanced Diagnostics окно `Vulkan memory` обновляется кнопкой `Refresh GPU memory`.
+Оно показывает heap usage/budget, VMA allocations/blocks, retained upload staging,
+pending retirements и material descriptor pools. Снимок сохраняется до следующего
+нажатия; ordinary frame loop не запрашивает heap statistics. `VK_EXT_memory_budget`
+используется при наличии, иначе окно явно показывает оценочные VMA budgets.
+Driver heap usage включает другие приложения; VMA allocations относятся к этому
+allocator. Retained staging/retirements включают завершённые, но ещё не collected
+ресурсы. Проверки и ограничения — [VK14-05](renderer/VK14-05.md).
+
 Runtime требует минимум Vulkan 1.4 для loader и GPU; instance/effective/VMA API — 1.4.
 Лог отдельно показывает loader, instance, physical/effective API, драйвер,
 queue families и включённые device extensions. Fallback и developer override

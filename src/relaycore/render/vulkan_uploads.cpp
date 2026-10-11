@@ -533,6 +533,16 @@ namespace RelayCore::render
             return entry.completion <= completed;
         });
     }
+    auto VulkanUploads::memory_usage() const noexcept -> VulkanUploadUsage
+    {
+        VulkanUploadUsage result{
+            .batches = state_->batches.size(),
+            .retirements = state_->buffers.size() + state_->textures.size()
+        };
+        for (const auto& batch : state_->batches)
+            result.staging_bytes += batch->transfer.size();
+        return result;
+    }
     void VulkanUploads::retire(VulkanBuffer&& buffer, const uint64_t completion)
     {
         state_->validate_retirement(buffer.upload_timeline_, buffer.upload_completion_, completion);

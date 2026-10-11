@@ -1,6 +1,7 @@
 #include "relaycore/render/vulkan_device.h"
 
 #include "relaycore/core/log.h"
+#include "relaycore/core/profiling.h"
 #include "relaycore/core/sdl_error.h"
 #include "relaycore/platform/window.h"
 
@@ -213,6 +214,7 @@ namespace RelayCore::render
             "queues for the SDL surface"
         );
         const bool anisotropy = physical.enable_features_if_present({.samplerAnisotropy = VK_TRUE});
+        const bool memory_budget = physical.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -238,6 +240,7 @@ namespace RelayCore::render
             .vkGetDeviceProcAddr = state_->device.fp_vkGetDeviceProcAddr,
         };
         const VmaAllocatorCreateInfo allocator_info{
+            .flags = memory_budget ? VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT : 0u,
             .physicalDevice = physical.physical_device,
             .device = state_->device.device,
             .pVulkanFunctions = &functions,
@@ -260,6 +263,7 @@ namespace RelayCore::render
             .graphics_queue_family = graphics.second,
             .present_queue_family = present.second,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
+            .memory_budget_enabled = memory_budget,
             .max_texture_anisotropy =
                 anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
@@ -289,6 +293,11 @@ namespace RelayCore::render
         );
         for (const auto& extension : physical.get_extensions())
             log::info("Vulkan enabled device extension: {}", extension);
+        log::info(
+            "Vulkan optional memory budget: {}; preferred anisotropy: {}",
+            memory_budget ? "VK_EXT_memory_budget enabled" : "VMA estimated heap budgets (extension unavailable)",
+            anisotropy ? "enabled" : "1x fallback (samplerAnisotropy unavailable)"
+        );
     }
 
     VulkanDevice::~VulkanDevice() noexcept = default;
@@ -353,6 +362,33 @@ namespace RelayCore::render
     auto VulkanDevice::allocator() const noexcept -> VmaAllocator
     {
         return state_->allocator;
+    }
+
+    auto VulkanDevice::memory_usage() const -> VulkanMemoryUsage
+    {
+        RELAYCORE_PROFILE_ZONE_N("Vulkan memory snapshot");
+        // VMA refreshes driver budgets through this API; keep the query on the explicit snapshot path.
+        vmaSetCurrentFrameIndex(allocator(), 0);
+        const VkPhysicalDeviceMemoryProperties* properties = nullptr;
+        vmaGetMemoryProperties(allocator(), &properties);
+        std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+        vmaGetHeapBudgets(allocator(), budgets.data());
+        VulkanMemoryUsage result{.driver_budget = capabilities().memory_budget_enabled};
+        result.heaps.reserve(properties->memoryHeapCount);
+        for (uint32_t i = 0; i < properties->memoryHeapCount; ++i)
+        {
+            const auto& budget = budgets[i];
+            result.heaps.push_back(
+                {.usage_bytes = budget.usage,
+                 .budget_bytes = budget.budget,
+                 .block_bytes = budget.statistics.blockBytes,
+                 .allocation_bytes = budget.statistics.allocationBytes,
+                 .blocks = budget.statistics.blockCount,
+                 .allocations = budget.statistics.allocationCount,
+                 .device_local = (properties->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0}
+            );
+        }
+        return result;
     }
 
     auto VulkanDevice::pipeline_cache() const noexcept -> VkPipelineCache

@@ -2694,6 +2694,18 @@ namespace RelayCore::render
         state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
         reload_shaders(shader_directory);
     }
+
+    auto VulkanMeshRenderer::resource_usage() const noexcept -> VulkanResourceUsage
+    {
+        const auto uploads = state_->uploads.memory_usage();
+        return {
+            .staging_bytes = uploads.staging_bytes,
+            .upload_batches = uploads.batches,
+            .upload_retirements = uploads.retirements,
+            .scene_retirements = state_->submissions.pending_retirements(),
+            .material_retirements = state_->retired_materials.size()
+        };
+    }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
 
     auto VulkanMeshRenderer::material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage
