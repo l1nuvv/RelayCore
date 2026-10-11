@@ -1,2417 +1,268 @@
-# RelayCore — план доведения до playable vertical slice
+# RelayCore — gameplay/content roadmap
 
-**Текущий игровой трек по решению автора 2026-10-09:**
-**G-019**, одна оригинальная связная глава на 20–30 минут первого прохождения,
-исследование/обходы/возвращение, центральная угроза со специальным разрешением,
-полноценные подходящие модели и полезные AI роли. По авторскому проходу
-прежняя цепочка коротких карт и локальный lunge/stop_target pass не приняты
-как содержательный gameplay. [Требования, references, оригинальный brief и
-порядок](PROJECT_PLAN.md#решение-автора--полноценная-игровая-глава-2026-10-09)
-имеют приоритет над прежней очередью мелких encounter правок. Старые
-технические статусы сохраняются в своих границах.
+Этот файл — единственный реестр текущих статусов G/E/H/IMG/VIS. Требования, implementation details и датированные проверки находятся по ссылке каждой строки. Карточка сохраняет историю исполнения; прежний статус в её записи не переопределяет таблицу ниже. VK14 milestones принадлежат [renderer-плану](RENDERER_MODERNIZATION_PLAN.md), стратегия — [PROJECT_PLAN](PROJECT_PLAN.md).
 
-Этот roadmap — очередь gameplay/content tickets и владелец их фактических статусов/evidence. Отдельная [renderer-программа](RENDERER_MODERNIZATION_PLAN.md) хранит VK14 milestones; они pending и не дублируют gameplay очередь. Стратегия и решения автора — в [PROJECT_PLAN.md](PROJECT_PLAN.md), навигация по инструкциям — в [README.md](README.md). Исходный анализ 2026-09-27 и предыдущие циклы сохранены в baseline, карточках и журнале ниже; они не задают новую очередь. Внешняя человеческая приёмка и проверка другого GPU остаются открытыми и не блокируют отдельно порученную разработку.
+## Точка продолжения
 
-**Авторская приёмка 2026-10-10:** G-019 принята (`done`): «G019 принял, все ок».
-Единственное замечание — уровень пустой по декорациям и наполнению.
-Следующий предмет доводки — окружение принятой главы; подробности и границы
-приёмки — в checkpoint E и [протоколе](playtests/G-019-2026-10-09.md#результат).
+G-019 принята автором 2026-10-10. Последующее наполнение окружения технически завершено; его художественная приёмка остаётся открытой. Независимые 20–30 минут первого прохождения, непрерывный sound-on маршрут, отдельные AI/UI/material gates и другой GPU не подтверждены общей авторской приёмкой. Детали — в [G-019](tickets/G-019.md) и [протоколе](playtests/G-019-2026-10-09.md).
 
-## Актуальная стратегия и горизонты — 2026-10-07
+Следующую задачу выбирает поручение пользователя с учётом зависимостей карточки. Таблица не является приказом выполнить весь backlog. Новое наблюдение требуется для повторного исправления уже закрытой технической проблемы.
 
-**Реализация решения автора 2026-10-09:** игровой HUD/UI переведён на RmlUi 6.3; ImGui остаётся для editor/diagnostics. VIS-43–46 технически реализованы и проверены, авторская визуальная приёмка ожидается. Подробности и ограничения — [карточка VIS-43–46](#vis-43--переход-на-игровой-hud-и-ui). Это не закрывает существующие playtest gates мира и gameplay.
+## Статусы и приоритеты
 
-Art-pass помещений, интерактивного оборудования, оружия, персонажей и UI технически выполнен в объёмах соответствующих tickets. Подробные before/after и исходные проверки сохраняются в `art/`; таблица ниже отделяет выполненную техническую работу от открытой человеческой приёмки. IMG-01–06 расширили native материалы, static reflections и свет главы; это не новые pending renderer tasks.
-
-| Задача | Статус | Результат / оставшаяся приёмка |
-| --- | --- | --- |
-| IMG-01 | `awaiting_playtest` | Native v4 metallic/roughness maps; Guardian and containment ram authored. Debug/Play updated; 23 native/tooling + 7 graphics checks passed. [Evidence](art/img01-03-materials-reflections-ao.md) |
-| IMG-02 | `awaiting_playtest` | Static cube bake, GGX mips, box projection and SH fallback; first probe in containment hall. Bounds/camera/mips/invalidation checked; matched captures retained. [Evidence](art/img01-03-materials-reflections-ao.md) |
-| IMG-03 | `awaiting_playtest` | Native AO maps/strength; Guardian/ram geometry AO, indirect lighting only. Direct-light isolation and strength checked; visual acceptance in motion open. [Evidence](art/img01-03-materials-reflections-ao.md) |
-| IMG-04 | `awaiting_playtest` | Containment hall practical light balance and conditional control light; reflection rebaked. Matched HDR/SDR, power and flashlight views reviewed; author acceptance during the containment route remains open. [Evidence](art/img04-06-lighting-stability-emission.md) |
-| IMG-05 | `awaiting_playtest` | Bounded mapped-normal GGX roughness filtering; isolated 48-frame HDR/SDR camera arcs show a modest 4.9–6.0% reduction in the measured temporal-difference proxy. Author review of highlights, small text and peripheral detail in motion remains open. [Evidence](art/img04-06-lighting-stability-emission.md) |
-| IMG-06 | `awaiting_playtest` | Native v5 emissive texture/factor, old readers and powered/off crosshead plate; Debug/Play staged. 20 native/tooling + 9 graphics checks passed, no skips; author visual acceptance of the containment power states remains open. [Evidence](art/img04-06-lighting-stability-emission.md) |
-| VIS-47 | `done` | Проверены 71 source/export owner и model receipt/product/staged SHA256 в Debug/optimized; native collision pairing актуален, девять карт проходят Check Map без warnings. Правило проверки сохраняется для будущих изменений; [scope и evidence](VISUAL_REVAMP_AUDIT.md#vis-47--vis-50--проверка-pipeline-и-документации-2026-10-09) |
-| VIS-50 | `done` | Уточнены lab_bench metallic/roughness opt-in, Vulkan atlas UV convention и отдельная native collision; DEVELOPMENT описывает текущий manifest и checker без упаковки. [Evidence](VISUAL_REVAMP_AUDIT.md#vis-47--vis-50--проверка-pipeline-и-документации-2026-10-09) |
-| VIS-43 | `awaiting_playtest` | RmlUi 6.3 foundation/HUD реализованы; четыре разрешения, кириллица, hit/hurt/death, SDR/HDR и developer overlay проверены; [evidence и ограничения](#vis-43--переход-на-игровой-hud-и-ui) |
-| VIS-44 | `awaiting_playtest` | Main/pause/settings, scenario/new/continue, save/settings persistence перенесены; SDL mouse/Tab/Enter и блокировка gameplay проверены без ImGui |
-| VIS-45 | `awaiting_playtest` | Death/respawn, completion/finale, transition errors перенесены; lifecycle и campaign route проходят |
-| VIS-46 | `awaiting_playtest` | Игровые ImGui call sites удалены; обычный маршрут проверен с ImGui disabled, editor/diagnostics сохраняются |
-| VIS-48 | `done` | Локальная оценка текущего kit: 6 460 optimized frames, 218–238 world draws / 157 222–158 328 triangles, warm p99 2,931–6,756 мс; gameplay mesh uploads отсутствуют, восемь first-use texture uploads относятся к RmlUi atlas. [Измерение и границы](art/vis48-49-cost-and-review.md#vis-48-one-current-measurement); непрерывный sound-on проход и слабый ПК остаются H-008 |
-| VIS-49 | `awaiting_playtest` | Известный power mismatch воспроизведён: scene-only failing tiles сосредоточены на новой двери VIS-17; shotgun samples отражают VIS-35. Четыре эталона обновлены после просмотра, tolerances сохранены; 3/3 graphics без skips, power SDR/HDR stages проходят. [Evidence и короткий маршрут](art/vis48-49-cost-and-review.md); авторская приёмка в движении/бою открыта |
-| VIS-03 | `done` | Выходная облицовка, двусторонняя рама, EXIT/sector/reader signage и корпус светильника; свет и видимый emitter зависят от `transfer_running`. Игровые solids/entities/mission сохранены; scripted exit/trigger проходят |
-| VIS-04 | `awaiting_playtest` | Проверены фиксированные виды стыков до/после перепуска и открытая дверь; исправлены обратная отделка входа в зал 03, порог, потолок и высота dado. Техническая проверка завершена; непрерывный маршрут и субъективная приёмка человеком остаются открытыми |
-| VIS-05 | `done` | Вход `power_restoration`: отделка, стол предохранителя, шкаф, порталы и указатели; кадры до/после, оба состояния питания и обратный вид проверены; [исходники и evidence](art/power-restoration-visual-slice.md) |
-| VIS-06 | `done` | Служебные крылья, оформленные электрощиты, резервное питание, фильтрация и обратные указатели; исходные solids/взаимодействия/различия полов сохранены; route/retry/snapshot regressions проходят |
-| VIS-07 | `done` | Насосная: привод, двигатель, муфта, манометр и связанные трубы/узел утечки; одинаковая камера standby/power/flush/cooling и шесть нейтральных видов; исходные steam/fan/button/door states сохранены |
-| VIS-08 | `done` | `bench_relay`: штукатурка/dado, потолочная сетка, рамы, корпуса светильников, шкаф-укрытие и указатели. Открытые `lab_bench` и native collision сохранены; rover/low-ray и обе тактики проходят. По скриншоту автора 2026-10-09 турель перенесена креплением к боковой стене; 5/5 checks и mounting capture проходят, Debug/Play staged. [Сравнения и evidence](art/bench-cooling-visual-slice.md) |
-| VIS-09 | `done` | `cooling_loop`: три растянутых casing заменены единым теплообменным банком с оребрением, коллекторами, обслуживаемыми торцами и overhead supply/return; оформлены стол и isolation post. Исходные solids/обход/бой/состояния сохранены; signage завершён отдельно в VIS-10 |
-| VIS-10 | `done` | Cooling-specific таблички закрывают прежние pressure/transfer/bypass-подписи; 01 — ISOLATE, 02 — COOLING START, 03 — EXIT RELEASE согласованы с HUD/подсказками. Shared корпуса и игровая логика сохранены; [сравнение и проверки](art/bench-cooling-visual-slice.md#vis-10--cooling-signage-2026-10-08) |
-| VIS-11 | `awaiting_playtest` | Автор принял ключ и исчезающую рамку; после тисков и инструмента сектор 01 читается лучше. По повторному отзыву устранён ложный pickup из шага задания, снижен пересвет, подняты корпуса светильников для устранения полосы тени, исправлены размеры и крепление пускового пульта и дверных кнопок. Debug/optimized обновлены; восемь профильных проверок проходят, HDR/SDR и контакт панелей проверены; [отзывы, сравнения и evidence](art/foundation-intake-visual-slice.md). Требуется повторная визуальная приёмка автора; теснота насосной остаётся отдельным замечанием |
-| VIS-12 | `done` | Автор принял визуальную итерацию: шкаф с насосом читается, детали закреплены, визуальных конфликтов нет, указатели понятны. Применение ключа понятно из-за отсутствия альтернатив — это наблюдение о линейности, а не подтверждение качества навигации. 7/7 технических проверок, HDR/SDR без skips, Check Map без warnings, Debug/optimized staging проверены; [сравнение, evidence и отзыв](art/foundation-pump-visual-slice.md). Теснота и линейность комнаты остаются вопросами level design; последние правки VIS-11 этим отзывом не приняты |
-| VIS-13 | `done` | B-17: наблюдательное стекло с рамой/уплотнениями, рабочие группы и образцы, подключённые кабели/трубы и крепления, свет лицевой стороны учёного и установки; существующие apparatus/приборы/мебель переиспользованы. Solids/colliders/entries/mission сохранены. Debug/optimized staging, 5/5 профильных проверок и повторные 3/3 после правки контактов; HDR/SDR без skips, отдельный Debug capture с Vulkan validation, Check Map без warnings. Автор принял ревамп визуально 2026-10-08; пересвет SDR остаётся открытым замечанием к обработке изображения. [Сравнение, исходники, отзыв и границы](art/b17-visual-slice.md) |
-| VIS-14 | `done` | B-17 и входной коридор: облицовка стен/колонн/балок, защитный пояс, цоколь, потолок и рама; разные полы, окно и исходные игровые данные сохранены. Room-fitted сборка на прежней палитре, 8 100 triangles, без общего генератора. 12/12 content/tooling, 4/4 graphics без skips, Debug validation capture без ошибок; Debug/optimized staging совпадает. [Сравнение и evidence](art/vis14-16-facility-finish.md). Субъективная авторская приёмка нового прохода открыта |
-| VIS-15 | `done` | Муфты повторяемых труб в pressure bay/hall/gallery и B-17, отводы в стены, горловины и опоры вентиляции; исходные кабели/подвесы сохранены. Прямые/обратные виды и шесть крупных планов проверены; Check Map четырёх карт без warnings, общий validation capture чистый. [Исходники, scope и проверки](art/vis14-16-facility-finish.md); не заявлена проверка каждого соединения проекта |
-| VIS-16 | `done` | Общая модель шкафов power/bench: уплотнение двери, петли, ручки с опорами, крепёж и кромка крышки. Исправлена высота панели низкого насосного корпуса; pump/exchanger семейства переиспользованы. Девять затронутых моделей прошли authored/fresh-import checks; все 44 native products/receipts/staged hashes проверены в Debug/optimized. [Сравнение и evidence](art/vis14-16-facility-finish.md); человеческая визуальная приёмка открыта |
-| VIS-17 | `awaiting_playtest` | Два native полотна lift/slide: прессованные панели, кромки, нижние накладки, безопасная кромка lift и утопленная ручка slide. Неподвижные направляющие вне полного swept depth; исходные AABB, движение, clearance и activation policy сохранены. Проверены closed/mid/open и обратные виды обеих ориентаций; [исходники и evidence](art/vis17-19-interactive-hardware.md). Человеческая визуальная приёмка открыта |
-| VIS-18 | `awaiting_playtest` | Четыре native корпуса: door/isolator/start/instrument, локальные подписи, защитные щёки и аналоговая шкала. Render-only panel_style отделён от действий; прежние положения кнопок и neutral/focused/blocked/warning/success/consumed сохранены. [Все состояния и evidence](art/vis17-19-interactive-hardware.md); требуется человеческая визуальная приёмка |
-| VIS-19 | `done` | Переиспользован уже принятый автором service_key из VIS-11: отверстие головки, плечо, стержень и два зубца; узнаваемость/highlight/исчезновение подтверждены прежним отзывом. Повторно проверены HDR/SDR focus/collection, перенос ключа, пуск насосов, continue/retry; fuse/shotgun и геометрия ключа не изменены. [Проверка и сверка устаревшего аудита](art/vis17-19-interactive-hardware.md) |
-| VIS-20 | `done` | Уменьшен шум бетона и краски общей палитры, cooling получил штукатурку/защитный пояс; исправлена скрытая внутри прежних стен облицовка B-17. Same-camera HDR/SDR сравнения проверены; игровые карты/solids/свет сохранены. [Изменения и evidence](art/vis20-22-material-pass.md); авторская визуальная приёмка открыта |
-| VIS-21 | `done` | Для 14 моделей проверены metre UV, цвет и износ; согласованы повторы штукатурки/эмали/металла. Legacy atlas и его 32 gutters сохранены; исходные масштабы пола, дерева и ткани проверены. Ближние/маршрутные, прямые/теневые виды просмотрены; [границы и проверки](art/vis20-22-material-pass.md) |
-| VIS-22 | `done` | Локальные linear +Y normals и scalar roughness/metallic для эмали, стали, резины и меди; исправлена ячейка galvanized albedo. Tangents проверены native importer, 14 authored/fresh imports проходят; Debug/optimized products совпадают, 18/18 content/tooling и 10/10 graphics без skips. [Сравнение и evidence](art/vis20-22-material-pass.md); человеческая приёмка и прежнее замечание к SDR остаются открытыми |
-| VIS-23 | `awaiting_playtest` | После замечания автора о незаметном результате усилены причинные сколы, трещины, потёртости и коррозия крепежа/нижних кромок; оформлен след существующей утечки. Девять моделей, исходные triangles/material pixels/maps и bounds дверей сохранены; Debug/optimized staging, 15 content/native, tooling fixture и 7 разных graphics cases без skips проверены. [Сравнение, отзыв и evidence](art/vis23-causal-wear.md); требуется визуальная приёмка автора |
-| VIS-24 | `awaiting_playtest` | Проверены стекло, CRT и ткань B-17; у native CRT roughness экрана/кромки изменён с 1.0 на 0.23. Imported monitor, прозрачное окно и cotton/rubber учёного переиспользованы. Геометрия/UV/images/maps сохранены; Debug/optimized receipts/staging совпадают, 5/5 content/tooling и 2/2 HDR/SDR graphics без skips проходят. [Сравнение и evidence](art/vis24-special-materials.md); изменение локальное и малозаметное, требуется визуальная приёмка автора |
-| VIS-25 | `done` | Три локальные процедуры и три набора предупреждений pressure/cooling/power на общих корпусах; чужие B-17 инструкции заменены. По указанию автора — крупная кровавая пентаграмма на стенах и отдельная незавершённая доска расшифровки в B-17. Принят standalone blood master; финальные игровые виды подлежат авторской оценке. [Исходники и проверки](art/vis25-sector-signage.md) |
-| VIS-26 | `done` | Девять сохранённых arrow/01–03 интегрированы в физические таблички pressure/cooling/power; четыре указателя прямого/обратного пути, согласован номер 03 щитовой. Перекрытия кабелем, приборами, турелью и колоннами исправлены; игровые solids/entities/mission сохранены. Debug/optimized assets и 61 receipt/product/staged hash совпадают; финальные 4/4 проверки включают HDR/SDR и powered/open виды, Check Map трёх карт без warnings. [Исходники, сравнение и проверки](art/vis26-route-signage.md). Автор прошёл маршрут и принял результат 2026-10-08: «вроде все ок». Независимый новый игрок не заявлен; дубликаты сохранены |
-| VIS-27 | `done` | Разделены waveform/electrical/surveillance и печатные pressure/cooling; физическая CAM 02 соответствует архивному ракурсу, схемы распределены по семи игровым картам. [Исходники и проверки](art/vis27-28-instruments-language.md); Debug build, 42/42 focused checks и финальные 32 вида проверены |
-| VIS-28 | `done` | Русский — обязательный язык игровых инструкций; английские institutional labels сохранены осознанно. Проверены русские строки, IDs и target chains; стандарт в ART_DIRECTION.md. [Evidence](art/vis27-28-instruments-language.md) |
-| VIS-29 | `awaiting_playtest` | Настроены 33 существующих светильника (30 authored записей) на пяти картах; intake/foundation pump сохранены после проверки. Локальный рабочий свет и аварийные акценты, пониженная общая засветка B-17; экспозиция и игровые данные сохранены. 20/20 проверок, 128 финальных HDR/SDR видов, Check Map семи карт без warnings, Debug/optimized staging и probes совпадают. [Сравнение и evidence](art/vis29-room-lighting.md); требуется визуальная приёмка автора в движении |
-| VIS-30 | `awaiting_playtest` | Согласованы 46 светильников и отдельный источник аппаратуры B-17 на семи картах: размеры/высота/направление плоскостей, четыре корпуса, крепление под кабельным коробом, on/off/damaged состояния. Удалены 24 старые полосы; настройки света и gameplay сохранены. 21/21 проверок и финальные 7/7, HDR/SDR без skips; Debug/Play staging проверен. [Кадры и evidence](art/vis30-light-fixtures.md); требуется визуальная приёмка автора в движении |
-| VIS-31 | `awaiting_playtest` | Проверены 15 contact views в HDR/SDR: bench, шкафы, трубы, двери, турель, учёный и три положения rover. Исправлен подтверждённый зазор 9 мм под обувью; геометрия выше подошвы, поза и коллизия сохранены. Тени сравнены с отключёнными. [Кадры и проверки](art/vis31-33-contact-atmosphere-focus.md); требуется авторская оценка в движении |
-| VIS-32 | `awaiting_playtest` | Проверен 31 маршрутный вид в HDR/SDR на семи картах, включая powered/open и последовательные позиции камеры. Fog/postfx сохранены по сравнению с отключённой атмосферой; добавлена регрессия неизменности непрозрачного HUD pixel. [Evidence](art/vis31-33-contact-atmosphere-focus.md); непрерывный человеческий проход открыт |
-| VIS-33 | `awaiting_playtest` | Минеральный образец B-17 отделён материалом от опоры; pressure получил две импульсные линии к паре приборов и согласованную P1/P2/Δp-схему в двух моделях. 14/14 основных и 6/6 финальных проверок без skips; Debug/Play, 66 receipts каждого дерева, пять products и три probes проверены. [Сравнение и исходники](art/vis31-33-contact-atmosphere-focus.md); требуется авторская визуальная приёмка |
-| VIS-34 | `awaiting_playtest` | Стартовое точное оружие получило native служебный пистолет с перчаткой/рукавом, отдельным затвором и recoil/recovery; UI называет слот «Пистолет». Hitscan, урон, темп и save schema сохранены. 13 различных checks проходят, graphics 3/3 без skips, 60 HDR/SDR поз/FOV/окон; fresh-import 13 514 triangles, Debug/Play и 68 receipts каждого дерева проверены. [Кадры, исходники и evidence](art/vis34-service-pistol.md); требуется авторская визуальная приёмка |
-| VIS-35 | `awaiting_playtest` | Сохранён Stevens 520; native viewmodel получил две перчатки/рукава, дерево/сталь и согласованные с прицелом положение/recoil/recovery. Левая рука следует прежнему 70-мм циклу цевья; gameplay/save и pickup сохранены. 15/15 выбранных checks, graphics 4/4 без skips, 76 HDR/SDR кадров; authored/fresh import 16 594 triangles, Debug/Play и 70 receipts каждого дерева проверены. [Кадры, исходники и границы](art/vis35-shotgun.md). Отдельный power baseline падает до отрисовки оружия; авторская визуальная приёмка открыта |
-| VIS-36 | `awaiting_playtest` | Bare world Stevens 520 использует исходные body/pump и точные native материалы viewmodel; исправлены опора/ориентация shotgun и fuse, согласованы focus/consumed состояния трёх pickups. Render-only support height сохраняет interaction/save. Проверены FOV/окна, Debug/Play и 71 receipt каждого дерева. [Кадры и проверки VIS-36–38](art/vis36-38-pickups-security-scientist.md); требуется авторская визуальная приёмка |
-| VIS-37 | `awaiting_playtest` | Уточнены drive/mounting/оптика rover, sage/steel корпус и bearings турели; live/windup/recovery/shot/destroyed состояния просмотрены в HDR/SDR. Live geometry укладывается в прежние hit bounds, gameplay/таймеры сохранены. В общем проходе VIS-36–38 — 20 различных checks, graphics без skips/validation warnings. [Исходники и evidence](art/vis36-38-pickups-security-scientist.md); приёмка в бою открыта |
-| VIS-38 | `awaiting_playtest` | Статический сотрудник B-17 получил уточнённый рукав, швы/разрез/застёжки халата, окантовку фартука и асимметричную позу с планшетом. Анатомия/PPE/обувь сохранены; fresh import 157 096 triangles, 11 materials. Neutral и runtime front/side/back проверены, B-17 probe обновлён; NPC animation не добавлялась. [Сравнение и evidence](art/vis36-38-pickups-security-scientist.md); требуется визуальная приёмка автора |
-| VIS-39 | `awaiting_playtest` | Процедурное тело первого лица: закрытые кромки/подол халата, округлённые ноги и ботинки, перекрытие сочленений, двухзвенная походка по направлению движения и приземление с опорной стопой. Исправлено положение относительно камеры; статический B-17 scientist не менялся. Debug/Play собраны, 7/7 выбранных checks без skips, 100 финальных HDR/SDR кадров; [сравнение, исходники и границы](art/vis39-player-body.md). Требуется авторская приёмка в непрерывном движении |
-| VIS-40 | `awaiting_playtest` | Короткие тонкие player/turret/pellet traces, вспышки у стволов, metal/hard impacts по текущим query normal/surface и отдельные destroyed sparks. Hitscan/урон/темп/save сохранены. 32 различных checks, graphics без skips/validation warnings, Debug/Play обновлены; [сравнение, исходники и evidence](art/vis40-41-combat-environment-effects.md). Требуется приёмка в бою и движении |
-| VIS-41 | `awaiting_playtest` | Компактный направленный пар от fittings, объёмные короткие искры, guard/mounting шести вентиляторов; исправлены скрытые источники и перекрытие трёх вентиляторов кассетами. Repair/stop/start/coast и игровые данные сохранены. 282 финальных HDR/SDR кадра, glass blend regression, Check Map и staging проверены; [evidence](art/vis40-41-combat-environment-effects.md). Требуется авторская приёмка в движении |
-| VIS-42 | `awaiting_playtest` | Три позиции ламп blocked/ready/operated в существующих пультах, сохранён pressed/consumed feedback. Реальные цепочки power/cooling/pressure-exit/pump проверены с одной камеры до операции и после истечения feedback; повторно проверены power/fault/isolation/fan и live/wreck. Debug собран, 9 unit/content и 4 graphics checks проходят без skips; [сравнение, исходники и evidence](art/vis42-equipment-states.md). Читаемость в непрерывном движении требует авторской приёмки |
-
-VIS-05–07 технически выполнены по прямому поручению автора 2026-10-08: шесть
-Blender/native семейств, 12/12 content/tooling checks, SDR/HDR graphics 2/2 без
-skip, отдельный power mesh gate 1/1 с четырьмя просмотренными обновлёнными
-эталонами. Последняя доводка соединений повторно проверена в обоих color modes.
-Check Map без warnings; 35 receipts/products/staged paths проверены в Debug и
-optimized, шесть новых products идентичны. Непрерывный человеческий проход и
-субъективная визуальная приёмка остаются открытыми; прежние внешние gates этим
-не закрываются.
-
-VIS-08–09 технически выполнены по прямому поручению автора 2026-10-08:
-три Blender/native семейства; 10/10 content/tooling и 2/2 graphics без skip,
-повторная cooling graphics-проверка после локальной правки также прошла.
-Check Map обеих карт без warnings; все 38 model receipts/staged paths проверены
-в Debug и optimized, три новых native products идентичны. Исходная игровая
-геометрия и данные сравниваются с сохранёнными исходными картами; просмотрены
-фиксированные прямые/обратные виды и шесть нейтральных видов банка.
-[Исходники, сравнения, команды и границы](art/bench-cooling-visual-slice.md).
-Непрерывный человеческий проход и субъективная визуальная приёмка остаются
-открытыми; на этом этапе VIS-10, внешний playtest, другой GPU и performance gates
-не закрывались.
-
-VIS-10 затем выполнен по отдельному поручению автора 2026-10-08: 4/4 cooling
-content и 1/1 graphics с Vulkan validation, без skips; Check Map без warnings.
-Просмотрены четыре одинаковых ракурса до/после; после исправления крепления
-коллектора надпись не перекрывается ресиверами. Обновлённый `cooling_service`
-проверен fresh import и staged hashes в Debug/optimized; три shared GLB идентичны
-исходным. Из данных карты изменены только три текста; gameplay gates сохранены.
-
-Полный сохранённый development plan: [PROJECT_PLAN — Development strategy](PROJECT_PLAN.md#development-strategy--2026-10-07). Там находятся current-state map, bottlenecks, варианты стратегии, D1–D5 milestones/tickets/exit criteria, зависимости, technical debt, reconciliation и stop conditions. Этот roadmap остаётся единственным владельцем фактических ticket statuses/evidence; запись стратегии не запускает implementation.
-
-| Horizon | Queue / condition |
+| Статус | Значение |
 | --- | --- |
-| Active / точка продолжения | G-019 принята автором 2026-10-10; замечание следующего цикла — пустота уровня по декорациям и наполнению. VIS-49 установил причину выбранного graphics regression и подготовил локальную приёмку; повторять расследование без нового расхождения не требуется |
-| Near-term / NOW | Локальная приёмка оружия, тела, света, угроз и состояний; VIS-43–46 — приёмка перенесённого RmlUi UI. G-017 / D4 технически реализован; его [production loop](playtests/G-017-2026-10-08.md) сохраняется |
-| NEXT | Наполнение G-019: исходные виды/kit → зал и пост → мастерская → архив → лабораторное крыло → верхний сервисный маршрут → детали/свет → проверка и приёмка. Замечания по UI сохраняются отдельно. Приёмка G-016 и внешний playtest этим обновлением не заявляются |
-| External acceptance | Получен качественный отзыв одного стороннего игрока; версия и замеры неизвестны. Критерии G-011–G-015/H-008/H-009 остаются открытыми; другой ПК отложен |
-| Long-term capabilities | Navmesh, texture products, skeletal animation, dynamic reflections, Source 2 import — через native consumer и gates architecture/dependency references; bounded static reflections уже реализованы |
-| Deferred | ECS/render graph/bindless/jobs/catalog/rewrite сейчас не входят в очередь; E-016 реализован под encounters G-019-C; G-010 технически реализован и ожидает playtest, результаты — в карточках |
-| Completed | E-003–E-018 и Vulkan migration не реализовывать повторно; завершённые технические art/UI slices и их открытая приёмка разделены в таблицах и evidence |
-
-Стратегия: законченные playable iterations плюс минимальная capability под конкретный consumer. Ориентир распределения цикла — 55% gameplay/content/observations, 25% engine, 20% tools/verification. Технические routes/captures не закрывают человеческую приёмку; performance требует measured before/after. Профиль G-014 предшествует последним placement fixes карты; E-018 обновил baseline и записал сопоставимый final capture. Упаковка/публикация остаются только по прямому запросу.
-
-## VIS-47 / VIS-50 — asset chain и актуальная документация
-
-По поручению автора 2026-10-09 проверен текущий native asset chain и исправлены
-устаревшие формулировки. VIS-47 — проверка существующего source/export → import →
-receipt → staging → map, а не новый массовый export. VIS-50 — документация по
-фактическим CMake/runtime consumers. [Результаты, команды и границы](VISUAL_REVAMP_AUDIT.md#vis-47--vis-50--проверка-pipeline-и-документации-2026-10-09).
-
-Текущая проверка VIS-47 не отменяет этот invariant для будущих изменений ассетов.
-Свежий Blender re-export, визуальная приёмка и человеческий проход не заявлены;
-существующие VIS playtest gates сохраняются.
-
-## VIS-48 — стоимость повторения kit
-
-**Статус:** `done` в объёме локальной оценки 2026-10-09 по поручению автора.
-Переиспользован workload H-008 на текущей optimized сборке: два повтора четырёх
-подготовленных состояний pressure_transfer, 6 460 кадров с Tracy 0.14.1.
-218–238 world draws / 157 222–158 328 triangles, warm p99 2,931–6,756 мс;
-ноль gameplay mesh uploads, восемь first-use texture uploads внутри RmlUi atlas
-upload и ноль warm uploads/waits. Это текущая стоимость сцены, не изолированная
-цена одного семейства и не continuous FPS benchmark. Kit сохраняется в текущем
-использовании; широкое увеличение плотности требует измерения конкретной сцены.
-[Условия, таблица, сравнение с H-008 и воспроизведение](art/vis48-49-cost-and-review.md#vis-48-one-current-measurement).
-Внешние H-008 gates и согласование целевого FPS этим не закрыты.
-
-## VIS-49 — проверка накопленного art-pass и графического regression
-
-**Статус:** `awaiting_playtest`. **Техническая часть выполнена 2026-10-09** по
-поручению автора: исторический mismatch повторён с теми же значениями;
-13 mask и 1 325 color failing tiles первого scene-only кадра находятся в половине
-новой двери VIS-17, wall-side failures отсутствуют. Четыре индивидуально
-просмотренных эталона отражают накопленные art changes и viewmodel VIS-35;
-tolerances/culling/reload/presentation gates сохранены. Финальные 3/3 graphics
-без skips и отдельные power SDR/HDR stages проходят с чистой Vulkan validation.
-[Причина, кадры, команды и подготовленный маршрут](art/vis48-49-cost-and-review.md).
-Человеческих наблюдений в движении/бою пока нет. VIS-38 остаётся static B-17 prop,
-VIS-39 — ограниченным procedural first-person body; полноценный rig/animation
-этой задачей не добавляется. Ни массовый откат, ни новый material pass не требуются.
-Ниже сохранён согласованный объём приёмки.
-
-1. Начать с известного несовпадения `graphics.power_restoration_slice`, записанного в [VIS-35 evidence](art/vis35-shotgun.md): остановка на `power_restoration-0` до viewmodel, mask diff 0,00361111, color diff 0,368056, mean RGB delta 4,05567. Повторить только соответствующий check в текущей сборке, сравнить scene-only кадр с эталоном и объяснить причину. Это исторически зафиксированный открытый результат, а не доказательство нового дефекта оружия или текущего renderer. Если изменение ожидаемое — обновить baseline после визуального подтверждения и обоснования; если дефект — исправить его и повторить affected checks. Не расширять допуски для получения зелёного теста.
-2. Подготовить короткий локальный маршрут для оценки уже сделанного: пистолет/дробовик и pickups; движение вперёд/назад/вбок, поворот, приземление и взгляд вниз для VIS-39; враги/укрытия/панели при рабочем и аварийном свете; действия и before/after оборудования. Существующие captures переиспользовать, новые снимать для конкретного вопроса. Техническую подготовку агент выполняет отдельно от человеческой приёмки; при отсутствии отзыва сохранять `awaiting_playtest`, не объявлять чтение отчётов прохождением.
-3. До следующей глубокой доводки VIS-38/39 определить consumer: статический B-17 prop и ограниченное тело первого лица либо реальный анимированный персонаж. Текущий VIS-39 — процедурные части и transforms, без world-space foot lock/terrain IK/skinning. Если необходим полноценный персонаж, сначала отдельный scoped rig/animation ticket; не наращивать временную походку как замену этой основе. Существующие модели/материалы сохранять и переиспользовать. 157 096 triangles учёного — повод проверить бюджет при реальной нагрузке, не доказанный performance defect.
-4. Следующие material/wear/CRT/light passes выполнять только по видимому недостатку на игровой дистанции или отзыву. VIS-24 дал локальный малозаметный roughness correction; повторять его ради общей «доводки» не нужно. Замена игрового UI не обесценивает world models/signage/materials/lighting; RmlUi migration технически выполнена; дальнейшие UI-правки проверяются в своём scope с сохранением открытой оценки мира.
-
-**Приёмка:** установленная причина и результат narrow graphics check, evidence ожидаемого изменения либо исправления, подготовленный маршрут и отдельно записанные реальные наблюдения автора. Последующие исправления привязать к owning VIS-ticket, сохраняя фактические статусы. Сводный `done` не означает автоматическую визуальную приёмку всех прошлых задач. Незакоммиченные VIS-40–41 не считать завершёнными до их собственных checks/evidence. Внешний игрок/другой ПК остаются отложенными; упаковка не требуется.
-
-## VIS-43 — переход на игровой HUD и UI
-
-### RmlUi migration — inventory, 2026-10-09
-
-The owner selected RmlUi; stages A–E are implemented. Automated evidence and remaining acceptance are below.
-The manifest baseline supplies RmlUi 6.3 with FreeType. No baseline refresh or overlay is needed.
-Current source inventory before UI replacement:
-
-| Existing presentation | Source/data | Actions and retained state | RmlUi destination |
-| --- | --- | --- | --- |
-| Health, hazard, weapon, reticle, hit/hurt | `render/game_hud.cpp`; combat/controller state | Passive; existing feedback timers and weapon selection | `ui/hud.rml`, independent `HudPresentation` |
-| Death/respawn | HUD combat state | Automatic existing respawn timer; world objectives retained | HUD return status; no new death state or restart operation |
-| Objective/mission updates | HUD; mission runtime | Passive, current step/completion | One compact objective card |
-| Key items/inventory | HUD; runtime inventory summary | Existing E pickup, 1/2 weapon selection | Compact key-item summary; no inventory grid |
-| Interaction/contextual hints | HUD; focused usable and binding label | E handled by existing gameplay | Contextual prompt/detail and readiness reticle |
-| Transient notifications | HUD; transient event text/strength | Existing gameplay event lifetimes | Right-side event card |
-| Main/new/continue/scenario | `demo_game_menu.cpp`; disk save, scenario path | Continue, new-save confirmation, scenario; separate Sandbox data | `ui/menu.rml`, queued existing actions |
-| Pause/resume/save/load | Menu; `Screen`, `save_progress`, `begin_episode` | Save on pause/menu/quit, Continue loads; no separate manual save/load dialog | Same operations through RML buttons |
-| Settings | Menu; `PlayerSettings` | Volume, sensitivity, FOV, camera motion, VSync, SDR/HDR; immediate apply/save; no apply/cancel pair | Native RML range/select controls |
-| Completion | Menu; mission and played time | Return to menu/editor, preserve completed save | Completion section in menu |
-| Finale | `demo_game_progress.cpp`; finale timer and camera/audio | Enter/Esc skip; existing six-second ending | `ui/finale.rml` |
-| Level transition | `demo_game_transition.cpp`; synchronous session prepare/install | Existing authored exits, history, rollback, save | No loading screen exists to migrate; errors remain visible in paused menu |
-| User-facing errors/update notices | Menu; progress/settings/update messages | Dismiss notice, check/install update; existing diagnostics and persistence | Text-safe RML messages; unchanged updater operations |
-| Fullscreen/window options | No player menu controls exist | Existing platform/developer controls only | No new player setting introduced |
-
-Dear ImGui widgets remain in `level_editor*.cpp`, `debug/imgui_overlay*.cpp`,
-render shadow-debug banner/preview and diagnostics tests. `world_inspector.cpp`
-continues to prepare developer visualization/diagnostics rather than player HUD data.
-Ordinary HUD/menu/finale must operate with `config.imgui.enabled=false`.
-Human visual acceptance remains pending; implementation and automated checks do not close that gate.
-
-**Статус VIS-43–46:** `awaiting_playtest`. **Решение автора и реализация:** 2026-10-09. Этот roadmap владеет scope/status/evidence. Художественные требования — [VIS-43–46 в аудите](VISUAL_REVAMP_AUDIT.md#9-hud-меню-финалы-и-редактор), направление — [ART_DIRECTION.md](ART_DIRECTION.md#player-facing-ui--owner-direction-2026-10-09).
-
-### Implementation and evidence — 2026-10-09
-
-Stages A–E are implemented: RmlUi 6.3 comes from the unchanged manifest baseline;
-the official SDL3 system/input/IME adapter uses RelayCore's window; the local Vulkan
-adapter uses the existing device/VMA and final UNORM target after display conversion.
-Persistent HUD/menu/finale documents use explicit Cyrillic font assets and escaped,
-cached text. `GameWorldRuntime::build_hud_presentation` reads gameplay state directly.
-Menu callbacks enqueue existing actions for the next update. No player ImGui widgets
-remain; editor/diagnostics/shadow debug and ImGui's backend remain. SDL events still
-reach the developer observer so opening a menu cannot swallow its key releases;
-RmlUi menus own player input, while HUD/finale are passive.
-
-VIS-44 preserves scenario/new-save confirmation/Continue, pause/resume, settings,
-save-on-pause/menu/quit and updater operations. No new save schema or gameplay timer
-was introduced. VIS-45 preserves automatic respawn and six-second finale/skip rules.
-The failed-transition check found a pre-existing error-message loss during pause
-autosave; the transition error now survives that save, including a possible save error.
-
-Debug configure and the targeted game/UI/lifecycle/mesh build succeeded in the VS
-developer environment. Optimized `demo-relwithdebinfo --target relaycore_episode_profile`
-also builds with Tracy; new SDL/UI translation units are isolated from unity grouping.
-Actual commands and results:
-
-```powershell
-cmake --preset msvc-debug
-cmake --build --preset demo-debug --target relaycore_demo relaycore_player_ui_graphics relaycore_game_lifecycle relaycore_vulkan_mesh_tests -j 2
-ctest --preset test-debug -R 'relaycore\.(player|gameplay|save|settings|combat|input|feedback|mission)' --output-on-failure --no-tests=error
-ctest --preset graphics-debug -R '^graphics\.(game_hud|player_ui|game_lifecycle|hdr_settings|vulkan_color_baseline|hdr_pipeline|campaign_route)$' --output-on-failure --no-tests=error
-ctest --preset graphics-debug -R '^graphics\.update_readiness\.' --output-on-failure --no-tests=error
-git diff --check
-```
-
-Unit selection: **21/21**. Primary graphics selection: **7/7**, no skips or validation
-warnings/errors; readiness: **4/4**. Later narrow reruns verify the final menu clipping,
-actual B-17 completion and its return action, SDL button coordinates, Tab/Enter,
-settings persistence and ImGui key release across a RmlUi menu. Legacy readiness
-mode names `no-ui` now mean developer ImGui disabled; player UI remains available.
-Logs: `build/vis43/{build-final,graphics-final,unit-final,lifecycle-final,readiness-final,input-final-clean}.log`.
-Final input/menu/editor/HDR rerun: **3/3**, including ImGui key-release regression.
-`graphics.player_ui` covers 1280×720, 1920×1080, 2560×1440 and 800×600 with ImGui
-disabled; it also checks gameplay input blocking, save/Continue, an invalid destination,
-cleanup, and unchanged opaque reticle bytes in legacy SDR, hardware-sRGB and FP16
-HDR-scene modes with exposure +3 EV. Existing HUD checks cover hit/hurt/death,
-interaction, long Cyrillic/markup escaping and developer overlay coexistence.
-
-Executable-relative asset smoke also passed from `build/vis43/outside`, with
-`RELAYCORE_ASSET_ROOT` unset: the existing test executable was temporarily placed
-beside the existing game assets/DLLs, then removed. No archive or standalone candidate
-was built. Log: `build/vis43/asset-root-smoke.log`.
-
-Visual review: [full HUD](art/vis43-46-hud.png), [full menu](art/vis43-46-menu.png),
-[comparison](art/vis43-46-ui-comparison.png), [states](art/vis43-46-ui-states.png).
-The comparison's ImGui frames are historical VK-013 captures from
-`build/vk-013-clean/tests`, not a matching capture of this working tree immediately
-before migration. New raw captures are in `build/msvc-debug/tests/{vulkan-mesh-captures,player-ui-captures}`;
-actual completion is `build/msvc-debug/tests/campaign-complete.bmp`. Reviewed Cyrillic,
-800×600 wrapping, menu hierarchy, numeric settings, scroll clipping, death, errors
-and finale document. Static screenshots do not establish readability in motion.
-
-Tracy 0.14.1 capture/workload both exit 0; all 11 scripted episode states pass.
-RelWithDebInfo, RTX 4060 Ti / driver 596.49, 1280×720, VSync off, high DPI off,
-validation off, normal shadows, audio master volume 0. OS/driver caches were not
-controlled. Evidence: `build/vis43/ui.tracy` (41 MB), `profile.log`, `capture.log`,
-`ui-{cpu,events,gpu,stages}.csv`, `analyze_ui.py`, `ui-analysis.json`.
-
-| Measured zone | Samples | p50 ms | p95 ms | Max ms |
-| --- | ---: | ---: | ---: | ---: |
-| RmlUi update/render CPU, including nested uploads | 13029 | 0.162 | 0.260 | 2.745 |
-| RmlUi GPU draw | 13029 | 0.008 | 0.015 | 0.028 |
-| Geometry upload CPU | 4251 | 0.002 | 0.008 | 0.035 |
-| Generated texture/atlas upload CPU | 22 | 0.382 | 0.555 | 1.822 |
-
-After excluding the first 0.5 s after each preparation, CPU update/render p95 is
-0.555 ms in main menu, 0.168 ms at entrance, 0.232 ms in pause and 0.197 ms in
-finale/completion. Editor has zero RmlUi draws. CPU/GPU/nested upload times must not
-be added as independent costs; UI submission/fence work is outside update/render.
-No allocation instrumentation or comparable pre-migration ImGui capture was taken,
-so this is an absolute cost measurement, not proof of performance parity or a speedup.
-
-**Remaining acceptance:** author review during movement/combat; real Windows monitor
-DPI changes, IME/clipboard and Alt-Tab/fullscreen exercise; comparable performance
-baseline and lower-end hardware. Resize and scaling are automated, but resolution
-scaling is not physical monitor-DPI evidence. Current HDR is FP16 scene processing
-with SDR presentation; no physical HDR10 output was tested. RmlUi images, clip masks,
-layers, blur/filters, SVG/Lottie/Lua are outside this authored adapter's contract.
-No new loading screen or absent gameplay operation was introduced. Existing VIS-49
-scene-only regression and other world/gameplay acceptance gates remain outside this task.
-
-### Focus cancellation follow-up — 2026-10-09
-
-Continuation of VIS-44/46 reproduced a focus regression in the real RmlUi menu:
-after a pressed Settings button lost window focus, `Element::Blur()` focused its
-parent container. `has_focused_control()` still returned true, preventing the
-existing document-level Enter shortcut. Window minimization also lacked the UI
-focus/pressed-state cancellation applied to focus loss.
-
-`src/relaycore/render/player_ui.cpp` now handles focus loss and minimization alike:
-mouse leave precedes button releases so cancellation cannot generate a native
-control click, queued actions are cleared, and focus returns to the menu document.
-`tests/player_ui_graphics.cpp` checks both interruption/return event pairs, cleared
-focus/active state, no stale action or release click, and a successful fresh click.
-Visibility assertions now include ancestors so hidden settings cannot pass them.
-The new regression failed before the fix (`build/vis43/focus-before.log`).
-
-Debug game and all three affected graphics executables built successfully:
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_demo relaycore_player_ui_graphics relaycore_vulkan_mesh_tests relaycore_game_lifecycle -j 2
-cmake --build --preset demo-debug --target relaycore_player_ui_graphics -j 2
-ctest --preset graphics-debug -R '^graphics\.(player_ui|game_hud|game_lifecycle)$' --output-on-failure --no-tests=error
-git diff --check
-```
-
-Final graphics results: **3/3**, no skips or Vulkan validation warnings/errors.
-Evidence: `build/vis43/{build-focus-final,build-focus-test-final,focus-final}.log`
-and `focus-final.xml`. MSVC PDB access and graphics fixture file operations failed
-inside the sandbox; the successful build/checks ran outside it. This is synthetic
-SDL focus/minimize event evidence, not a physical Alt-Tab/fullscreen or monitor-DPI
-test. VIS-43–46 remain `awaiting_playtest`; the remaining acceptance above is unchanged.
-
-### UI art-direction pass — 2026-10-09
-
-At the owner's request, `assets/ui/{menu.rml,hud.rml,player.rcss}` now express the
-facility's institutional, Art Deco and occult vocabulary: spaced RELAYCORE lettering,
-a geometric brass/red seal, architectural rules and a clear primary-action treatment.
-Continue is emphasized when available; otherwise New Game is emphasized. Pause,
-completion and settings retain their existing actions. HUD cards have smaller padding,
-lighter backgrounds and a narrow brass rule; the health label/value share one row.
-Long error paths wrap inside the menu. No C++ actions, save data, fonts or dependencies
-changed. [Menu](art/vis43-46-style-menu.png), [HUD](art/vis43-46-style-hud.png) and
-[matching-camera before/after](art/vis43-46-style-comparison.png) retain the evidence;
-the before frames are from this working tree immediately before this style pass.
-
-Existing Debug executables were reused. The full `cmake --build --preset demo-debug
---target relaycore_demo_assets -j 2` attempt was interrupted during setup/unchanged
-collision checks; only UI needed staging. The existing `cmake/sync_runtime_assets.cmake`
-then successfully synchronized `assets/ui` to Debug and RelWithDebInfo `assets/ui`,
-with separate `build/vis43/style-{debug,play}-ui.manifest` files. SHA-256 of all three
-changed files matches source in both staged roots; no full rebuild is claimed.
-
-```powershell
-ctest --preset graphics-debug -R '^graphics\.(player_ui|game_hud)$' --output-on-failure --no-tests=error
-ctest --preset graphics-debug -R '^graphics\.(player_ui|game_lifecycle|hdr_settings)$' --output-on-failure --no-tests=error
-git diff --check
-```
-
-Results: **2/2**, then **3/3** after error wrapping, four distinct graphics checks;
-no skips, Vulkan validation warnings/errors or unsupported RCSS diagnostics. Logs and
-JUnit: `build/vis43/style-{first,final}.{log,xml}`. Reviewed 1280×720, 1920×1080,
-2560×1440 and 800×600 menu/HUD captures, settings/scroll clipping, pause, long
-Cyrillic/escaped text, death, transition errors and finale. Static review and Debug
-checks do not establish readability in continuous play, physical DPI or performance.
-VIS-43–46 remain `awaiting_playtest` for the revised styling.
-
-**Исходная проблема:** `GameHud` рисовал игровые карточки и сигналы через ImGui draw lists, а `demo_game_menu.cpp` использовал ImGui widgets. HUD получал `PlayerDiagnostics`/`InteractionDiagnostics`. Полировка этой реализации не выполняла принятое решение заменить основу игрового интерфейса.
-
-**Порядок реализации при запуске ticket:**
-
-1. Интегрировать выбранный автором RmlUi 6.3 для игрового HUD и интерактивных меню. Проверить официальную документацию, SDL3/Vulkan integration, Windows/MSVC/CMake/vcpkg, Unicode/кириллицу, font assets, wrapping, DPI/resize, клавиатуру/мышь, focus и text input. Зафиксировать конкретную версию, стоимость интеграции и ограничения здесь и в `DEPENDENCY_STACK.md`. Замена темы ImGui не выполняет задачу; не строить универсальный UI framework. Новая профильная зависимость допустима в этом milestone только с действующим consumer.
-2. Проверить основу на реальном HUD и одном интерактивном экране с длинным русским текстом. Использовать существующий SDL3/Vulkan runtime; GPU resources и submission принадлежат render/UI subsystem, gameplay/actions — игре. Типы выбранной библиотеки не входят в world/save/gameplay contracts.
-3. Ввести минимальные RelayCore-owned данные представления HUD и явные menu actions, соответствующие существующим механикам. Игровая подача не должна получать данные через обязательный debug overlay или diagnostics contracts. Сохранить диагностику отдельно; не создавать общий event bus, scripting или UI/editor framework.
-4. Перенести весь HUD: здоровье, смерть/возвратный статус, прицел и weapon feedback, hit/hurt signals, цель, inventory summary, interaction focus/keys и transient events. Сохранить исходное поведение и улучшить композицию: ориентиры свободны, сообщения не повторяются в нескольких крупных блоках. Меню затем перенести в VIS-44, остальные игровые состояния — в VIS-45; не объявлять весь UI переведённым по одному HUD.
-
-**Gates:** targeted build/tests по текущим presets; регрессии состояний HUD, menu actions и input ownership; визуальные кадры 1280×720, 1920×1080, 2560×1440 и high-DPI с длинными русскими строками; resize, pause/resume и переключение game/editor/diagnostics без утечки кликов/клавиш и застрявшего focus. Проверить HUD при отключённом ImGui и сохранить editor/diagnostics при включённом. Непрозрачный HUD и UI цвета проверить в SDR/HDR после scene tone mapping. Для VIS-44–46 дополнительно проверить Continue/new game/save/load/settings, death/completion/finale/transitions/errors и обычный маршрут с отключёнными ImGui-инструментами.
-
-**Граница приёмки:** реальные before/after кадры и автоматические результаты приложить к этому ticket; техническая реализация без авторской оценки читаемости в движении остаётся `awaiting_playtest`. Сохранять настройки, save schema, gameplay и быстрый developer access. Не переписывать ImGui editor и не создавать пакет без отдельного запроса. Обновлять `ARCHITECTURE.md` по фактически внедрённым ownership/frame/input contracts; до этого его описание текущего runtime остаётся действующим.
-
-## 1. Назначение и порядок использования
-
-Этот документ — основная очередь развития RelayCore к небольшому законченному эпизоду. Он предназначен для автора проекта и ИИ, который продолжает работу в новой задаче без истории разговора.
-
-Главная цель: получить 5–15 минут самостоятельного meaningful gameplay, сохранить управляемость custom engine и развивать runtime под потребности игры. Отдельные утверждённые infrastructure-программы выполняются по своим документам и не запускаются этим gameplay roadmap.
-
-После принятия эпизода автор выбрал отдельный большой тестовый полигон. Полигон, инструмент проверки карты и боевые сценарии G-007/G-008 приняты автором 28 сентября. G-009 принята автором 29 сентября: дробовик с отдельной ролью, переключением и полным сохранением состояния. На этом этапе G-010 была отложена; `pressure_transfer.toml` получил техническую проверку и открытый независимый playtest G-011. Впоследствии G-010 реализована под G-019, как записано в текущей таблице. Новый противник добавляется только при недостатке существующих угроз. Новые механики сначала проверяются изолированно, затем используются в игровых сценариях.
-
-Принцип работы:
-
-```text
-Наблюдаемая gameplay-потребность
-→ минимальная необходимая capability
-→ небольшая реализация
-→ использование в основном эпизоде
-→ проверка поведения игрока
-```
-
-Приоритет источников истины: текущий код → assets/config/levels → фактическая сборка → результаты тестов → документация → исторические планы. При расхождении сначала проверить факты, затем уточнить план. Не менять работающий код только ради соответствия этому документу.
-
-Долгосрочная engine/world/Source 2 architecture описана в `ENGINE_ARCHITECTURE_REFERENCE.md`; переход OpenGL → Vulkan — в `VULKAN_MIGRATION_PLAN.md`; third-party dependency policy — в `DEPENDENCY_STACK.md`. Эти документы не заменяют gameplay-очередь и не разрешают начинать infrastructure work без команды пользователя.
-
-### Инструкция для следующего ИИ
-
-1. Прочитать корневой `AGENTS.MD`, этот раздел, таблицу состояния задач и карточку выбранной задачи.
-2. Проверить рабочее дерево. Существующие пользовательские изменения сохранить; не считать их частью своей работы.
-3. Выбрать только релевантные project skills по descriptions. Не загружать все skills и старые аудиты повторно.
-4. Перепроверить предпосылку задачи по указанным файлам и ближайшим тестам. Данные анализа от 2026-09-27 не являются свежей проверкой следующего запуска.
-5. Если пользователь указал конкретную задачу, выполнять её в согласованном scope. Если он попросил продолжить roadmap, выбрать первую незавершённую задачу с выполненными зависимостями.
-6. Наличие плана само по себе не является командой на реализацию. При запросе анализа или документации сохранять read-only scope для кода. Не начинать следующие tickets автоматически после выполнения одного, если пользователь не поручил серию работ.
-7. Перед реализацией кратко назвать ID, ожидаемое поведение, scope и выбранные проверки. Повторного разрешения на уже порученную работу не требовать.
-8. Делать минимальную законченную правку. Не совмещать её с миграцией формата, архитектурной чисткой, обновлением dependencies или экспериментом с rendering.
-9. Проверить ближайший сценарий, выполнить `git diff --check`, просмотреть итоговый diff. Не выдавать инспекцию кода за выполненный тест.
-10. Обновить состояние задачи и кратко записать доказательства: дата, изменённые пути, команды, результаты, ручные проверки и оставшиеся ограничения.
-11. Если задача требует нового игрока или другого ПК, не заменять эти данные автотестом либо собственным знанием карты. Отметить `awaiting_playtest` и продолжать только независимую разрешённую работу.
-12. Если предпосылка уже устранена, не повторять реализацию: записать проверенное основание и закрыть либо пересмотреть задачу.
-
-### Статусы и приоритеты
-
-Статусы: `ready`, `pending`, `in_progress`, `awaiting_playtest`, `blocked`, `done`, `deferred`.
-
-- `ready`: зависимости выполнены, можно брать при команде пользователя.
-- `pending`: работа запланирована, но ещё нужны результаты предыдущего этапа.
-- `awaiting_playtest`: техническая часть готова, требуется проверка человеком.
-- `blocked`: есть конкретный внешний или технический блокер; указать его.
-- `done`: выполнены все Definition of Done, включая необходимые runtime/manual проверки.
-- `deferred`: задача отложена с условием возврата.
-
-Приоритеты: P0 — crash/UB/broken build/corrupt state; P1 — блокирует приёмку slice; P2 — существенно ускоряет или улучшает gameplay development; P3 — полезное engine improvement; P4 — research.
-
-Scope: S — одна небольшая итерация; M — несколько связанных итераций; L — несколько циклов разработки и плейтеста. Это относительный объём, не обещание календарных сроков.
-
-## 2. Исходное состояние и доказательства
-
-RelayCore — играбельный прототип небольшого FPS-эпизода со специализированным runtime и встроенным редактором. Игровой цикл уже существует. Следующая цель — качество самостоятельного прохождения, а не создание базовых engine-систем заново.
-
-### Подтверждённая основа
-
-Таблица фиксирует исходный baseline 2026-09-27. Текущий runtime использует SDL3 и прямой Vulkan 1.4 (обязательный минимум с 2026-10-12); актуальное владение описано в `ARCHITECTURE.md`.
-
-| Слой | Что уже есть |
-| --- | --- |
-| Gameplay | Grounded player, ходьба/бег/прыжок, камера, фонарь, interaction, предметы, двери, задания, hitscan-оружие, турели, rover, hazards, здоровье, смерть/respawn, финал, save/continue, переходы карт |
-| Runtime | C++20, SDL3, OpenGL 4.6 Core, glad, GLM, явный lifecycle, fixed simulation 120 Hz, AABB collision, TOML loading/validation, prepared level session, model cache, miniaudio |
-| Presentation | Материалы/атлас, OBJ/BMP props, local lights, directional/spot/point shadows, fog, прозрачность, эффекты оборудования, HUD/меню через RmlUi, developer ImGui, шаги и spatial ambience |
-| Tooling | Редактор, undo/redo, каталог моделей, размещение по поверхности, связи объектов, validation, preview, inspector, live reload, F9/F10 snapshots |
-| Infrastructure | CMake presets, Ninja/MSVC, vcpkg manifest, doctest, Debug/RelWithDebInfo/ASan workflows, CI, clang-tidy, Tracy, graphics tests, asset sync, private playtest ZIP script |
-
-Основной контент — `assets/levels/power_restoration.toml`. `foundation_intake.toml` и `foundation_pump.toml` проверяют прохождение нескольких карт. `test_room.toml`, stress- и color-reference-карты не считать дополнительными законченными эпизодами.
-
-### Выполненная проверка 2026-09-27
-
-В Visual Studio developer environment с соответствующим существующему CMake cache `VCPKG_ROOT` выполнено:
-
-```powershell
-cmake --build --preset tests-debug --target relaycore_tests relaycore_content_validation relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_demo
-ctest --test-dir build/msvc-debug -R '^(relaycore\.|validation\.|graphics\.(game_lifecycle|power_restoration)$)' --output-on-failure
-git diff --check
-```
-
-Сборка успешна. Из 259 проверок прошли 257. Все выбранные content tests и обе graphics-проверки прошли. Два падения воспроизведены отдельно:
-
-| Проверка | Фактическое расхождение |
-| --- | --- |
-| `editor flattened episode preserves the full mission and authored values` | `tests/level_editor_tests.cpp` ожидает 6 mission steps, текущая карта содержит 9; последующая последовательность взаимодействий также старая |
-| `render authoring config loads shipped material and light contract` | `tests/render_authoring_config_tests.cpp` ожидает `local_light_gain = 1.28`, текущий `render_authoring.toml` содержит `2.0` |
-
-Эти результаты — исторический baseline данного плана. Не считать его зелёным и не утверждать, что эти failures сохраняются после последующих правок, без проверки.
-
-Просмотрены свежие кадры `graphics.power_restoration`: предохранитель выделен на столе, изменение света после питания видно; HUD сохраняет диагностическую подачу. Это ограниченная визуальная проверка, не полноценный playtest.
-
-Не выполнены в исходном анализе: полный человеческий проход, измерение meaningful gameplay duration, запуск на другом ПК, clean build, полные RelWithDebInfo/ASan workflows, remote CI и актуальный длительный Tracy capture. Старые captures в `build/profiling` не характеризуют нынешний эпизод с новыми point shadows.
-
-## 3. Карта архитектуры для исполнителя
-
-```text
-main → run_application → Application
-  SDL → config → Window/GL → Renderer → AudioSystem
-  → DemoGame::on_startup → settings/save → prepared level session → menu
-
-SDL events → screen/input ownership → DemoGame::on_update
-  → fixed simulation: player → fire/use → triggers/doors → enemies/threats → mission
-  → camera/audio/environment → transition/finale/autosave
-  → WorldSceneRenderer queues → shadows → opaque/overlay/transparent
-  → RmlUi HUD/menu/finale → ImGui editor/debug → present
-
-game shutdown → scene/resources → Renderer → Window/GL → SDL
-```
-
-| Область | Владелец / основные пути | Ограничение |
+| `ready` | Зависимости выполнены; можно брать по поручению |
+| `pending` | Запланировано; ещё нужны предпосылки |
+| `in_progress` | Работа начата, критерии завершения ещё не выполнены |
+| `awaiting_playtest` | Техническая часть готова; требуется человеческая приёмка |
+| `blocked` | Указан конкретный блокер |
+| `done` | Выполнены критерии задачи в записанных границах приёмки |
+| `deferred` | Отложено с условием возврата |
+
+P0 — crash/UB/broken build/corrupt state; P1 — приёмка slice; P2 — gameplay/iteration; P3 — полезное engine improvement; P4 — research. S/M/L — относительный объём, а не срок.
+
+## Gameplay, engine и engineering health
+
+Порядок строк сохраняет происхождение tickets; порядок реализации определяется их зависимостями. Все статусы перенесены из прежней таблицы без изменения.
+
+| ID | Задача | Приоритет | Статус | Карточка / evidence |
+| --- | --- | --- | --- | --- |
+| H-001 | Актуальный test baseline | P1 | `done` | [Детали](tickets/H-001.md) |
+| G-001 | Наблюдаемый полный проход | P1 | `awaiting_playtest` | [Детали](tickets/G-001.md) |
+| G-002 | Начало и ориентирование | P1 | `done` | [Детали](tickets/G-002.md) |
+| E-001 | Полный локальный повтор встречи | P2 | `done` | [Детали](tickets/E-001.md) |
+| G-003 | Обратная связь оружия и угроз | P1 | `done` | [Детали](tickets/G-003.md) |
+| G-004 | Три разные встречи | P1 | `done` | [Детали](tickets/G-004.md) |
+| G-005 | Смерть, повтор и продолжение | P1 | `done` | [Детали](tickets/G-005.md) |
+| G-006 | Согласованная презентация | P2 | `done` | [Детали](tickets/G-006.md) |
+| H-002 | Standalone-кандидат и performance baseline | P1 | `done` | [Детали](tickets/H-002.md) |
+| H-003 | Документация принятого состояния | P2 | `done` | [Детали](tickets/H-003.md) |
+| H-004 | Сетевые обновления standalone | P1 | `done` | [Детали](tickets/H-004.md) |
+| H-005 | Автоматизация выпуска и Release-сборка | P1 | `done` | [Детали](tickets/H-005.md) |
+| H-006 | Проверки staged-содержимого и полный отчёт форматирования | P2 | `done` | [Детали](history/playable-slice-2026-09--10.md#13-журнал-выполнения-и-точка-продолжения) |
+| H-007 | Проверка конфигурации выпуска после сохранения CLion | P2 | `done` | [Детали](history/playable-slice-2026-09--10.md#13-журнал-выполнения-и-точка-продолжения) |
+| E-002 | Проверка карты без запуска игры | P1 | `done` | [Детали](tickets/E-002.md) |
+| G-007 | Большой полигон для развития механик | P1 | `done` | [Детали](tickets/E-002.md) |
+| G-008 | Три повторяемых боевых сценария на полигоне | P2 | `done` | [Детали](tickets/G-008.md) |
+| G-009 | Второе оружие с отдельной боевой ролью | P2 | `done` | [Детали](tickets/G-009.md) |
+| G-010 | Один новый противник по результатам испытаний | P2 | `awaiting_playtest` | [Детали](tickets/G-010.md) |
+| G-011 | Следующий короткий игровой эпизод | P2 | `awaiting_playtest` | [Детали](tickets/G-011.md) |
+| H-008 | Профиль нового игрового маршрута | P2 | `in_progress` | [Детали](tickets/H-008.md) |
+| H-009 | Проверяемый кандидат следующего эпизода | P2 | `pending` | [Детали](tickets/H-009.md) |
+| VK-014 | Ревью архитектуры после Vulkan cutover | P2 | `done` | [Детали](VULKAN_MIGRATION_PLAN.md) |
+| VK-F01 | Диагностические строки Vulkan mesh backend | P3 | `done` | [Детали](VULKAN_MIGRATION_PLAN.md) |
+| E-003 | Статический GLB → native MeshAsset/ModelAsset | P2 | `done` | [Детали](tickets/E-003.md) |
+| E-004 | Сборка и доставка native моделей из GLB | P2 | `done` | [Детали](tickets/E-004.md) |
+| E-005 / N1 | Проверочная native-комната и полный content workflow | P2 | `done` | [Детали](tickets/E-005.md) |
+| E-006 / N2.1 | Tangent/normal map для окрашенной стали native-шкафа | P2 | `done` | [Детали](tickets/E-006.md) |
+| E-007 / N2.2 | Roughness/metalness факторов native-шкафа | P2 | `done` | [Детали](tickets/E-007.md) |
+| E-008 / N3.1 | FP16 HDR, exposure, tone mapping и UI composition | P2 | `done` | [Детали](tickets/E-008.md) |
+| E-009 / N3.2 | Baked diffuse SH9 irradiance probes | P2 | `done` | [Детали](tickets/E-009.md) |
+| E-010 / N4.1 | Общие world queries поверх AABB | P2 | `done` | [Детали](tickets/E-010.md) |
+| E-011 / N4.2 | Jolt static world на изолированном fixture | P2 | `done` | [Детали](tickets/E-011.md) |
+| E-012 / N4.3 | Native collision product и build/staging | P2 | `done` | [Детали](tickets/E-012.md) |
+| E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | P2 | `done` | [Детали](tickets/E-013.md) |
+| E-014 / N4.5 | Collision authoring/debug и asset inspection | P2 | `done` | [Детали](tickets/E-014.md) |
+| G-012 / N4.6 | Короткий игровой участок с native collision | P2 | `awaiting_playtest` | [Детали](tickets/G-012.md) |
+| E-015 / N5 | Surface-aware impact feedback по потребности | P2 | `done` | [Детали](tickets/E-015.md) |
+| G-013 | Два тактических решения native-встречи | P2 | `awaiting_playtest` | [Детали](tickets/G-013.md) |
+| E-016 | Обход препятствий rover под встречи главы | P2 | `done` | [Детали](tickets/E-016.md) |
+| G-014 | Native-встреча в существующем эпизоде | P2 | `awaiting_playtest` | [Детали](tickets/G-014.md) |
+| E-017 | Переиспользование актуальных irradiance products | P2 | `done` | [Детали](tickets/E-017.md) |
+| G-015 | Локальный retry смешанной встречи | P2 | `awaiting_playtest` | [Детали](tickets/G-015.md) |
+| E-018 | Подготовка GPU-ресурсов до первого игрового кадра | P2 | `done` | [Детали](tickets/E-018.md) |
+| G-016 | Доводка существующих сценариев по слепому тесту | P1 | `awaiting_playtest` | [Детали](tickets/G-016.md) |
+| G-017 / D4 | Контур охлаждения: следующий эпизод и production loop | P2 | `awaiting_playtest` | [Детали](tickets/G-017.md) |
+| G-018 | Сквозное прохождение семи готовых игровых карт | P2 | `done` | [Детали](tickets/G-018.md) |
+| G-019 | Полноценная глава: связный маршрут, угроза и задача | P1 | `done` | [Детали](tickets/G-019.md) |
+
+## Изображение, окружение и UI
+
+Статусы отдельных slices не изменены общей приёмкой G-019. Результаты и ограничения каждой строки — в [visual results](art/visual-slice-results.md); для VIS-43–46 есть [общая карточка UI](tickets/VIS-43-46.md).
+
+| ID | Статус | Результат / evidence |
 | --- | --- | --- |
-| Application | `src/relaycore/app/application.*` | Владеет engine subsystems и delegate |
-| Доступ игры к движку | `src/relaycore/app/engine_services.*` | Заимствующий facade, не владелец |
-| Экраны и сессии | `src/relaygame/demo_game*` | Menu, Playing, Pause, Editor, Finale, Complete |
-| Подготовка карты | `src/relaygame/level_session_builder.*`, `demo_game_runtime_ops.*` | Сначала подготовить, затем заменить живое состояние |
-| Simulation | `src/relaygame/game_world_runtime*`, `player_controller*` | Typed collections, не ECS |
-| Правила | `mission_runtime.*`, `usable_interaction.*`, `enemy_runtime.*`; engine combat/interaction primitives | Новые игровые правила держать в game layer |
-| Persistence | `save_game.*`, `runtime_model.*` | Полный `SavedGame` отличается от F9/F10 `RuntimeLevelSnapshot` |
-| Представление мира | `src/relaygame/world_scene_renderer*` | Превращает игровое состояние в render data |
-| GPU | `src/relaycore/render/renderer.*` | Потребляет подготовленные submissions |
-| Авторинг | `src/relaygame/level_editor*`, `assets/levels`, `assets/config` | Editor save flatten-ит исходные группы и шаблоны |
-
-Engine не включает заголовки игры. Семантическая граница неполная: combat primitives и GameHud находятся в `relaycore`. Не выполнять массовый перенос ради чистоты границы.
-
-## 4. Игровое направление и границы v1
-
-Игрок исследует аварийный технический сектор, восстанавливает его системы и получает доступ к выходу. Короткие боевые встречи поддерживают исследование.
-
-Три опоры: пространственное ориентирование; заметное изменение мира; локальные угрозы с понятной обратной связью.
-
-Текущая цепочка из девяти этапов:
-
-1. Найти запасной предохранитель.
-2. Изолировать повреждённую линию и открыть резервную комнату.
-3. Подключить резервную шину.
-4. Восстановить питание.
-5. Промыть фильтрационную линию.
-6. Запустить охлаждение.
-7. Пройти служебным переходом.
-8. Вернуться к шлюзу и открыть его.
-9. Пройти в следующий сектор и завершить эпизод.
-
-В текущей основной карте есть семь usable-объектов, три двери, один rover, две турели и опасный участок. Эти числа описывают исходный снимок, а не обязательный навсегда content contract.
-
-### RelayCore Vertical Slice v1
-
-- Один законченный эпизод на основе `power_restoration`.
-- 5–15 минут первого самостоятельного meaningful прохождения, измеренные на игроках.
-- Понятное начало, цель, действия, три различающиеся встречи, обратный путь и финал.
-- Одно оружие и два имеющихся типа противников.
-- Ясные сигналы использования, блокировки, подготовки атаки, попадания, урона и уничтожения.
-- Понятные смерть/retry, продолжение после перезапуска и начало нового эпизода.
-- Согласованные материалы, ключевые звуки и игровой HUD.
-- Standalone-архив запускается вне проекта на другом подходящем Windows-ПК.
-
-Приёмка: три новых игрока пробуют один зафиксированный кандидат; минимум двое завершают без помощи разработчика; никто не встречает progression blocker. Отдельно проверяются смерть, продолжение и новый эпизод.
-
-Если прохождение короче пяти минут, выяснить, каких решений и событий не хватает. Не увеличивать коридоры, не уменьшать скорость и не добавлять одинаковые кнопки только ради таймера. Если дольше пятнадцати — отделить содержательную игру от потерянности и повторного пробега.
-
-## 5. Milestones и зависимости
-
-| Этап | Цель / результат для игрока | Задачи | Зависимости | Критерий завершения | Scope / главный риск |
-| --- | --- | --- | --- | --- | --- |
-| M0 — достоверная база | Текущий эпизод проверен; известны реальные проблемы | H-001, G-001 | Нет | Зелёные unit/content tests и протокол самостоятельного прохода | S–M; принять автотест за игровую приёмку |
-| M1 — понятные действия | Ясное начало, устройства, выстрел и угрозы | G-002, E-001, G-003 | M0 | Игрок начинает маршрут без объяснений и понимает причины урона | M; полировать неверный flow |
-| M2 — законченный маршрут | Три разные встречи и приемлемый retry | G-004, G-005 | M1 | Полный проход без тупиков; death/continue сохраняют согласованное состояние | M–L; расширять карту вместо решений |
-| M3 — кандидат slice | Согласованная презентация и самостоятельный запуск | G-006, H-002, H-003 | M2 | Выполнена приёмка v1, другой ПК, известен performance baseline | M; бесконечный polish |
-| M4 — ограниченная консолидация | Устранены проявившиеся проблемы интерфейсов и рабочего процесса | Выбрать по результатам M1–M3 | Принятый автором результат | Короткие конкретные исправления либо явное решение ничего не менять | S; открыть новый фундаментальный roadmap |
-| M5 — рабочий полигон | Встречу удобно запускать и повторять; известны ограничения текущего боя | E-002, G-007, G-008 | Текущий принятый эпизод | Три повторяемых сценария и записанные наблюдения автора | S–M; строить инструменты без реального неудобства |
-| M6 — выбор в бою | Два оружия дают разные решения; угрозы требуют движения и укрытия | G-009; G-010 при доказанной потребности | G-008 | Игрок использует разные решения; новые состояния корректно повторяются и сохраняются | M; второй вариант оказывается просто сильнее первого |
-| M7 — следующий эпизод | Проверенные механики работают в самостоятельном маршруте | G-011 | G-009; решение по G-010 | Проход без подсказок, понятные цели, три разные встречи | M–L; увеличивать длительность пустыми переходами |
-| M8 — проверенный кандидат | Новый контент работает на целевом ПК и доставляется существующим процессом | H-008, H-009 | G-011 | Актуальный профиль, проверки кандидата, ручная приёмка | M; принять scripted workload за полный проход |
-
-```text
-H-001 → G-001 → G-002
-              ├→ E-001 → G-003 → G-004 → G-005
-              └→ наблюдения о presentation ─────┐
-G-002 + G-003 + G-004 + G-005 → G-006 → H-002 → H-003
-                                              ↓
-                                      приёмка v1 → M4
-```
-
-E-001 ускоряет настройку, но его задержка не запрещает независимую правку cues или карты. Не превращать удобство инструмента в искусственный блокер gameplay.
-
-Следующий цикл: `G-007 + G-008 → G-009 → решение по G-010 → G-011 → H-008 → H-009`. G-001 остаётся открытым измерением прежнего эпизода; его можно выполнить независимо. G-010 допустимо отложить и перейти к G-011 с текущими угрозами.
-
-**Отложенное направление по запросу автора 29 сентября:** заменить вручную собранную видимую геометрию стен, полов, врагов, оружия и предметов на OBJ-модели. Выполнять позднее отдельным content-этапом; объём, размещение и коллизии уточнить при его открытии. Сейчас подключён только дробовик.
-
-## 6. Очередь задач и сравнительная стоимость
-
-Три трека: G — непосредственно gameplay; E — необходимые runtime/tooling capabilities; H — correctness, проверяемость, performance evidence, build и документация.
-
-Отдельный инженерный трек: VK-013/014 и VK-F01 done — runtime использует только Vulkan; evidence в `VULKAN_MIGRATION_PLAN.md`. E-003–E-009 дали native model workflow, выбранные materials, HDR и baked diffuse probes. При отложенной автором человеческой проверке инженерное продолжение по поручению — E-010 → E-011 → E-012 → E-013 → E-014 → G-012; E-015/E-017/E-018 выполнены, G-013/G-014/G-015 технически проверены. Следующая работа стратегии — D3, одна наблюдаемая проблема pressure_transfer. G-011 остаётся awaiting_playtest, H-008/H-009 pending; их критерии не закрываются новой capability. Порядковые номера таблицы сохраняют историю, зависимости карточек определяют текущий порядок.
-
-| Порядок | ID | Название | Трек | Priority | Статус |
-| --- | --- | --- | --- | --- | --- |
-| 1 | H-001 | Актуальный test baseline | Engine Health | P1 | done |
-| 2 | G-001 | Наблюдаемый полный проход | Gameplay | P1 | awaiting_playtest |
-| 3 | G-002 | Начало и ориентирование | Gameplay | P1 | done |
-| 4 | E-001 | Полный локальный повтор встречи | Engine/runtime tooling | P2 | done |
-| 5 | G-003 | Обратная связь оружия и угроз | Gameplay | P1 | done |
-| 6 | G-004 | Три разные встречи | Gameplay | P1 | done |
-| 7 | G-005 | Смерть, повтор и продолжение | Gameplay | P1 | done |
-| 8 | G-006 | Согласованная презентация | Gameplay/presentation | P2 | done |
-| 9 | H-002 | Standalone-кандидат и performance baseline | Engine Health | P1 | done |
-| 10 | H-003 | Документация принятого состояния | Engine Health | P2 | done |
-| 11 | H-004 | Сетевые обновления standalone | Engine Health | P1 | done |
-| 12 | H-005 | Автоматизация выпуска и Release-сборка | Engine Health | P1 | done |
-| 13 | H-006 | Проверки staged-содержимого и полный отчёт форматирования | Engine Health/tooling | P2 | done |
-| 14 | H-007 | Проверка конфигурации выпуска после сохранения CLion | Engine Health/tooling | P2 | done |
-| 15 | E-002 | Проверка карты без запуска игры | Engine/runtime tooling | P1 | done |
-| 16 | G-007 | Большой полигон для развития механик | Gameplay/authoring | P1 | done |
-| 17 | G-008 | Три повторяемых боевых сценария на полигоне | Gameplay/authoring | P2 | done |
-| 18 | G-009 | Второе оружие с отдельной боевой ролью | Gameplay/runtime | P2 | done |
-| 19 | G-010 | Один новый противник по результатам испытаний | Gameplay/runtime | P2 | awaiting_playtest |
-| 20 | G-011 | Следующий короткий игровой эпизод | Gameplay/authoring | P2 | awaiting_playtest |
-| 21 | H-008 | Профиль нового игрового маршрута | Engine Health | P2 | in_progress |
-| 22 | H-009 | Проверяемый кандидат следующего эпизода | Engine Health/delivery | P2 | pending |
-| 23 | VK-014 | Ревью архитектуры после Vulkan cutover | Engine Health/rendering | P2 | done |
-| 24 | VK-F01 | Диагностические строки Vulkan mesh backend | Engine Health/rendering | P3 | done |
-| 25 | E-003 | Статический GLB → native MeshAsset/ModelAsset | Engine/content | P2 | done |
-| 26 | E-004 | Сборка и доставка native моделей из GLB | Engine/content tooling | P2 | done |
-| 27 | E-005 / N1 | Проверочная native-комната и полный content workflow | Engine/content | P2 | done |
-| 28 | E-006 / N2.1 | Tangent/normal map для окрашенной стали native-шкафа | Engine/render/content | P2 | done |
-| 29 | E-007 / N2.2 | Roughness/metalness факторов native-шкафа | Engine/render/content | P2 | done |
-| 30 | E-008 / N3.1 | FP16 HDR, exposure, tone mapping и UI composition | Engine/render | P2 | done |
-| 31 | E-009 / N3.2 | Baked diffuse SH9 irradiance probes | Engine/render/content | P2 | done |
-| 32 | E-010 / N4.1 | Общие world queries поверх AABB | Engine/world | P2 | done |
-| 33 | E-011 / N4.2 | Jolt static world на изолированном fixture | Engine/physics | P2 | done |
-| 34 | E-012 / N4.3 | Native collision product и build/staging | Engine/content | P2 | done |
-| 35 | E-013 / N4.4 | Mesh-world movement/query parity и lifecycle | Engine/gameplay | P2 | done |
-| 36 | E-014 / N4.5 | Collision authoring/debug и asset inspection | Engine/tooling | P2 | done |
-| 37 | G-012 / N4.6 | Короткий игровой участок с native collision | Gameplay/authoring | P2 | awaiting_playtest |
-| 38 | E-015 / N5 | Surface-aware impact feedback по потребности | Gameplay/presentation | P2 | done |
-| 39 | G-013 | Два тактических решения native-встречи | Gameplay/authoring | P2 | awaiting_playtest |
-| 40 | E-016 | Обход препятствий rover под встречи главы | Engine/gameplay | P2 | done |
-| 41 | G-014 | Native-встреча в существующем эпизоде | Gameplay/authoring | P2 | awaiting_playtest |
-| 42 | E-017 | Переиспользование актуальных irradiance products | Engine/content tooling | P2 | done |
-| 43 | G-015 | Локальный retry смешанной встречи | Gameplay/runtime | P2 | awaiting_playtest |
-| 44 | E-018 | Подготовка GPU-ресурсов до первого игрового кадра | Engine/render | P2 | done |
-| 45 | G-016 | Доводка существующих сценариев по слепому тесту | Gameplay/presentation | P1 | awaiting_playtest |
-| 46 | G-017 / D4 | Контур охлаждения: следующий эпизод и production loop | Gameplay/authoring | P2 | awaiting_playtest |
-| 47 | G-018 | Сквозное прохождение семи готовых игровых карт | Gameplay/authoring | P2 | done |
-| 48 | G-019 | Полноценная глава: связный маршрут, угроза и задача | Gameplay/art/AI | P1 | done |
+| IMG-01 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-01) |
+| IMG-02 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-02) |
+| IMG-03 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-03) |
+| IMG-04 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-04) |
+| IMG-05 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-05) |
+| IMG-06 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#img-06) |
+| VIS-03 | `done` | [Детали](art/visual-slice-results.md#vis-03) |
+| VIS-04 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-04) |
+| VIS-05 | `done` | [Детали](art/visual-slice-results.md#vis-05) |
+| VIS-06 | `done` | [Детали](art/visual-slice-results.md#vis-06) |
+| VIS-07 | `done` | [Детали](art/visual-slice-results.md#vis-07) |
+| VIS-08 | `done` | [Детали](art/visual-slice-results.md#vis-08) |
+| VIS-09 | `done` | [Детали](art/visual-slice-results.md#vis-09) |
+| VIS-10 | `done` | [Детали](art/visual-slice-results.md#vis-10) |
+| VIS-11 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-11) |
+| VIS-12 | `done` | [Детали](art/visual-slice-results.md#vis-12) |
+| VIS-13 | `done` | [Детали](art/visual-slice-results.md#vis-13) |
+| VIS-14 | `done` | [Детали](art/visual-slice-results.md#vis-14) |
+| VIS-15 | `done` | [Детали](art/visual-slice-results.md#vis-15) |
+| VIS-16 | `done` | [Детали](art/visual-slice-results.md#vis-16) |
+| VIS-17 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-17) |
+| VIS-18 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-18) |
+| VIS-19 | `done` | [Детали](art/visual-slice-results.md#vis-19) |
+| VIS-20 | `done` | [Детали](art/visual-slice-results.md#vis-20) |
+| VIS-21 | `done` | [Детали](art/visual-slice-results.md#vis-21) |
+| VIS-22 | `done` | [Детали](art/visual-slice-results.md#vis-22) |
+| VIS-23 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-23) |
+| VIS-24 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-24) |
+| VIS-25 | `done` | [Детали](art/visual-slice-results.md#vis-25) |
+| VIS-26 | `done` | [Детали](art/visual-slice-results.md#vis-26) |
+| VIS-27 | `done` | [Детали](art/visual-slice-results.md#vis-27) |
+| VIS-28 | `done` | [Детали](art/visual-slice-results.md#vis-28) |
+| VIS-29 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-29) |
+| VIS-30 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-30) |
+| VIS-31 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-31) |
+| VIS-32 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-32) |
+| VIS-33 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-33) |
+| VIS-34 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-34) |
+| VIS-35 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-35) |
+| VIS-36 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-36) |
+| VIS-37 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-37) |
+| VIS-38 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-38) |
+| VIS-39 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-39) |
+| VIS-40 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-40) |
+| VIS-41 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-41) |
+| VIS-42 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-42) |
+| VIS-43 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-43) |
+| VIS-44 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-44) |
+| VIS-45 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-45) |
+| VIS-46 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-46) |
+| VIS-47 | `done` | [Детали](art/visual-slice-results.md#vis-47) |
+| VIS-48 | `done` | [Детали](art/visual-slice-results.md#vis-48) |
+| VIS-49 | `awaiting_playtest` | [Детали](art/visual-slice-results.md#vis-49) |
+| VIS-50 | `done` | [Детали](art/visual-slice-results.md#vis-50) |
 
-Оценки 1–5 служат сравнению, а не вычислению общего балла. Больший Complexity/Risk означает больший объём/риск.
+## Проверки и обновление evidence
 
-| ID | Value | Gameplay impact | Engine value | Learning value | Complexity | Risk |
-| --- | --- | --- | --- | --- | --- | --- |
-| H-001 | 5 | 2 | 4 | 3 | 1 | 1 |
-| G-001 | 5 | 5 | 2 | 4 | 1 | 2 |
-| G-002 | 5 | 5 | 1 | 3 | 2 | 2 |
-| E-001 | 4 | 3 | 4 | 4 | 2 | 3 |
-| G-003 | 5 | 5 | 2 | 4 | 3 | 2 |
-| G-004 | 5 | 5 | 2 | 4 | 3 | 3 |
-| G-005 | 4 | 4 | 3 | 5 | 3 | 3 |
-| G-006 | 4 | 4 | 2 | 3 | 3 | 2 |
-| H-002 | 5 | 4 | 4 | 5 | 2 | 3 |
-| H-003 | 3 | 1 | 3 | 2 | 1 | 1 |
+Workflow и автоматические логические коммиты задаёт [AGENTS](../AGENTS.MD#git-and-handoff); выбор build/tests — [DEVELOPMENT](DEVELOPMENT.md#узкие-проверки) и [verify skill](../.agents/skills/relaycore-verify/SKILL.md). После работы обновите статус здесь, а в карточке запишите дату, изменённые пути, точные команды, результат и оставшиеся gates. Не копируйте полный лог в обзорные документы.
 
-## 7. Подробные implementation tickets
+Человеческий протокол фиксирует идентичность сборки, знакомство игрока с картой, время/смерти/затруднения, обычное движение и sprint, звук, Continue/retry и решение каждого открытого критерия. Scripted routes и технические кадры не доказывают pacing или понятность. Performance требует сопоставимого measured before/after.
 
-### H-001 — восстановить проверки текущего эпизода
+## История
 
-**Трек / приоритет / scope:** Engine Health / P1 / S. **Зависимости:** нет. **Риск:** низкий; можно случайно ослабить полезные assertions.
+[Исходный scope, baseline и журнал](history/playable-slice-2026-09--10.md), [предыдущие стратегии D/N/M](history/project-planning-2026-09-29--10-10.md), [завершённая Vulkan migration](VULKAN_MIGRATION_PLAN.md). Исторические упаковки и полные проверки не являются обязательным workflow для новой узкой задачи.
 
-**Контекст:** свежая сборка успешна, но editor roundtrip test ожидает старые шесть этапов и старый порядок устройств; lighting test ожидает прежнее художественное значение.
+<details>
+<summary>Ссылки на прежние разделы</summary>
 
-**Цель:** достоверный зелёный baseline перед gameplay-изменениями. **Для игрока:** поведение и настройки сохраняются. **Engine requirement:** отсутствует.
+<a id="vis-43--переход-на-игровой-hud-и-ui"></a>[VIS-43 — переход на игровой HUD и UI](tickets/VIS-43-46.md#vis-43--переход-на-игровой-hud-и-ui)
 
-**Не входит:** изменение основной карты, баланса, освещения, save format, runtime API, CMake, dependencies и общий рефакторинг тестов.
+<a id="rmlui-migration--inventory-2026-10-09"></a>[RmlUi migration — inventory, 2026-10-09](tickets/VIS-43-46.md#rmlui-migration--inventory-2026-10-09)
 
-**Направление реализации:**
+<a id="implementation-and-evidence--2026-10-09"></a>[Implementation and evidence — 2026-10-09](tickets/VIS-43-46.md#implementation-and-evidence--2026-10-09)
 
-1. Повторить оба падения на актуальном дереве.
-2. В editor roundtrip сохранить проверку геометрии и entity properties.
-3. Проверить сохранение актуальной mission definition относительно исходной карты; не ограничиваться механической заменой `6` на `9`.
-4. Обновить старую последовательность взаимодействий: добавить изолятор, резервную шину и фильтр в правильных местах.
-5. Проверить работу обязательных связей после сохранения и загрузки документа. Использовать актуальный content test как свидетельство сценария, не копировать целиком весь acceptance harness.
-6. Определить назначение lighting assertion: если shipped contract — явно принять текущее authored значение; если parser contract — отделить проверку parser от художественной настройки. Не удалять проверку только ради зелёного результата.
+<a id="focus-cancellation-follow-up--2026-10-09"></a>[Focus cancellation follow-up — 2026-10-09](tickets/VIS-43-46.md#focus-cancellation-follow-up--2026-10-09)
 
-**Вероятные файлы:** `tests/level_editor_tests.cpp`, `tests/render_authoring_config_tests.cpp`. Источники поведения: `tests/shipped_content_validation_tests.cpp`, `assets/levels/power_restoration.toml`, `assets/config/render_authoring.toml`.
+<a id="ui-art-direction-pass--2026-10-09"></a>[UI art-direction pass — 2026-10-09](tickets/VIS-43-46.md#ui-art-direction-pass--2026-10-09)
 
-**Проверки:** targeted tests → `ctest --preset test-debug` и `ctest --preset validation-debug` после соответствующей сборки; `git diff --check`.
+<a id="2-исходное-состояние-и-доказательства"></a>[2. Исходное состояние и доказательства](history/playable-slice-2026-09--10.md#2-исходное-состояние-и-доказательства)
 
-**Runtime verification:** для test-only patch новый полный graphics run не требуется. Если найдена реальная потеря данных при roundtrip, оформить отдельный runtime-fix с воспроизведением, не расширять этот ticket незаметно.
+<a id="подтверждённая-основа"></a>[Подтверждённая основа](history/playable-slice-2026-09--10.md#подтверждённая-основа)
 
-**Definition of Done:** оба failures устранены осмысленными assertions; оставшаяся часть старого теста тоже проходит; unit/content suite зелёные; diff ограничен необходимыми тестовыми правками.
+<a id="выполненная-проверка-2026-09-27"></a>[Выполненная проверка 2026-09-27](history/playable-slice-2026-09--10.md#выполненная-проверка-2026-09-27)
 
-### G-001 — измерить самостоятельное прохождение
+<a id="4-игровое-направление-и-границы-v1"></a>[4. Игровое направление и границы v1](history/playable-slice-2026-09--10.md#4-игровое-направление-и-границы-v1)
 
-**Трек / приоритет / scope:** Gameplay / P1 / S–M. **Зависимость:** H-001. **Риск:** подсказки автора и знание маршрута искажают результат.
+<a id="relaycore-vertical-slice-v1"></a>[RelayCore Vertical Slice v1](history/playable-slice-2026-09--10.md#relaycore-vertical-slice-v1)
 
-**Цель:** получить evidence о понятности, challenge и длительности. **Для игрока:** неизменённый текущий эпизод. **Engine requirement:** отсутствует.
+<a id="5-milestones-и-зависимости"></a>[5. Milestones и зависимости](history/playable-slice-2026-09--10.md#5-milestones-и-зависимости)
 
-**Действия:**
+<a id="h-001--восстановить-проверки-текущего-эпизода"></a>[H-001 — восстановить проверки текущего эпизода](tickets/H-001.md#h-001--восстановить-проверки-текущего-эпизода)
 
-1. Зафиксировать сборку, карту, настройки, текущие изменения и способ запуска.
-2. Дать новому игроку начать с меню и «Нового эпизода». Не показывать решение маршрута заранее.
-3. Записывать время девяти этапов, развороты, остановки дольше минуты, вопросы о цели, неожиданный урон и смерть.
-4. Наблюдать, замечает ли игрок изменение света, вентиляции, пара и открывшийся проход.
-5. В середине маршрута проверить выход и «Продолжить» после перезапуска.
-6. Отдельно измерить быстрый повторный проход, не смешивая его с первым.
-7. Выбрать три наиболее серьёзных проблемы; привязать каждую к месту, действию и наблюдению.
+<a id="g-001--измерить-самостоятельное-прохождение"></a>[G-001 — измерить самостоятельное прохождение](tickets/G-001.md#g-001--измерить-самостоятельное-прохождение)
 
-**Материалы:** основная карта, `docs/PLAYTEST_GUIDE.txt`, текущий episode plan. Не создавать telemetry framework ради одного наблюдения.
+<a id="g-002--сделать-начало-и-маршрут-понятными"></a>[G-002 — сделать начало и маршрут понятными](tickets/G-002.md#g-002--сделать-начало-и-маршрут-понятными)
 
-**Проверки:** ручной протокол. Автотест доказывает достижимость, но не понимание игроком и не интересность.
+<a id="e-001--полный-локальный-повтор-встречи"></a>[E-001 — полный локальный повтор встречи](tickets/E-001.md#e-001--полный-локальный-повтор-встречи)
 
-**Definition of Done:** есть полный протокол, время первого и при наличии повторного прохода, результат continue, три приоритетные проблемы. Если нового игрока нет, статус `awaiting_playtest`; не придумывать данные и не объявлять цель 5–15 минут достигнутой.
+<a id="g-003--закончить-feedback-оружия-и-угроз"></a>[G-003 — закончить feedback оружия и угроз](tickets/G-003.md#g-003--закончить-feedback-оружия-и-угроз)
 
-Получен первый отчёт: сестра автора дошла до финала с подсказками за приблизительно 90–120 секунд. Подтверждены затруднения после предохранителя, после резервной шины и после охлаждения; подробности в [протоколе](playtests/G-001-2026-09-27.md). По уточнению автора, девять значений времени — длительности этапов, их сумма 68 секунд; расхождение с общей оценкой не объяснено. После просьбы проверить quit/continue автор сообщил «все ок»; проблем продолжения не заявлено. G-001 пока `awaiting_playtest`: остаётся уточнение условий/сборки; этот проход не подтверждает самостоятельность и целевую длительность.
+<a id="g-004--три-встречи-с-разными-решениями"></a>[G-004 — три встречи с разными решениями](tickets/G-004.md#g-004--три-встречи-с-разными-решениями)
 
-### G-002 — сделать начало и маршрут понятными
+<a id="g-005--принять-правило-смерти-и-продолжения"></a>[G-005 — принять правило смерти и продолжения](tickets/G-005.md#g-005--принять-правило-смерти-и-продолжения)
 
-Основания из двух отзывов G-001: первый проход с подсказками — 90–120 секунд; второй — 3:26, с непонятными целями справа сверху и лишними кругами после насосной и выходной панели. Второй участник не распознал ориентир «зелёная труба» (назвал его «проводом»). Цели и сообщения устройств упрощены; стрелки связывают короткий переход и выходную панель с направлением движения. Тест воспроизвёл отдельный дефект: возврат прежним путём оставлял миссию на этапе 7 даже в открытом шлюзе. Зона возврата теперь принимает оба пути. Совпадение с причиной затруднения участницы не доказано. 28 сентября автор принял результат сообщением «все ок все лучше». Условия повторной проверки и самостоятельность нового игрока отдельно не описаны; это качественная приёмка автором. Сборка и критерии — в [протоколе](playtests/G-001-2026-09-27.md#проверка-исправлений-g-002--28-сентября).
+<a id="g-006--согласованный-визуальный-и-звуковой-эпизод"></a>[G-006 — согласованный визуальный и звуковой эпизод](tickets/G-006.md#g-006--согласованный-визуальный-и-звуковой-эпизод)
 
-**Трек / приоритет / scope:** Gameplay / P1 / M. **Зависимость:** G-001. **Риск:** заменить исследование навязчивыми указателями.
+<a id="h-002--проверить-standalone-кандидат"></a>[H-002 — проверить standalone-кандидат](tickets/H-002.md#h-002--проверить-standalone-кандидат)
 
-**Цель:** игрок понимает первую задачу и следующие направления. **Engine requirement:** использовать существующие interactions, mission text, lights, decals и props.
+<a id="h-004--обновления-standalone-сборок-по-сети"></a>[H-004 — обновления standalone-сборок по сети](tickets/H-004.md#h-004--обновления-standalone-сборок-по-сети)
 
-**Действия:**
+<a id="h-005--автоматизация-выпуска-и-release-сборка"></a>[H-005 — автоматизация выпуска и Release-сборка](tickets/H-005.md#h-005--автоматизация-выпуска-и-release-сборка)
 
-1. Выбрать конкретные проблемы ориентирования из G-001.
-2. Исправить размещение первого предмета, sightline устройства, текст отказа или пространственный ориентир — в зависимости от наблюдения.
-3. Согласовать описание текущей цели с реальными prerequisites; текст должен помогать понять причину блокировки.
-4. Различить щитовую, сервисный узел и фильтрационную крупными формами и функциональными акцентами.
-5. Повторить начало с новым игроком; не наращивать карту до проверки изменений.
+<a id="h-003--закрепить-фактический-статус"></a>[H-003 — закрепить фактический статус](tickets/H-003.md#h-003--закрепить-фактический-статус)
 
-**Файлы:** `assets/levels/power_restoration.toml`; текущий HUD — `src/relaycore/render/player_ui.cpp`, presentation data и `assets/ui/hud.rml`. Прежний ImGui HUD исходного G-002 заменён в VIS-43.
+<a id="e-002--g-007--испытательный-полигон"></a>[E-002 / G-007 — испытательный полигон](tickets/E-002.md#e-002--g-007--испытательный-полигон)
 
-**Проверки:** content validation и затронутые interactions; graphics captures для изменённых ориентиров; ручное первое прохождение.
+<a id="g-008--три-повторяемых-боевых-сценария"></a>[G-008 — три повторяемых боевых сценария](tickets/G-008.md#g-008--три-повторяемых-боевых-сценария)
 
-**Definition of Done:** новый игрок без внешней подсказки находит предохранитель, понимает блокировку главного рубильника и выбирает нужное дальнейшее направление. Наблюдения записаны; проходимость не нарушена.
+<a id="g-009--второе-оружие-с-отдельной-ролью"></a>[G-009 — второе оружие с отдельной ролью](tickets/G-009.md#g-009--второе-оружие-с-отдельной-ролью)
 
-### E-001 — полный локальный повтор встречи
+<a id="g-010--один-новый-противник-если-текущих-угроз-недостаточно"></a>[G-010 — один новый противник, если текущих угроз недостаточно](tickets/G-010.md#g-010--один-новый-противник-если-текущих-угроз-недостаточно)
 
-**Трек / приоритет / scope:** Engine/runtime tooling / P2 / S–M. **Зависимости:** H-001 и конкретная встреча для проверки. **Риск:** смешать debug snapshot и дисковое сохранение.
+<a id="g-011--следующий-короткий-эпизод-из-проверенных-механик"></a>[G-011 — следующий короткий эпизод из проверенных механик](tickets/G-011.md#g-011--следующий-короткий-эпизод-из-проверенных-механик)
 
-**Контекст:** F9/F10 используют `RuntimeLevelSnapshot`; позиция/controller state и rover state хранятся отдельно в полном `SavedGame`. Сегодня такой snapshot не восстанавливает всю встречу.
+<a id="e-003--первый-static-meshassetmodelasset-slice"></a>[E-003 — первый static MeshAsset/ModelAsset slice](tickets/E-003.md#e-003--первый-static-meshassetmodelasset-slice)
 
-**Цель:** разработчик может повторять бой с прежними игроком, врагами, дверями и заданиями. **Для обычного игрока:** штатное save/continue не меняется.
+<a id="e-004--сборка-и-доставка-native-моделей-из-glb"></a>[E-004 — сборка и доставка native моделей из GLB](tickets/E-004.md#e-004--сборка-и-доставка-native-моделей-из-glb)
 
-**Направление реализации:**
+<a id="e-005--native-комната-n1"></a>[E-005 — native-комната N1](tickets/E-005.md#e-005--native-комната-n1)
 
-1. Уточнить контракт снимка: player pose/motion, combat, rover health/mode/timer/position, doors, mission и нужное presentation state.
-2. Переиспользовать существующее полное состояние. Не создавать универсальный serializer или новый object framework.
-3. Подготовить восстановление до применения, где существующий API это позволяет; явно отвергать несовместимую карту.
-4. Сохранить изоляцию preview и player progress. F9/F10 не должны писать `progress.toml`.
-5. Уточнить сообщения инструмента так, чтобы частичный и полный snapshot нельзя было перепутать.
+<a id="e-006--tangentnormal-map-первый-шаг-n2"></a>[E-006 — tangent/normal map, первый шаг N2](tickets/E-006.md#e-006--tangentnormal-map-первый-шаг-n2)
 
-**Вероятные файлы:** `src/relaygame/demo_game_snapshot_commands.cpp`, `demo_game.h`, `game_world_runtime.*`, `save_game.*`, ближайшие snapshot/lifecycle tests. Capability остаётся в game/runtime tooling; перенос в engine не требуется.
+<a id="e-007--roughnessmetalness-n2"></a>[E-007 — roughness/metalness, N2](tickets/E-007.md#e-007--roughnessmetalness-n2)
 
-**Проверки:** snapshot → движение, выстрелы, изменение врага и двери → restore; сравнить существенное состояние. Проверить incompatible snapshot и неизменность дискового save.
+<a id="e-008--linear-hdr-exposure-и-ui-первый-шаг-n3"></a>[E-008 — linear HDR, exposure и UI, первый шаг N3](tickets/E-008.md#e-008--linear-hdr-exposure-и-ui-первый-шаг-n3)
 
-**Definition of Done:** одна реальная встреча воспроизводимо возвращается к исходному состоянию, в том числе во время windup врага; ошибка restore не скрывается; дисковый прогресс не затронут.
+<a id="e-009--baked-diffuse-irradiance-probes-n32"></a>[E-009 — baked diffuse irradiance probes, N3.2](tickets/E-009.md#e-009--baked-diffuse-irradiance-probes-n32)
 
-Выполнено 2026-09-27 независимо от ожидающего плейтеста G-001. F9 сохраняет в памяти `SavedGame` и состояние эффектов окружения/время сцены; F10 восстанавливает player pose/motion, combat, rover, doors, mission, simulation tick и фонарик. Короткие трассеры и подтверждения взаимодействий от отброшенной попытки очищаются. Восстановление готовится на копии runtime с проверкой камеры до замены активного состояния. Команды не записывают `progress.toml`; штатное сохранение при дальнейшей игре и выходе сохраняет прежние правила. Editor preview не использует снимок кампании; смена сессии сбрасывает локальный снимок. Проверка встречи использует робота резервного узла `power_restoration` в Windup.
+<a id="e-010--общие-world-queries-поверх-aabb-n41"></a>[E-010 — общие world queries поверх AABB, N4.1](tickets/E-010.md#e-010--общие-world-queries-поверх-aabb-n41)
 
-### G-003 — закончить feedback оружия и угроз
+<a id="e-011--jolt-static-world-на-изолированном-fixture-n42"></a>[E-011 — Jolt static world на изолированном fixture, N4.2](tickets/E-011.md#e-011--jolt-static-world-на-изолированном-fixture-n42)
 
-**Трек / приоритет / scope:** Gameplay / P1 / M. **Зависимость:** G-001; E-001 ускоряет итерацию. **Риск:** добавить визуальный шум без улучшения понимания.
+<a id="e-012--native-collision-product-и-buildstaging-n43"></a>[E-012 — native collision product и build/staging, N4.3](tickets/E-012.md#e-012--native-collision-product-и-buildstaging-n43)
 
-**Результат реализации 28 сентября:** боевые placeholders заменены семью отдельными WAV; добавлены one-shot сигналы подготовки/попадания/удара робота и индикатор windup турели. Существующие hit confirmation, tracer и hurt flash сохранены; HUD различает подготовку следующего выстрела и готовность. Автоматические проверки и кандидат — в [протоколе блока](playtests/G-003-005-2026-09-28.md). Нужно человеческое прослушивание и оценка читаемости атаки.
+<a id="e-013--mesh-world-movementquery-parity-и-lifecycle-n44"></a>[E-013 — mesh-world movement/query parity и lifecycle, N4.4](tickets/E-013.md#e-013--mesh-world-movementquery-parity-и-lifecycle-n44)
 
-**Цель:** игрок различает выстрел, подготовку атаки, попадание, уничтожение и собственный урон.
+<a id="e-014--collision-authoringdebug-и-asset-inspection-n45"></a>[E-014 — collision authoring/debug и asset inspection, N4.5](tickets/E-014.md#e-014--collision-authoringdebug-и-asset-inspection-n45)
 
-**Действия:**
+<a id="g-012--короткий-игровой-участок-с-native-collision-n46"></a>[G-012 — короткий игровой участок с native collision, N4.6](tickets/G-012.md#g-012--короткий-игровой-участок-с-native-collision-n46)
 
-1. Развести основные звуковые события существующей audio-системой.
-2. Проверить видимость windup, выстрела и уничтожения у двух типов угроз.
-3. Согласовать прицел, hit confirmation, tracer и реакцию цели.
-4. Проверить, что игрок понимает источник урона; добавить минимальный cue только при недостаточности нынешних сигналов.
-5. При необходимости добавить простое представление одного оружия/отдачи существующими transforms, без skeleton framework.
-6. Настраивать cadence и damage после того, как feedback понятен.
+<a id="e-015--surface-aware-impact-feedback-по-потребности-n5"></a>[E-015 — surface-aware impact feedback по потребности, N5](tickets/E-015.md#e-015--surface-aware-impact-feedback-по-потребности-n5)
 
-**Не входит по умолчанию:** ammo economy, reload, второе оружие, новые противники. Они требуют отдельного наблюдения о недостатке решений, а не наличия старого пункта 1.3.
+<a id="e-017--переиспользование-актуальных-irradiance-products"></a>[E-017 — переиспользование актуальных irradiance products](tickets/E-017.md#e-017--переиспользование-актуальных-irradiance-products)
 
-**Вероятные файлы:** `assets/audio`, `assets/config/engine.toml`, combat feedback, `enemy_runtime.*`, `world_scene_renderer_interactives.cpp`, `game_hud.cpp`.
+<a id="g-013--два-тактических-решения-native-встречи"></a>[G-013 — два тактических решения native-встречи](tickets/G-013.md#g-013--два-тактических-решения-native-встречи)
 
-**Проверки:** unit tests затронутых таймингов/урона; graphics review; ручное прослушивание и короткая встреча.
+<a id="e-016--обход-препятствий-rover-под-встречи-главы"></a>[E-016 — обход препятствий rover под встречи главы](tickets/E-016.md#e-016--обход-препятствий-rover-под-встречи-главы)
 
-**Definition of Done:** игрок может объяснить, кто атаковал, попал ли его выстрел и уничтожена ли цель. Pause/death/restore не оставляют зацикленного или ошибочного feedback.
+<a id="g-014--native-встреча-в-существующем-эпизоде"></a>[G-014 — native-встреча в существующем эпизоде](tickets/G-014.md#g-014--native-встреча-в-существующем-эпизоде)
 
-### G-004 — три встречи с разными решениями
+<a id="g-015--локальный-retry-смешанной-встречи"></a>[G-015 — локальный retry смешанной встречи](tickets/G-015.md#g-015--локальный-retry-смешанной-встречи)
 
-**Трек / приоритет / scope:** Gameplay / P1 / M. **Зависимости:** G-002, G-003. **Риск:** одна безопасная тактика обесценивает все встречи.
+<a id="e-018--подготовка-gpu-ресурсов-до-первого-игрового-кадра"></a>[E-018 — подготовка GPU-ресурсов до первого игрового кадра](tickets/E-018.md#e-018--подготовка-gpu-ресурсов-до-первого-игрового-кадра)
 
-**Цель:** существующие rover и турели создают различающийся challenge. **Engine requirement:** сначала использовать authored параметры, geometry, collision и line-of-sight.
+<a id="h-008--актуальный-профиль-нового-маршрута"></a>[H-008 — актуальный профиль нового маршрута](tickets/H-008.md#h-008--актуальный-профиль-нового-маршрута)
 
-**Встречи:**
+<a id="h-009--кандидат-следующего-эпизода"></a>[H-009 — кандидат следующего эпизода](tickets/H-009.md#h-009--кандидат-следующего-эпизода)
 
-1. Резервный узел: rover после открытия заслонки проверяет дистанцию и внимание к подготовке атаки.
-2. Фильтрационная: турель, укрытие и опасный участок требуют выбора позиции и пути.
-3. Обратный переход: игрок выбирает уничтожение угрозы или выход из линии огня ради продвижения.
+<a id="g-016--доводка-существующих-сценариев-по-слепому-тесту"></a>[G-016 — доводка существующих сценариев по слепому тесту](tickets/G-016.md#g-016--доводка-существующих-сценариев-по-слепому-тесту)
 
-**Действия:** проверить вход в каждую встречу, безопасное место чтения ситуации, две осмысленные реакции игрока, выход и повтор после сохранения. Настроить размещение и значения до изменения AI.
+<a id="g-017--d4--контур-охлаждения-и-повторяемое-производство"></a>[G-017 / D4 — контур охлаждения и повторяемое производство](tickets/G-017.md#g-017--d4--контур-охлаждения-и-повторяемое-производство)
 
-**Проверено 28 сентября:** сброс windup/recovery несмертельными попаданиями воспроизведён тестом и устранён. Проверены отступление от замаха, уничтожение и прекращение огня турели, уход из линии огня в обратном проходе. Числа урона/темпа и карта не менялись. Ограничение rover: last-seen без pathfinding. Оценка интересности встреч игроком остаётся открытой; evidence в протоколе блока.
+<a id="g-019--полноценная-глава-связный-маршрут-угроза-и-задача"></a>[G-019 — полноценная глава: связный маршрут, угроза и задача](tickets/G-019.md#g-019--полноценная-глава-связный-маршрут-угроза-и-задача)
 
-**Вероятные файлы:** основная карта; `enemy_runtime.cpp` и combat runtime только при воспроизведённом поведенческом блокере.
+<a id="13-журнал-выполнения-и-точка-продолжения"></a>[13. Журнал выполнения и точка продолжения](history/playable-slice-2026-09--10.md#13-журнал-выполнения-и-точка-продолжения)
 
-**Проверки:** content/occlusion/door tests, целевые combat tests, ручное прохождение разных тактик.
+<a id="e-003--команды-и-артефакты"></a>[E-003 — команды и артефакты](history/playable-slice-2026-09--10.md#e-003--команды-и-артефакты)
 
-**Definition of Done:** встречи различаются требуемыми действиями; обязательный путь проходим; нет необходимого врага, застрявшего из-за неподдерживаемой навигации; challenge понятен до наказания. Не добавлены новые классы врагов без отдельной причины.
+<a id="e-004--команды-и-артефакты"></a>[E-004 — команды и артефакты](history/playable-slice-2026-09--10.md#e-004--команды-и-артефакты)
 
-### G-005 — принять правило смерти и продолжения
+<a id="g-018--связать-готовые-главы-комплекса-2026-10-08"></a>[G-018 — связать готовые главы комплекса (2026-10-08)](tickets/G-018.md#g-018--связать-готовые-главы-комплекса-2026-10-08)
 
-**Трек / приоритет / scope:** Gameplay / P1 / M. **Зависимость:** G-004. **Риск:** незаметно изменить persistence semantics.
-
-**Контекст:** смерть возвращает к spawn, восстанавливает боеспособность и сохраняет изменения мира. Это мягкий retry, не восстановление checkpoint.
-
-**Цель:** ошибка игрока имеет понятные последствия и не требует чрезмерного пустого повторного пути.
-
-**Действия:**
-
-1. На результатах G-001/G-004 оценить стоимость смерти и возможность продавить угрозу повторными попытками.
-2. Базовый вариант — сохранить существующее мягкое правило и ясно сообщить его игроку.
-3. Если доказан длинный бесполезный возврат, добавить одну необходимую точку восстановления на существующем save-state. Сначала описать, какие состояния сохраняются и откатываются.
-4. Проверить переходы death → respawn → play, pause → quit → continue, finale → complete → new episode.
-5. Согласовать autosave с выбранным правилом; не сохранять невалидное или неиграбельное состояние.
-
-**Вероятные файлы:** `game_world_runtime_feedback.cpp`, combat runtime, `demo_game_progress.cpp`, menu, save/lifecycle tests; карта при добавлении точки возврата.
-
-**Проверки:** смерть до/после питания и охлаждения, повторная смерть, перезапуск посередине, завершённое сохранение, подтверждение нового эпизода. Существующие saves и несовместимость карты должны обрабатываться явно.
-
-**Definition of Done:** нет тупика, непонятного отката или бесконечного повторения длинного пустого участка; выбранное правило описано и проверено игроком.
-
-### G-006 — согласованный визуальный и звуковой эпизод
-
-**Локальная часть 28 сентября:** упрощён HUD и устранён сплошной цветной overlay сообщений. Ключевые виды проверены в движке, материалы сохранены. Добавлена проверка оборудования/паузы с настоящим audio backend и кадры HUD. Субъективный микс и общая читаемость остаются `awaiting_playtest`; [протокол](playtests/G-006-H-002-2026-09-28.md).
-
-**Трек / приоритет / scope:** Gameplay/presentation / P2 / M. **Зависимости:** G-002–G-005. **Риск:** сменить художественное направление вместо завершения.
-
-**Цель:** функциональные материалы, устройства и угрозы читаются с игровой дистанции; мир имеет единый масштаб и характер.
-
-**Действия:**
-
-1. Взять входной зал со столом и шлюзом как эталон.
-2. Проверить before/after power, предмет, панель и навигационный ориентир.
-3. Применить те же правила контраста и материалов к сервисному узлу, фильтрационной и обратному пути.
-4. Упростить player-facing HUD там, где он сообщает developer-статистику вместо полезного действия.
-5. Проверить пространственный звук, громкость cues, паузу и смену состояния оборудования.
-6. Проверить движение камеры, фонарь, тени и бюджет local lights на важных видах.
-
-**Engine requirement:** существующий renderer/audio достаточен. Исправление rendering допускается под конкретный видимый дефект. Не совмещать polish с dual-pipeline migration.
-
-**Вероятные файлы:** `assets/levels/power_restoration.toml`, `assets/config/render_authoring.toml`, textures/models/audio, GameHud и игровая подготовка сцены.
-
-**Проверки:** project asset skill и pipeline-level validation; graphics captures; просмотр в движении и прослушивание. Красивый standalone asset не заменяет in-engine review.
-
-**Definition of Done:** все важные состояния читаемы; материал и масштаб согласованы; HUD не требует знания diagnostics; отсутствует добавленная декоративная сложность без gameplay-функции.
-
-### H-002 — проверить standalone-кандидат
-
-**Итоговая приёмка 28 сентября:** автор сообщил «все нормально, все согласую» после перечисления оставшихся критериев H-002/H-003. H-002 закрыта по согласованию автора с имеющимися проверками. Новые сведения о ПК, драйвере, количестве первых прохождений и непрерывный Tracy capture не предоставлены; прежний профиль подготовленных состояний сохраняет свои ограничения.
-
-**Локальная часть 28 сентября:** свежая RelWithDebInfo-сборка, 243 unit/audio + 19 content checks, graphics/lifecycle, startup/WM_CLOSE вне проекта без asset override, SHA256-пакет с manifest. Снят ограниченный Tracy baseline шести видов и интегрированный профиль подготовленных состояний; это не профиль непрерывного живого прохождения. Получен отчёт о запуске на ASUS Vivobook Go 15 / Ryzen 5 7520U / Radeon 610M / Windows 11 с обрезанным интерфейсом. Oversized window теперь адаптируется к usable desktop, локальные window/lifecycle/graphics проверки 3/3 прошли, меню/HUD проверены при 960×540. Повторный запуск исправленной сборки на ноутбуке, игроки и полный маршрут ещё нужны, статус `awaiting_playtest`; [кандидат и evidence](playtests/H-002-2026-09-28.md).
-
-**Продолжение 28 сентября:** ASan обнаружил heap-use-after-free внутри miniaudio при отсутствующем WAV. Отсутствие loop/one-shot файла теперь проверяется перед входом в библиотеку; ASan unit/content/graphics прошли после правки. Добавлен отдельный Tracy workload через настоящий `Application`/`DemoGame`: подготовленные состояния всех ключевых частей эпизода, simulation, render и present. Это технический baseline, не замена непрерывного человеческого прохода и другого ПК; [протокол](playtests/H-002-2026-09-28.md).
-
-**Трек / приоритет / scope:** Engine Health / P1 / M. **Зависимости:** M2, G-006. **Риск:** сборка зависит от dev-машины или содержит старые staged assets.
-
-**Цель:** передать воспроизводимый кандидат для самостоятельного прохождения и знать его реальные ограничения.
-
-**Действия:**
-
-1. Проверить актуальные presets и scripts. Собрать `demo-relwithdebinfo`; использовать существующий `scripts/package-playtest.ps1`.
-2. Зафиксировать идентификатор кандидата, source revision/working-tree state, настройки и содержимое архива. Наличие старого exe не доказывает свежесть сборки.
-3. Проверить распакованный архив из каталога вне проекта без source-tree asset override.
-4. На другом ПК проверить startup, new episode, settings, continue, death, finale, restart; зафиксировать GPU/драйвер и необходимые runtime requirements.
-5. Выполнить три независимых первых прохождения по критериям v1. Если обнаружен blocker, вернуть конкретную задачу в работу и повторить затронутую приёмку.
-6. Снять один актуальный Tracy capture: обычная игра, включение систем, три встречи, переход состояния, меню/редактор только как отдельные участки.
-7. Сравнивать одинаковые resolution, VSync, настройки и маршрут. Разделять CPU work, present wait, GPU и редкие loading spikes.
-8. При проблеме производительности сначала воспроизвести и измерить; затем оформить минимальную оптимизацию отдельным scope.
-
-**Проверки:** unit/content, локальные graphics согласно затронутым областям; для кандидата обоснован расширенный workflow. Требования backend skip не считать pass. Проверить фактический remote CI, если кандидат готовится через него.
-
-**Performance acceptance:** до измерения записать целевую машину и бюджет кадра; не выбирать удобную цель после результата. Отсутствие заметного торможения в синтетическом test не является доказательством игрового frame-time.
-
-**Definition of Done:** кандидат запускается на другом ПК; lifecycle/save/retry проверены; критерии human playtest выполнены; есть текущий capture с условиями и выводом. Если другой ПК или игроки недоступны, статус `awaiting_playtest`, а не `done`.
-
-### H-004 — обновления standalone-сборок по сети
-
-**Статус:** `done`. Добавлено по прямому запросу автора 28 сентября: реализовать весь цикл, перед потенциально опасными действиями спрашивать.
-
-**Scope:** версия в меню, ручная фоновая проверка GitHub Releases, полный ZIP по HTTPS, проверка digest/payload, отдельный Windows updater, сохранение пользовательских данных, резервная копия и rollback. Доступны локальные сборка, тесты и preview публикации. Публичный репозиторий и первая загрузка архива выполняются только после согласования конкретной сборки; технические подробности и команды — [UPDATES.md](UPDATES.md).
-
-**Definition of Done:** локальные отрицательные сценарии и реальный restart проверены; опубликован согласованный канал; проверено скачивание и обновление с него. Сам по себе локальный ZIP не завершает сетевую приёмку.
-
-**Проверка 28 сентября:** с явного разрешения автора создан публичный `l1nuvv/RelayCore-releases`, опубликованы 1.3.0 и исправленная 1.3.1. Публичные ZIP совпали по размеру и SHA256; штатный помощник получил `current`/`available`. Локальные отрицательные сценарии и запуск реальной игры прошли. Сетевой тест выявил слишком длинный staging-путь 1.3.0; исправление 1.3.1 проверено реальной загрузкой, заменой и подтверждением готовности игры в длинной папке. Игра и помощник штатно завершились с кодом 0. Отдельно проверен переход исходной 1.3.0 на 1.3.1 из короткой папки. Подробности — [H-004](playtests/H-004-2026-09-28.md).
-
-### H-005 — автоматизация выпуска и Release-сборка
-
-Запрошен автором после 1.3.1: автоматическая версия, оформление описания, подготовка/публикация одной командой на этап, уведомление после обновления и проверяемая оптимизированная сборка. Исторические результаты U-001–U-005: [протокол 1.3.2](playtests/release-1.3.2.md); текущий workflow — [UPDATES.md](UPDATES.md). Статус `done`: с разрешения автора опубликована 1.3.2; Release content/updater 20/20, Debug graphics/lifecycle 2/2, установка настоящего ZIP, сетевой переход 1.3.1 → 1.3.2 и автоматическое закрытие нового помощника проверены. Повторная сборка без изменений 0,185 с; FPS не измерялся. Точные команды, архив и ограничения записаны в протоколе 1.3.2.
-
-### H-003 — закрепить фактический статус
-
-**Итоговое согласование 28 сентября:** автор принял текущее состояние и документацию словами «все нормально, все согласую». H-003 закрыта; статусы и ограничения согласованы в README, STATUS и этой очереди. Исторические результаты и неподтверждённые измерения не заменены заявлением о новой проверке.
-
-**Трек / приоритет / scope:** Engine Health / P2 / S. **Зависимость:** результаты предыдущих этапов; частичные уточнения допустимы раньше. **Риск:** создать ещё один конкурирующий план.
-
-**Цель:** новый ИИ и автор находят одну актуальную очередь, реальные команды и известные ограничения.
-
-**Действия:**
-
-1. Обновить README: текущий маршрут, save format, запуск и private playtest.
-2. Хранить актуальные статусы и verification evidence в этом roadmap без отдельной maintenance-очереди.
-3. Уточнить ARCHITECTURE: текущие owner/state/save/reload contracts и связь UI с diagnostics.
-4. Убирать дублирующие и устаревшие планы из рабочего дерева; исторические документы доступны в Git. Не переписывать историю проверок как новую проверку.
-5. Сохранять полезные наблюдения эпизода в соответствующих ticket и playtest-протоколах без конкурирующего порядка задач.
-6. Обновить player guide по принятому поведению, а не по задуманным функциям.
-
-**Вероятные файлы:** `README.md`, `docs/ARCHITECTURE.md`, `docs/PLAYABLE_SLICE_ROADMAP.md`, `docs/PLAYTEST_GUIDE.txt`.
-
-**Проверки:** соответствие текущему source/CMake, работоспособность ссылок, `git diff --check`. Пересборка для документации не нужна.
-
-**Definition of Done:** можно однозначно найти текущий milestone, следующую задачу, evidence и ограничения; исторические планы не выглядят командами на повторную реализацию.
-
-Раннее уточнение выполнено 2026-09-27: README/STATUS ссылаются на единую очередь, описаны формат сохранения 3, private playtest и полный локальный снимок E-001; ARCHITECTURE согласована с текущими owner/save/restore/reload contracts и связью HUD с diagnostics. FOUNDATION/MASTER_REFACTOR/ROADMAP/EPISODE помечены как исторические, их прежние наблюдения сохранены. Player guide описывает фактическое мягкое возрождение без подсказки маршрута. Раннее уточнение было выполнено до итогового согласования автора и само по себе не подтверждало игровую приёмку.
-
-### M4 — выполненная консолидация 28 сентября
-
-По отдельному выбору автора продолжена M4: «закрепить текущий результат и устранить подтверждённые проблемы». Изменён процесс проверки коммитов и выпуска.
-
-- H-006: два отказа коммита показали, что hook останавливается на первом неправильно оформленном C/C++ файле. Теперь он проверяет весь набор и перечисляет все ошибки форматирования. Дополнительно подтверждено, что JSON и конфликтные маркеры проверялись в рабочем дереве, а не в индексе; теперь обе проверки читают staged-содержимое. Маркеры обнаруживаются и после первой строки. Пустой JSON отклоняется явно: `ConvertFrom-Json` сам возвращает для пустой строки null без ошибки.
-- H-007: CLion сохранил конфигурацию как `.run/RelayCore — Release.run.xml`, но тест искал прежнее имя. Тест согласован с существующим файлом и проходит вместе с проверкой исполняемости интерпретатора через Java CLion.
-
-Проверки: `pwsh -NoProfile -File tests/pre_commit_tests.ps1` — успешно в отдельном временном Git-репозитории; проверены два нарушения форматирования, различия индекса и рабочего дерева, удалённый рабочий JSON, маркеры внутри staged-файла и UTF-8 BOM. `pwsh -NoProfile -File tests/release_workflow_tests.ps1 -Java 'E:/Apps/CLion 2026.2/jbr/bin/java.exe'` — успешно с имитацией сборки/публикации. `git diff --check` — успешно. Индекс основного репозитория, версия и опубликованные архивы не изменялись. Данные измеряемого прохождения G-001 остаются открытыми; новые gameplay-направления этой итерацией не открываются.
-
-### E-002 / G-007 — испытательный полигон
-
-Запрос автора 28 сентября: улучшить инструменты разработки и создать большую тестовую карту, на которой развивать механики, врагов и оружие перед сборкой игры.
-
-- E-002: `relaycore_level_check MAP.toml [--entry NAME]` использует `LevelSessionBuilder`, проверяет назначения переходов и выдаёт JSON с геометрией, объектами, связями, исходными строками и предупреждениями. Ошибка загрузки возвращает код 1; неправильные аргументы — 2. Это проверка подготовки сессии, а не доказательство достижимости и качества всех игровых маршрутов.
-- G-007: безопасный зал, движение/ступени/прыжки, лаборатория устройств, мишени и турель за укрытием, арена существующих rover. Независимые двери отделяют бой; свободный порядок без обязательной миссии. Отдельный `relaycore_sandbox` и конфигурация CLion, отдельные сохранения и настройки. F7/F9/F10 используют существующий цикл итерации.
-- Проверки: сборка инструментов и demo, headless CLI fixtures, content validation проходов/связей/стрельбы/повтора, реальные GL-виды и запуск/редактор. Удобство движения и масштаб помещений затем оценивает автор вручную.
-- Следующий блок определяется конкретной механикой и её наблюдаемым результатом на полигоне; не открывать одновременно каталог оружия, кампанию и переписывание редактора.
-
-Реализовано: карта около 64×34 м, 56 solids, 4 двери, 9 usables, один датчик, 4 турели, 2 rover, hazard и статическая модель с collider. `RelayCore — Sandbox` и `RelayCore — Check Map` сохранены в `.run`. Исправлено подтверждённое ложное предупреждение о сигнале без mission-step: лампы, audio zones и world effects учитываются как потребители activate_target. Настоящие неразрешённые ссылки по-прежнему предупреждаются.
-
-Проверено 28 сентября: Debug configure и сборка семи затронутых targets; `relaycore_content_validation.exe --no-colors` — 22/22 (в том числе три sandbox-сценария); `tests/level_check_tests.ps1 -Executable build/msvc-debug/src/relaygame/relaycore_level_check.exe` — успешно; `ctest --preset test-debug -R '^relaycore\.level session builder' --output-on-failure` — 5/5; `ctest --preset graphics-debug -R 'graphics\.(power_restoration|game_lifecycle)$' --output-on-failure` — 2/2. Headless-отчёт полигона: valid, 0 предупреждений. Просмотрены пять GL-снимков `build/msvc-debug/tests/power-captures/sandbox-*.bmp`; запуск, отдельный progress и editor preview проверены в graphics test. clang-format и `git diff --check` — успешно. Ошибки окружения vcpkg/7-Zip и временный отказ test discovery устранены; итоговая сборка завершилась с кодом 0.
-
-G-007 принята автором 28 сентября: «полигон я проверил все ок». Это приёмка исходной рабочей версии на существующих механиках; новая смешанная встреча G-008 оценивается отдельно. Новые виды оружия и противников G-007 не добавляла.
-
-### Следующий цикл — от полигона к новому эпизоду
-
-**Основание плана, 2026-09-28.** Проверены текущие `combat_runtime.*`, `enemy_runtime.*`, ближайшие combat/enemy/sandbox tests, `runtime_model.h`, загрузка сохранений, запуск Sandbox, CMake targets/presets и инструкции разработки. В рабочем дереве уже есть незакоммиченные изменения выпуска, hook и полигона; план учитывает их как текущую основу, не предлагает повторную реализацию.
-
-Подтверждено по source: один hitscan-режим оружия с damage/range/refire и cooldown; отдельного выбора оружия, магазина и перезарядки в просмотренном боевом состоянии нет. Есть стационарные турели, melee rover и hazards. Rover движется к `last_seen` напрямую с AABB collision; обход препятствий поиском маршрута не реализован. Тесты защищают атаки, укрытия, стены и восстановление состояния. Полигон уже использует эту основу, отдельные сохранения и существующие F7/F9/F10.
-
-Вывод для порядка работ: сначала получить разные решения игрока из небольшого набора механик и проверенных встреч. Rendering, editor, save/continue, выпуск и updater развивать под проявившиеся ограничения этого цикла. Инспекция source не подтверждает интерес боя, удобство полигона или текущую производительность. Сборка и runtime-тесты при составлении этого плана заново не выполнялись; предыдущие результаты остаются в журнале.
-
-#### G-008 — три повторяемых боевых сценария
-
-**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-002 и G-007 выполнены.
-
-**Реализация 28 сентября:** к существующим изолированным встречам добавлена турель в восточной части арены, стоячее укрытие и три стартовые полосы. Западная дорожка rover остаётся вне дальности новой турели. Проверены уклонение от замаха, укрытие после обнаружения, выход из опасной полосы, обход блока и три полных повтора смешанной встречи. Content 25/25, graphics.power_restoration 1/1, CLI fixtures; новые GL-виды просмотрены. [Сценарии, команды и ограничения](playtests/G-008-2026-09-28.md). Автор подтвердил «все ок» и попросил следующий большой блок. Задача принята; длительности, число ручных повторов и отдельные наблюдения не предоставлены.
-
-**Результат:** автор может быстро повторить три разные ситуации и объяснить, какое решение помогает в каждой.
-
-1. Турель: пересечь простреливаемую зону через укрытие; сравнить уничтожение и обход.
-2. Rover: спровоцировать замах, отойти и использовать recovery; проверить ближнюю и среднюю дистанцию.
-3. Сочетание: rover вынуждает двигаться, турель ограничивает безопасные позиции. Проверить, что доступен понятный выход из давления.
-
-Использовать существующие секции, двери и snapshots. Дополнительное управление повтором добавлять только при конкретном неудобстве F7/F9/F10. Проверить погоню у угла и двери: если прямое движение rover делает нужную встречу нерабочей, сначала воспроизвести ограничение и выбрать между изменением арены и минимальным маршрутом для этой встречи.
-
-**Вероятные пути:** `assets/levels/development_sandbox.toml`, `tests/development_sandbox_tests.cpp`; `enemy_runtime.*` только при отдельно подтверждённом дефекте.
-
-**Готово, когда:** каждый сценарий повторён автором не менее трёх раз; записаны время запуска/повтора, причина полученного урона и использованное решение; hub остаётся безопасным; состояние после F10 совпадает с исходным. По наблюдениям принять или скорректировать G-007 и зафиксировать роль следующего оружия. Это испытание механик, а не новый независимый playtest эпизода.
-
-#### G-009 — второе оружие с отдельной ролью
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** G-008 принята; роль второго оружия принята автором на полигоне 2026-09-29.
-
-**Рекомендуемый первый вариант:** короткодистанционный дробовой hitscan-выстрел с большим интервалом между атаками. Текущий точный выстрел сохраняет преимущество на дистанции. Это проверяемая гипотеза о выборе дистанции и момента атаки; если G-008 показывает другую потребность, сначала уточнить карточку.
-
-**Реализация 28 сентября:** дробовик подбирается со стола hub, 1/2 переключают оружие. Семь фиксированных лучей, урон 14 за дробину, дальность 14 м и пауза 0,85 с дают преимущество при близком сближении; точный выстрел выигрывает на дальней мишени. Добавлены отдельные звук, прицел и отдача. Одна атака учитывается один раз, уничтожение каждой цели выдаёт один сигнал; раннее убийство не открывает остальным дробинам цель за убитой. Общий cooldown не сбрасывается переключением. Ввод проверен в игре, меню, паузе, редакторе, при наборе текста и смерти. Выбор/владение/cooldown сохраняются в F9/F10 и disk save/continue; respawn сохраняет оружие. Формат записи 4, чтение 1/2/3 выбирает точное оружие с прежними проверками fingerprint. Debug/ASan unit/audio 249/249, content 26/26, graphics/lifecycle 2/2; CLI fixtures и просмотр двух HUD-кадров. [Протокол и критерии игровой оценки](playtests/G-009-2026-09-28.md). Баланс и различимость звука ещё не приняты автором.
-
-**Scope:** ровно два оружия, получение второго на полигоне, прямое переключение, различимые звук/отдача/индикация выбранного оружия. Одна атака выполняет ограниченный набор лучей; cooldown, статистика атаки и события уничтожения учитываются согласованно. Не вводить каталог оружия, модификации и общий projectile framework. Ammo/reload остаются отдельным решением после испытаний.
-
-**Отзыв и доработка 29 сентября:** автор не принял визуальную часть: на экране оставался тот же одиночный снаряд, модель оружия отсутствовала. Передача и отображение семи коротких следов картечи исправлены; они используют фактические конечные точки боевых лучей и отдельный нейтральный материал. Debug shotgun 4/4, sandbox weapon state 1/1, graphics.power_restoration 1/1; кадр просмотрен. Проверен предоставленный исходник Stevens Model 520: 1890 треугольников, UV и armature, десять материалов, без diffuse-текстуры. Требуются экспорт/объединение материалов и отображение модели от первого лица; это ещё не реализовано. G-009 остаётся в работе, к G-011 пока не переходить.
-
-**Подключение модели 29 сентября:** исходник экспортирован через установленный Blender в корпус (1206 треугольников) и цевьё (380), длина 1,02 м; патроны исключены. Цвета материалов сведены в общую BMP-палитру. Реальная модель отображается на столе и от первого лица; добавлены отдача и ход помпы, отдельная глубина held geometry, корректное скрытие при выборе точного оружия. Рук в исходнике нет. Debug/ASan: unit/audio 250/250, content 26/26, graphics/lifecycle 2/2; кадры idle/fire/recoil/pump и предмета просмотрены. После подгонки положения на столе повторены целевые graphics и sandbox-проверки. Техническая часть завершена; авторская оценка внешнего вида и боя открыта.
-
-Новая механика считается законченной только вместе с input ownership, pause, death/respawn, F9/F10 и disk save/continue. Переключение не должно сбрасывать ограничение темпа стрельбы. При необходимости изменения save format явно определить чтение старых сохранений и обработку новых; политика fingerprint карт сохраняется.
-
-**Вероятные пути:** `enemy_runtime.*`, `game_world_runtime*`, `player_controller*`, combat primitives, `runtime_model.*`, `save_game.*`, HUD/audio и полигон. Правила выбора и получения оружия принадлежат game layer.
-
-**Готово, когда:** в испытаниях есть ситуация с преимуществом каждого оружия; игрок понимает разницу без объяснения чисел; стены/двери блокируют лучи, ближайшая цель определяется корректно, kill/signal не дублируются; переключение и восстановление не дают лишний выстрел или потерю оружия. Проверить новый input в меню, редакторе и игре. Если второй вариант всегда доминирует, пересмотреть роль до расширения арсенала.
-
-#### G-010 — один новый противник, если текущих угроз недостаточно
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. Открыт G-019-C по авторскому отзыву и brief главы 2026-10-09: мобильный стрелок ищет доступный угол вокруг укрытия, готовит выстрел 0,7 с по фиксированному месту и восстанавливается 0,95 с. Изменение позиции или закрытая дверь предотвращают попадание; после потери LOS он идёт к доступной огневой точке, затем проверяет last-known position. Два consumers — архив и лабораторное крыло. Технические проверки, промежуточная модель и открытая человеческая оценка — в checkpoint C ниже. Прежнее решение deferred 2026-09-29 сохраняется в журнале как история.
-
-**Кандидат:** мобильный стрелок с читаемой подготовкой атаки и окном recovery. Его роль — заставлять менять укрытие; турель контролирует фиксированный сектор, rover давит вблизи. Сначала проверить эту роль в одной ограниченной арене. Геометрия должна соответствовать доступному движению; новый AI не подразумевает автоматическое введение navmesh, behavior tree или общего планировщика.
-
-**Scope:** один вид, одно поведение атаки, понятные силуэт/сигнал/уничтожение; явная небольшая state machine. Для первого варианта достаточно существующих ray/collision primitives. Если медленный уклоняемый снаряд необходим для роли, это отдельный ограниченный scope с проверкой столкновений, а не попутное расширение всего combat runtime.
-
-**Вероятные пути:** `enemy_runtime.*`, builder/validation, editor authoring, `world_scene_renderer*`, audio, save/snapshot и ближайшие tests.
-
-**Готово, когда:** новый противник меняет действия игрока относительно турели; предупреждение позволяет осознанно реагировать; укрытия и двери работают; после pause/restore/death нет лишних атак; новый тип проходит загрузку, editor save/load и проверку карты. Не переносить в эпизод противника, отличающегося только health/speed или внешностью.
-
-#### G-011 — следующий короткий эпизод из проверенных механик
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M–L. **Зависимость:** G-009 принят на полигоне; G-010 явно отложен. Технический блок-аут `pressure_transfer.toml` завершён; нужен новый игрок без подсказок, длительности, смерти, причины выбора оружия и три главных затруднения. [Протокол](playtests/G-011-2026-09-29.md).
-
-2026-10-07 автор передал качественный отзыв стороннего слепого теста: краткость/лёгкость, неясная польза дробовика/укрытий, HUD и визуальные замечания. Версия сборки и замеры отсутствуют; приёмка остаётся открытой. Наблюдения записаны в протоколе, план исправлений — G-016.
-
-**Результат:** самостоятельный маршрут в техническом секторе с изменением состояния мира, получением второго оружия и тремя разными встречами. Прежний `power_restoration.toml` оставить контрольным эпизодом. Новый контент сначала собрать в одной карте; несколько карт использовать лишь при потребности маршрута.
-
-Начать с blockout и существующих материалов/props: вход и обучение новому оружию → отдельная угроза → сочетание угроз → задача устройства, меняющая доступный путь → понятный выход. Сначала пройти маршрут, затем довести звук, свет и немного функциональных ориентиров. Встроенный editor и TOML остаются процессом авторинга; точечные улучшения инструмента привязать к записанному неудобству.
-
-**Вероятные пути:** новая карта в `assets/levels`, ближайшие content/graphics tests; существующие mission/interaction/session APIs. Имя карты и сюжет зафиксировать перед авторингом.
-
-**Готово, когда:** хотя бы один новый игрок проходит без подсказок; записаны длительности участков и три главных затруднения; есть наблюдаемое применение обоих оружий и разные решения во встречах. Проверены смерть и continue до/после получения оружия и смены состояния мира. Ориентир 5–15 минут сохраняется; результат измерить, а короткий маршрут улучшать решениями и содержанием. Старые 90–120 секунд и 3:26 из G-001 не являются измерением нового эпизода.
-
-#### E-003 — первый static MeshAsset/ModelAsset slice
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** VK-013/014 выполнены;
-автор 2026-10-02 явно перенёс этот scope вперёд после отложения blind playtest/другого GPU.
-
-**Результат:** Blender GLB компилируется CLI в native `.rcmodel`; immutable CPU meshes,
-opaque base-color материалы и transforms частей подаются в текущий Vulkan renderer.
-Несколько primitives/materials, hierarchy, nonuniform/mirrored instances, embedded
-PNG/JPEG; ошибки неподдерживаемых/повреждённых данных называют source. В Sandbox
-service cylinder `[29,0,2.5]` использует две части/два материала; модель доступна
-в каталоге редактора. Collision остаётся независимым AABB. Bounds обновляются при
-reset/reload карты, неудачная подготовка сохраняет предыдущие bounds/resources.
-
-fastgltf `0.9.0` и simdjson `5.0.1` разрешены прежним manifest baseline и принадлежат
-только compiler tool/tests; importer/Vulkan types не входят в native/game contracts.
-Это base-color static slice: skins/animation/PBR/HDR/streaming/общий asset compiler
-не реализуются этим ticket. При закрытии E-003 source GLB перекомпилировался явным
-CLI; E-004 ниже заменяет этот ручной шаг сборкой. Workflow/format/limitations — в `DEVELOPMENT.md`.
-
-**Проверки 2026-10-02:** Debug unit/audio/tooling 260/260, content 31/31;
-graphics Debug/RelWithDebInfo по 4/4. После bounds fix — focused editor/model 19/19,
-graphics/lifecycle 2/2 и ASan model/OBJ 10/10, включая scale 0.01 для DCC units. После добавления map capture graphics
-повторён 1/1; native cylinder и кадр Sandbox просмотрены. В JUnit нет skip.
-Debug/optimized CLI дают одинаковый product; ZIP `224440-223`: 94 файла/хеши,
-внешний standalone exit 0, lifecycle/episode на внешних assets и Sandbox exit 0.
-Runtime DLL inspection, clang-format, local links и diff-check прошли.
-Точные commands/logs — ниже; G-011/H-008/H-009 остаются незавершёнными.
-
-#### E-004 — сборка и доставка native моделей из GLB
-
-**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-003;
-автор поручил продолжить инженерный трек. Цель — изменение GLB доходит до игры
-через обычную сборку, без ручного обновления native файла в source tree.
-
-**Результат:** явный список в `cmake/RelayCoreModelAssets.cmake`; GLB компилируется
-перед staging игры/Sandbox/Check Map и tests. Products и SHA256 receipts принадлежат
-каждому build preset. Модель убрана из authored `assets`; runtime path прежний.
-GLB/importer/compiler rules — file dependencies. Повторная сборка не переписывает
-неизменившийся product; неудачный импорт сохраняет предыдущие product/receipt/staging.
-Снятые с регистрации модели удаляются из runtime assets; двойное владение путём
-отклоняется. Packaging сверяет source/tool/rules/product/staged bytes до создания ZIP.
-Формат/material contract не меняется, Blender export остаётся явным; content-addressed
-cache и новые dependencies не добавлены. Workflow — `DEVELOPMENT.md`.
-
-**Проверки 2026-10-02:** Debug unit/tooling/audio 261/261, content 31/31;
-graphics Debug/RelWithDebInfo по 4/4, ASan model/OBJ/tooling 11/11 без skip.
-Дополненный tooling test повторён отдельно 1/1: реальный importer, Ninja fixture
-с пробелами в пути, GLB/material update, сохранённый source timestamp, compiler/tool
-invalidation, неудачный импорт, повреждённые product/staging, регистрация/удаление
-второй модели и конфликт владельцев. Debug product побайтово совпадает с E-003.
-ZIP `230246-770`: 94 файла/хеши, внешний standalone/device/WM_CLOSE exit 0,
-lifecycle/episode на распакованных assets и Sandbox exit 0. Кадр баллона просмотрен;
-formatting/PowerShell parser/diff-check прошли. G-011/H-008/H-009 сохраняют прежние статусы.
-
-#### E-005 — native-комната N1
-
-**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-003/E-004;
-автор отдельно поручил N1 из `PROJECT_PLAN.md`.
-
-**Результат:** `assets/levels/native_lab.toml` — небольшая лаборатория на существующих
-индустриальных материалах. Три стола, два шкафа и три баллона используют три общих
-model products, разные yaw и positive/nonuniform scale. `lab_bench` и `power_cabinet`
-созданы/экспортированы Blender 5.2.2 LTS; editable `.blend`, GLB и воспроизводимый
-export script сохранены. По три base-color материала в новых моделях; 12/15 parts.
-Один шкаф управляет рабочим светом и дверью кладовой; route и grounded entries
-проверены. Коллизия остаётся отдельным authored AABB, renderer/importer/editor
-capabilities и dependencies не менялись. Отсутствие mission/exit намеренно даёт
-предупреждение редактора «Нет задания или зоны выхода.»
-
-**Проверки 2026-10-02:** Debug content 33/33 и целевые model/editor/tooling 18/18;
-graphics Debug 1/1, RelWithDebInfo lifecycle/episode 2/2, без skip. Tooling теперь
-проверяет GLB/material update и failed import rollback нового стола при трёх declared
-sources. Реальный editor open/save → preview → возврат → F7, изменение материала,
-отказ damaged product, сохранение рабочей сцены и восстановление прошли; framebuffer
-сравнивается с допуском 1/255 из-за временной scanline post-processing. Исходные
-эпизоды, Sandbox и campaign lifecycle сохранили поведение. Debug/optimized products
-стола и шкафа побайтово совпадают. Кадры комнаты и редактора просмотрены.
-ZIP и внешний standalone/native startup, graphics/lifecycle на распакованных assets
-проверены; candidate paths/hash — `build/n1-package.json`, logs — `build/n1-*.log`,
-JUnit — `n1-*.xml` в build presets. G-011/H-008/H-009 не закрываются; phase C и N2
-не считаются выполненными.
-
-Команды в Visual Studio x64 environment, с `VCPKG_ROOT` для текущего build tree:
-
-```powershell
-Blender --background --disable-autoexec --python scripts/export-native-lab-glb.py
-cmake --preset msvc-debug
-cmake --build --preset demo-debug --target relaycore_demo relaycore_sandbox relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n1-content.xml
-ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n1-unit.xml
-ctest --preset graphics-debug -R '^graphics.power_restoration$' --output-on-failure --no-tests=error --output-junit n1-graphics-debug.xml
-cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_power_restoration_graphics relaycore_game_lifecycle -j 2
-ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit n1-graphics-optimized.xml
-pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo -PassThru
-pwsh -NoProfile -File build/n1-standalone-check.ps1
-git diff --check
-```
-
-Первый Debug build встретил повреждённые файлы локального build tree: два GLM
-headers и один generated receipt содержали нули. Headers восстановлены из
-RelWithDebInfo с той же GLM 1.0.3, receipt пересоздан обычной сборкой. Кеши/build trees,
-версии зависимостей и исходники runtime не удалялись/не менялись для обхода ошибки;
-все итоговые проверки выполнены после восстановления.
-
-#### E-006 — tangent/normal map, первый шаг N2
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-005/N1;
-автор поручил продолжить последовательность `PROJECT_PLAN.md`. N2 целиком остаётся
-`in_progress`: roughness/metalness и нужные дополнительные semantics — следующие slices.
-
-**Результат 2026-10-03:** окрашенная сталь `power_cabinet` получила сдержанный рельеф
-покрытия. Blender source, PNG, GLB и export script воспроизводимы; GLB содержит normal
-image и tangents. Compiler пишет `.rcmodel` v2, loader продолжает читать v1 как
-base-color-only. В v2 явно хранятся tangent presence/vec4, optional normal RGBA и scale;
-старый runtime v1 не поддерживает v2. Products пересобираются обычной сборкой.
-
-Importer требует TEXCOORD_0 и экспортированные unit/orthogonal tangents с w = ±1;
-при reflection меняет tangent.x/w и winding. Renderer учитывает nonuniform/mirrored
-transform, Gram–Schmidt basis, normal scale и linear UNORM texture в обоих color modes.
-Shadow bias/offset остаётся на геометрической нормали. Кеш учитывает обе textures и
-scale, освобождает устаревшие resources; ownership/GPU upload остаются в renderer.
-Модель освещения прежняя; roughness/metalness ещё не используются. TextureAsset/KTX2,
-новые dependencies, HDR, alpha, physics и игровой трек не входят в этот шаг.
-
-**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
-model/editor/tooling 21/21, content 33/33, graphics mesh/color baseline/episode 3/3,
-без skip. Проверены чтение фиксированного v1 fixture, детерминизм v2, точные linear
-normal bytes, scale, mirrored handedness, unsupported semantics, staged cabinet
-recompile и обе color encodings. GPU normal output сравнивается с отдельной geometry
-с явно вычисленной world normal; negative/nonuniform transforms, два normal resources
-при общей base color, settled allocations и прежние OBJ/color/shadow scenes прошли.
-Editor/preview/F7 и failed-reload rollback комнаты проверены episode fixture.
-
-Просмотрен кадр шкафа до/после. RenderDoc `build/n2-native_frame8.rdc` снят через
-`--profile-native` (120 кадров комнаты с shadows/UI/presentation): fragment binding 9
-использует normal image 256×256 `R8G8B8A8_UNORM`, scene target — `R8G8B8A8_SRGB`.
-Replay debug messages отсутствуют; core/synchronization validation чистая.
-Evidence: `build/n2-renderdoc-analysis.json`, `build/n2-build-debug.log`,
-`build/msvc-debug/n2-{unit,content,graphics}.xml`,
-`build/msvc-debug/tests/vulkan-mesh-captures/native-cabinet-{normal,flat}-*.bmp`.
-`git diff --check`, formatting и Python syntax check прошли. Optimized/ASan/Release
-в этом шаге не запускались; архивы и release packages не создавались.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_demo relaycore_tests relaycore_content_validation relaycore_vulkan_mesh_tests relaycore_power_restoration_graphics -j 2
-ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n2-unit.xml
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n2-content.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|power_restoration)$' --output-on-failure --no-tests=error --output-junit n2-graphics.xml
-```
-
-#### E-007 — roughness/metalness, N2
-
-**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. По команде автора
-продолжен N2: native-шкаф использует roughness/metalness factors из GLB. Краска —
-roughness 0.68, metalness 0; открытая сталь ручки — 0.38/1; приборы — 0.6/0.
-Это завершает N2 для выбранного потребителя: отдельная material data texture для
-равномерных покрытий не нужна. MR/AO/emissive maps и alpha явно отклоняются;
-TextureAsset/KTX2 и новые dependencies не добавлены.
-
-Импорт новой модели освещения включён только для `power_cabinet` через декларацию
-CMake и `--metallic-roughness`. Cylinder/bench сохраняют прежнее освещение. Compiler
-пишет `.rcmodel` v3 с flags/factors; loader читает v1–v3, старые products не получают
-новую BRDF при чтении или перезаписи. SHA256 декларации покрывает смену режима.
-
-Renderer передаёт typed optional factors и учитывает их в material cache. BRDF —
-GGX/Smith/Schlick/Lambert; directional/local/spot и shadows используют существующие
-владельцы. Valid roughness=0 хранится без изменения; shader ограничивает сингулярный
-lobe perceptual roughness 0.05. Shading/fog/postfx выполняются в linear space в обоих
-color modes. Ambient остаётся приближением diffuse irradiance без environment
-specular: металл без прямого света тёмный. HDR/exposure/IBL относятся к N3.
-
-**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
-model/editor/tooling 23/23, native content 2/2, graphics mesh/color baseline/episode
-3/3, без skip. Проверены independent v1/v2 fixtures, детерминизм v3, invalid factors,
-opt-in recompilation/receipts, оба color modes, аналитическая BRDF reference,
-roughness response, material cache и settled allocations, local/spot lights.
-Прежние OBJ/color/shadow scenes, editor/preview/F7 и reload/rollback прошли.
-
-Просмотрены шкаф и кадр native-комнаты. RenderDoc `build/n2-mr-native_frame8.rdc`
-снят через `--profile-native`: normal image 256×256 UNORM на fragment binding 9,
-binding 10 содержит `[normalScale=1, roughness=0.68, metalness=0, hardwareSrgb=1]`,
-scene target — `R8G8B8A8_SRGB`. Replay debug messages отсутствуют; core/synchronization
-validation чистая. Evidence: `build/n2-mr-renderdoc-analysis.json`,
-`build/n2-mr-build-debug.log`, `build/n2-mr-focused.log`,
-`build/msvc-debug/n2-mr-{unit,content,graphics}.xml`,
-`build/msvc-debug/tests/vulkan-mesh-captures/{mr-*,native-cabinet-*}.bmp`,
-`build/msvc-debug/tests/power-captures/native-lab.bmp`.
-Formatting, Python/PowerShell syntax и `git diff --check` прошли. Optimized/ASan/Release
-в этом шаге не запускались; архивы не создавались. G-011/H-008/H-009 остаются открыты.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
-ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|Static props|editor|tooling.model_assets)' --output-on-failure --no-tests=error --output-junit n2-mr-unit.xml
-ctest --preset validation-debug -R '^validation\.native lab' --output-on-failure --no-tests=error --output-junit n2-mr-content.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|power_restoration)$' --output-on-failure --no-tests=error --output-junit n2-mr-graphics.xml
-# Из build/msvc-debug/tests, с RELAYCORE_ASSET_ROOT из staged runtime:
-./relaycore_vulkan_mesh_tests.exe --metallic-roughness
-```
-
-**Коррекция материалов по отзыву автора (2026-10-03):** общий bare-metal материал
-рамы/цоколя/окантовок без environment specular давал почти чёрные полосы, похожие на
-cel outlines. Материалы разделены по конструкции: рама и bezels — окрашенная сталь
-(roughness 0.75, metalness 0), цоколь — тёмное покрытие (0.9/0), вент-прорези и стрелки
-— отдельная тёмная поверхность; открытая сталь оставлена на ручке. BRDF, геометрия,
-normal map и освещение комнаты сохранены. GLB/Blender source и staged product обновлены.
-Debug build demo/tests успешен; cabinet import/staged-product fixture 1/1, native content
-2/2, graphics mesh/episode 2/2 без skip. Fixture проверяет, что bare-metal части остаются
-компактной фурнитурой. Просмотрены новые кадры шкафа и комнаты: чёрные рамки устранены.
-Evidence: `build/cabinet-material-build.log`, `build/cabinet-material-export.log`,
-`build/msvc-debug/cabinet-material-{unit,content,graphics}.xml` и текущие native BMP
-из каталогов выше. Formatting/Python syntax/diff-check прошли; архивы не создавались.
-
-#### E-008 — linear HDR, exposure и UI, первый шаг N3
-
-**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. Автор поручил продолжить
-план после коррекции шкафа. N3 целиком остаётся `in_progress`: выбранный способ
-lighting/environment с reproducible bake/import и invalidation ещё не реализован.
-
-Opt-in `RendererConfig::hdr_enabled` включает отдельную FP16 scene image
-`R16G16B16A16_SFLOAT`, linear blending world/transparent/viewmodel без раннего clipping
-lighting/emissive, manual `exposure_ev` [-10,10] и fullscreen Reinhard + postfx.
-Display output — SRGB attachment над UNORM storage; ImGui после tone mapping загружает
-UNORM view, сохраняя display-space цвета и alpha blending. Presentation/readback
-остаются SDR RGBA8. HDR требует hardware_srgb; legacy_gamma даёт понятный отказ.
-
-Новый `config/native_lab_hdr.toml` явно выбирает native-комнату и EV 0; существующие
-карты/engine.toml сохраняют SDR. Политика цвета не меняется автоматически при выборе
-другой карты. Текущие dynamic lights/shadows и authored материалы используются без
-environment specular. HDR format features проверяются; shader reload атомарно
-покрывает tone pipeline, resize обновляет HDR/display resources и descriptor после
-GPU completion. F7 меняет HDR через prepared backend, failure сохраняет рабочий.
-Frame ownership/submission, зависимости и форматы model products сохранены.
-
-**Проверки:** Debug build demo/importer/unit/content/mesh/episode targets успешен;
-engine config 9/9, content 33/33, graphics mesh/color baseline/HDR pipeline/episode/
-HDR episode 5/5 без skip. HDR reference использует radiance 0.25/1/4 и EV -1/0/+1;
-яркий metallic GGX highlight >1 также проходит analytical reference. Проверены clear
-decode/encode, linear transparent RGB/alpha, UI в обоих submission paths, resize,
-settled allocations, shader reload rollback и recovery. HDR episode проверяет
-shadows, glass/steam sorting, UI/presentation, native editor/preview/F7/model rollback,
-оба игровых эпизода. Empty test scenes теперь явно наследуют выбранный color mode.
-
-Просмотрены native-комната до/после, HDR captures и UI. RenderDoc
-`build/n3-hdr-native_frame8.rdc` подтверждает 86 HDR draws, sample FP16 image в
-`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`, tone pass → `R8G8B8A8_SRGB`, последующий UI
-→ UNORM. Все sampled radiance values finite; максимум этого native кадра 0.7158203
-(значения >1 проверяются отдельным GPU fixture). Replay debug messages отсутствуют;
-core/synchronization validation чистая. Evidence: `build/n3-hdr-renderdoc-analysis.json`,
-`build/n3-hdr-build-debug.log`, `build/msvc-debug/n3-hdr-{unit,content,graphics,focused}.xml`,
-`build/n3-native-before.bmp`, текущий `build/msvc-debug/tests/power-captures/native-lab.bmp`
-и `build/msvc-debug/tests/vulkan-mesh-captures/hdr-exposure-*.bmp`.
-Formatting/TOML/diff-check прошли. Optimized/ASan/Release и другой GPU в этом шаге
-не проверялись; архивы не создавались. G-011/H-008/H-009 сохраняют прежние статусы.
-
-Дополнение по поручению автора 2026-10-03: меню «Настройки» получило
-«Режим изображения» SDR / HDR. Смена применяется без перезапуска и сохраняется в
-`player_settings.toml`; HDR автоматически выбирает hardware_srgb. Подготовка
-backend и сцен игры/editor/editor-return предшествует публикации; ошибка сохраняет
-рабочий режим. F7 сохраняет выбор игрока. Debug demo/Sandbox/unit/lifecycle targets
-собраны; focused player settings и `graphics.hdr_settings` прошли. Новый GPU check
-активирует реальные menu widgets, проверяет отказ при missing tone shader,
-pause/resume, editor/preview/return, сохранение обоих режимов и F7. Evidence:
-`build/hdr-settings-build.log`, `build/msvc-debug/hdr-settings-{unit,focused,graphics}.xml`
-и `build/msvc-debug/tests/hdr-settings-menu.bmp`. Общий `graphics.game_lifecycle`
-также прошёл; core/synchronization validation без сообщений. Кадр меню просмотрен.
-
-Коррекция HDR по снимку автора 2026-10-03: point shadows строились, но старые SDR
-ambient/gain коэффициенты применялись как linear irradiance. В стартовой комнате
-`power_restoration` сумма shadow/no-shadow RGB differences упала с 1,670,694 в SDR
-до 483,261 в HDR. `mesh.slang` переводит authored ambient/local gain через sRGB curve
-только для HDR; после исправления HDR сумма 1,501,929, максимальная разница 49 вместо
-18 RGB bytes. Кадры одинаковой камеры SDR/HDR просмотрены; тени стола читаются.
-`graphics.hdr_settings` теперь проверяет вклад теней без UI в обоих режимах и
-защищает их контраст, вместо одного факта изменения кадра после toggle. Debug
-demo/Sandbox/lifecycle/mesh targets собраны; settings и mesh/color/HDR/lifecycle
-GPU checks прошли. Evidence: `build/hdr-shadow-{diagnosis,fix}.log`,
-`build/msvc-debug/hdr-shadow-{settings,graphics}.xml`,
-`build/msvc-debug/tests/hdr-settings-shadow-{SDR,HDR}.bmp`. Архивы не создавались.
-Полный `graphics.hdr_episode` также прошёл: итог 6/6 GPU checks без skips или
-validation messages. Native HDR кадр просмотрен, чёрные рамки шкафа не вернулись.
-Дополнительное evidence: `build/msvc-debug/hdr-shadow-episode.xml`.
-
-Коррекция возврата SDR по паре снимков автора 2026-10-03: переключатель сохранял
-hardware_srgb после выключения HDR, поэтому исходный legacy SDR вид не возвращался.
-`DemoGame` теперь запоминает startup color pipeline до применения player settings
-и восстанавливает его при выборе SDR; prepared сцены игры/editor/editor-return
-меняют encoding вместе с backend. HDR shadow correction сохранена. GPU regression
-проверяет побайтное совпадение сцены до/после SDR → HDR → SDR для обоих startup
-color pipelines и обратное переключение в editor. Debug demo/Sandbox/lifecycle
-собраны; `graphics.hdr_settings` и `graphics.game_lifecycle` прошли 2/2 без skip
-или validation messages. Команды: `cmake --build --preset demo-debug --target
-relaycore_demo relaycore_sandbox relaycore_game_lifecycle -j 2`;
-`ctest --preset graphics-debug -R '^graphics\.(hdr_settings|game_lifecycle)$'
---output-on-failure --no-tests=error --output-junit sdr-return-graphics.xml`.
-Evidence: `build/sdr-return-build.log`, `build/msvc-debug/sdr-return-graphics.xml`.
-Formatting/diff-check прошли; архивы не создавались.
-
-Коррекция читаемости HDR по снимкам дверей/вентилятора 2026-10-03: прежнее
-HDR-only sRGB-декодирование ambient/gain было ошибочным и удалено. Contrast/grain
-теперь применяются к display brightness после tone mapping; слабая radiance больше
-не обрезается linear contrast. Чёрная заглушка вентилятора заменена освещаемым
-металлом. GPU regression проверяет тёмные значения и diffuse hemisphere classic/MR;
-shadow contrast сравнивается с hardware-sRGB SDR при одинаковом lighting arithmetic.
-Побайтный SDR round trip сохранён. Debug demo/Sandbox/два test targets собраны;
-mesh/color baseline/HDR pipeline/settings/lifecycle прошли 5/5 без skip/validation
-messages. Кадры двери, вентилятора и потолка просмотрены. Evidence:
-`build/hdr-readability-build.log`, `build/msvc-debug/hdr-readability-graphics.xml`,
-`build/msvc-debug/tests/hdr-settings-{door,fan,ceiling}.bmp`. N3 indirect lighting
-остаётся незавершённым; текущий FP16 HDR scene выводится на SDR display.
-После изоляции hemisphere fixture и уточнения камеры двери повторно прошли
-`graphics.hdr_pipeline`/`graphics.hdr_settings` 2/2; `git diff --check` чистый.
-Evidence: `build/hdr-readability-final{,-build}.log`,
-`build/msvc-debug/hdr-readability-final.xml`.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_demo relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics -j 2
-ctest --preset test-debug -R '^relaycore\.engine config' --output-on-failure --no-tests=error --output-junit n3-hdr-unit.xml
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit n3-hdr-content.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|hdr_pipeline|power_restoration|hdr_episode)$' --output-on-failure --no-tests=error --output-junit n3-hdr-graphics.xml
-ctest --preset graphics-debug -R '^graphics\.hdr_pipeline$' --output-on-failure --no-tests=error --output-junit n3-hdr-focused.xml
-```
-
-#### E-009 — baked diffuse irradiance probes, N3.2
-
-**Статус / приоритет / объём:** `done` / P2 / M, 2026-10-03. По поручению
-автора выбран один lighting primitive из N3: непрямой diffuse свет основной
-комнаты `native_lab`. Новые зависимости и release packages не добавлены.
-
-CPU baker использует 48 проб (4×3×4), 1024 детерминированных spherical Fibonacci
-луча на пробу, 5318 статических треугольников и 3 постоянно включённые лампы.
-Первое попадание и shadow rays дают один Lambert bounce. Albedo моделей — средний
-linear base color × vertex color, с diffuse factor для metalness; blockout —
-подготовленный linear vertex color. Texture/normal detail, emissive, environment,
-specular и последующие bounce в bake не входят. Подвижные двери и переключаемые
-лампы исключены. Существующий hemisphere/ambient сохраняется; вклад bake небольшой.
-
-`.rcprobe` v1 хранит little-endian bounds/grid/settings, content signature и SH9
-linear RGB irradiance/π, уже convolved с cosine ([SH convention, Sloan](https://www.ppsloan.org/publications/StupidSH36.pdf)). X — быстрая ось; grid centres
-отступают на 0.15 м от границ комнаты. Runtime делает trilinear interpolation и
-оценивает SH по shading normal; MR учитывает diffuse metalness factor. Product
-передаётся как immutable typed data; uniform/upload/descriptors принадлежат Vulkan
-renderer. Overlay и оружие исключены, пустые кадры сбрасывают предыдущий volume.
-Legacy SDR получает явную visual conversion вклада; hardware_srgb/HDR — linear.
-Карты без `irradiance_volume` сохраняют прежний свет.
-
-CMake target `relaycore_irradiance_assets` зависит от level, render authoring,
-compiled model products, baker и bake scripts/declaration; обычная demo/Sandbox/test
-сборка запекает и staging переносит только объявленный `lighting/native_lab.rcprobe`.
-Content signature (FNV-1a canonical fields, не security digest) покрывает геометрию,
-diffuse approximation, static lights и settings. Runtime/F7 отказывает при missing,
-broken или stale product с указанием пересборки. Display-mode switching не требует
-rebake. Editor сохраняет декларацию; stale reload удерживает рабочую сцену, rebake
-и F7 публикуют модель/свет вместе. Для локальных preview fixtures допускаются
-абсолютные product paths; shipped native level использует asset-relative путь.
-
-**Проверки:** финальный Debug build demo/Sandbox/baker/unit/content/mesh/episode/lifecycle
-успешен; unit/native 10/10, content 33/33, GPU probe reference и mesh/color/HDR/
-SDR+HDR episode/settings/lifecycle regressions 8/8, без skip. Проверены
-normal direction, interpolation/bounds, constant radiance, HDR coefficients >1,
-MR diffuse/metal, overlay/viewmodel, цветной bounce/opaque blockers, deterministic
-bake/product bytes, invalid products, stale geometry/prop/light/settings и F7
-rollback/rebake. Просмотрены native кадры до/после: суммарная RGB-byte difference
-363789, максимум 3/255; выбранный bake дополняет сильный существующий ambient.
-Повторный native bake дал те же 5240 bytes и SHA256
-`3fff895e93cb32babb7a2f3b9f166a26c9bdb69f8a25e3acfd178db7e5e7fd5b`;
-incremental build без изменений — `ninja: no work to do`. Formatting/diff-check чистые.
-
-RenderDoc `build/probes-native_frame8.rdc`: 86 HDR draws используют binding 11,
-9264-byte uniform и grid [4,3,4,1]; SH coefficients finite/nonzero. FP16 target и
-sampled layout → tone mapping в SRGB подтверждены; replay messages отсутствуют.
-Evidence: `build/probes-renderdoc.json`, `build/probes-{unit,content,focused,regressions}.log`,
-`build/msvc-debug/probes-{unit,content,focused,regressions}.xml`,
-`build/probes-build-final.log`, `build/probes-incremental.log`,
-`build/msvc-debug/probes-final-{unit,graphics}.xml`,
-`build/msvc-debug/tests/vulkan-mesh-captures/irradiance-native-{before,after}.bmp`.
-
-Ограничения slice: один regular volume, максимум 64 probes; без visibility-weighted
-interpolation/relocation возможны утечки через тонкие препятствия. Support volume
-не входит в кладовую за движущейся дверью. Bake предполагает статический свет и
-геометрию; движение двери не меняет indirect. Debug CPU bake этой комнаты занимает
-около шести минут; ускорение и multi-room GI не заявлены. Другой GPU и optimized
-build в этом шаге не проверялись. G-011/H-008/H-009 сохраняют прежние статусы.
-
-```powershell
-cmake --preset msvc-debug
-cmake --build --preset demo-debug --target relaycore_demo relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_tests relaycore_content_validation relaycore_power_restoration_graphics relaycore_game_lifecycle -j 2
-ctest --preset test-debug -R '^relaycore\.(irradiance|native)' --output-on-failure --no-tests=error --output-junit probes-unit.xml
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit probes-content.xml
-ctest --preset graphics-debug -R '^graphics\.irradiance_probes$' --output-on-failure --no-tests=error --output-junit probes-focused.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|hdr_pipeline|power_restoration|hdr_episode)$' --output-on-failure --no-tests=error --output-junit probes-regressions.xml
-cmake --build --preset demo-debug --target relaycore_irradiance_assets -j 2
-ctest --preset test-debug -R '^relaycore\.(irradiance|native)' --output-on-failure --no-tests=error --output-junit probes-final-unit.xml
-ctest --preset graphics-debug -R '^graphics\.(irradiance_probes|hdr_settings|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit probes-final-graphics.xml
-git diff --check
-```
-
-#### E-010 — общие world queries поверх AABB, N4.1
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** действующие AABB/query consumers и завершённые native slices N1–N3. Выполнено по поручению автора 2026-10-04.
-
-Ввести один конкретный RelayCore-owned контракт запросов, сохранив текущую AABB реализацию. Мигрировать world blockers выстрелов, LOS, focus/interaction и collision inputs игрока/rover по небольшим шагам. Выбор actor targets и gameplay decisions остаются у текущих владельцев. Не создавать virtual backend hierarchy; raycast/sweep/overlap и masks добавлять ровно под текущие callers. Результат содержит нужные hit distance/fraction, position/normal, существующий `SurfaceMaterial` и authored/runtime identity с явным соответствием уровню. Сохранить отличия запросов к двери/акторам и существующий player spatial index.
-
-**Начать с:** `src/relaycore/physics/collision.*`, `player_motion.*`, `src/relaycore/gameplay/combat_runtime.*`, `interaction_runtime_queries.cpp`, `src/relaygame/player_controller_motion.cpp`, `enemy_runtime.cpp` и `level_session_builder.*`; ближайшие player_motion/player_controller/combat/interaction/enemy tests.
-
-**Готово, когда:** перечисленные world consumers используют общий контракт без повторных независимых обходов static/door blockers; движение, ближайшее попадание, LOS и focus сохраняют поведение. Проверены step/ground snap/thin-wall, закрытая/открытая/движущаяся дверь, блокирование выстрела и interaction. Authored/save formats, движение и dependencies не меняются; Jolt в этом шаге не добавляется. Ближайшие unit/runtime проверки и `git diff --check` пройдены.
-
-**Результат 2026-10-04:** конкретный заимствующий `physics::WorldQuery` в `src/relaycore/physics/world_query.*` владеет алгоритмами raycast и прежнего AABB axis move. `world/world_collision.*` готовит typed collider records; `LevelSessionBuilder` добавляет исходный entity index для props, `GameWorldRuntime` владеет static records и обновляемыми door records. Hit содержит distance/fraction, position/normal, surface и object identity; нормаль попадания изнутри равна нулю. Combat, enemy LOS/fire, interaction focus и player/rover movement используют общий контракт. Сохранены player spatial index, step/substep/snap math, отдельный выбор actor targets и исключение closing door только при пересечении реального движущегося actor. Для rays closing door не исключается фиктивным actor в начале координат. Surface doors — Metal; actor records используются для movement, по умолчанию raycast выбирает только static/doors. General sweep/overlap, Jolt, audio occlusion и inspector picking не расширялись. Authored/save formats и manifest не менялись.
-
-**Проверка:** MSVC Debug configure/build успешны; sandbox не видел установленный compiler, поэтому configure/build выполнены в существующем Visual Studio developer environment вне sandbox. После миграции двух оставшихся вызовов в `tests/acceptance_slice_harness.h` все выбранные targets собраны. Прошли 58 focused unit tests и отдельная rover windup regression (1/1), content 33/33, Vulkan lifecycle/episode 2/2; JUnit `build/msvc-debug/e010-{unit,enemy,content,runtime}.xml` содержит ноль failures/skips. Проверены новые hit/identity/mask/door cases, движение по thin walls/floors/ceilings, двери, LOS, combat, focus, save round trips, native_lab и pressure_transfer, reload/preview/respawn в реальном runtime. Команды:
-
-```powershell
-cmake --preset msvc-debug
-cmake --build --preset demo-debug --target relaycore_demo relaycore_tests relaycore_content_validation relaycore_game_lifecycle relaycore_power_restoration_graphics -j 2
-ctest --preset test-debug -R '^relaycore\.(world quer|static world query|Static props|small thresholds|player falls|jump gives|wall collision|diagonal move|noclip ignores|step-up|move_and_collide|grounded update|obstacle higher|player controller collision|combat runtime|player fire|combat threats|rover|shotgun|interaction respects|closing door|closed door|fully open door|panel focus|opened door|auto-generated usable|saved game|campaign save|version (one|two)|selected weapon|invalid save|malformed and unsupported saves|save compatibility|level session builder|disk and in-memory sessions|session validation)' --output-on-failure --no-tests=error --output-junit e010-unit.xml
-ctest --preset test-debug -R '^relaycore\.nonlethal hits' --output-on-failure --no-tests=error --output-junit e010-enemy.xml
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit e010-content.xml
-ctest --preset graphics-debug -R '^graphics\.(game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit e010-runtime.xml
-```
-
-Scoped clang-format check и `git diff --check` прошли; diff просмотрен. Новый human playtest, другой GPU, ASan/optimized suite и performance measurement не выполнялись. Routine build автоматически пересобрал native_lab irradiance продукт; архивы и release candidate не создавались. G-011/H-008/H-009 сохраняют статусы.
-
-#### E-011 — Jolt static world на изолированном fixture, N4.2
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-010 выполнена; runtime AABB backend остаётся принятой базой для сравнения.
-
-Добавить утверждённый `joltphysics` по `DEPENDENCY_STACK.md` за RelayCore query contract. Начать со static boxes и одной triangle fixture с проёмом/неправильной формой; проверить rays, shape casts/overlaps и surface/layer mapping. Collision lifetime относится к loaded level: staged prepare в `LevelSessionBuilder`, activation/teardown у текущего world owner. `JPH::*` не выходят в gameplay, render, authored/save contracts. Нужные moving door blockers не означают свободную rigid-body simulation. Базовый hit/normal debug нужен для проверки fixture; итоговые editor tools относятся к E-014.
-
-**Готово, когда:** casts корректны на известной геометрии, units/axes и query фильтры явно определены, failed prepare оставляет активную сцену, повторное создание/teardown не оставляет dangling body references. Focused query/lifetime tests и релевантная ASan проверка пройдены. Текущие игровые карты сохраняют принятый backend до E-013; controller replacement, dynamics и navmesh не входят в этот шаг. Версию/CPU build options проверять на owning milestone, не обновлять общий baseline без необходимости.
-
-**Результат 2026-10-04:** добавлен изолированный `PhysicsWorld` за RelayCore query contract: static boxes/triangle meshes, rays, box casts/overlaps, query layers и per-triangle surface mapping. Fixture проверяет стену с проёмом, пол, попадания и normals; CLI выводит численные результаты и SVG. Metres, +Y up, right-handed axes и CCW winding заданы явно. Geometry/metadata принадлежат physics world; immutable fixture переносится из staged `LevelSession` в текущий world owner. Failed prepare сохраняет активную сцену; повторный teardown, одновременные staged/active worlds и истёкшие input spans покрыты тестами. Обычные игровые карты используют AABB; movement parity остаётся E-013.
-
-Jolt 5.6.0#1 закреплён локальным overlay на том же release/hash, без изменения baseline; SSE2 minimum, дополнительные SSE/AVX/FMA/LZCNT/TZCNT и double precision отключены. Jolt types остаются в implementation; optimized imported config использует Release, ASan — Debug. Новые query/collision translation units исключены из unity batching, чтобы не менять прежние группы файлов.
-
-**Проверки:** MSVC Debug build; focused unit/query/lifecycle 65/65, content 33/33, Vulkan lifecycle/episode 2/2, focused ASan 6/6; optimized unity build и focused queries/lifetime 6/6. CLI fixture exit 0; opening clear, panels/lintel hit distance 3 m, box cast 2.7 m. Scoped clang-format и diff-check прошли. JUnit: `build/msvc-debug/e011-unit.xml`, `e011-content.xml`, `e011-runtime.xml`; `build/msvc-asan/e011-asan.xml`; `build/msvc-relwithdebinfo/e011-optimized.xml`. ASan проверяет собственный adapter/lifetime, dependency DLL не инструментирована. Human playtest, другой GPU и performance не проверялись; архивы не создавались.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_physics_tests relaycore_physics_fixture relaycore_tests relaycore_content_validation relaycore_demo relaycore_game_lifecycle relaycore_power_restoration_graphics -j 1
-ctest --preset test-debug -R '^relaycore\.physics\.' --output-on-failure --no-tests=error
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit e011-content.xml
-ctest --preset graphics-debug -R '^graphics\.(game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit e011-runtime.xml
-cmake --build --preset tests-asan --target relaycore_physics_tests -j 2
-ctest --preset test-asan -R '^relaycore\.physics\.' --output-on-failure --no-tests=error --output-junit e011-asan.xml
-cmake --build --preset tests-relwithdebinfo --target relaycore_physics_tests -j 2
-ctest --preset test-relwithdebinfo -R '^relaycore\.physics\.' --output-on-failure --no-tests=error --output-junit e011-optimized.xml
-build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe build/msvc-debug/physics-fixture.svg
-```
-
-#### E-012 — native collision product и build/staging, N4.3
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-011 и query/surface contract E-010 выполнены. Выполнено по поручению автора 2026-10-07.
-
-Определить отдельный versioned `CollisionAsset` с collision geometry, bounds и surface mapping. Использовать authored или явно выбранный упрощённый source; не копировать render triangles автоматически. Зафиксировать units/axes, transforms, winding и отражённый/nonuniform scale. Compiler/runtime граница RelayCore-owned; если выбран cooked Jolt payload, совместимость compiler/backend входит в version/receipt и диагностируется при loading.
-
-Встроить product в существующие CMake compile/receipts/staging. Явно связать model и collision; thin manifest/logical IDs вводить только если текущие declarations уже не выражают pairing/rename без дублирования. SHA256 receipts достаточно; database/daemon, BLAKE3/Zstd и общий N6 не являются prerequisites.
-
-**Готово, когда:** повторный compile даёт одинаковые bytes, no-op build не перекомпилирует продукт; source/settings/compiler invalidation, removal и failed-update rollback проверены. Missing/stale/malformed geometry и material references дают actionable errors. Native fixture загружается из staged products без source/DCC/Jolt types в gameplay. Focused product/import/tooling/content checks пройдены; новый ZIP только по запросу.
-
-**Результат 2026-10-07:** независимый `physics::CollisionAsset` v1 (`.rccollision`) содержит model-local triangles, bounds, per-triangle `SurfaceMaterial` и явный native model reference. Backend-independent little-endian payload не содержит Jolt cooked state. `tools/collision_compile.cpp` принимает отдельный TOML с boxes/triangles; metres, right-handed +Y up и CCW обязательны. Affine transform запекается, nonuniform scale поддерживается, отражение меняет winding. Первый source — явно упрощённый `content/collision/lab_bench.toml`: столешница и две опоры, просвет сохранён; render triangles не копируются. Формат и workflow: [COLLISION_ASSETS.md](COLLISION_ASSETS.md).
-
-`cmake/RelayCoreCollisionAssets.cmake`, `compile_collision_asset.cmake`, `check_collision_assets.cmake` развивают существующие manifests/receipts/staging: SHA256 source, compiler executable, compile rule, declaration, paired model product и collision product. Hash validation выполняется до изменения staging; source с сохранённым timestamp отклоняется. Bad compile сохраняет product/receipt/staged files; removed declaration убирает staged product. Package preflight учитывает весь generated manifest и проверяет collision receipts. Изолированный `relaycore_collision_fixture_assets` использует тот же synchronizer без shader/bake dependencies. `LevelSessionBuilder::build_collision_fixture` загружает staged product до activation; failure оставляет активный world. Обычные карты сохраняют AABB.
-
-**Проверки:** serial MSVC Debug build успешен; physics/product/session 10/10 и importer/collision tooling 2/2 прошли, ноль failures/skips (`build/msvc-debug/e012-focused.xml`). В tooling проверены deterministic bytes, no-op timestamp, source/material/settings/compiler/declaration/model invalidation, removal, malformed/missing sources, pairing, degenerate geometry, corruption, rollback. Package asset preflight отдельно прошёл на isolated fixture, повреждённая коллизия отклонена, package directory/ZIP не создавались (`e012-package-preflight.xml`, 1/1). CLI на isolated и полном runtime staging: opening clear, 36 triangles, metal/tile hit distances 1.63/1.55 m и normal +Z. Scoped clang-format и `git diff --check` прошли; diff просмотрен.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_physics_tests relaycore_physics_fixture -j 1
-ctest --preset test-debug -R '^relaycore\.(physics\.|tooling\.(collision_assets|model_assets)$)' --output-on-failure --no-tests=error --output-junit e012-focused.xml
-ctest --preset test-debug -R '^relaycore\.tooling\.collision_assets$' --output-on-failure --no-tests=error --output-junit e012-package-preflight.xml
-build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe --collision build/msvc-debug/physics-fixture/assets
-build/msvc-debug/src/relaygame/relaycore_physics_fixture.exe --collision build/msvc-debug/src/relaygame/assets
-```
-
-Sandbox не видел установленный MSVC/Git; успешные build/tests выполнены вне sandbox в VS developer environment. Попытки build с demo/content dependencies остановлены на длительном прежнем irradiance bake; одновременный bake удерживал DLL и помешал copy при link fixture. После выделения isolated staging и serial build focused checks успешны. Полный runtime staging проверен отдельным вызовом существующего `sync_runtime_assets.cmake` с generated/runtime-assets.txt, актуальными collision receipts и сохранённым probe product: lighting inputs не менялись. Preflight на старом Debug runtime отклонён из-за четырёх прежних вне-manifest `rc022_*_retuned_v2/v3` config/level captures; эти пользовательские generated files сохранены. Полные content/graphics, ASan/optimized, human playtest и performance не проверялись; dependency baseline/VERSION не менялись, архивы не создавались. Следующая задача — E-013; G-011/H-008/H-009 сохраняют статусы.
-
-#### E-013 — mesh-world movement/query parity и lifecycle, N4.4
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** E-011/E-012 выполнены.
-
-Подключить mesh-world к основным consumers на одном fixture/уровне. Сначала зафиксировать текущие acceleration/friction/air movement/jump/step/ground probe/snap и fixed 120 Hz на существующих fixtures. Geometry/player collider policy описать явно; `CharacterVirtual` выбирать только если текущий movement solver требует этого и сравнение сохраняет game feel. Crouch и новое поведение склонов не являются автоматической backend parity.
-
-**Готово, когда:** movement fixtures сохраняют ожидаемый результат; native проём/неправильная форма корректны для движения, shots и LOS. Door blocker transforms обновляются в определённом simulation order до запросов, reopen-on-overlap/trigger entry и focus сохранены. Проверены death/respawn, snapshot/disk continue, level transition, editor preview, reload rollback и teardown. Исходные карты проходят затронутые content/lifecycle regressions и реальный проход; расхождения movement явно рассмотрены до переключения backend. Скорость не объявлять улучшенной без измерения.
-
-**Результат 2026-10-07:** `prop_static.collision_asset` явно связывает native model со staged collision product; AABB collision fields с ним несовместимы. Builder проверяет pairing/geometry, запекает instance transform и готовит immutable world до activation. Controller заимствует world у сессии; movement, shots, rover LOS/movement и focus используют общий query contract. Spawn/entry пересечения проверяются. Карты без нового свойства сохраняют AABB. Shared test fixture масштабирует bench по Y для standing clearance; игровая карта не добавлена.
-
-До подключения пройдены 25 baseline checks. Прямой sweep боксов изменял air acceleration у стены из-за отличия contact skin от прежнего endpoint epsilon. Поэтому boxes сохраняют axis clipping, mesh использует box sweep; четыре 360-tick trajectories требуют точного равенства position/velocity/grounded. Mesh tests покрывают opening, thin panels, floor/ceiling, step, jump, probe/snap. Geometry/player policy и сохранённые door phases: [COLLISION_ASSETS.md](COLLISION_ASSETS.md#authored-placement-and-movement). CharacterVirtual, crouch, slopes и dynamics не вводились.
-
-**Проверки:** Debug build physics/game_lifecycle/content_validation/tests/demo успешен; 120 выбранных unit regressions, 31 physics и 33 content checks прошли. Финальный native/lifecycle прогон — 4/4: runtime движение через просвет из восстановленной скорости, GPU rendering, snapshot/disk continue, editor preview, transition, malformed config/missing collision reload rollback/recovery, death/continue/respawn и teardown. ASan physics — 31/31. Отдельный native irradiance fingerprint/staleness check — 1/1.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_game_lifecycle relaycore_content_validation relaycore_tests relaycore_demo -j 1
-ctest --preset test-debug -R '^(relaycore\.physics\.|validation\.|graphics\.game_lifecycle$|relaycore\..*(world quer|player|movement|step|ground|wall|floor|ceiling|jump|rover|combat|turret|door|trigger|usable|save|snapshot|editor|level session|prop|fixed simulation))' --output-on-failure --no-tests=error --output-junit e013-runtime.xml
-ctest --preset test-debug -R '^(graphics\.game_lifecycle$|relaycore\.physics\.native)' --output-on-failure --no-tests=error --output-junit e013-lifecycle.xml
-ctest --preset test-debug -R '^relaycore\.native irradiance products reject stale geometry lights and settings in either display mode$' --output-on-failure --no-tests=error --output-junit e013-probe-reuse.xml
-cmake --build --preset demo-asan --target relaycore_physics_tests -j 2
-ctest --preset test-asan -R '^relaycore\.physics\.' --output-on-failure --no-tests=error --output-junit e013-physics.xml
-```
-
-Evidence: `build/msvc-debug/e013-before.xml`, `e013-runtime.xml` (184 passed, первый lifecycle fixture setup failed), финальные `e013-lifecycle.xml`, `e013-probe-reuse.xml`, `tests/native_collision_traversal.bmp`; `build/msvc-asan/e013-physics.xml`. Проверки выполнены вне sandbox в VS developer environment. Прежний native_lab rcprobe переиспользован при неизменных lighting inputs; fingerprint проверен в обоих display modes. Повторный bake остановлен, CLion/system CMake command mismatch и два output aliases исправлены configure/Ninja restat; DLL copy/discovery race устранён serial link. Optimized/full graphics suite, человеческий проход и performance не проверялись. VERSION/dependencies не менялись, ZIP не создавались. E-014 ready; G-011/H-008/H-009 сохраняют статусы.
-
-#### E-014 — collision authoring/debug и asset inspection, N4.5
-
-**Статус / приоритет / объём:** `done` / P2 / S–M. **Зависимость:** E-012/E-013 выполнены; базовая диагностика доступна уже в E-011.
-
-Расширить существующий editor/inspector: render/collision overlay, ray/shape hit и normal, surface/layer, выбранный collision объект и authored identity. Показать source/product/bounds/receipt version и ошибки pairing/staleness. Не создавать отдельный physics editor. Typed property schema вводить локально только при подтверждённой дублирующейся валидации/controls новых collision полей; общая reflection/schema миграция не входит в ticket.
-
-**Готово, когда:** известный проём и неверно назначенная collision/surface видны и диагностируются; editor save/undo/preview/reload сохраняют product references. Проверены targeted editor/content tests и просмотр overlay на fixture; bake/lighting не перезапускаются без изменения их inputs.
-
-**Выполнено 2026-10-07:** в существующую мастерскую добавлены выбор native collision product и взаимно исключающий AABB, проверка pairing до изменения документа, undo/redo/save/reload. Overlay рисует boxes и transformed mesh triangles поверх render scene, выделяет выбранный collider и поверхности; ray и box sweep показывают hit/normal/surface/layer/authored identity. Выбор щелчком использует collision geometry и сохраняет реальный проём. При невалидном edit устаревший collision preview выключается. Gameplay Inspector показывает native mesh hits и восстанавливает pin по authored source после reload.
-
-Для выбранного prop доступны product/model/world bounds и read-only проверка build receipt: source, version, SHA-256 source/compiler/rule/declaration/model/product, staged collision и paired model. Использован текущий CMake checker, без второго hashing/receipt формата; проверка запускается по кнопке и требует developer build/checkout. Runtime geometry не требует source/CMake. Отдельный physics editor, reflection/schema framework и новые зависимости не добавлялись. Workflow — [COLLISION_ASSETS.md](COLLISION_ASSETS.md#editor-and-inspection).
-
-**Проверки:** Debug configure и build physics/game_lifecycle/tests/content_validation/demo успешны. Финальный targeted прогон — 106/106: 38 unit, 33 physics, 33 content, tooling и реальный SDL/Vulkan lifecycle. Новые tests проверяют opening, mesh bounds, metal/tile, normal/layer/authored source, pin restoration, shape hit, atomic assignment/pairing errors и undo/save/reload. Tooling проверяет receipt inspection, неизвестный product, timestamp-preserving stale source и повреждённую staged paired model. Lifecycle проверяет collision picking и сохранение native references; просмотрены GPU captures opening/support/selected.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_physics_tests relaycore_irradiance_bake -j 1
-cmake --build --preset demo-debug --target relaycore_game_lifecycle relaycore_tests relaycore_content_validation relaycore_demo -j 1
-ctest --preset test-debug -R '^(relaycore\.physics\.|relaycore\.tooling\.collision_assets$|relaycore\..*(editor|inspector|level session|prop|native irradiance products reject stale)|validation\.|graphics\.game_lifecycle$)' --output-on-failure --no-tests=error --output-junit e014-runtime.xml
-```
-
-Evidence: `build/msvc-debug/e014-runtime.xml`, focused `e014-focused.xml`, `e014-tooling.xml`; `tests/editor_collision_opening.bmp`, `editor_collision_support.bmp`, `editor_collision_selected.bmp`. Проверки выполнены в VS developer environment вне sandbox. Прежний native_lab rcprobe переиспользован при неизменных lighting inputs через Ninja restat; SHA-256 `3FFF895E93CB32BABB7A2F3B9F166A26C9BDB69F8A25E3ACFD178DB7E5E7FD5B` сохранён, fingerprint/staleness regression прошёл. Bake и ZIP не запускались. ASan/optimized/full graphics suite, человеческий проход и performance в E-014 не проверялись. G-012 ready; G-011/H-008/H-009 сохраняют статусы.
-
-#### G-012 — короткий игровой участок с native collision, N4.6
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** E-013/E-014 выполнены. Техническая часть выполнена 2026-10-07; новый игрок ещё не проверял участок. Использовать результаты G-011, когда они доступны; ранее отложенный playtest не блокирует независимую техническую работу по поручению автора.
-
-Проверить новую world capability в одном коротком участке: геометрия с полезным проёмом/неправильной формой, существующие turret/rover и два оружия, interaction/objective и save/continue, текущие materials/HDR/probes. Выбрать случай, где общий AABB действительно мешает проходу или линии огня. Не создавать новую кампанию, противника или navmesh ради демонстрации. Art direction — по действующему документу/навыку при authoring.
-
-**Готово, когда:** technical content/lifecycle/query regressions и полный проход пройдены; новый игрок без подсказок проверил маршрут, выбор оружия и читаемость коллизии, зафиксированы время/смерти/затруднения. До человеческой проверки — `awaiting_playtest`. Для нового workload снять cold/warm optimized профиль с query/draw/upload/wait costs по H-008 методике; он не закрывает приёмку `pressure_transfer` или другой GPU автоматически.
-
-Технический результат: `bench_relay.toml` / «Реле мастерской» доступен через выбор новой игры. Существующие turret/rover, два оружия, реле с разблокировкой выхода, две двери и пять шагов задания образуют один короткий участок. Native lab_bench с масштабом Y=1,25 пропускает rover под столешницей; общий AABB блокирует тот же sweep и низкий луч, стоящий игрок обходит стол сбоку. Использованы текущие models/materials, HDR, 30 baked probes от трёх статических источников и включаемый свет выхода. Новой кампании, dependencies, model assets или форматов нет.
-
-Проверки: Debug demo/validation/lifecycle/profile target и optimized demo/validation/profile target собраны. Debug content **36/36**, ближайшие editor/irradiance/physics **47/47**, graphics lifecycle и bench HDR smoke **2/2**; optimized G-012 **3/3**. Полный deterministic маршрут повторён дважды с обоими оружиями, двумя уничтоженными угрозами и без смерти; 2188 тиков при 120 Hz не являются человеческой длительностью. Editor save/undo/rebuild, snapshots/preview/menu, disk continue до/после реле пройдены. Исправлена выявленная ложная editor warning для панели двери, разблокируемой прямым unlock-сигналом; потерянная связь по-прежнему диагностируется. Runtime validation graphics warnings/errors отсутствуют. Кадры entry/encounter/powered просмотрены; уточнены стороны в подсказках и ориентация маркировки.
-
-Evidence: `build/msvc-debug/g012-content.xml`, `g012-regressions.xml`, `g012-graphics.xml`, focused `g012-focused.xml`; optimized `build/msvc-relwithdebinfo/g012-content.xml`; `tests/bench-relay-captures/{entry,encounter,powered}.bmp`. Новый bake: 30 probes / 1840 triangles / 3 lights, signature `7671343688987210812`, одинаковый SHA-256 Debug/optimized `00722A2E3BE9A0AE1CB630C41A0619A5A7D71E2B0BEC08BA5EB6D9EF8364142D`. Прежний Debug native_lab probe переиспользован при неизменных inputs, hash сохранён; optimized native_lab пересобран. Ненужный повторный Debug native_lab bake остановлен. Debug LNK1236 устранён пересборкой повреждённого intermediate object, без изменения его source content. Проверки выполнены в VS developer environment вне sandbox; ZIP, ASan и полный graphics suite не запускались.
-
-[Optimized профиль](profiling/G-012-2026-10-07.md): RTX 4060 Ti / driver 596.49, 1280×720, VSync off, hardware_srgb/HDR/shadows/HUD on, audio off, validation=false. Три состояния first-use/revisit, 10 947 rendered frames, CPU/GPU Tracy capture с query/draw/upload/present/fence costs. Frame p95 1,3464–1,5681 мс, first-use spike 46,8843 мс; это короткие стационарные состояния, не непрерывный rendered проход человека и не cold OS/driver cache. [Протокол нового игрока](playtests/G-012-2026-10-07.md) подготовлен, результаты отсутствуют. G-012/N4 не объявлены принятыми; G-011/H-008/H-009 сохраняют статусы. На момент этого evidence E-015 оставалась deferred; последующее выполнение описано в её карточке.
-
-Граница исходного evidence: успешные сборки/tests/capture выше относятся к прежним native models из `2440823` и изменению G-012. После проверок в общем checkout появились параллельные правки GLB/exporter/model manifest, не входящие в checkpoint. Повторный `cmake --build --preset validation-debug -j 1` остановился на новом `lab_bench.glb`: `model contains a degenerate triangle`; последующая попытка узкой пересборки встретила отсутствующий `content/models/scientist_hazmat.glb` из изменённого manifest. CLI на прежних staged assets дал valid=true, warnings=0 (`g012-level-check.json`); clang-format, diff-check, graphics preset smoke и pre-commit tooling test прошли. Состояние после интеграции перепроверено ниже.
-
-**N0 / повторная проверка общего дерева, 2026-10-07.** Прежние import blockers больше не воспроизводятся: Debug `relaycore_model_assets` собран, включая `scientist_hazmat.glb`. Для дальнейшей проверки переиспользованы актуальные RelWithDebInfo products; повторный Debug bake остановлен, его завершение не заявляется. Optimized staging и целевые content/tests/bench/lifecycle/level-check targets собраны. SHA-256 всех 20 моделей (source/importer/rules/declaration/product/staged) и пары `lab_bench` model/collision совпали с receipts. Контент, GLB/native/irradiance и ближайшие collision/editor/lifecycle regressions — **58/58** (в том числе 37 content); изолированный Debug asset-tooling — **2/2**; optimized SDL/Vulkan lifecycle и G-012 — **2/2**, без пропусков. CLI на текущих staged assets: valid=true, warnings=0. Кадры entry/encounter/powered просмотрены. Graphics run использовал `validation=false`; новой проверки validation layers, ASan, измерения performance и человеческого прохода не было. Старый профиль выше не характеризует изменённые модели.
-
-Команды N0 (build/tooling в VS developer environment; runtime/tooling запускались вне sandbox):
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_model_assets -j 2
-cmake --build --preset validation-relwithdebinfo --target relaycore_content_validation relaycore_tests relaycore_bench_relay_run relaycore_game_lifecycle relaycore_level_check -j 2
-ctest --test-dir build/msvc-debug -R '^relaycore\.tooling\.(model_assets|collision_assets)$' --no-tests=error --output-on-failure --output-junit n0-asset-tooling.xml
-ctest --test-dir build/msvc-relwithdebinfo -R '^validation\.|^relaycore\.(native|GLB|Blender|irradiance|physics\.(staged collision|native collision|native opening|editor switches))' --no-tests=error --output-on-failure --output-junit n0-content-native.xml
-ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(bench_relay|game_lifecycle)$' --no-tests=error --output-on-failure --output-junit n0-graphics.xml
-./scripts/check-model-assets.ps1 -ProjectRoot . -BuildRoot build/msvc-relwithdebinfo -RuntimeAssets build/msvc-relwithdebinfo/src/relaygame/assets
-cmake -DCOLLISION_PROJECT_ROOT=E:/Code/C++/RelayCore -DCOLLISION_BUILD_ROOT=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo -DCOLLISION_COMPILER=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo/relaycore_collision_compile.exe -DCOLLISION_RUNTIME_ASSETS=E:/Code/C++/RelayCore/build/msvc-relwithdebinfo/src/relaygame/assets -DCOLLISION_INSPECT_NAME=lab_bench -P cmake/check_collision_assets.cmake
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path 'build/msvc-relwithdebinfo/src/relaygame/assets').Path
-./build/msvc-relwithdebinfo/src/relaygame/relaycore_level_check.exe assets/levels/bench_relay.toml --entry entrance
-git diff --check
-```
-
-JUnit reports находятся в соответствующих build directories; CLI report — `build/msvc-relwithdebinfo/n0-bench-level-check.json`, кадры — `build/msvc-relwithdebinfo/tests/bench-relay-captures/`. Первоначальный sandbox tooling run не запустил WindowsApps `pwsh.exe` (permission denied); повтор вне sandbox прошёл. Новых source/content правок для устранения старых blockers не потребовалось. G-012 остаётся `awaiting_playtest`, E-015 — `deferred`; новых архивов нет.
-
-#### E-015 — surface-aware impact feedback по потребности, N5
-
-**Статус / приоритет / объём:** `done` / P2 / S–M. **Основание открытия 2026-10-07:** автор поручил дальнейшую разработку при отложенных внешних проверках. Consumer — metal/concrete укрытия `bench_relay`, оба оружия; исходный fire result терял surface semantics, отдельного world-impact cue не было.
-
-Связать существующий `SurfaceMaterial` query hit с минимальным нужным impact sound/эффектом, например металл и бетон. Decals/particles/material maps добавлять только под выбранный результат; физика возвращает данные, game/audio/render владельцы выбирают feedback. Проверить occlusion/nearest hit, surface mapping, bounded effect lifetime и audio/visual fixture. Новый universal effects framework не нужен.
-
-Выбранный slice: два коротких original mono PCM16 cues — металл и общий твёрдый материал. Сохранить полный optional world hit в результате каждого луча, исключить actor hits/промах/невыстрел. Game feedback выбирает ближайшее попадание каждого семейства; дробь создаёт максимум два world cues на выстрел. Miniaudio воспроизводит их из hit position с distance attenuation, переиспользуя по одному cached voice на путь; cues заранее декодируются при activation. Новых authored knobs, форматов и dependencies нет. Glass/breakage, decals, particles и геометрическая акустика — вне этого slice.
-
-**Результат:** per-ray `world_impact` сохраняет hit semantics, actor hit не создаёт world cue. В `player_feedback` ограниченный выбор ближайших hard/metal hits; `AudioSystem::play_one_shot` принимает optional world position и переключает spatialization при повторном использовании voice. Generator `scripts/build-combat-audio.py --impacts-only` создаёт только `assets/audio/combat/impact_hard.wav` (0,11 с) и `impact_metal.wav` (0,19 с), mono PCM16/44100 Hz. Повторный запуск сохранил SHA-256; staged Debug WAV совпадают с source. Успешно выполнены tests дверей, ближайшего world hit, native mesh surface/normal/identity, actor occlusion, дроби и cooldown/miss. Lifecycle fixture проверил реальное событие mouse fire → world hit → нужный audio cue для обоих семейств. Audio engine и WAV decoder запускались; субъективная слышимость/баланс не проверялись. Общие команды и evidence — в E-017 ниже.
-
-#### E-017 — переиспользование актуальных irradiance products
-
-**Статус / приоритет / объём:** `done` / P2 / S. Открыт при проверке E-015: изменение audio/combat перелинковало общий baker и запустило bake всех трёх карт. `bench_relay` занял около 202 секунд; оставшиеся повторные bake прерваны. Все Debug/RelWithDebInfo model products совпали побайтно, готовый optimized `bench_relay.rcprobe` совпал с новым Debug по SHA-256. Готовые native_lab/occult products переиспользованы для дальнейшей проверки.
-
-Существующий baker перед транспортом света читает текущий product и проверяет ту же сигнатуру и grid settings, что runtime loader. Совпадение сохраняет bytes, несовпадение запускает обычный bake; malformed product остаётся диагностируемой ошибкой. Ревизия transport/sampling входит в сигнатуру отдельно от file version; обе исходно равны 1, текущие fingerprints/format не меняются. При изменении bake semantics необходимо повысить bake revision. CMake dependencies, presets, receipts и authored inputs сохраняются.
-
-**Техническая приёмка:** current product не пересчитывается и не переписывается; geometry/light/material/grid/rays меняют fingerprint, stale inputs пересчитываются; повреждённые данные не принимаются как cache hit. Проверить deterministic irradiance и runtime staleness cases, маленький CLI fixture missing → baked → reused → changed inputs → baked → malformed failure; текущие три карты должны пройти runtime loading. Это ускорение workflow на подтверждённом случае, не заявление о runtime FPS.
-
-**Результат и проверки E-015/E-017, 2026-10-07:** Debug targets ниже собраны в VS x64 environment с cache-compatible `VCPKG_ROOT`. Baker переиспользовал все три product с прежними signatures: native_lab `14886341886457994988`, bench_relay `14550697581208431987`, occult_lab_b17 `11698937278769134311`. Соответствующие logged check/preparation интервалы — примерно 0,19 / 0,73 / 5,69 с; полный bench bake выше — отдельный фактический запуск, это не benchmark runtime. Следующая такая же Debug build выполнила только три staging utility steps, bake не назначался.
-
-```powershell
-cmake --build --preset tests-debug --target relaycore_tests relaycore_audio_lifetime relaycore_game_lifecycle relaycore_content_validation relaycore_demo -j 2
-cmake --build --preset demo-relwithdebinfo -j 2
-ctest --test-dir build/msvc-debug -R '^relaycore\.(combat|player fire|shotgun|rover|nonlethal|weapon impacts|audio|irradiance|native irradiance|physics\.native opening|tooling\.irradiance_assets)|^validation\.|^graphics\.game_lifecycle$' --output-on-failure --no-tests=error --output-junit e015-e017-checks.xml
-ctest --test-dir build/msvc-debug -R '^relaycore\.tooling\.irradiance_assets$' --output-on-failure --no-tests=error --output-junit e017-tooling.xml
-git diff --check
-```
-
-Итог по 62 различным cases: unit **21/21**, content **37/37**, native query **1/1**, audio/lifecycle **2/2**, tooling fixture **1/1**; пропусков нет. Исходный combined JUnit содержит 61 pass и один failure ожидания текста диагностики в новом fixture: loader правильно отказал с `invalid irradiance product size`, тест ожидал `truncated irradiance product`. Исправлено только ожидание, final `e017-tooling.xml` — 1/1. Lifecycle исполнялся с Vulkan `validation=true`; новый input/audio fixture выполнен. Обычная RelWithDebInfo demo собрана, все три optimized probes тоже переиспользованы без пересчёта; optimized runtime отдельно не запускался. Source formatting и diff-check прошли. Проверены 55 локальных ссылок двух plan documents. ZIP, ASan, performance capture, внешний playtest и другой ПК не запускались.
-
-#### G-013 — два тактических решения native-встречи
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** технически завершённый E-015. Техническая проверка выполнена 2026-10-07; человеческие наблюдения отложены по поручению автора и не блокируют G-014.
-
-**Опыт:** игрок выбирает между точным выстрелом с дистанции и сближением к rover с дробовиком, меняя позицию относительно турели и native-укрытия. Использовать существующий `bench_relay`, его реле, двери, snapshots и текущие угрозы. Начать с текущих sightlines/доступных проходов и ближайших content tests, затем изменить только layout/placement/timing, необходимые для двух решений. Не увеличивать маршрут ради длительности и не добавлять обязательную последовательность одинаковых устройств.
-
-**Техническая приёмка:** две воспроизводимые траектории с разными позициями/моментами выхода под огонь доходят до реле и выхода; native-проём сохраняет роль для rover/низкой линии огня; из укрытия нельзя получать урон сквозь закрытый blocker. Death/retry, snapshot, disk continue до/после реле согласованы. Проверить CLI/content, затронутые enemy/query cases и rendered вход/бой/включённое реле. Успех автоматических траекторий не означает равноценность или удовольствие от тактик. Нового игрока и другой ПК сейчас не требовать; человеческие наблюдения добавить, когда автор к ним вернётся.
-
-**Engine gate:** если rover не достигает доступной позиции из-за прямого движения к `last_seen`, сначала сохранить минимальное воспроизведение для E-016. Не маскировать проблему уменьшением collider или прохождением сквозь укрытие. Если обе встречи работают с текущим поведением, оставить E-016 deferred и перейти к G-014. Вероятные пути: `assets/levels/bench_relay.toml`, `tests/shipped_content_validation_tests.cpp`, `tests/bench_relay_run.cpp`; арт и bake — только при изменении соответствующих inputs.
-
-**Результат G-013, 2026-10-07:** существующий layout уже допускает две разные тактики; менять геометрию, параметры угроз и collision не потребовалось. Дальний маршрут уничтожает турель точным оружием от входа, затем стреляет в rover с дистанции и обходит верстак со стороны `x=1,6`. Ближний маршрут оставляет турель активной, занимает укрытие у `(x=-2,6; z=3,1)`, встречает прошедший под верстаком rover дробовиком, затем выходит к `(x=-1,3; z=3,1)` для точного огня по турели. Оба маршрута дважды достигают реле и выхода без смерти; разные дистанции попадания и число тиков открытой линии на активную турель проверяются assertions. Подсказка открытия зала теперь сообщает функцию высокого блока; прежнее указание пульта на правой стене сохранено после проверки кадра от входа.
-
-Закрытый вход и высокое укрытие проверены отдельно: выстрел обрывается world hit, здоровье игрока/турели не меняется за 480 тиков без стрельбы. Native-opening ray/sweep и пересечение rover сохранены. Для обеих тактик disk continue до и после включения реле, сохранённая смерть/respawn и полный encounter snapshot восстанавливают игрока, оружие, rover, турель, двери, unlock и незавершённое задание. Существующий editor/native-reference и финальный continue regression также прошли.
-
-`graphics.bench_relay` теперь сохраняет реальные промежуточные состояния `entry/distance/cover/powered`, включая реле до открытия выхода; powered state больше не конструируется из завершённой миссии. Четыре актуальных BMP просмотрены в `build/msvc-debug/tests/bench-relay-captures/`. В этом rendered fixture: первое попадание в rover 8,7829 / 1,81895 м, открытая линия на активную турель 63 / 492 тика для distance/cover соответственно. Это измерения scripted поведения, не длительность человеческого боя и не вывод о равноценности тактик. Vulkan validation включён; RTX 4060 Ti, API 1.4.329 при требовании 1.3; ошибок validation не обнаружено.
-
-Собраны Debug targets ниже; выполнено 20 CTest cases без failures/skips, JUnit `build/msvc-debug/g013-checks.xml`. После добавления assertions здоровья, инвентаря и входной двери повторён только tactical-state case: 1/1 passed, `build/msvc-debug/g013-state.xml`. `clang-format --dry-run --Werror` трёх изменённых test sources и `git diff --check` прошли. CLI: `valid=true`, warnings=0, отчёт `build/msvc-debug/g013-map.json`. `demo-relwithdebinfo` обновил обычные игровые assets. Оба preset переиспользовали 30 probes с signature `14550697581208431987`; новых lighting inputs нет. Проверки и ограничения дополняют существующий [протокол G-012](playtests/G-012-2026-10-07.md#g-013--две-тактики-в-том-же-участке). E-016 не открыт: в проверенных маршрутах rover достигает боевой позиции; произвольный обход препятствий этим не доказан.
-
-```powershell
-cmake --build --preset validation-debug --target relaycore_content_validation relaycore_bench_relay_run relaycore_tests relaycore_physics_tests relaycore_game_lifecycle relaycore_level_check -j 2
-ctest --test-dir build/msvc-debug -R '^validation\.bench relay|^relaycore\.(rover|player fire|shotgun|nonlethal|physics\.native opening)|^graphics\.(bench_relay|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit g013-checks.xml
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
-./build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/bench_relay.toml --entry entrance
-cmake --build --preset demo-relwithdebinfo -j 2
-```
-
-#### E-016 — обход препятствий rover под встречи главы
-
-**Статус / приоритет / объём:** `done` / P2 / M–L, ограниченная техническая реализация G-019-C. Fixture воспроизводит остановку прямого pursuit перед шкафом и успешный обход того же укрытия с authored route points. В главе используются плоские маршруты мастерской, архива и лабораторного крыла, максимум 16 точек на route; связи проверяют footprint, опору и двери через текущий WorldQuery. Поиск маршрута ограничен этим encounter authoring, сохраняются прежние collider/скорость/attack timers. Закрытая дверь, открытие двери и недоступная высота проверены; transient route пересчитывается после restore. Это не native navmesh/автоматический обход любой геометрии: owning Recast/Detour milestone не открыт. Прежние карты без route сохраняют direct pursuit; G-013 не потребовал изменений. Evidence — checkpoint C ниже, человеческая ценность встреч остаётся в G-019/G-010.
-
-Зафиксировать fixture: rover увидел игрока, путь огибает одно статическое укрытие, прямая перекрыта; отдельно закрытая дверь и недостижимая позиция. Выбрать минимальную устойчивую навигацию по требованиям этого участка. Если нужен navmesh, открыть owning milestone Recast/Detour по dependency/architecture reference; geometry, agents, products и runtime ownership определить до интеграции. JPH/Detour types не выходят в gameplay/save contracts. Не вводить универсальное поведение AI, новые состояния врагов или динамическую перестройку всей карты без consumer.
-
-**Техническая приёмка:** rover обходит доступное укрытие, сохраняет принятые скорость/windup/recovery и collision; не проходит закрытую дверь, не зацикливается на недостижимой цели. LOS и hit occlusion остаются world-query задачей. Повтор встречи, respawn, snapshot, disk continue и editor/session replacement восстанавливают согласованное поведение; transient path можно пересчитать из восстановленного состояния. Проверки — fixture, ближайшие enemy/movement/save, затем consumer G-013. Сложность и стоимость replanning измерить до оптимизаций.
-
-#### G-014 — native-встреча в существующем эпизоде
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. **Зависимость:** технические результаты G-013 получены 2026-10-07; G-014 технически проверен 2026-10-07. E-016 не потребовался. Человеческие наблюдения отложены автором и не блокируют инженерное продолжение.
-
-Выбрать один участок `pressure_transfer`, где native shape и две тактики улучшают пространственное решение. Сохранить остальной маршрут, текущие objectives/переходы и роли трёх встреч; не переписывать эпизод целиком и не копировать полигон в новую кампанию. Чередовать безопасное наблюдение, выбор пути/оружия, короткую угрозу и видимое последствие действия. Конкретную правку назначить после сверки текущей карты и результатов G-013.
-
-**Техническая приёмка:** обе тактики достижимы без progression blocker; выбранная geometry, cover/LOS, interaction и save/continue согласованы; CLI, content, затронутые lifecycle/graphics пройдены. При изменившемся workload записать локальный optimized baseline и исследовать только обнаруженные расходы. Человеческая приёмка эпизода остаётся открытой; внешние проверки и ZIP сейчас не входят в работу. Дальнейшую capability выбрать из фактического ограничения этого участка.
-
-**Результат G-014, 2026-10-07:** в смешанном перепускном зале добавлен существующий `lab_bench.rcmodel` с парным `lab_bench.rccollision`, `(28;0;32,8)`, scale `(1;1,25;1)`. Первые две встречи, текущие угрозы, семь задач, связи пультов, выход и финал сохранены. Низкий проём пропускает rover и луч, стоящий игрок обходит верстак. Высокий шкаф сохраняет защиту от турели; подсказка текущей задачи объясняет различие укрытий. Новых моделей, форматов, dependencies, irradiance inputs или renderer features нет.
-
-Дальний маршрут встречает rover точным оружием с защищённого входа `(28;29)`, затем выходит на турель к `(34;29)` и проходит по стороне `x=34`. Ближний занимает `(28;30,3)`, стреляет дробовиком после прохода rover под столом, обходит верстак со стороны `x=25,8` и выходит к турели через `(30;38)`. Три полных scripted прохода (cover/distance/cover) дают четыре kills, оба оружия и выход без смерти. В rendered fixture первые попадания в rover: 6,70354 / 2,81467 м; открытая линия на активную турель: 73 / 84 тика. Это evidence доступности решений, не баланс или длительность игры человека.
-
-Первоначальный верстак при `z=33,5` перекрывал rover обзор игрока, неподвижно стоящего в защищённом входе. Сдвиг на 0,7 м восстановил прежнее обнаружение/сближение; collider и AI не менялись. Native ray/sweep, защита шкафом, дверь/угол первой встречи, editor round-trip и save/respawn прошли. Для обеих тактик disk continue и encounter restore после замены сессии проверяют реальные player/weapon/combat/enemy/mission states до боя и после перепуска, а также native-query binding; финальный save сохраняет завершение.
-
-Route fixture выделен в `tests/pressure_transfer_route.h` для content и rendered consumer. Движение, LOS, focus и огонь теперь используют session PhysicsWorld плюс текущие двери/actors; прежний AABB-only fixture не мог подтвердить native-проём. Рефакторинг отдельно прошёл пять прежних cases до правки карты (`g014-refactor.xml`). Добавлен узкий `graphics.pressure_transfer` через существующий runner `--pressure-transfer`; общие render/load циклы переиспользуются для bench и нового consumer. Просмотрены entry/distance/cover/powered BMP в `build/msvc-debug/tests/pressure-transfer-captures/`; настоящие DemoGame states загружаются из изолированных сохранений. Debug Vulkan validation включён; optimized выключен; RTX 4060 Ti, API 1.4.329 при требовании 1.3.
-
-Финальный Debug: 8/8 pressure content/graphics без failures/skips, `build/msvc-debug/g014-debug.xml`; bench graphics и lifecycle отдельно прошли. Ранние ошибки fixture обхода стартового стола и source/staged level path исправлены и сняты финальной проверкой; runtime save matching не ослаблен. Optimized: 8/8 content/graphics без skips/failures, `build/msvc-relwithdebinfo/g014-optimized.xml`. Check Map — `valid=true`, warnings=0 (`build/msvc-debug/g014-map.json`). `clang-format --dry-run --Werror` трёх изменённых test sources и `git diff --check` прошли. Обычная optimized игра и её assets обновлены, staging проверил прежние model/collision receipts; SHA-256 исходной карты и обеих staged копий совпадает. Локальный baseline и разбор first-use расходов — [profiling G-014](profiling/G-014-2026-10-07.md). Протокол наблюдателя расширен в [G-011](playtests/G-011-2026-09-29.md#g-014--native-встреча-2026-10-07); человеческую приёмку G-011/G-014 это не закрывает.
-
-```powershell
-cmake --build --preset validation-debug --target relaycore_content_validation relaycore_bench_relay_run relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_level_check -j 2
-ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer|^graphics\.(pressure_transfer|bench_relay)$' --output-on-failure --no-tests=error --output-junit g014-final.xml
-ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer native tactics' --output-on-failure --no-tests=error --output-junit g014-state.xml
-ctest --test-dir build/msvc-debug -R '^validation\.pressure transfer|^graphics\.pressure_transfer$' --output-on-failure --no-tests=error --output-junit g014-debug.xml
-cmake --build --preset validation-relwithdebinfo --target relaycore_demo relaycore_content_validation relaycore_bench_relay_run -j 2
-ctest --test-dir build/msvc-relwithdebinfo -R '^validation\.pressure transfer|^graphics\.pressure_transfer$' --output-on-failure --no-tests=error --output-junit g014-optimized.xml
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
-./build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/pressure_transfer.toml
-```
-
-**Исправление размещения по скриншотам автора, 2026-10-07:** отдельный visual bugfix в `pressure_transfer.toml`: задние поверхности плакатов/доски и вентиляционных кассет, опоры труб подведены к стенам; световые полосы подняты до потолка (верх корпуса 3,8 м), индикатор выходного света перенесён под его корпус. Плакат у входа в смешанный зал стоял в проёме без стены — перенесён на простенок; начальный плакат разнесён с кнопкой. Вентилятор развёрнут лицом в зал и закреплён задней поверхностью, соседняя кассета перенесена от его обода; стартовая кассета поднята над трубой. Модели, renderer и игровой маршрут не менялись. Новый content case проверяет опору 11 native props по вершинам текущих products, светильников и вентилятора. Runner `--pressure-transfer --mounting-views` сохраняет отдельные ракурсы в `tests/pressure-mounting-captures/`; просмотрены service/gallery/notice/fan, включая крупный план потолочного света. Debug и RelWithDebInfo: по 9/9 pressure content/graphics без failures/skips (`pressure-mounting-debug.xml`, `pressure-mounting-optimized.xml` в соответствующих build trees); Check Map `valid=true`, warnings=0. Обычная optimized игра обновлена. Эти исправления не закрывают человеческую приёмку встречи и не меняют очередь G-015 → E-018; прежний profiling capture относится к прежнему размещению карты.
-
-По дополнительному скриншоту исправлены также номера `01/02/03`: плоскость на расстоянии 1 мм от стены; `01/03` развёрнуты к игроку, `03` целиком перенесён на простенок над плакатом вместо края проёма. В content case добавлена проверка четырёх краёв каждой номерной отметки. После этой последней правки: по 2/2 affected content/graphics без failures/skips в Debug и RelWithDebInfo (`pressure-decals-debug.xml`, `pressure-decals-optimized.xml`); Check Map снова без warnings, обновлённые service/notice кадры просмотрены, `clang-format` и `git diff --check` прошли.
-
-#### G-015 — локальный retry смешанной встречи
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / S–M. **Зависимость:** технически проверенный G-014. Реализован и технически проверен 2026-10-07; удобство retry человеком остаётся отложенным.
-
-**Основание:** `GameWorldRuntime::respawn_player_at_spawn` всегда возвращает к исходному spawn `(4;2)`, сохраняя inventory, kills и mission progress. После смерти в перепускном зале это повтор пути через уже пройденные встречи; ограничение подтверждено кодом и текущими respawn tests. Потребность — быстрый повтор боевого решения, а не новый save framework. Неприятность/длительность такого возврата человеком пока не измерены.
-
-**Опыт и границы:** после достижения смешанного зала смерть возвращает к защищённому подходу к нему; до этого сохраняется исходный spawn. Сохранить принятые world-progress semantics, не оживлять уже убитые угрозы и не откатывать устройства автоматически. Начать с existing mission zone/level entry, respawn и save/snapshot consumers; выбрать минимальную явную привязку без level-path hardcoding. Не вводить зависимость, отдельную checkpoint framework или новый save format без конкретной необходимости.
-
-**Техническая приёмка:** повтор обеих тактик, безопасная spawn pose вне native collision/дверей, смерть до/после перепуска, disk continue со смертью и живым игроком, encounter restore и session replacement согласованы. Живой continue сохраняет настоящую позицию; старые сценарии сохраняют своё поведение. Проверки — узкие mission/respawn/save, pressure routes и affected lifecycle. Время человека и удобство retry остаются отложенной приёмкой; ZIP и другой ПК не требуются.
-
-**Результат G-015, 2026-10-07:** необязательный `mission_step.retry_entry` ссылается на существующий `level_entry`. Session builder один раз разрешает pose и проверяет static/native collision, полный ход дверей и exit volumes; отсутствующая/пустая ссылка отклоняется, duplicate targetname проверяет прежняя level validation. После завершения шага входа в mixed hall `pressure_transfer` выбирает `(28;0,01;29)`, yaw к `+Z`. До этого остаётся authored spawn `(4;0,02;2)`. При смерти runtime выбирает pose из восстановленного mission progress; kills/inventory/weapons/devices/mission/enemies не откатываются. Save format не менялся. Живой disk continue и encounter restore сохраняют реальную позицию. Новая authored entry меняет fingerprint карты: сохранения прежней версии `pressure_transfer` требуют нового эпизода по существующему правилу совместимости; user progress не удалялся.
-
-Проверки: missing/empty/duplicate references, solid/door/exit/native collision; смерть до mixed hall, dead disk continue до/после перепуска, live continue, encounter/session replacement, сохранность kills и мёртвых угроз. Обе scripted тактики повторены с фактической retry pose; 120 тиков ожидания после respawn сохраняют здоровье 100. Прежний test_room respawn и bench retry прошли. Итоговые Debug mission/session/save/content и graphics — `build/msvc-debug/e018-final-debug.xml` (36/36 без failures/skips до последней узкой shadow-material правки E-018); финальная дополнительная проверка этой правки описана в E-018. Ранние ошибки fixtures (spawn Y и source/staged path) исправлены, runtime save matching не ослаблен. Человеческое время/удобство остаются открытыми.
-
-#### E-018 — подготовка GPU-ресурсов до первого игрового кадра
-
-**Статус / приоритет / объём:** `done` / P2 / M. **Зависимость:** G-015 технически проверен; актуальный before/after снят 2026-10-07. Отдельный engine consumer — подготовка и повтор новой игровой сессии `pressure_transfer`.
-
-**Основание:** Tracy G-014 показывает максимальный кадр index 0 во всех восьми состояниях: около 80 мс first-use и 13–19 мс последующих сессий. Mesh/texture uploads и upload waits приходятся на этот кадр; GPU scene p99 ≤0,293 мс, queries/frame mean ≤0,00184 мс. Это существующий расход пути подготовки ресурсов, не доказанная регрессия от одной модели. Точные границы/inputs — в [отчёте G-014](profiling/G-014-2026-10-07.md).
-
-Начать с текущих PreparedWorldSceneData/activation и render-owned mesh/texture acquisition. Цель — выполнить необходимые uploads до первого игрового кадра, сохраняя явные ожидания и прежнее владение; время не скрывать и отдельно учитывать loading/transition. Не вводить глобальный asset catalog, render graph, frames-in-flight или новый job/cache framework. Постоянный residency/cache допускается только после доказанного lifetime/invalidation решения; сначала проверить более локальный перенос работы.
-
-**Техническая приёмка:** тот же optimized workload и Tracy before/after отделяют loading, первый кадр, GPU/upload/wait и warm states. Нет missing first-frame resources, stale handles, роста ресурсов при повторных session/menu/editor/failed-prepare rollback. Affected lifetime/graphics/validation checks исполняются без skips; общий startup/loading cost и цена памяти явно отражены. Не заявлять уменьшение полного времени загрузки только потому, что upload перенесён между фазами. H-008 непрерывного эпизода и другой ПК остаются отдельной приёмкой.
-
-**Результат E-018, 2026-10-07:** `WorldSceneRenderer` перечисляет resources всех chunks/props/состояний/viewmodel/FX, renderer выполняет acquisition/uploads/waits до установки сессии, editor rebuild и commit reload/HDR backend. Существующие weak CPU identities, renderer ownership, rollback и очистка expired GPU entries сохранены. Измеренный промежуточный capture обнаружил 19 лишних texture uploads: shadow-caster preparation создавала материалы, хотя opaque depth passes используют только mesh buffers. Финальный shadow preparation готовит только геометрию; новых scheduling/residency frameworks нет.
-
-Сопоставимый optimized workload: 14 161 before / 14 372 final CPU frames. В первом кадре всех восьми состояний и во всех warm frames — 0 mesh/texture uploads и 0 upload waits. Первый process first frame 122,943 → 13,638 мс; последующие session first frames 15,444–19,060 → 2,000–3,633 мс. Loading вырос: full resource set готовится раньше; total loading speedup не заявляется. VMA fixture добавляет 4,996 MiB относительно первого lazy render, затем три повтора сохраняют 323 allocations / 123 730 688 bytes без накопления. Pixel comparison и partial-failure cleanup прошли. Полные settings/intervals/GPU/loading/memory/identities — [отчёт E-018](profiling/E-018-2026-10-07.md).
-
-Проверки: Debug 36/36 targeted unit/content/graphics; после финальной shadow-material правки 6/6 affected graphics с validation. Optimized final — 14/14 pressure content/resource/shadow/lifecycle/HDR/bench/pressure без failures/skips. Check Map `valid=true`, warnings=[]; source и staged map hashes совпадают; обычная optimized игра обновлена. Дополнительный общий `graphics.vulkan_mesh` имеет прежнее расхождение `mesh-reload-0`, воспроизведённое на исходном backend из HEAD с теми же assets; baselines не ослаблялись и полный graphics suite не объявляется зелёным. Подробности и команды в отчёте. Человеческие G-011–G-015 и H-008/другой ПК остаются открытыми.
-
-#### H-008 — актуальный профиль нового маршрута
-
-**Статус / приоритет / объём:** `in_progress` / P2 / S–M. **Зависимость:** проходимый G-011. Раннее исследование допустимо при воспроизводимой задержке.
-
-**Локальный baseline 2026-10-08:** после коммита `fc88baa` снят optimized Tracy обновлённого G-016 `pressure_transfer`: восемь повторяемых состояний, 12 421 CPU frame zones, p99 без первого кадра 1,570–2,112 мс. В игровых кадрах нет mesh/texture uploads и upload waits; первый кадр процесса — 13,008 мс. CPU update, GPU, scene fences и world queries разобраны отдельно в [отчёте](profiling/H-008-2026-10-08.md). Это локальная часть H-008: непрерывный маршрут, звук, согласованный FPS budget и слабый ПК ещё не проверены; человеческая приёмка и другой ПК остаются отложенными. Оптимизация не выполнялась.
-
-Снять непрерывный optimized Tracy capture прохода и отдельные повторяемые состояния тяжёлой встречи/освещения, cold/first-use и warm run. Зафиксировать hardware/driver, разрешение, pipeline, VSync, точную сборку/inputs и настройки. Отделить simulation/render CPU, GPU и present/waits; учитывать first-use uploads, draw count и world-query cost. Сравнить обычное движение, бой и повтор встречи; записать frame-time median/p95/p99, пики и условия воспроизведения. После G-012 профиль нового workload ведётся отдельно; entrance baseline и прежняя карта не заменяют его.
-
-**Готово, когда:** есть воспроизводимый baseline на основном ПК и проверка на согласованном слабом ПК; бюджет кадра определён относительно целевого FPS; измерения показывают, что мешает ему, либо подтверждают достаточный запас. Оптимизации оформить только по подтверждённому вкладу и сравнить до/после на том же workload. Старые captures и скорость сборки не заменяют эти данные.
-
-#### H-009 — кандидат следующего эпизода
-
-**Статус / приоритет / объём:** `pending` / P2 / S–M. **Зависимость:** G-011 и результаты H-008; серьёзные регрессии исправлены.
-
-По прямому поручению на candidate/выпуск использовать существующие Release/packaging/update scripts или подходящий уже собранный artifact. Проверить точный архив с manifest/хешами вне проекта, полный проход, save/continue и переход с предыдущей standalone-версии. Выполнить релевантные unit/content/graphics проверки и ASan для изменённого runtime; на слабом ПК проверить окно/HUD, управление, звук и новый бой. Версию и release notes готовить по существующему процессу. Routine implementation не создаёт ZIP автоматически.
-
-**Готово, когда:** конкретный кандидат принят автором, ограничения записаны, README и этот roadmap отражают фактические результаты. Публикация требует отдельной команды на конкретный проверенный кандидат. Перестройка updater, новая площадка доставки и новые зависимости в этот этап не входят.
-
-#### G-016 — доводка существующих сценариев по слепому тесту
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P1 / M–L. По поручению автора технические итерации 1–4 выполнены 2026-10-07/08; итерация 5 подготовлена и ждёт человека. **Основание:** переданный отзыв одного стороннего игрока, [наблюдения и ограничения](playtests/G-011-2026-09-29.md#отзыв-стороннего-игрока-передан-2026-10-07). D1/G-015 и D2/E-018 технически выполнены; новый enemy/navigation consumer не установлен.
-
-**Результат:** читаемый HUD, физически установленные турели, полезные оружие/укрытия и различающиеся встречи в pressure_transfer, более выразительная атмосфера и понятный маршрут «Двух секторов». Порядок, объём и критерии пяти итераций находятся в [PROJECT_PLAN / план по отзыву](PROJECT_PLAN.md#план-по-отзыву-слепого-теста--2026-10-07); не начинать все правки одновременно.
-
-**Вероятные пути:** `src/relaycore/render/game_hud.*`, затронутые turret render/placement consumers после воспроизведения, `assets/levels/pressure_transfer.toml`, `foundation_intake.toml`, `foundation_pump.toml`, существующие presentation assets и ближайшие HUD/content/graphics/transition tests. Сохранить native bench clearance, роли низкого/высокого укрытия, mission/save/retry и ранее сделанный art pass, адаптируя их к принятому layout.
-
-**Готово, когда:** технически проверены HUD на двух разрешениях, опоры/ориентация турелей, полный маршрут и обе тактики pressure_transfer, transitions/inventory «Двух секторов», death/retry/save/continue; просмотрены игровые кадры и прослушан звук. Повторный слепой тест без маршрутных подсказок записал время, вмешательства, выбор оружия/укрытий, понимание перехода между секторами и реакции мира. Автор принял результат; оставшиеся замечания явно записаны. При отсутствии человеческих наблюдений технически готовый ticket получает `awaiting_playtest`, не `done`. Исторические G-011–G-015 автоматически не закрывать.
-
-**Границы:** проверять encounter до изменения глобального weapon balance; не вводить обязательный shotgun-only kill, нового врага, renderer/AI framework, зависимости, новую карту или ZIP. Источники сложности — читаемая угроза, позиции и решения; увеличение пустых переходов и одна лишь прибавка health не являются результатом.
-
-**Выполнено / evidence 2026-10-08:** задачи слева, текст цели/взаимодействий +25%, инвентарь/событие справа; опоры и ориентация трёх турелей. В pressure_transfer приближён первый rover, настроен темп угроз без изменения global weapons, добавлен пульт блокировки галереи; сохранены обе native-тактики. После перепуска прекращается утечка/аварийный свет, включаются вентиляция и выход. «Два сектора»: ключ → допуск → пуск насосов → открытие выхода, укрытие с rover/турелью, ориентиры 01/02 и финал. Debug content 47/47, затронутые Vulkan/lifecycle 5/5 без skipped; optimized affected content 13/13 и atmosphere runtime exit 0. Check Map всех трёх карт valid, warnings 0; scoped format/diff-check прошли. Два изменённых визуальных эталона явно обновлены после просмотра кадров, допуски тестов сохранены. Debug и RelWithDebInfo собраны; [протокол, команды, идентичность сборки и открытые наблюдения](playtests/G-011-2026-09-29.md#g-016--техническая-доводка-2026-10-08). Слуховая оценка, длительность, самостоятельность решений и приёмка человеком остаются открытыми.
-
-**Gameplay overhaul D3 / поручение 2026-10-09:** выполнен аудит текущего
-runtime/maps и выбран один mixed slice `pressure_transfer`; inventory, TTK,
-pillars, brief и сравнение поведения записаны в
-[PROJECT_PLAN](PROJECT_PLAN.md#gameplay-overhaul--первый-проход-d3-2026-10-09).
-Opt-in committed rover lunge и питание turret через `transfer_running` дают
-выбор защищённой зачистки или запуска под угрозой, без новых кнопок/HP/оружия.
-Debug build успешен; выбранные unit **80/80**, content **57/57**,
-`graphics.pressure_transfer/campaign_route/game_lifecycle` **3/3**, без skipped;
-все семь campaign maps valid, warnings=0. Runtime overhaul replay: четыре
-save/continue состояния по два раза, Vulkan validation=true, кадры просмотрены.
-Scripted combat-first/start-first: 49,88/43,40 с, damage 6/54; это цена обхода,
-не human pacing. Scoped format и diff-check прошли; точные команды, hashes и
-границы в PROJECT_PLAN. G-016 сохраняет `awaiting_playtest`: самостоятельность
-выбора, звук, 3–5 минут и качество боя требуют человеческого прохода.
-
-#### G-017 / D4 — контур охлаждения и повторяемое производство
-
-**Статус / приоритет / объём:** `awaiting_playtest` / P2 / M. Автор 2026-10-08 явно поручил отложить приёмку G-016 и начать следующий компактный эпизод D4; это исключение из последовательности приёмки D3, не закрытие его критериев.
-
-**Результат:** `assets/levels/cooling_loop.toml`, сценарий «Контур охлаждения» в меню. Центральный агрегат разделяет сервисный путь с ближним rover и открытую линию под турелью. Изоляция утечки открывает аварийную перегородку и пусковой пульт; запуск меняет свет, включает вентиляцию и разблокирует выход. Остекление позволяет увидеть пусковой пост до снятия блокировки. Дробовик необязателен, сохранены точное оружие, локальный retry, save/continue и финал. Переиспользованы native props/materials и текущие runtime rules; products вручную не исправлялись.
-
-**Техническая проверка:** оба полных collision-aware маршрута, закрытые gates, disk continue/death/retry, editor round trip и fingerprint, реакция оборудования/audio selection, реальные HDR captures. Затронутые прежние сценарии общего capture harness также проверены. Команды, результаты, исходники, staged hashes и затраты процесса — [G-017 evidence](playtests/G-017-2026-10-08.md). Человеческие длительность, понятность выбора пути, слуховая оценка и авторская приёмка остаются открытыми. Новая система navigation/renderer, зависимости и упаковка не потребовались.
-
-**Следующий шаг:** первый самостоятельный проход «Контура охлаждения» по краткому brief из отчёта; записать выбор пути/оружия, смерти, время, понимание изоляции и запуска. Не выдавать скриптовый маршрут за человеческую приёмку. G-016 и внешние GPU-критерии сохраняются открытыми.
-
-#### Проверки и порядок следующей работы
-
-Актуальный gameplay priority 2026-10-09 — G-019 ниже. Исторический порядок
-этого раздела сохраняет контекст прежних tickets и не заменяет новый brief.
-
-Дополнение 2026-10-08: автор подтвердил недоступность непрерывного прохода, прослушивания и слабого ПК и поручил продолжить независимую техническую работу D5. Эти проверки остаются отложенными; текущая инженерная итерация — воспроизведение и исправление `mesh-reload-0` без изменения игровых световых настроек или ослабления эталонов.
-
-Дополнение 2026-10-08: по явному выбору автора приёмка G-016 отложена, реализован G-017/D4. Предыдущая последовательность ниже сохранена как основание отложенной приёмки.
-
-Автор 2026-10-07 поручил продолжить развитие игры и движка на текущем ПК, первоначально отложив нового игрока и другой компьютер; позднее передал отзыв стороннего слепого теста и поручил выполнение нового плана. E-015/E-017/E-018 выполнены, G-013/G-014/G-015 технически проверены; техническая доводка G-016 завершена 2026-10-08. Следующий шаг — повторный слепой тест, прослушивание и приёмка на зафиксированной локальной сборке. Впоследствии E-016 реализован для encounters G-019; эта запись сохраняет исходную последовательность. Внешние критерии G-011/G-012/G-013/G-014/G-015/H-008/H-009 сохраняются открытыми; другой ПК по-прежнему отложен. G-009 принята, G-010 затем реализована под G-019 и ожидает playtest; scope S/M/L относительный, календарных обещаний нет.
-
-Для authoring начинать с `relaycore_level_check` и `validation-debug`. Для оружия/AI — ближайшие combat/enemy/input/save tests, затем content и затронутые lifecycle/graphics. Команды и существующие presets приведены в разделе 9; configure/build выполнять в VS developer environment с корректным `VCPKG_ROOT`. Ручные критерии не заменять автотестами. Каждый implementation ticket заканчивать обновлением статуса, evidence и `git diff --check`.
-
-#### G-019 — полноценная глава: связный маршрут, угроза и задача
-
-**Статус / приоритет / объём:** `done` / P1 / L; принята автором 2026-10-10,
-с отдельным замечанием о декорациях и наполнении (checkpoint E).
-**Основание:** явное
-поручение автора 2026-10-09 после прохода: текущие семь сегментов суммарно
-примерно полторы минуты без sprint; локальные изменения боевого поведения
-заметны, но не дают принятой игровой ценности.
-
-**Результат:** одна оригинальная глава на 20–30 минут первого прохождения.
-Связная локация с ориентирами, исследованием, разными задачами/встречами,
-ответвлениями, shortcuts и возвращением через изменившийся мир. Центральная
-угроза имеет специальное разрешение через оборудование и действия в
-пространстве. Авторские references: Half-Life rocket silo/tentacles,
-Black Mesa exterior threats, artillery interaction; использовать принципы,
-а не копировать карту, creature или события.
-
-**Scope и порядок:** [авторские требования и разработанный brief](PROJECT_PLAN.md#решение-автора--полноценная-игровая-глава-2026-10-09)
-владеют сценарием, proposed Хранителем, маршрутами и asset criteria.
-Сначала graybox всей главы и полный цикл основной задачи; затем полезные
-AI/combat roles, полноценные hero assets, art/native/runtime review и
-самостоятельный полный проход. E-016/G-010 открывать по конкретным navigation/
-mobile-shooter consumers главы. Recast/Detour, animation или другие engine
-capabilities требуют owning scope и проверки фактической потребности.
-
-**Готово, когда:** обычный самостоятельный проход включает разные действия
-и понятные последствия; центральную задачу не разрешает зачистка из входа;
-враги меняют решения игрока; нужные пути достигаются без прохождения через
-стены; готовые boss/hero assets соответствуют art direction и reviewed
-gameplay views. Target 20–30 минут проверен человеком, state/save/retry/
-interaction/content/lifecycle/graphics проверены технически. Graybox
-примитивы, новые кнопки сами по себе и перенос старых 80/57 test results
-не являются acceptance новой главы. Артефакты/archives — только по запросу.
-
-**Checkpoint A — технический graybox, 2026-10-09.** Добавлена одна карта
-`assets/levels/containment_loop.toml`: 133 solids, 29 entities, наблюдательный
-пост за стеклом, общий зал с рамой и первоначально видимым выходом,
-служебная мастерская, архивные стеллажи, восточный открытый подход,
-северный обход из лабораторного крыла в архив, две лестницы с подъёмом
-на 4 м, галереи/мост и открываемый из архива shortcut. Карта доступна
-отдельным пунктом RmlUi; прежняя кампания сохранена. После прохождения
-выход готовит существующий вход `campaign_arrival` в B-17.
-
-Поиск кассеты и обслуживание захвата технически допускают оба порядка.
-В checkpoint A consumer кассеты и открытие выхода — **временные gates graybox**:
-нет центрального encounter, damage/ловушки/окна и рабочего Хранителя.
-Рама, существо и машинное оборудование состоят из промежуточных solids;
-это не готовые hero assets и не завершённая глава. G-016 сохраняет
-непринятую gameplay часть; G-018 подтверждает прежние transitions.
-
-`tests/containment_loop_route.h` проверяет реальное движение через
-`update_grounded` на 120 Hz, с гравитацией, step collision, обычной
-скоростью и focus/LOS для взаимодействий; координаты игрока не
-переставляются между waypoint. Оба порядка подготовки проходят архив,
-две лестницы, верхний мост, возврат, shortcut и выход. Editor round trip
-сохраняет entities/mission/retry/entry/exit. Обнаружены и исправлены
-перекрытые ground/upper portals. Отдельно исправлена ограниченная 32 м
-от старта сетка editor route check: область теперь берётся из geometry
-bounds, с пределом 64 м от старта по каждой оси. Проверка остаётся
-одновысотной; лестницы подтверждает маршрут, а не editor flood fill.
-
-Проверки Debug: build targets `relaycore_content_validation`,
-`relaycore_containment_loop_graphics`, `relaycore_tests`, `relaycore_demo`,
-`relaycore_player_ui_graphics`; Check Map `valid=true`, warnings=0.
-Новые route/editor и SDR/HDR captures — **4/4 без skips**;
-editor/linked-map, прежняя campaign/cooling/shipped content и RmlUi —
-**17/17 без skips**. Логи: `build/g019/checkpoint-a-checks.log`,
-`build/g019/checkpoint-a-regression.log`, карта — `build/g019/map-a.json`.
-18 кадров девяти игровых точек: `build/msvc-debug/tests/containment-captures`;
-сводный просмотр сохранён в [graybox views](art/g019-graybox.png). Assets staged в
-Debug; новых моделей, native products, зависимостей, save schema или
-архива нет. Существующие VIS/RmlUi/native/HDR работы переиспользованы.
-
-**Checkpoint B — `done`, технический цикл аппарата/Хранителя, 2026-10-09.**
-Временное открытие выхода заменено game-owned `ContainmentEncounter`.
-Кассета устанавливается независимо от ремонта привода; ремонт за 3 с
-переводит видимый захват в рабочее положение. Хранитель движется в
-центральном зале с world/door/player collision, видит игрока через LOS,
-готовит удар 0,9 с по отмеченному месту и наносит 32 damage только при
-сохранившемся LOS/положении игрока. После удара остаётся окно восстановления
-4 с. Пистолет/дробовик задерживают преследование на 0,65 с, не убивают
-Хранителя и не заменяют ловушку; geometry тела останавливает выстрелы.
-
-Пуск у рамы доступен только после обеих подготовок, завершения движения
-захвата и размещения **всего footprint** Хранителя внутри жёлтого сектора
-во время восстановления. Пуск вне сектора/раньше окна не расходуется;
-пропущенное окно повторяется. После пуска захват опускается за 2 с,
-Хранитель оседает и только затем открывается `containment_exit`.
-HUD, control feedback, отметка удара и красный/зелёный индикатор показывают
-подготовку, опасность, окно и результат. Door/mission/exit consumers прежние;
-обычный выход по-прежнему готовит `campaign_arrival` в B-17.
-
-Snapshot и disk save сохраняют положение, цель удара, mode/timer,
-промежуточные доли движения привода/сдерживания и связанные interactions.
-Несогласованные phase/target/consumed/exit состояния отвергаются до изменения
-мира. Формат записи save — **5**; чтение 1–4 прежних карт сохранено и
-проверено, новая карта требует своего encounter state. Pause/death останавливают
-encounter timers; retry сохраняет выполненную подготовку, сбрасывает ещё
-не сдержанную угрозу к исходной точке и сохраняет уже запущенное/завершённое
-сдерживание. Editor round trip и Check Map учитывают аппарат без ложной
-ошибки «нет двери» у activation panel.
-
-Реальное grounded движение на 120 Hz проверяет обе ветки, отдельный порядок
-«кассета установлена **до** ремонта», обход тела при уклонении, достижение
-пульта в окно и полный выход. Waypoint координаты не переставляют игрока;
-при timed dodge нет искусственных пауз fixture. Graphics lifecycle отдельно
-использует controlled poses для осмотра состояний; это не измерение прохода.
-**129 solids / 32 entities**, Check Map `valid=true`, warnings=0.
-
-Проверки Debug: выбранные content/campaign/snapshot — **23/23**,
-combat/rover/weapon/editor/save — **43/43** (diagnostic новой версии исправлен
-и перепроверен), финальные восемь containment cases — **8/8**;
-SDR/HDR containment, RmlUi, game lifecycle и campaign route — **5/5 без skips**.
-RelWithDebInfo/обычный Play: chapter content/state — **8/8**, SDR/HDR —
-**2/2 без skips**. `relaycore_demo`, content и containment graphics targets
-собраны в обеих конфигурациях; Debug unit/lifecycle/UI targets также собраны.
-Assets staged в Debug и Play. Логи/команды — `build/g019/build-b-final.log`,
-`build-b-format-debug.log`, `build-b-format-play.log`,
-`checkpoint-b-content.log`, `checkpoint-b-content-final.log`,
-`checkpoint-b-unit-final.log`, `checkpoint-b-graphics-final.log`,
-`checkpoint-b-play-content.log`, `checkpoint-b-play-graphics.log`;
-Check Map — `build/g019/map-b.json`. 32 кадра (16 видов/состояний × SDR/HDR)
-в `build/msvc-debug/tests/containment-captures` и соответствующие Play captures;
-[просмотр семи состояний аппарата](art/g019-apparatus-states.png).
-Scoped formatting и `git diff --check` проходят.
-
-Новых dependencies, hero models/native products, archives, commit или push
-в checkpoint B нет. Технический state/interaction цикл завершён; тело и
-оборудование остаются **промежуточными graybox forms**, видны тёмные
-placeholder surfaces. На момент B следующим checkpoint был C; его результат
-зафиксирован ниже. Art D–E и самостоятельный playtest ещё не выполнены.
-Интересность и 20–30 минут не проверены и не заявляются; общий G-019 остаётся
-`in_progress`.
-
-История checkpoint A: локальный commit его graybox/editor/tests/evidence —
-`afe60af`; push не выполнялся. Его дополнения меню и roadmap были оставлены
-в рабочем дереве поверх существующего незакоммиченного RmlUi/strategy pass:
-его исходники и прежние пользовательские изменения не включены в commit.
-
-**Checkpoint C — `done`, технические AI/combat encounters, 2026-10-09.**
-В мастерской rover огибает верстаки; в архиве rover давит между стеллажами,
-а мобильный стрелок меняет угол со стороны северного прохода. Второй стрелок
-контролирует открытый подход лабораторного крыла. Скрытые стрелки не доступны
-для зачистки из входа мастерской. У каждой встречи есть collision-checked
-плоский маршрут; двери, высотные ограничения, тела других врагов/Хранителя
-сохраняют collision. После потери цели стрелок проверяет последнее известное
-место, без получения скрытой актуальной позиции игрока.
-
-`enemy_shooter` использует ограниченную state machine rover: предупреждение
-0,7 с, один hitscan по отмеченному месту (12 damage, 12 м), recovery 0,95 с.
-Постоянная линия предупреждения, красный/янтарный индикатор, звук и отдельный
-короткий trace показывают окно атаки. Положение цели фиксируется в windup;
-уклонение, стена, закрытая дверь и тело перед целью предотвращают попадание.
-Форма пока промежуточная: существующий rover с отдельным mounted emitter,
-не готовый hero asset. Новые enemies имеют 84 HP, прежние карты/weapon defaults
-сохранены. Fixture на 120 Hz подтверждает: неподвижная стрельба пистолетом
-вблизи допускает lunge до четвёртого попадания; близкий дробовик или боковое
-движение предотвращают урон. Дробовик необязателен и реально достижим на
-верстаке мастерской; оба порядка подготовки/выхода проходят с enemy collision
-и стрельбой. Это scripted decisions, не оценка качества боя человеком.
-
-Route points доступны для выбора/перемещения и редактирования в editor;
-round trip сохраняет состав врагов/маршруты и gates. Disk/snapshot сохраняют
-existing enemy position/last_seen/mode/timer; transient path и trace очищаются
-при restore. Pause/death останавливают AI, retry сохраняет живых/убитых обычных
-врагов и выполненную подготовку. Save format остаётся 5.
-
-Debug: **38/38** выбранных combat/weapon/AI/save regressions, **10/10** chapter
-content/state cases, SDR/HDR и affected lifecycle/UI/campaign graphics —
-**5/5 без skips**. Check Map: `valid=true`, warnings=0, **129 solids / 61 entities**.
-`relaycore_demo`, content/unit/chapter graphics, lifecycle и UI targets собраны;
-текущий CLion Play (`msvc-dev` / `demo-dev`) обновлён и assets staged.
-Логи — `build/g019/configure-c.log`, `build-c-checked.log`,
-`build-c-graphics.log`, `build-c-play-final.log`, `checkpoint-c-regression.log`,
-`checkpoint-c-final.log`, `checkpoint-c-graphics.log`; map report — `map-c.json`.
-40 SDR/HDR кадров (20 видов/состояний) в Debug `containment-captures`;
-[просмотр четырёх combat состояний](art/g019-combat-states.png).
-Scoped formatting и `git diff --check` проходят.
-
-Команды в VS developer environment с настроенным `VCPKG_ROOT`:
-
-```powershell
-cmake --preset msvc-debug
-cmake --build --preset tests-debug --target relaycore_tests relaycore_content_validation relaycore_containment_loop_graphics relaycore_game_lifecycle relaycore_player_ui_graphics relaycore_demo
-ctest --preset test-debug --output-on-failure --no-tests=error -R 'routed|mobile.shooter|enemy.routes|chapter.rover|rover|shotgun|weapon|progress|save|snapshot' -E '^graphics\.|^validation\.|^relaycore\.physics\.'
-ctest --preset validation-debug --output-on-failure --no-tests=error -R containment
-ctest --preset test-debug --output-on-failure --no-tests=error -R '^graphics\.(containment_loop(_hdr)?|game_lifecycle|player_ui|campaign_route)$'
-cmake --preset msvc-dev
-cmake --build --preset demo-dev
-$env:RELAYCORE_ASSET_ROOT = (Resolve-Path build/msvc-debug/src/relaygame/assets).Path
-& build/msvc-debug/src/relaygame/relaycore_level_check.exe assets/levels/containment_loop.toml
-```
-
-E-016 технически закрыт в пределах этих authored flat routes; G-010 остаётся
-`awaiting_playtest`. На завершении C следующий checkpoint был D; его результат
-зафиксирован ниже. Человеческие читаемость/интересность, слуховая оценка и
-20–30 минут остаются открытыми. Архивы/commit/push не выполнялись.
-
-**Checkpoint D — `awaiting_playtest`, техническая поставка hero assets, 2026-10-09.**
-Процедурный primitive-creature заменён адаптацией Free Biomechanical Mutant
-GAME-READY STUDIOS с исходным sculpt/UV и Bloody texture set. Сохранён стройный
-силуэт первого понравившегося автору варианта. Последний запрос — около 50–60%
-робота, остальное кровавая органика: добавлены отдельные литые панели бёдер,
-голеней, плеч, предплечий, спины и груди, подшипники, возвратные приводы и
-нагрудный ограничитель C-19. Это визуальный ориентир, не измеренная доля площади.
-Финальная механическая версия ещё не получила авторскую оценку.
-[Шесть видов босса](art/g019-guardian-mechanical.png),
-[кадры в движке](art/g019-hero-assets.png),
-[источник и адаптация](../content/third_party/game_ready_mutant/source.md).
-
-Восемь native моделей: тело/ударная рука Хранителя, захват/шток, кассета,
-живой/разрушенный мобильный стрелок и lining главы. Сборочный source остаётся
-в `content/models/*.blend`, GLB там же; генераторы —
-`scripts/export-guardian-glb.py` и `scripts/export-containment-glb.py`.
-Карта получила отделку, архивные шкафы, верстаки, кожухи/направляющие аппарата,
-подвесы светильников и маршрутные таблички. Добавлена одна collision-опора под
-кассету; прежние encounter gates, enemy collision и save format сохранены.
-Показаны поднятая ударная рука, движущийся захват/шток, установленная кассета
-и отдельный разрушенный стрелок. Runtime использует статические assemblies,
-rigid transforms и сжатие тела при захвате; skeletal walk animation отсутствует.
-
-Blender 5.2.2 LTS: все **8/8** GLB прошли inspector hard gates, без degenerate
-faces; authored body/arm также прошли. Тело — 99 420 triangles, рука — 3 274,
-lining — 61 830; остальные модели — 156–14 614 triangles. Свежий импорт
-экспортированного босса проверен в шести фиксированных видах, runtime — front/
-back/side и attack/capture/combat состояниях. Original 4K maps сохранены;
-runtime 2K normal maps адаптированы к положительной tangent hemisphere
-(47 Top seam texels). Подробности и границы преобразований записаны у source.
-
-Debug: **10/10** chapter validations и **3/3** graphics (SDR, HDR, lifecycle),
-без skips. Получены **48 кадров**, 24 вида/состояния в двух color pipelines.
-Check Map: `valid=true`, warnings=0, **130 solids / 62 entities**.
-Content/graphics/lifecycle/demo targets собраны; CLion Play `msvc-dev` /
-`demo-dev` обновлён. Receipt/staging checks прошли в обоих build trees,
-восемь новых staged rcmodel совпадают по SHA256. Scoped clang-format и
-`git diff --check` проходят. Логи: `build/g019/build-d-final.log`,
-`build-d-play.log`, `checkpoint-d-content.log`, `checkpoint-d-graphics.log`,
-`map-d.json`, `model-receipts-d.log`, `model-receipts-d-play.log`,
-`model-parity-d.log`; Blender metrics/views — `build/blender-review/g019`.
-
-Проверки в VS developer environment с настроенным `VCPKG_ROOT`:
-
-```powershell
-cmake --build --preset tests-debug --target relaycore_content_validation relaycore_containment_loop_graphics relaycore_game_lifecycle relaycore_demo
-ctest --preset test-debug --output-on-failure --no-tests=error -R '^validation\.containment'
-ctest --preset test-debug --output-on-failure --no-tests=error -R '^graphics\.(containment_loop(_hdr)?|game_lifecycle)$'
-cmake --build --preset demo-dev
-```
-
-**Art feedback и исправления 2026-10-09:** автор отклонил чрезмерно механический
-вид и гладкие материалы. У ударной руки удалены все оболочки, правая половина
-спины открыта; сохраняются 3.55 м, силуэт и runtime pivot. На металле Хранителя
-и шести сборках оборудования/облицовки используются адаптированные albedo/normal
-сканы Poly Haven; источник и адаптации — `content/third_party/polyhaven/containment/`.
-Все восемь GLB и две исходные сборки проходят inspector hard gates; fresh-import
-шесть видов — [органическая версия](art/g019-guardian-organic-textured.png).
-Это технические/визуальные данные, **не авторская приёмка**.
-
-Повторное замечание автора: модели в игре выглядят мыльными и хуже Blender.
-Аудит 19 карт `guardian_body`, `guardian_arm`, `containment_lining`, `power_cabinet`
-подтвердил побайтное совпадение GLB/native и размеров; GPU readback 2048×1024
-подтвердил сохранность base mip. Общий Vulkan sampler получил optional
-анизотропию до 16× — [одинаковые игровые кадры до/после](art/g019-filtering-before-after.png),
-пиксели 1:1 без изменения света/камеры. Blender studio light отличается от игрового света; на момент
-этой проверки engine не имел environment specular/IBL и AA. Поэтому качество материалов
-и контуров в runtime остаётся **открытым замечанием**, устранение всей разницы
-не заявляется. Починка `repair_exported_tangents` сохраняет исходную MikkTSpace
-handedness при восстановлении XYZ, устраняя native import rejection новых карт.
-
-Проверено: `demo-dev` target `relaycore_demo`; Debug targets containment/UI и
-Vulkan device/upload/mesh. `ctest --preset test-debug --output-on-failure
---no-tests=error -R '^graphics\.(vulkan_upload|vulkan_device|vulkan_color_baseline|containment_loop(_hdr)?|player_ui)$'`
-— 6 passed, 0 skipped, чистая validation. Логи и texture audit — `build/g019/`.
-
-**Продолжение по запросу автора, освещение и AA, 2026-10-09:** metallic/roughness
-материалы получают низкочастотный отражённый свет от hemisphere ambient и
-существующих SH-проб, с roughness-фильтром и environment BRDF. Это приближение
-мягких отражений, без новых cubemap-продуктов и резких отражений объектов.
-MSAA 4× включено во всех трёх игровых конфигурациях; resolve мира/viewmodel
-предшествует tone mapping и UI. HUD остаётся single-sample. Текстуры/геометрия,
-камера и authored lighting при сравнении не менялись.
-[Игровые кадры до/после, включая crop 1:1](art/g019-lighting-aa-before-after.png).
-Металл в тени стал читаемее, края геометрии получили частичное покрытие;
-это техническая/визуальная проверка, не авторская приёмка или полное равенство Blender.
-
-Debug и `demo-dev` собраны. 10 engine config cases и 8 graphics cases
-(`msaa`, `mesh_pipeline`, `vulkan_color_baseline`, `hdr_pipeline`, `irradiance_probes`,
-`player_ui`, `containment_loop`, `containment_loop_hdr`) passed, 0 skipped;
-отдельный `relaycore_vulkan_mesh_tests --metallic-roughness` passed.
-Vulkan validation чистая, `git diff --check` проходит. Логи:
-`build/g019/lighting-aa-{build-debug,build-dev,config,graphics,mr}.log`,
-сравнение — `build/g019/lighting-aa-comparison.py` и `.json`.
-Контракт/config и ограничения — [DEVELOPMENT](DEVELOPMENT.md#освещение-материалов-и-сглаживание).
-
-**Независимая доводка по поручению автора, 2026-10-09:** человеческий проход
-временно отложен; продолжать разработку по подтверждённым проблемам.
-Воспроизведено зависание мобильного стрелка на границе дальности: выбор
-огневой точки использовал более низкую цель и не учитывал остановку в радиусе
-0,12 м от waypoint. Два regression сценария до исправления дали ноль выстрелов
-за четыре секунды. Теперь planner использует высоту глаз игрока относительно
-его feet-origin, сохраняя remembered position, и оставляет arrival margin внутри
-общей дальности 12 м. Форматы карты/save, баланс оружия и authored routes сохранены.
-Debug targets tests/content/containment graphics и `demo-dev` собраны;
-16 enemy + 10 containment + 2 SDR/HDR graphics checks passed, zero skips.
-Результаты: `build/g019/improvement-{build-debug,build-integration,build-dev,enemies,containment,graphics}.log`;
-JUnit reports — `improvement-{enemies,containment,graphics}.xml` в том же каталоге.
-`git diff --check` проходит. Это техническая поправка AI, не принятие интересности,
-читаемости или длительности главы; G-019 остаётся `in_progress`.
-
-**Checkpoint E:** [протокол](playtests/G-019-2026-10-09.md) и отдельный CLion
-профиль **RelayCore — G-019 Playtest** готовы. `RELAYCORE_USER_DATA_ROOT` изолирует
-progress/settings, invalid override отклоняется, проверка UI New Game/Continue
-прошла. SHA256 пользовательского progress до/после совпадает.
-
-**Авторская приёмка, 2026-10-10:** «G019 принял, все ок. единственное что
-уровень пустой по декорациям и наполнению». Общий G-019 закрыт как `done`
-по явной авторской приёмке. Замечание сохраняется как предмет следующего
-прохода по окружению принятой главы.
-Длительность, сборка, условия прохода, звук, Continue/retry и независимые
-наблюдения в отзыве не указаны; target 20–30 минут и независимый checkpoint E
-не объявляются измеренными. Отдельные VIS/IMG/G-010 и внешние gates этим
-общим отзывом не закрываются. Исторические записи A–D выше сохраняют
-статусы на момент своих проверок.
-
-**Последовательность следующего art-pass:** исходные игровые виды и конечный
-список размещений/недостающих assets → центральный зал и наблюдательный пост →
-мастерская → архив → лабораторное крыло → верхний сервисный маршрут и переходы →
-детали, следы использования и свет → проверка целого маршрута и авторская приёмка.
-Каждая зона завершается проверкой читаемости, проходов, LOS и интерактивов.
-Подробный план и критерии — в
-[продолжении аудита](C:/Users/l1nuvv/.codex/visualizations/2026/10/10/01a12789-0f3b-7b70-8d81-1f367f31ff39/RelayCore-next-cycle-audit.md).
-Результат 2026-10-11: этапы 0–6 выполнены (пост/зал, мастерская, архив,
-лаборатория, верхний маршрут, детали/свет). Каждый промежуточный pass 1–5 —
-10 containment cases и SDR, **11/11 без skips**; финальные content/SDR/HDR —
-**12/12 без skips**. Debug и Play обновлены; Check Map — valid, 0 warnings;
-fresh-import/source checks и receipts/staging 79 моделей в обеих сборках прошли.
-Исходные/итоговые виды и выборка 48 кадров движения просмотрены. Старый Continue
-проверенно требует нового эпизода после изменения authored fingerprint.
-Этап 7 технически проверен; непрерывный авторский проход со звуком и приёмка
-наполнения остаются открытыми. [Виды, размещения и evidence](art/g019-environment-fill.md).
-G-019 остаётся принятой; новые gameplay задачи в этот art-pass не входят.
-
-## 8. Правила развития подсистем
-
-| Область | Делать под текущий slice | Условие расширения |
-| --- | --- | --- |
-| Gameplay | Ориентирование, feedback, encounters, retry | Новый элемент добавляет наблюдаемое решение игрока |
-| Engine/runtime | Сохранить ownership, prepared session и typed collections | Конкретный игровой сценарий невозможно выразить или он воспроизводимо ломается |
-| Tooling | Полный repeat встречи; точечные authoring fixes | Замеренное повторяющееся неудобство автора |
-| Content pipeline | OBJ/BMP, TOML, существующие генераторы и validation | Нужный объект не проходит текущий процесс |
-| Rendering required | Видимость пути, устройств, угроз и состояний | Скриншот/видео и воспроизведение дефекта |
-| Rendering polish | Согласованность света, материалов, effects, HUD | Основной flow принят игроками |
-| Rendering research | Отдельный deferred backlog | После принятого v1 или прямой команды пользователя |
-| Tests | Инварианты, parsing, regression, transitions и authored links | Новый риск поведения, а не стремление к coverage percentage |
-| Build/dev experience | Достоверная сборка и самостоятельный запуск | Реальная задержка итерации или проблема доставки |
-| Performance | Актуальный workload и Tracy evidence | Измеренный вклад, мешающий gameplay |
-
-Существующие сильные стороны — lifecycle, level preparation, collision queries, interaction data, editor preview, static resource cache и save/continue — использовать как foundation. Не переписывать их без конкретного дефекта.
-
-## 9. Проверки и evidence
-
-Перед выполнением сверить команды с текущими `CMakePresets.json`, CMake targets и skill `relaycore-verify`. Не менять environment или user presets ради совпадения с этим примером.
-
-```powershell
-# MSVC developer shell + корректный VCPKG_ROOT обязательны.
-# Configure нужен при отсутствии или изменении конфигурации.
-cmake --preset msvc-debug
-
-cmake --build --preset tests-debug
-ctest --preset test-debug --output-on-failure
-
-cmake --build --preset validation-debug
-ctest --preset validation-debug --output-on-failure
-
-# Для изменений игрового lifecycle/presentation:
-cmake --build --preset graphics-debug
-ctest --test-dir build/msvc-debug -R '^graphics\.(game_lifecycle|power_restoration)$' --output-on-failure
-
-# Для standalone-кандидата:
-cmake --build --preset demo-relwithdebinfo
-pwsh -NoProfile -File scripts/package-playtest.ps1
-
-git diff --check
-```
-
-Не выполнять весь блок после каждой правки. Выбирать узкий набор по задаче; расширять при изменении общих contracts или подготовке кандидата.
-
-### Что чем проверяется
-
-- Unit tests: state transitions, collision/math, input ownership, parsing, snapshot invariants.
-- Content validation: связи и достижимость scripted progression, prerequisites, authored values, конкретные проходы и threats.
-- Graphics/lifecycle: реальные ресурсы/GL, session/menu/editor transitions, rendering states и captures.
-- Manual runtime: чувство управления, понятность, слышимость, интересность, усталость от retry.
-- Другой ПК: runtime dependencies, asset paths, графический backend и переносимость архива.
-- Tracy: измерение performance на зафиксированном workload; не оценка fun.
-
-### Минимальная запись плейтеста
-
-```text
-Кандидат / дата / source state:
-ПК / GPU / resolution / VSync / настройки:
-Играл ли человек раньше:
-Время начала и завершения:
-Время девяти этапов:
-Где потерял цель / пропустил предмет / остановился > 1 минуты:
-Урон / смерть / понимание причины:
-Результат quit + continue:
-Что заметил после питания и охлаждения:
-Какие решения использовал во встречах:
-Три главные проблемы:
-```
-
-## 10. Technical debt и anti-slop
-
-| Место | Решение | Причина / действие |
-| --- | --- | --- |
-| Два test failures исходного baseline | Исправлено в H-001 | 2026-09-27: unit/content suite зелёные; evidence в разделе 13 |
-| Боевые audio placeholders | Исправлено в G-003 | Звуки и feedback приняты автором; новые оружие/угрозы требуют собственной проверки различимости |
-| Неполный F9/F10 | Исправлено в E-001 | Полный локальный снимок и проверки повторного Windup/изоляции прогресса |
-| HUD через diagnostic structs | SIMPLIFY LATER | Разделять при конкретном изменении UI, не массовым переносом |
-| AppDelegate / EngineServices | KEEP | Явная граница lifecycle и заимствованного доступа |
-| SDL/GL RAII wrappers | KEEP | Реальное ownership и cleanup при исключениях |
-| PreparedLevelSession / LevelSessionBuilder | KEEP | Подготовка и проверка до замены живой сессии |
-| Typed runtime collections | KEEP | Пропорциональны закрытому набору объектов |
-| StaticModelCache | KEEP | Переиспользование ресурсов и сохранение старой версии при неудачной замене |
-| Pipeline authoring overlay | DEFER; REMOVE LATER при отказе от направления | Parser/helpers/tests есть, production loading в исходном анализе не найден |
-| Декоративные docblocks / profiling trivial getters | SIMPLIFY LATER | Убирать локально при содержательной правке |
-| Несколько roadmap/status | H-003 | Устранить конкурирующие очереди |
-| Узкий importer, BMP, AABB, explicit branches | Оставить | Достаточны текущему контенту |
-| Название DemoGame, большой renderer.cpp, отсутствие ECS | Architectural taste | Не task без доказанной цены сопровождения |
-
-Изменение карты делает save несовместимым по fingerprint. Это явная политика, не автоматически баг. Для плейтеста фиксировать кандидат; не менять карту под продолжающим игроком.
-
-## 11. Отложенные направления и условия возврата
-
-Vulkan migration и production asset/physics/navigation foundations больше не относятся к неопределённому deferred backlog: они утверждены как отдельные infrastructure-программы в `VULKAN_MIGRATION_PLAN.md`, `ENGINE_ARCHITECTURE_REFERENCE.md` и `DEPENDENCY_STACK.md`. Этот gameplay roadmap не является разрешением начать их автоматически и не должен смешивать их с unrelated gameplay tickets.
-
-| Направление | Почему сейчас отложено | Условие возврата |
-| --- | --- | --- |
-| ECS rewrite | Текущие vectors выражают нужные объекты | Несколько реальных систем требуют динамической композиции |
-| Render graph | Passes явно упорядочены | Реальные новые зависимости passes стали источником ошибок |
-| Jobs / multithreading framework | Нет текущего доказанного bottleneck | Tracy показывает существенную независимую работу |
-| Custom allocators / SIMD | Нет измеренного вклада | Allocation/compute cost на игровом workload подтверждён |
-| Scripting VM | Действия уже задаются данными | Несколько нужных сценариев регулярно упираются в дорогие C++-правки |
-| Новый большой editor / node editor | Существующий editor уже работает | Конкретное повторяемое authoring friction |
-| Skeleton/animation framework | Робот и механизмы обходятся без него | В scope принят персонаж с необходимыми клипами |
-| Полная sRGB authoring migration | Увеличивает объём художественной настройки | Отдельное решение сменить production pipeline |
-| Ammo/reload как обязательная система | Пока не доказан недостаток решений именно такого типа | Playtest показывает необходимость resource management / attack windows |
-| Большая кампания | Принят текущий эпизод, но длительность и масштабирование формулы не подтверждены | G-011 прошёл независимый playtest; есть конкретная потребность в продолжении |
-
-Не открывать эти направления автоматически после окончания очередного ticket. После v1 выбрать одно по фактическому ограничению следующего игрового сценария.
-
-## 12. Документы и инженерная ценность
-
-Этот roadmap содержит действующую очередь, статусы и verification evidence; `docs/playtests/` — протоколы проверок и наблюдений. `docs/DEVELOPMENT.md` и `docs/EDITOR_AND_CAMPAIGN.md` — практические инструкции. Арт-направление задано в `docs/ART_DIRECTION.md`; отдельные architecture, dependency и Vulkan references задают границы соответствующих работ. Дублирующие исторические планы, аудиты и `STATUS.md` удалены из рабочего дерева при cleanup 2026-10-01 и доступны в Git. Старые RC/RF-предложения требуют перепроверки и не являются поручением.
-
-Известный drift исходного анализа: текущий save format 4; CI уже содержит graphics stage; private packaging script существует; основной маршрут имеет девять этапов; ряд RF-исправлений уже присутствует в source. Полное согласование документов — H-003.
-
-| Milestone | Инженерная практика |
-| --- | --- |
-| M0 | Поведенческие тесты, regression diagnosis, authored data и invariants |
-| M1 | Event handling, input ownership, feedback state, simulation/presentation boundary |
-| M2 | State machines, collision queries, save/restore, retry semantics |
-| M3 | Resource lifetime, CMake, reproducibility, CPU/GPU profiling и доставка |
-| M4 | API design по реальным call sites, локальное упрощение ownership/data flow |
-
-Не увеличивать сложность ради демонстрации архитектурной темы. Полный repeat встречи уже даёт практику сериализации, ownership и побочных эффектов без общего framework.
-
-## 13. Журнал выполнения и точка продолжения
-
-**Точка продолжения 2026-10-04:** продуктовый трек — независимый playtest G-011 / PROJECT_PLAN M4, ранее отложенный автором; инженерный трек — E-012/N4.3 (native collision product) после выполненных E-010/E-011, затем collision/parity/tooling slices и G-012. N1–N3 выполнены как E-005–E-009. `pressure_transfer.toml` технически проходим и доступен в меню; человеческая приёмка, полный профиль H-008 и candidate H-009 остаются открытыми. Нужен новый игрок без подсказок, с длительностями, смертями, выбором оружия и тремя главными затруднениями. G-009 принята, G-010 отложена; измерение G-001 отдельно. Наличие плана само по себе не запускает код или упаковку.
-
-| Дата | Задача | Статус / результат | Evidence / ограничения |
-| --- | --- | --- | --- |
-| 2026-09-27 | Создание плана | План записан; implementation tickets не выполнялись | Исходный audit/build/test baseline приведён в разделе 2 |
-| 2026-09-27 | H-001 | done — исправлены `tests/level_editor_tests.cpp` и `tests/render_authoring_config_tests.cpp`. Roundtrip сравнивает все поля mission definition с исходной картой, сохраняет проверки геометрии/entity properties, проверяет начальные блокировки, актуальную цепочку устройств и открытие дверей. Shipped lighting contract принимает authored `local_light_gain = 2.0`. | Оба исходных падения воспроизведены. В VS developer environment с `VCPKG_ROOT` из CMake cache: `cmake --build --preset tests-debug --target relaycore_tests`, затем `ctest --preset test-debug -R 'editor flattened episode\|render authoring config loads shipped' --output-on-failure` — 2/2; `cmake --build --preset tests-debug` и `cmake --build --preset validation-debug` успешны; `ctest --preset test-debug --output-on-failure` — 240/240; `ctest --preset validation-debug --output-on-failure` — 17/17; `git diff --check` — без ошибок. MSVC-сборка выполнена вне песочницы после зависания внутри неё. Graphics/manual playtest не выполнялись и для test-only H-001 не требуются. |
-| 2026-09-27 | G-001 | awaiting_playtest — зафиксирован кандидат `RelayCore-playtest-20260927-225948-864.zip`; из `docs/PLAYTEST_GUIDE.txt` убрана последовательность решения; подготовлен `docs/playtests/G-001-2026-09-27.md` для наблюдателя. | `cmake --build --preset demo-relwithdebinfo` и `scripts/package-playtest.ps1` успешны; SHA256 всех 85 файлов совпадают с исходными ресурсами/сборкой и ZIP; `git diff --check` без ошибок. Source state и контрольные суммы сохранены рядом с архивом. Нужен новый игрок: первый проход без подсказок, quit/continue в середине, девять временных отметок и три проблемы; быстрый повтор измерить отдельно. Новый runtime/manual проход не выполнялся. |
-| 2026-09-27 | E-001 | done — `demo_game*`, `game_world_runtime.*`, debug iteration panel и `tests/game_lifecycle_tests.cpp`: полный локальный снимок встречи; подготовка restore до применения; изоляция от preview и записи прогресса. | В VS developer environment: `cmake --build --preset tests-debug`, `cmake --build --preset validation-debug`, `cmake --build --preset graphics-debug --target relaycore_game_lifecycle relaycore_power_restoration_graphics`, `cmake --build --preset demo-debug` успешны. `ctest --preset test-debug --output-on-failure` — 240/240; `ctest --preset validation-debug --output-on-failure` — 17/17; `ctest --preset graphics-debug -R '^graphics\.(game_lifecycle\|power_restoration)$' --output-on-failure` — 2/2; `git diff --check` без ошибок. Lifecycle проверяет возврат player/combat/rover/door/mission, повторное развитие Windup, presentation state, отказ несовместимой карты/камеры без частичного применения, F9/F10 и побайтовую неизменность `progress.toml`, preview. Ручной плейтест и ASan/RelWithDebInfo для этой правки не выполнялись. |
-| 2026-09-27 | H-003 (ранняя часть) | in_progress — актуализированы `README.md`, `STATUS.md`, `docs/ARCHITECTURE.md`, исторические FOUNDATION/MASTER_REFACTOR/ROADMAP/EPISODE и `docs/PLAYTEST_GUIDE.txt`. Единая очередь, save format 3, F9/F10, private ZIP и правило возрождения описаны по текущему коду. | Сверены source contracts, CMake presets и скрипт упаковки; проверены локальные файловые ссылки; снята ссылка на отсутствующий исторический migration script; `git diff --check` без ошибок. Изменения только документационные, сборка и тесты повторно не запускались. Итоговое согласование H-003 ожидает G-001–G-006/H-002; архив G-001 не изменён. |
-| 2026-09-27 | G-001 — отчёт игрока | awaiting_playtest — сестра автора достигла финала с подсказками за примерно 90–120 секунд. Девять длительностей этапов суммарно 68 секунд; три приоритетных затруднения внесены в протокол. | Источник — сообщение автора и ответы на уточнения. Первоначально quit/continue не проверяли; после просьбы выполнить проверку автор сообщил «все ок». Сборка, настройки, технические паузы, урон/смерти, восприятие смены состояния мира и быстрый повтор не уточнены. Самостоятельный проход и цель 5–15 минут не подтверждены. Турель в фильтрационной обойдена без уничтожения — само по себе не дефект. |
-| 2026-09-27 | G-001 — второй отзыв | awaiting_playtest — другой участник прошёл за 3:26; записаны непонятные формулировки HUD, нераспознанный зелёный ориентир, потерянность после насосной и круг после выходной панели. Приоритеты G-002 уточнены. | Источник — сообщение автора. Время сохранено отдельно от первого прохода. Сборка и наличие помощи не уточнены. Текущая карта говорит о «зелёной трубе»; восприятие как «провода» не заменяет исходный текст. Сбой mission progression не подтверждён. |
-| 2026-09-28 | G-002 | awaiting_playtest — упрощены цели и сообщения устройств, добавлены корректные locked_message, усилена стрелка перехода и заменён номер над выходной панелью на стрелку. Зона возврата принимает короткий и прежний путь. | Новый регрессионный тест сначала воспроизвёл зависание на этапе 7, затем прошёл. validation-debug — 18/18; graphics.power_restoration и graphics.game_lifecycle — по 1/1, просмотрены кадры у охлаждения и выхода; editor flattened episode — 1/1; сборки validation-debug, relaycore_power_restoration_graphics и demo-relwithdebinfo успешны. Графический тест учитывает тип выбранного объекта: расширенная mission zone выбирается вместо solid. git diff --check без ошибок. Новый ZIP 20260928-001031-661: все 85 файлов совпали по SHA256 с исходной сборкой и архивом. Для завершения нужен новый игрок без подсказок; критерии в протоколе. |
-| 2026-09-28 | G-002 — приёмка | done — автор сообщил «все ок все лучше» после передачи исправленной сборки. | Качественное улучшение принято автором; технические проверки приведены выше. Новый игрок, отсутствие подсказок и время повторного прохода отдельно не подтверждены. Новые тесты и сборки для записи отзыва не запускались. Следующая задача — G-003. |
-| 2026-09-28 | G-003 | awaiting_playtest — семь боевых WAV, сигналы попадания/замаха/удара, индикатор турели, звук уничтожения робота, остановка старых звуков при restore/death. | Unit/audio 243/243, включая декодирование всех семи WAV; graphics 2/2, кадры просмотрены. Нужна оценка слышимости и читаемости человеком. |
-| 2026-09-28 | G-004 | awaiting_playtest — воспроизведён и устранён сброс windup/recovery попаданиями; проверены альтернативы в трёх встречах. | Content 19/19, unit по cadence/дистанции/промаху/уничтожению/restore. Урон, темп и карта сохранены. Игровой интерес и сложность человеком не оценены. |
-| 2026-09-28 | G-005 | awaiting_playtest — мягкое возрождение объяснено; исправлена потеря последнего состояния при выходе во время смерти. | Повторные смерти до/после питания/охлаждения, disk continue, сохранение устройств и повреждений врагов; отдельный lifecycle воспроизвёл прежний дефект и прошёл после исправления. Формат save 3 сохранён. Новый ZIP 20260928-003337-894, 92 файла сверены; команды, SHA256 и ограничения в протоколе блока. Требуется приёмка правила игроком. |
-| 2026-09-28 | G-003 — отзыв о выстреле и турели | awaiting_playtest — переработан звук игрока без тонального гула; предупреждение закреплено на датчике, выстрел показан мгновенным следом на 80 мс. | Устранено визуальное сходство предупреждения со снарядом. Целевые combat/audio/content 6/6, graphics.power_restoration 1/1, кадры on/off/shot просмотрены, WAV без clipping. Новый кандидат 20260928-004331-918; 92 файла проверены по SHA256. Повторная субъективная оценка звука остаётся открытой; подробности в протоколе блока. |
-| 2026-09-28 | G-003 — повторный отзыв | Автор сообщил «уже лучше» о выстреле/подготовке турели; остальные критерии приёмки не уточнены. | Новых проверок только ради записи отзыва не запускали. |
-| 2026-09-28 | G-006 / H-002 | awaiting_playtest — компактный HUD, сообщения без перекрашивания кадра, equipment audio/pause, проверяемый ZIP и локальный графический Tracy baseline. | RelWithDebInfo unit/audio 243/243, content 19/19; Debug graphics 2/2; внешние graphics/lifecycle/audio/content на распакованных ресурсах и standalone exit 0. 93 файла ZIP сверены. Нужны другой ПК, независимые игроки, оценка микса и полный игровой профиль. Детали — в [протоколе](playtests/G-006-H-002-2026-09-28.md). |
-| 2026-09-28 | H-003 | in_progress — README, STATUS, ARCHITECTURE и DEVELOPMENT согласованы с локальным кандидатом M3 и его ограничениями. | Указаны manifest/хеши, новый HUD и текущий профиль; исторический профиль явно отделён. Следующий шаг — приёмка, v1 не объявлен завершённым. |
-| 2026-09-28 | H-002 — продолжение | awaiting_playtest — ASan выявил и подтвердил fix отсутствующего WAV; собран интегрированный Tracy baseline с sim/render/present по подготовленным состояниям. | ASan unit 243/243, content 19/19, graphics 2/2; release audio 1/1; scripted game workload 11/11 состояний, трасса записана. ZIP 012216-433: 93 файла сверены; запуск вне проекта exit 0. Другой ПК, независимые игроки и непрерывный проход отсутствуют; [протокол](playtests/H-002-2026-09-28.md). |
-| 2026-09-28 | H-002 — ноутбук | awaiting_playtest — автор подтвердил запуск на Vivobook Go 15 / Radeon 610M, но интерфейс обрезан. Добавлена адаптация oversized window к рабочей области дисплея. | Debug window/lifecycle/graphics 3/3; меню и HUD при 960×540; RelWithDebInfo demo собрана. ZIP 103650-973: 93 файла сверены; внешний запуск, client area внутри usable desktop, WM_CLOSE exit 0. Нужен повторный запуск исправленной сборки на ноутбуке; [протокол](playtests/H-002-2026-09-28.md). |
-| 2026-09-28 | G-003–G-006 — человеческая приёмка | done — автор сообщил: «человек прошел все ок» и подтвердил приёмку всего блока. | Ранее выполненные технические проверки приведены выше. Архив, ПК, длительность, число независимых первых прохождений и условия профилирования не уточнены; приёмка блока не закрывает отдельные критерии H-002. Новые сборки и тесты для записи отзыва не запускались. |
-| 2026-09-28 | H-002/H-003 — итоговое согласование | done — автор сообщил «все нормально, все согласую» после разъяснения оставшихся критериев. | Кандидат и документация приняты автором с ранее зафиксированными проверками и ограничениями. Новые измерения и непрерывный Tracy capture не предоставлены; дополнительные проверки не заявлены выполненными. Обновлены текущие статусы и README/STATUS; исторические записи сохранены. |
-| 2026-09-28 | E-002 / G-007 | E-002 done; G-007 awaiting_playtest — отдельный большой полигон и запуск CLion, изолированный progress, headless JSON-проверка карты. | Debug build, content 22/22, builder 5/5, graphics/lifecycle 2/2, CLI fixtures, clang-format и diff-check; пять видов просмотрены. Нужна ручная оценка масштаба и управления автором. Версия, публикация и Git-индекс не менялись. |
-| 2026-09-28 | План следующего цикла | Добавлены M5–M8 и G-008–G-011/H-008/H-009; G-008 ready, остальные pending. | Сверены текущий combat/enemy runtime, ближайшие tests, snapshots/save loader, Sandbox и CMake. Изменён только roadmap; новая сборка, runtime-проверки и реализация tickets не выполнялись. Второе оружие — рекомендуемая гипотеза; новый противник условный. |
-| 2026-09-28 | G-007 — приёмка | done — автор сообщил «полигон я проверил все ок». | Принят существующий полигон; точные длительности и число повторов не предоставлены. Новую встречу G-008 этим отзывом не считать принятой. |
-| 2026-09-28 | G-008 | awaiting_playtest — три сценария, смешанная встреча с дополнительной турелью, стоячее укрытие и стартовые полосы. | Debug build, content 25/25, graphics.power_restoration 1/1, CLI fixtures; три новых GL-вида просмотрены. Существующий encounter snapshot проверен тремя автоматическими повторами. Ручные наблюдения и роль второго оружия ещё нужны; [протокол](playtests/G-008-2026-09-28.md). Runtime, версия и публикация не менялись. |
-| 2026-09-28 | G-008 — приёмка | done — автор сообщил «все ок» и попросил следующий большой блок. | Точные длительности, число ручных повторов и отдельные наблюдения не предоставлены. |
-| 2026-09-28 | G-009 | awaiting_playtest — второе оружие, подбор, выбор 1/2, звук/прицел/отдача и сохранение. | Debug/ASan unit/audio 249/249, content 26/26, graphics/lifecycle 2/2, CLI fixtures; два HUD-кадра просмотрены. Формат записи 4, чтение 1/2/3 сохранено. [Протокол](playtests/G-009-2026-09-28.md). Роль и баланс требуют игровой оценки; новый противник, новый эпизод и выпуск не выполнялись. |
-| 2026-09-29 | PROJECT_PLAN M1 / G-009 | awaiting_playtest — техническая перепроверка завершена; автономный запуск остановлен на обязательной авторской приёмке. | Debug build успешен вне sandbox после зависания sandbox build; выбранные unit/audio 30/30, sandbox 7/7, graphics/lifecycle 2/2; CLI valid без warnings; свежие idle/fire/pump кадры просмотрены. Runtime/assets не менялись. Нужна оценка автором модели, звука, отдачи и выбора оружия на 3/7/12 м, против rover и в смешанном бою. M2–M6 не начаты из-за зависимостей; [точный blocker и команды](PROJECT_PLAN.md), [протокол](playtests/G-009-2026-09-28.md). |
-
-| 2026-09-29 | G-009 / PROJECT_PLAN M1 | done — автор принял внешний вид/feedback, звук, отдачу, помпу, переключение и боевые роли. | 3/7/12 м, rover и смешанный бой пройдены; 3 м — два выстрела, 7/12 м — пять. Детали цели/прицеливания не уточнены; параметры не менялись. M1 human acceptance явно passed; [отзыв](playtests/G-009-2026-09-28.md). |
-| 2026-09-29 | G-010 / PROJECT_PLAN M2 | deferred — существующие угрозы уже дают разные роли двух оружий; недостающее поведение не подтверждено. | Нового AI нет. Вернуться, если новый эпизод выявит недостающее решение по позиции/оружию, которое нельзя дать существующими угрозами и геометрией. M2 done записанным решением. |
-| 2026-09-29 | G-011 / PROJECT_PLAN M3–M4 | awaiting_playtest — M3 done, M4 ждёт первого прохождения новым игроком. | Новая карта: семь задач, две турели/два rover, pickup, перепуск, выход/финал; меню и captions. Debug unit/audio 250/250, content 31/31, graphics/lifecycle 2/2, CLI valid/0 warnings, formatting/diff-check. Три scripted прохода, editor fingerprint, saves/retry и SDL E; кадры просмотрены. Длительность и игровая приёмка открыты; [протокол](playtests/G-011-2026-09-29.md). M5/M6 не начаты. |
-
-| 2026-10-01 | Repository cleanup / H-003 | done — удалены семь исторических планов/аудитов и дублирующий status, два устаревших локальных patch-файла; README сокращён, навигация документов и redundant ignore entries согласованы. | 57 локальных Markdown-ссылок без ошибок; все собственные C/C++ translation units названы в CMake; Python AST, JSON и 12 PowerShell-скриптов разобраны; `cmake --list-presets` и `git diff --check` успешны. Runtime, build/CI и генераторы ассетов не менялись; сборка и runtime-тесты не запускались. `new.patch` оставлен: полная применённость не подтверждена. |
-
-| 2026-10-01 | CI / updater readiness review | Исправлены подтверждённые CI/lifecycle проблемы; PowerShell-регрессии включены в CTest, README и testing contract актуализированы. | Debug unit/audio/tooling 254/254, content 31/31, graphics 16/16 без skip; loader/layers probe, YAML/shell/JUnit gate checks, formatting/links/diff-check прошли. Remote graphics job и runner ещё не проверены; VK-009 не начинался. Решения по всем предложениям и точные команды — в `VULKAN_MIGRATION_PLAN.md`, Infrastructure review. |
-| 2026-10-01 | VK-009 | done — Vulkan ambient/bounce, directional и текущие nearest-eight local lights, с прежней подготовкой world data. | Debug graphics 16/16, selected checks 36/36, content 31/31; 74 GL/Vulkan пары без различий coverage и без RGB delta >8. Optimized mesh прошёл; ASan результат и границы — в `VULKAN_MIGRATION_PLAN.md`, VK-009. Основная игра остаётся на GL; автор поручил сразу продолжить VK-010. |
-| 2026-10-01 | VK-010 | done — directional cascades, spot и point shadows с текущими culling/bias/PCF и явной синхронизацией Vulkan. | Debug graphics 16/16, unit/audio/tooling 254/254, content 31/31; optimized mesh/presentation/lifecycle 3/3, ASan mesh 1/1. 122 GL/Vulkan пары, включая 48 shadow cases; validation чистая. RenderDoc подтвердил D24 storage, depth writes/reads, transitions и шесть активных point faces. Точные допуски/evidence/границы — в `VULKAN_MIGRATION_PLAN.md`, VK-010. Следующий gate — VK-011; основной runtime пока GL. |
-| 2026-10-02 | VK-011 | done — color pipeline, fog/post, material/emissive parity; native Vulkan color baseline. | 158 GL/Vulkan пары, обе карты/цветовые modes; texture decode/filtering, clear и UI без повторного encoding. RenderDoc подтвердил SRGB scene / UNORM UI views и raw UNORM blit. Исправлен порядок декодирования/интенсивности индикатора панели; legacy сохранён. Evidence — `VULKAN_MIGRATION_PLAN.md`, VK-011. |
-| 2026-10-02 | VK-012 | done — после восстановления desktop две presentation/recreation проверки прошли 2/2, Tracy presentation 1/1. | Debug graphics 15/17 (две остановились на `GetPixel == CLR_INVALID`), unit/audio/tooling 254/254, content 31/31; optimized 3/3, ASan 2/2, Debug+Tracy validation 3/3. GPU-AV не нашёл shader-access ошибок; Tracy capture: 480 рабочих кадров, 22 709 GPU events. Workflows и RenderDoc checklist добавлены в `DEVELOPMENT.md`; границы и итоговые проверки — в `VULKAN_MIGRATION_PLAN.md`, VK-012. Исходный GL runtime заменяется в VK-013. |
-
-| 2026-10-02 | VK-013 | done — основной runtime, ImGui, reload, readback и presentation переведены на Vulkan; GL/glad/GLSL и OpenGL binding удалены. | Свежие configure/build, 297/297 основных проверок и desktop presentation/recreation 2/2; optimized 3/3, ASan 4/4, финальный reload/presentation lifecycle в обеих конфигурациях 1/1. 158 замороженных графических эталонов, чистая validation, package/SPIR-V hash checks и отказ при повреждённом shader. Точные команды, evidence и ограничения — `VULKAN_MIGRATION_PLAN.md`, VK-013. |
-
-| 2026-10-02 | VK-013 — runtime feedback | Разобраны ~25 FPS и постоянное шипение: добавлен оптимизированный CLion запуск `RelayCore — Play`, loop пара сделан тише и менее высокочастотным. | Одинаковый scripted entrance 1280×720/VSync off: Debug p50 42,79 мс, RelWithDebInfo 1,63 мс; оба полных episode workloads прошли, Tracy GPU scene median около 0,28 мс. Это сравнение сборок, не ускорение renderer. Автор подтвердил источник шипения `steam.wav`; PCM16/mono/44100 Hz/6,4 с и бесшовность сохранены, RMS −9,38 дБ, другие loops идентичны. Native audio 1/1, обе demo-сборки и runtime asset hashes, Python/XML и diff-check прошли. Оценка нового звука на слух автором ещё не получена. |
-
-| 2026-10-02 | VK-013 — авторская приёмка runtime | done — автор сообщил «все ок работает» и поручил продолжить план после исправления запуска и звука пара. | Принят текущий runtime; новых измерений или независимого прохода этим отзывом не заявлено. G-011/H-008 остаются в прежнем состоянии. |
-| 2026-10-02 | VK-014 | done — read-only ревью ownership/error paths, границ API, кэшей и frame waits; обязательных архитектурных исправлений не подтверждено. | Целевые Debug graphics/lifecycle/failure checks 10/10 без skip/validation; optimized workload 11/11, свежая Tracy baseline без concurrent GPU tests, RenderDoc обеих карт и thumbnails. Entrance p50/p95 1,5409/1,9504 мс; GPU Scene median 0,276480 мс. Запланирована отдельная P3 VK-F01 по диагностическим строкам; runtime не менялся. Команды, артефакты и ограничения — `VULKAN_MIGRATION_PLAN.md`, раздел 28. |
-| 2026-10-02 | VK-F01 / documentation | done — borrowed diagnostic strings, актуальный Vulkan contract, G-011 playtest guide и оптимизированный запуск; Sandbox использует runtime assets с SPIR-V. | Debug build и graphics 6/6, RelWithDebInfo build и graphics 5/5; без skip. ZIP 215444-058: 93 файла/хеши сверены, внешний standalone и Sandbox startup/WM_CLOSE exit 0; lifecycle и оба эпизода на внешних ресурсах прошли. Formatting/XML/local links/diff-check прошли. G-011 human measurements и другой Vulkan GPU остаются открытыми; H-008/H-009 pending. Команды и ограничения — `VULKAN_MIGRATION_PLAN.md`, раздел 29. |
-| 2026-10-02 | E-003 | done — первый static GLB → native product slice по явной команде автора; blind playtest/другой GPU отложены. | Blender 5.2.2 export, два meshes/materials, deterministic Debug/optimized compile; units 260/260, content 31/31, graphics по 4/4, ASan 10/10, final editor checks 19/19. GPU cache/reload/allocation checks, native/Sandbox кадры и ZIP 94 файла проверены. Bounds fix проверен отдельно; G-011/H-008/H-009 не закрываются. |
-| 2026-10-02 | E-004 | done — объявленные GLB автоматически компилируются и попадают в staged runtime assets; source/tool/rules/product hashes проверяются до упаковки. | Debug 261/261 unit/tooling/audio и 31/31 content, graphics Debug/optimized по 4/4, ASan 11/11; финальный tooling 1/1. No-op, material update, bad import rollback, registration/removal и stale product checks прошли. ZIP 230246-770: 94 файла/хеши; внешний startup, lifecycle/episode и Sandbox exit 0. Формат/материалы прежние, новых dependencies нет; G-011/H-008/H-009 не закрываются. |
-
-| 2026-10-04 | Пересмотр PROJECT_PLAN / N4 | Добавлены E-010–E-014 и G-012 с зависимостями; E-010 ready, следующие pending, E-015 deferred. E-009 добавлена в единую таблицу как уже выполненная по карточке от 3 октября. | Внешний strategic analysis сопоставлен с текущими AABB/query callers, player spatial index, LevelSession, prop surface data, manifest, scene fence wait и evidence N1–N3. Изменены только план и roadmap: 42 локальные ссылки/якоря и восемь строк/карточек tickets проверены, diff-check прошёл. Новые build/run/tests/profiles, реализация Jolt и ZIP не выполнялись. G-011/H-008/H-009 сохраняют статусы. |
-| 2026-10-04 | E-010 / N4.1 | done; E-011 ready | Общий AABB WorldQuery, prepared static/door/actor records и typed hit; перенесены combat/LOS/focus/player/rover consumers с сохранением movement math и spatial index. MSVC Debug build, focused unit 58/58 + rover regression 1/1, content 33/33, Vulkan lifecycle/episode 2/2, scoped format и diff-check прошли. Commands/evidence в карточке E-010; dependencies/formats не менялись, Jolt и ZIP не добавлялись. Human playtest, другой GPU и performance не проверялись. |
-| 2026-10-04 | E-011 / N4.2 | done; E-012 ready | Изолированный Jolt static fixture с ray/box cast/overlap, layers, triangle surfaces и staged/active lifetime; pinned 5.6.0#1 SSE2 overlay, прежний baseline. Debug focused 65/65, content 33/33, Vulkan 2/2, ASan 6/6, optimized unity build и queries 6/6; CLI, scoped format и diff-check прошли. Карточка E-011 содержит commands/evidence/ограничения. Обычные игровые карты остаются AABB; G-011/H-008/H-009 открыты, ZIP не создавались. |
-| 2026-10-07 | E-013 / N4.4 | done; E-014 ready | Opt-in native collision placements, прежний box movement и mesh sweeps, общий gameplay query path. Debug: 120 unit, 31 physics, 33 content passed; финальный native/lifecycle 4/4, probe reuse 1/1. ASan physics 31/31; evidence/ограничения в карточке. ZIP, human playtest и performance не выполнялись. |
-
-| 2026-10-08 | G-016 | awaiting_playtest — HUD/турели, бой/атмосфера pressure_transfer и цепочка «Двух секторов» технически доведены | Debug content 47/47, affected graphics/lifecycle 5/5, optimized affected content 13/13; обе сборки и Check Map успешны. Игровые кадры просмотрены, два эталона явно обновлены. Повторный слепой проход обоих сценариев, слуховая оценка и авторская приёмка остаются открытыми; протокол и runtime hashes записаны. ZIP не создавался. |
-| 2026-10-08 | H-008 — локальная часть D5 | in_progress — актуальный optimized baseline после G-016 | Target build и workload/capture exit 0; 12 421 CPU frames, восемь состояний, GPU/query/fence разбор, 0 игровых uploads/waits. [Evidence](profiling/H-008-2026-10-08.md). Непрерывный проход, звук, FPS budget и слабый ПК остаются открытыми. |
-| 2026-10-08 | D5 — mesh reload/pass regression | Выбранный synthetic fixture исправлен; D5 остаётся открыт | `graphics.mesh_pipeline` 1/1 с validation, три reload и 11 pass comparisons без color differences; frozen lighting inputs восстановлены из `d57f8d3`, samples/tolerances/runtime не менялись. Общий mesh test проходит этот блок и падает дальше на `power_restoration-0`; [команды, причина и границы](PROJECT_PLAN.md#d5--приёмка-эпизода-и-measured-hardening). Отложенные человеческие/GPU проверки не закрыты. |
-| 2026-10-08 | D5 — power world baseline | Четыре power comparisons исправлены; D5 остаётся открыт | Старые inputs проходят старые samples на текущем renderer; art-pass изменения установлены по map/config/atlas. Просмотрены и явно обновлены четыре power samples; финальный rebuilt test с validation даёт нулевые различия и останавливается дальше на `pressure_transfer-0`. [Causal run, hashes и команды](PROJECT_PLAN.md#d5--приёмка-эпизода-и-measured-hardening). Допуски и runtime не менялись; непрерывный проход/звук/слабый ПК отложены. |
-
-| 2026-10-09 | IMG-04–06 | awaiting_playtest — containment light balance, mapped-normal specular filtering and native emission implemented | Debug/Play builds; 20/20 native/import/tooling and 9/9 graphics checks, no skips/validation warnings; final authored HDR/SDR states and 48-frame camera arcs reviewed. 79 model receipts per build, byte-identical grip geometry/parts and fresh GLB import verified. Author acceptance during the containment route remains open; [evidence and limits](art/img04-06-lighting-stability-emission.md). |
-
-После каждой выполненной задачи добавлять короткую запись и обновлять единую таблицу статусов в разделе 6. Не копировать сюда полные логи. Для `awaiting_playtest` явно написать, какой человек/сценарий/ПК ещё нужен; для `done` перечислить реально выполненные проверки.
-
-### E-003 — команды и артефакты
-
-Это история проверки E-003. Ручная запись product в authored `assets` ниже
-заменена build products и автоматическим staging в E-004; текущий workflow — `DEVELOPMENT.md`.
-
-Build commands выполнены в Visual Studio developer shell, `VCPKG_ROOT` соответствует
-существующему cache. Configure `msvc-debug`, `msvc-relwithdebinfo`, `msvc-asan`
-успешен; baseline/tool versions не менялись. Первую compile error от попытки
-копировать move-only fastgltf Material устранили выбором const-reference ветки.
-Первый import обнаружил initializer-list constructor fastgltf math vector;
-scalar constructors исправлены, последующие regression tests и ASan прошли.
-
-```powershell
-cmake --build --preset tests-debug --target relaycore_tests relaycore_content_validation relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_vulkan_mesh_tests relaycore_demo relaycore_sandbox relaycore_model_import --parallel 2
-cmake --build --preset demo-relwithdebinfo --target relaycore_model_import relaycore_demo relaycore_sandbox relaycore_game_lifecycle relaycore_power_restoration_graphics relaycore_vulkan_mesh_tests --parallel 2
-cmake --build --preset tests-asan --target relaycore_tests --parallel 2
-build/msvc-debug/relaycore_model_import.exe content/models/service_cylinder.glb assets/models/service_cylinder.rcmodel
-ctest --preset test-debug --output-on-failure --no-tests=error --output-junit model-assets-unit.xml
-ctest --preset validation-debug --output-on-failure --no-tests=error --output-junit model-assets-content.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit model-assets-graphics-debug.xml
-ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --no-tests=error --output-junit model-assets-graphics-optimized.xml
-ctest --preset test-debug -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body|editor)' --output-on-failure --no-tests=error --output-junit model-assets-editor-final.xml
-ctest --preset test-asan -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body)' --output-on-failure --no-tests=error --output-junit model-assets-asan.xml
-pwsh -NoProfile -File scripts/package-playtest.ps1 -Preset msvc-relwithdebinfo -PassThru
-pwsh -NoProfile -File build/model-assets-standalone-check.ps1
-git diff --check
-```
-
-Все результаты/logs: `build/model-assets-*.log`, JUnit — в соответствующих build
-directories. Final editor graphics report `model-assets-editor-graphics-final.xml`
-(2/2); новый map capture — `model-assets-map-final.xml` (1/1). Просмотрены
-`build/msvc-debug/tests/vulkan-mesh-captures/native-cylinder-hardware_srgb.bmp`
-и `build/msvc-debug/tests/power-captures/sandbox-native-model.bmp`.
-ZIP `build/playtest/RelayCore-playtest-20261002-224440-223.zip`, SHA256
-`319B72526F5435F5492581E4DB4B4C8A2735ADC51E627190A6FAEE1C5EBF458E`.
-Это локальный technical candidate с manifest uncommitted state, version 1.3.4;
-публикации и human playthrough не было. Проверен RTX 4060 Ti, driver 32.0.15.9649;
-нового FPS comparison/полного ASan suite/другого GPU/remote CI не было.
-
-### E-004 — команды и артефакты
-
-Configure `msvc-debug`, `msvc-relwithdebinfo`, `msvc-asan` прошёл в VS developer shell
-с прежним toolchain/VCPKG_ROOT. Изменение build dependency graph потребовало
-перегенерации CMake; baseline/version/настройки renderer не менялись.
-
-```powershell
-cmake --build --preset demo-debug --target relaycore_model_assets relaycore_demo_assets relaycore_tests relaycore_content_validation relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics -j 2
-cmake --build --preset demo-relwithdebinfo --target relaycore_demo relaycore_sandbox relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_power_restoration_graphics -j 2
-cmake --build --preset tests-asan --target relaycore_tests -j 2
-ctest --preset test-debug --output-on-failure --output-junit e004-unit.xml
-ctest --preset validation-debug --output-on-failure --output-junit e004-content.xml
-ctest --preset test-debug -R '^relaycore.tooling.model_assets$' --output-on-failure --output-junit e004-model-assets-final.xml
-ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --output-junit e004-graphics-debug.xml
-ctest --test-dir build/msvc-relwithdebinfo -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|game_lifecycle|power_restoration)$' --output-on-failure --output-junit e004-graphics-optimized.xml
-ctest --preset test-asan -R '^relaycore\.(native|GLB|Blender|OBJ|Static props|shotgun body|tooling.model_assets)' --output-on-failure --output-junit e004-asan.xml
-pwsh -NoProfile -File scripts/package-playtest.ps1 -PassThru
-pwsh -NoProfile -File build/e004-standalone-check.ps1
-git diff --check
-```
-
-Logs `build/e004-*.log`, JUnit в соответствующих build directories: failures/errors/skip
-нет. Финальный tooling test повторён после добавления проверки второго declared model.
-Native bytes совпадают с E-003: SHA256
-`2F3D9990A4E939671B4ABD8FF2267C1B4FD68D0696E7D732E2C2FCBFC9C52CF4`.
-Просмотрен `build/msvc-debug/tests/power-captures/sandbox-native-model.bmp`.
-ZIP `build/playtest/RelayCore-playtest-20261002-230246-770.zip`, SHA256
-`AA333A33DCAA3C3A9B61B4F49BF2F355D2EC46B13EEFB221A12BC7F517E1250F`.
-Распакован вне checkout; actual standalone без asset override создал Vulkan device
-и завершился по WM_CLOSE с exit 0. Optimized lifecycle/episode на внешних assets и
-Debug Sandbox также exit 0. GLB/receipts/compiler отсутствуют в payload. Это локальный
-кандидат 1.3.4; публикации, human playthrough, нового GPU и FPS comparison не было.
-
-**Авторская поправка креплений и combat HUD — 2026-10-09.** Пульты RELEASE и
-LIMITER получили стальные стойки, основания с анкерами и опоры табличек в
-`containment_lining`; исходные interaction planes и 130 физических solids карты
-сохранены. Первая проба физических стоек меняла pursuit Хранителя и ломала
-кассета-first route; сравнение без стоек прошло, поэтому финальные крепления
-входят только в существующую render-модель. Export script, editable blend и GLB
-обновлены; Blender 5.2.2 fresh import: 7 meshes/materials, 63 754 triangles.
-
-RmlUi показывает HP и полоску над живыми rover/shooter/turret, проверяет frustum
-и LOS, а фактически снятое здоровье показывает всплывающим числом на 0,9 с.
-Дробь суммируется по каждой цели, cooldown/miss не создают число, restore очищает
-transient feedback. Хранитель сохраняет специальное разрешение аппаратом: HP
-у него нет; над ним видны броня/подавление/восстановление/сдерживание, попадание
-показывает «Броня», capture — существующий процент захвата.
-
-Проверка: `cmake --build --preset demo-dev --target relaycore_demo relaycore_tests
-relaycore_content_validation relaycore_containment_loop_graphics
-relaycore_player_ui_graphics relaycore_level_check -j 4` в x64 MSVC environment;
-`ctest --test-dir build/msvc-dev -R '^(relaycore\.(enemy HUD|routed rover|chapter rover|rover|lunge rover|destroying a lunge|nonlethal hits|shotgun)|validation\.containment|graphics\.(player_ui|containment_loop))' --output-on-failure --no-tests=error --output-junit combat-hud-results.xml`
-— 31/31 passed, 0 skipped, включая SDR/HDR и ImGui disabled.
-Check Map: valid, 0 warnings; `scripts/check-model-assets.ps1` проверил receipts
-и staged products; `git diff --check` проходит. Просмотрены финальные
-`build/msvc-dev/tests/containment-captures/apparatus-{standby,enemy-damage,armored-hit}-{sdr,hdr}.bmp`
-и `build/msvc-dev/tests/player-ui-captures/enemy-health-damage.bmp`.
-При более широком первоначальном фильтре отдельно упал
-`relaycore.physics.native opening drives shots LOS rover movement focus doors and trigger entry`
-на точном сравнении float hit positions (`tests/native_collision_gameplay_tests.cpp:188`);
-он не входит в финальные 31 проверку и не исправлялся этим UI/asset pass.
-Человеческая приёмка главы и читаемость в непрерывном бою остаются открытыми;
-G-019 сохраняет `in_progress`, VIS-43–46 — `awaiting_playtest`.
-
-
-#### G-018 — связать готовые главы комплекса (2026-10-08)
-
-Прямое поручение автора в ходе VIS-27–28: последовательно соединить уже готовые
-игровые карты, сохранив прогресс и финал только после последней главы. Это не
-расширение большой кампании новыми уровнями и не закрытие внешних playtest gates.
-
-**Статус: done (локальная техническая проверка 2026-10-08).** Реализованы шесть forward exits, безопасные именованные
-входы, меню полной кампании и два узких regression checks. Маршрут:
-power_restoration → foundation_intake → foundation_pump → bench_relay →
-pressure_transfer → cooling_loop → occult_lab_b17. Существующий возврат из
-насосной в мастерскую сохранён; редакторские fixtures/полигоны не включены.
-Debug build, 42/42 focused checks, 5/5 affected rechecks и 3/3 финальных placement checks прошли без пропусков. Реальная DemoGame проверка подтвердила шесть переходов, disk continue после каждого, перенос состояния и финал B-17; проверены 32 инструментальных вида. Внешний human playtest этим не закрывается.
-[Источники, выбор размещения и verification](art/vis27-28-instruments-language.md).
-
-**Дополнение кампании по поручению автора — 2026-10-09.** К существующей цепочке
-добавлена восьмая и последняя глава `containment_loop`: после проверки B-17
-переход в её входном коридоре (`[0, 0.02, -6.5]`) ведёт в `campaign_arrival`
-контура сдерживания. Его прежний переход обратно в B-17 удалён; после
-сдерживания Хранителя и финальной зоны штатный Complete завершает кампанию.
-Описание сценария и completion guidance обновлены. Переходы сохраняют
-inventory/weapon/health/flashlight/time и историю восьми карт; Continue проверен
-после каждого перехода. Изменённый authored fingerprint старых B-17/containment
-сохранений диагностируется штатно, пользовательский прогресс не удалялся.
-
-Сборка `demo-dev` с targets `relaycore_demo relaycore_content_validation
-relaycore_containment_loop_graphics relaycore_game_lifecycle relaycore_level_check`
-прошла. `ctest --test-dir build/msvc-dev -R
-'^(validation\.(campaign route|containment)|graphics\.(campaign_route|containment_loop))'
---output-on-failure --no-tests=error --output-junit campaign-guardian-results.xml`
-— 14/14 passed, 0 skipped; Check Map обеих карт — valid, 0 warnings;
-`git diff --check` проходит. `graphics.campaign_route` проверяет семь реальных
-DemoGame transitions, restart/Continue и финальный RmlUi Complete;
-`graphics.containment_loop{,_hdr}` проверяет реальное завершение миссии после
-захвата без forward exit. Статус человеческой приёмки G-019 не изменён.
+</details>

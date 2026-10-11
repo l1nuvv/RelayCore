@@ -20,7 +20,7 @@ See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
 
 Этот документ описывает текущих владельцев и границы runtime; сверка с source выполнена 2026-10-10. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md).
 
-**Реализация 2026-10-09:** RmlUi 6.3 обслуживает игровой HUD, меню и финал; ImGui сохраняется для editor/diagnostics. RelayCore-owned presentation data/actions, input/focus ownership и evidence описаны в [VIS-43–46](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui). Авторская приёмка читаемости в движении остаётся отдельным gate.
+**Реализация 2026-10-09:** RmlUi 6.3 обслуживает игровой HUD, меню и финал; ImGui сохраняется для editor/diagnostics. RelayCore-owned presentation data/actions, input/focus ownership и evidence описаны в [VIS-43–46](tickets/VIS-43-46.md#vis-43--переход-на-игровой-hud-и-ui). Авторская приёмка читаемости в движении остаётся отдельным gate.
 
 ## Bootstrap
 

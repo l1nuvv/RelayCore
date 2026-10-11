@@ -48,7 +48,7 @@ RT, mesh shaders, bindless, VRS, SSGI и frame generation остаются по�
 ## Выполнение в следующем чате — 2026-10-11
 
 По поручению автора выполнен технический VK14-00 и реализована negotiation VK14-01;
-актуальные результаты находятся в owning [renderer plan](RENDERER_MODERNIZATION_PLAN.md#vk14-00-execution--2026-10-11).
+актуальные результаты находятся в owning [renderer plan](renderer/VK14-00.md#vk14-00-execution--2026-10-11).
 G-019 baseline: 10 585 warm CPU frames, звук on, рабочие 1080p/60 FPS;
 на доступном GPU steady p99 4,6–6,0 мс, отдельные retry spikes до 52 мс.
 Preferred/forced regression: 7/8 и 5/6 соответственно, без skips, при процессной
@@ -76,7 +76,7 @@ VK14-01 технически проверен в доступных профил
 pixel failure возобновить узкую диагностику. Следующий bounded шаг — **VK14-02**:
 воспроизвести замечание к SDR/экспозиции на одинаковых видах, затем исправлять
 подтверждённую причину. Команды, JUnit и границы — в
-[owning renderer plan](RENDERER_MODERNIZATION_PLAN.md#vk14-01-presentation-follow-up--2026-10-11).
+[owning renderer plan](renderer/VK14-01.md#vk14-01-presentation-follow-up--2026-10-11).
 
 ### VK14-02 — SDR/HDR correctness — 2026-10-11
 
@@ -93,5 +93,5 @@ forced 1.3**, без failures/skips и validation diagnostics. В каждом �
 между профилями. Локальная техническая проверка VK14-02 завершена; субъективная
 яркость, physical HDR output и native 1.3-only GPU остаются отдельными gates.
 Команды, JUnit, captures, контракт вывода и ограничения — в
-[owning renderer plan](RENDERER_MODERNIZATION_PLAN.md#vk14-02-execution--2026-10-11).
+[owning renderer plan](renderer/VK14-02.md#vk14-02-execution--2026-10-11).
 Следующий bounded milestone — **VK14-03**; в этом поручении он не запускался.

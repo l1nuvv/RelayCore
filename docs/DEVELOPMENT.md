@@ -305,7 +305,7 @@ scene HDR, изолированные Continue/бой/respawn/пауза/resize.
 в `containment-profile` относительно рабочей папки и wall-clock p50/p95/p99/max;
 первые 0,5 с и readback исключены. Resize меняет разрешение; camera sweeps
 не заменяют непрерывный grounded-проход. Evidence/рабочие бюджеты — VK14-00 в
-[renderer plan](RENDERER_MODERNIZATION_PLAN.md#vk14-00-execution--2026-10-11).
+[renderer plan](renderer/VK14-00.md#vk14-00-execution--2026-10-11).
 
 Для прежнего эпизода используйте
 `cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile`.
@@ -373,7 +373,7 @@ VK14-03 сохраняет синхронные host waits; Tracy отдельн
 completion, acquire, presentation copy, present и retirement/drain. Последний use
 mesh/material cache entries принадлежит scene timeline; upload и presentation
 имеют отдельные completion domains. Подробности и ограничения —
-[VK14-03](RENDERER_MODERNIZATION_PLAN.md#vk14-03-execution--2026-10-11).
+[VK14-03](renderer/VK14-03.md#vk14-03-execution--2026-10-11).
 `hostQueryReset` и timestamp queries
 graphics queue требуются только при `RELAYCORE_ENABLE_TRACY=ON`. При выключенном
 Tracy query pools не создаются. В кадре profiling не добавляет queue/device idle;

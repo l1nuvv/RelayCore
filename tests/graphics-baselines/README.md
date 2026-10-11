@@ -58,7 +58,7 @@ All four current captures were reviewed before updating the tile sums. A rebuilt
 test with normal comparisons reports zero coverage/RGB differences for these
 four samples; tolerances and renderer/game assets are unchanged. Evidence and
 the remaining `pressure_transfer-0` failure are recorded under D5 in
-[PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md#d5--приёмка-эпизода-и-measured-hardening).
+[PROJECT_PLAN.md](../../docs/history/project-planning-2026-09-29--10-10.md#d5--приёмка-эпизода-и-measured-hardening).
 
 2026-10-08, VIS-05–07: these four power samples were reviewed and updated again
 after the requested native room/equipment pass. The map adds six render-only

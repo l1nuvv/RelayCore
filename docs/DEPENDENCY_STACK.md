@@ -60,7 +60,7 @@ and its upstream font license are staged with RML/RCSS. See
 [6.3 release](https://github.com/mikke89/RmlUi/releases/tag/6.3) and
 [baseline port](https://github.com/microsoft/vcpkg/blob/a42757564758c60651ebc616d9b000b7b91249ef/ports/rmlui/vcpkg.json).
 
-The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The ImGui HUD/menu integration below describes the historical Vulkan cutover. VIS-43–46 have completed the technical migration to RmlUi; their visual acceptance remains open. See [scope and gates](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui).
+The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The ImGui HUD/menu integration below describes the historical Vulkan cutover. VIS-43–46 have completed the technical migration to RmlUi; their visual acceptance remains open. See [scope and gates](tickets/VIS-43-46.md#vis-43--переход-на-игровой-hud-и-ui).
 
 RmlUi types remain within UI implementation; manifest/version policy is unchanged. Gameplay presentation data and actions are RelayCore-owned and independent of ImGui and diagnostics contracts. The implementation uses the selected release's headers/backends rather than master documentation for API signatures.
 
