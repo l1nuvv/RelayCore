@@ -168,7 +168,7 @@ Effort не заменяет итерации по изображениям: о�
 | VIS-32 | `high` | P2 / Ф, Р, П | **Технически выполнено 2026-10-08, `awaiting_playtest`:** 31 маршрутный HDR/SDR вид, семь карт, powered/open состояния, сравнение с отключённой атмосферой. Fog 14–52 м, grain 0, scanline .004, vignette .06 сохранены; HUD pixel regression проходит. [Evidence](art/vis31-33-contact-atmosphere-focus.md) | Ориентиры и силуэты читаются в просмотренных кадрах; профили проверены явно. Непрерывный человеческий проход остаётся открытым |
 | VIS-33 | `high` | P2 / Ф, К, Р | **Технически выполнено 2026-10-08, `awaiting_playtest`:** минеральный образец B-17 выделен материалом; pressure differential получил две импульсные линии, P1/P2 nameplate и согласованную схему в control casing/notes board. [Сравнение, исходники и проверки](art/vis31-33-contact-atmosphere-focus.md) | Измерительная/изоляционная цепь читается в целевых кадрах, геометрия apparatus и bounds manifold сохранены. Авторская визуальная приёмка открыта |
 
-По запросу автора 2026-10-09 добавлены мягкая environment specular составляющая от hemisphere/SH-проб и MSAA 4×; [контракт и ограничения](DEVELOPMENT.md#освещение-материалов-и-сглаживание), [игровое сравнение](art/g019-lighting-aa-before-after.png). Cubemap-проб и резких отражений объектов пока нет. Приоритет — light/material balance текущего shading. Прозрачное стекло мира, пар и отдельные emissive-эффекты существуют; отсутствие emissive/alpha в native GLB не означает отсутствие этих эффектов во всей игре.
+По запросу автора 2026-10-09 добавлены мягкая environment specular составляющая от hemisphere/SH-проб и MSAA 4×; [контракт и ограничения](RENDERING.md#освещение-материалов-и-сглаживание), [игровое сравнение](art/g019-lighting-aa-before-after.png). Cubemap-проб и резких отражений объектов пока нет. Приоритет — light/material balance текущего shading. Прозрачное стекло мира, пар и отдельные emissive-эффекты существуют; отсутствие emissive/alpha в native GLB не означает отсутствие этих эффектов во всей игре.
 
 ## 7. Оружие, игрок, персонажи и противники
 
@@ -331,7 +331,7 @@ VIS-47 остаётся правилом при каждом будущем из
 **Исходное состояние:** общая анизотропия до 16×, MSAA 4× в игровых конфигурациях,
 base-color/normal maps, metallic/roughness factors, прямой GGX, HDR/exposure,
 diffuse SH-пробы и мягкая environment specular составляющая уже работают.
-[Контракт и ограничения](DEVELOPMENT.md#освещение-материалов-и-сглаживание),
+[Контракт и ограничения](RENDERING.md#освещение-материалов-и-сглаживание),
 [игровые кадры до/после](art/g019-lighting-aa-before-after.png).
 Это исходный baseline до IMG-01–03. Текущий importer поддерживает metallic-roughness
 и occlusion maps; статический cubemap добавлен в containment hall с SH fallback вне

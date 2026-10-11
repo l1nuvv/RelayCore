@@ -20,6 +20,9 @@
 - Start with the files named by the task, their nearest tests, and direct call sites.
 - Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
 - Treat current source, CMake presets, tests, runtime output, and profiler captures as primary evidence. README/comments are secondary and may be stale.
+- Use `docs/README.md` to select the owning document; read only relevant sections. Gameplay/content statuses live in `docs/PLAYABLE_SLICE_ROADMAP.md`, detailed tickets in `docs/tickets/`, and VK14 statuses/evidence in the renderer plan and `docs/renderer/`.
+- Keep a fact, contract, status or procedure in one owning document. Overview/index/handoff files should link to it; put dated commands, metrics and failures in the selected ticket/report, not repeated summaries. Historical plans in `docs/history/` are evidence, not current instructions.
+- When moving documentation, update relative links and anchors, preserve useful old section redirects, and check local links. Do not turn shortening into removal of acceptance criteria, decisions, provenance or verification limits.
 - Reuse evidence already gathered in the current task. Do not reread unchanged large files or rerun an expensive command without a reason.
 - Prefer targeted search (`rg`, specific paths, specific symbols) over broad dumps. Summarize large logs; quote only the lines needed to establish the cause.
 - Separate confirmed facts, likely risks, hypotheses, and taste. Do not convert a suspicion into a patch without evidence.
@@ -60,7 +63,7 @@
 
 ## Authored content and assets
 
-- For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
+- For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md` and the current workflow in `docs/MODEL_ASSETS.md`; material/HDR/probe authoring is in `docs/RENDERING.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
 - For Blender/Python modeling, use `.agents/skills/relaycore-blender/SKILL.md` and its installed specialist skills. Review references, proportions, construction, materials and multiple rendered views; a primitive blockout is an intermediate stage unless explicitly requested as the deliverable. Project art direction and native importer constraints take precedence over generic Blender workflows.
 - For external textures, materials, HDRIs and models, follow `docs/ASSET_SOURCES.md` for source sites, task-specific search routes and adaptation checks. The owner intends a private project; do not turn licensing audits or public-release preparation into routine asset-work gates.
 

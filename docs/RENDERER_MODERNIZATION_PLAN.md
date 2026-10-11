@@ -8,7 +8,8 @@ VK14-00–04 have covered local technical evidence. Since the owner revision of 
 
 [Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md).
 
-## 9. Ordered milestone sequence and deliverables
+<a id="9-ordered-milestone-sequence-and-deliverables"></a>
+## Milestones and acceptance
 
 This is a **multi-session program**. A coding agent must take **one bounded milestone at a time**, run its specified checks, and stop for evidence/review before starting the next. Independent features can be reordered when profiling, dependencies or owner preference make another order clearly better.
 

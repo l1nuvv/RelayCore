@@ -1,7 +1,6 @@
 # Архитектура RelayCore
 
-
-Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
+Текущие runtime owners, update/frame flow, paths и failure policies. Планы и статусы — [roadmap](PLAYABLE_SLICE_ROADMAP.md) и [renderer-план](RENDERER_MODERNIZATION_PLAN.md); запуск и диагностика — [DEVELOPMENT](DEVELOPMENT.md).
 
 ## Player UI ownership (RmlUi 6.3)
 
@@ -17,10 +16,6 @@ Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
 pipelines through their final GPU use. Presentation drains before device/allocator
 destruction; ImGui and readback remain synchronous.
 See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
-
-Этот документ описывает текущих владельцев и границы runtime; сверка с source выполнена 2026-10-10. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md).
-
-**Реализация 2026-10-09:** RmlUi 6.3 обслуживает игровой HUD, меню и финал; ImGui сохраняется для editor/diagnostics. RelayCore-owned presentation data/actions, input/focus ownership и evidence описаны в [VIS-43–46](tickets/VIS-43-46.md#vis-43--переход-на-игровой-hud-и-ui). Авторская приёмка читаемости в движении остаётся отдельным gate.
 
 ## Bootstrap
 
@@ -116,7 +111,7 @@ preserving v1–3 lighting. A game-owned prepared scene may supply one static
 reflection cube with bounds; the engine owns its validated CPU product, Vulkan
 upload and descriptors. Inside its bounds, box-projected GGX IBL replaces SH
 specular; material AO attenuates indirect illumination only. Capture/staleness
-inputs are documented in DEVELOPMENT.md. Lightmaps and dynamic reflections
+inputs are documented in [RENDERING](RENDERING.md#static-reflection-probes-img-02). Lightmaps and dynamic reflections
 remain separate capabilities. IMG-06 adds native v5 emissive
 textures/factors; the reader accepts products v1–5.
 

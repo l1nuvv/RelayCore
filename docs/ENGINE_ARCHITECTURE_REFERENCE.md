@@ -4,17 +4,7 @@ Status: long-term architecture/reference document, not an automatic implementati
 
 Basis: repository snapshot `1.3.4` supplied 2026-09-30. Current source, tests, runtime evidence, and the user's current task override this document when they disagree.
 
-Current implementation checkpoint — 2026-10-10: Vulkan is the only runtime backend;
-RmlUi owns player UI, while ImGui remains for developer tools. Native models use
-product v5 (reader accepts v1–5), including normal/metallic-roughness/AO/emissive
-maps; static reflection probes and explicit native collision products are implemented.
-Maps with collision-product placements use the Jolt query world; other maps retain
-AABB. Save writer uses format 5, reader accepts 1–5. G-019 and the eight-map campaign
-have technical evidence; human acceptance remains open. Current contracts belong to
-[ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
-[COLLISION_ASSETS.md](COLLISION_ASSETS.md), and the [roadmap](PLAYABLE_SLICE_ROADMAP.md).
-
-Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
+Current implemented contracts live in [ARCHITECTURE](ARCHITECTURE.md), [MODEL_ASSETS](MODEL_ASSETS.md), [RENDERING](RENDERING.md) and [COLLISION_ASSETS](COLLISION_ASSETS.md). This reference describes target capabilities and boundaries; implementation status belongs to the [roadmap](PLAYABLE_SLICE_ROADMAP.md) and [renderer-plan](RENDERER_MODERNIZATION_PLAN.md).
 
 ## 1. When to read this
 
@@ -574,37 +564,12 @@ For content/world evolution:
 
 ## 12. Hard architecture rules
 
-Default invariants unless a task proves a need to change them:
+General engine/game/tooling ownership, anti-slop and dependency rules belong to [AGENTS](../AGENTS.MD#implementation). Additional importer constraints:
 
-- engine code does not depend on game-specific code;
-- import/build tooling is not a game runtime dependency;
-- gameplay owns gameplay rules;
-- collision/query semantics belong to physics/world-query code;
-- renderer owns GPU resources/state, not gameplay state;
-- render preparation converts world/game state into render-facing data;
-- debug/editor UI is not required runtime architecture;
-- Vulkan device/swapchain/resource lifetime is explicit and ordered relative to SDL window/platform lifetime;
-- no Source 2 classes/file parsing in runtime public APIs;
-- no Source 2-special branches in generic renderer/physics/gameplay when native data can represent the feature;
-- no GL/Vulkan handles in gameplay/world/asset identity contracts;
-- no generic graphics-backend interface solely for the temporary GL→Vulkan migration;
-- external libraries remove commodity plumbing, not RelayCore's ownership/renderer/world architecture.
-
-Do not introduce by default:
-
-- full ECS/component migration;
-- UObject/reflection clone;
-- universal scene graph;
-- generic `Manager`/`Service` layers;
-- scripting VM/global event bus;
-- render graph;
-- job/fiber/custom allocator framework;
-- World Partition clone;
-- bindless/descriptor-buffer framework before a scaling problem exists;
-- GPU-driven renderer before profiling justifies it;
-- Source 2 shader/particle/animation runtime clone.
-
-Any of these becomes valid only when a concrete current problem shows that its complexity is lower than continuing without it.
+- Keep Source 2 decoding/conversion in offline tooling; no Source 2 classes/file parsing or special branches in generic runtime APIs.
+- Import output must be native RelayCore data usable without the source engine. Unsupported source features require an import report, not a silently degraded contract.
+- GPU handles and third-party implementation types are not gameplay/world/save/asset identity contracts.
+- Preserve explicit Vulkan device/window/resource lifetime; a new capability must prove its native consumer and compatibility before expanding architecture.
 
 ## 13. Decision checklist for a new engine feature
 
@@ -642,19 +607,7 @@ Do not claim correctness from compilation alone. Do not optimize without measure
 
 ## 15. Agent workflow
 
-For a task governed by this file:
-
-1. read `AGENTS.MD` and only relevant sections here;
-2. for Vulkan/backend work read the exact phase in `docs/VULKAN_MIGRATION_PLAN.md`;
-3. inspect current owner, callers, nearest tests and affected authored/product data;
-4. classify the change as compatibility/parity, native capability, importer tooling, or optimization;
-5. extend an existing mechanism before creating a parallel subsystem;
-6. keep Source 2 decoding/conversion in tooling;
-7. use established third-party components only for the responsibilities assigned to them here;
-8. add tests/checks for behavior/invariants, not architecture appearance;
-9. verify using `relaycore-verify`, Vulkan validation where applicable, and `git diff --check`;
-10. profile with `relaycore-profile` before performance architecture changes;
-11. report changed paths, checks actually run, remaining parity/acceptance work, and any deliberate deviation from this reference.
+Follow [AGENTS](../AGENTS.MD) and read only the relevant capability/owning contract. Classify the selected work as parity, native capability, importer tooling or measured optimization. Keep Source 2 conversion in tooling; extend the existing owner before creating a parallel mechanism. Use the verification ladder above for the actual affected boundary and record evidence in the owning ticket/report.
 
 ## 16. Research references
 

@@ -1,59 +1,46 @@
 # Документация RelayCore
 
-Документация актуализирована 2026-10-11: продукт 1.4.1, авторская приёмка G-019 и отдельный план renderer modernization. Source/presets проверялись выборочно; новая runtime-верификация не выполнялась. Версия сборки задаётся в корневом `VERSION`; результаты прошлых запусков не подтверждают сегодняшнее рабочее дерево.
+Начните с нужной строки; читать весь комплект для узкой задачи не требуется. Source/presets/tests/runtime — первичное evidence, документы объясняют контракты и сохраняют решения. Версия продукта находится в [VERSION](../VERSION).
 
-## Текущая работа и запуск
+## Выбор документа по задаче
 
-| Документ | Назначение |
+| Задача | Основной источник | Читать дополнительно при необходимости |
+| --- | --- | --- |
+| Запустить игру / узнать управление | [README](../README.md), [инструкция игроку](PLAYTEST_GUIDE.txt) | [Editor/campaign](EDITOR_AND_CAMPAIGN.md) для переходов и сохранений |
+| Собрать, проверить или диагностировать | [DEVELOPMENT](DEVELOPMENT.md) | [Build timing](BUILD_TIME_ANALYSIS.md), [verify skill](../.agents/skills/relaycore-verify/SKILL.md) |
+| Gameplay/content ticket | [Roadmap: статусы и ссылки на карточки](PLAYABLE_SLICE_ROADMAP.md) | [Стратегия](PROJECT_PLAN.md), соответствующий playtest/report |
+| VK14 milestone | [Renderer plan: очередь и gates](RENDERER_MODERNIZATION_PLAN.md) | [Execution reports](renderer/), нужные runtime owners и graphics checks |
+| Текущие runtime owners / порядок кадра / paths | [ARCHITECTURE](ARCHITECTURE.md) | [DEVELOPMENT](DEVELOPMENT.md) для запуска и диагностики |
+| Новая engine capability / Source 2 boundary | [ENGINE_ARCHITECTURE_REFERENCE](ENGINE_ARCHITECTURE_REFERENCE.md) | [DEPENDENCY_STACK](DEPENDENCY_STACK.md) при выборе библиотеки |
+| Добавить или изменить зависимость | [DEPENDENCY_STACK](DEPENDENCY_STACK.md) | Точные pins: [manifest](../vcpkg.json) и repository overlays |
+| GLB/import/native product/staging | [MODEL_ASSETS](MODEL_ASSETS.md) | [Collision](COLLISION_ASSETS.md), asset declarations и receipts |
+| Material, lighting, HDR, probes | [RENDERING](RENDERING.md) | [ART_DIRECTION](ART_DIRECTION.md), выбранный renderer milestone |
+| RML/RCSS, player UI | [DEVELOPMENT: UI](DEVELOPMENT.md#игровой-ui-rmlui-63) | [Runtime ownership](ARCHITECTURE.md#player-ui-ownership-rmlui-63), [UI ticket](tickets/VIS-43-46.md) |
+| Карты, редактор, кампания, save/transition | [EDITOR_AND_CAMPAIGN](EDITOR_AND_CAMPAIGN.md) | [Полигон](DEVELOPMENT.md#испытательный-полигон), [collision contract](COLLISION_ASSETS.md) |
+| Художественное решение / внешний ресурс | [ART_DIRECTION](ART_DIRECTION.md), [ASSET_SOURCES](ASSET_SOURCES.md) | [Design references](DESIGN_REFERENCES.md), source records конкретного asset |
+| Подготовить/опубликовать выпуск или updater | [UPDATES](UPDATES.md) | Протокол выбранного выпуска в [playtests](playtests/) |
+
+## Владельцы сведений
+
+- **Статус задачи:** gameplay/content — roadmap; VK14 — renderer-план. В обзоре достаточно ссылки, без второй таблицы статусов.
+- **Текущий контракт:** owning runtime/asset/dependency/art документ. Индексы и handoff не переопределяют контракт.
+- **Проверка:** карточка или датированный отчёт с build/source/assets identity, командами, результатами и ограничениями. Старый зелёный запуск не проверяет новое дерево; последующий успешный запуск не стирает первоначальный failure.
+- **Workflow агента:** [AGENTS](../AGENTS.MD). Skills добавляют способы выполнения, а не вторую очередь или копию общих правил.
+
+## Детали и история
+
+| Каталог / документ | Что хранится |
 | --- | --- |
-| [README](../README.md) | Требования, быстрый старт, проверки и управление |
-| [PLAYABLE_SLICE_ROADMAP](PLAYABLE_SLICE_ROADMAP.md) | Очередь gameplay/content tickets, статусы и evidence; G-019 принята автором |
-| [RENDERER_MODERNIZATION_PLAN](RENDERER_MODERNIZATION_PLAN.md) | VK14-00–04 evidence, обязательный Vulkan 1.4 с 2026-10-12; hardware/human gates и дальнейшие этапы |
-| [ASSESSMENT_SCOPE](ASSESSMENT_SCOPE_2026-10-11.md) | Границы текущей статической сверки и различие HEAD/рабочего дерева |
-| [PROJECT_PLAN](PROJECT_PLAN.md) | Стратегия и решения автора; старые milestones сохраняются как история |
-| [DEVELOPMENT](DEVELOPMENT.md) | Окружение, CLion, UI, полигон, проверка и диагностика |
-| [PLAYTEST_GUIDE](PLAYTEST_GUIDE.txt) | Инструкция участнику без решения маршрута |
-| [Протокол G-019](playtests/G-019-2026-10-09.md) | Наблюдение самостоятельного прохождения главы |
-| [UPDATES](UPDATES.md) | Подготовка/публикация Release, канал и updater |
-| [Выпуск 1.4.1](playtests/release-1.4.1.md) | Опубликованный релиз, Release checks, ZIP/SHA256 и ограничения |
-| [EDITOR_AND_CAMPAIGN](EDITOR_AND_CAMPAIGN.md) | Редактор, карта, переходы и сохранения |
+| [tickets](tickets/) | Требования, implementation details и датированные результаты отдельного G/E/H/UI ticket |
+| [renderer](renderer/) | Команды, captures, сравнения, profiling и ограничения выполненного VK14 milestone |
+| [history](history/) | Прежние стратегии D/N/M, исходный slice scope, baseline и журнал |
+| [art](art/), [art-references](art-references/) | Before/after, технические отчёты и авторские visual references |
+| [playtests](playtests/), [profiling](profiling/), [audits](audits/) | Человеческие протоколы, измерения и датированные обзоры |
+| [VULKAN_MIGRATION_PLAN](VULKAN_MIGRATION_PLAN.md) | Завершённые gates OpenGL → Vulkan; прежние GL-команды исторические |
+| [VISUAL_REVAMP_AUDIT](VISUAL_REVAMP_AUDIT.md) | Визуальные observations и исходный scope; текущие статусы берутся из roadmap |
+| [Assessment 2026-10-11](ASSESSMENT_SCOPE_2026-10-11.md), [handoff 2026-10-11](NEXT_STEPS_2026-10-11.md) | Границы исходного статического обзора и ссылки на продолжение |
+| [Graphics baselines](../tests/graphics-baselines/README.md), [RC-022 baseline](color_pipeline_baseline.md) | Authority отдельных samples и численные цветовые проверки |
 
-## Архитектура и контент
+Source/export records рядом с ресурсами: [модели](../assets/models/README.md), [текстуры](../assets/textures/README.md), [графика](../content/graphics/README.md), [звук](../assets/audio/player/README.md), [third-party sources](../content/third_party/). Их provenance и adaptation evidence сохраняются независимо от task status.
 
-| Документ | Назначение |
-| --- | --- |
-| [ARCHITECTURE](ARCHITECTURE.md) | Текущие runtime owners, frame flow, paths и failure policies |
-| [ENGINE_ARCHITECTURE_REFERENCE](ENGINE_ARCHITECTURE_REFERENCE.md) | Долгосрочные возможности и ограничения; исходный snapshot отдельно от реализации |
-| [DEPENDENCY_STACK](DEPENDENCY_STACK.md) | Ответственность зависимостей и условия интеграции; точные pins в vcpkg manifest/overlays |
-| [COLLISION_ASSETS](COLLISION_ASSETS.md) | Отдельные native collision products, pairing и opt-in |
-| [ART_DIRECTION](ART_DIRECTION.md) | Авторитетное художественное направление |
-| [ASSET_SOURCES](ASSET_SOURCES.md) | Поиск и адаптация внешних ресурсов |
-| [DESIGN_REFERENCES](DESIGN_REFERENCES.md) | Принципы игровых и архитектурных references |
-| [Модели](../assets/models/README.md), [текстуры](../assets/textures/README.md), [графика](../content/graphics/README.md), [звук игрока](../assets/audio/player/README.md) | Источники и воспроизводимый авторинг ресурсов |
-
-## История и проверочные материалы
-
-[VULKAN_MIGRATION_PLAN](VULKAN_MIGRATION_PLAN.md) хранит gates завершённого перехода, включая прежние OpenGL-команды; текущий запуск описан в DEVELOPMENT. [VISUAL_REVAMP_AUDIT](VISUAL_REVAMP_AUDIT.md) — визуальные observations и scope, а не вторая implementation-очередь. [BUILD_TIME_ANALYSIS](BUILD_TIME_ANALYSIS.md) — измерения конкретной машины и вариантов сборки.
-
-RC-022: [численный baseline](color_pipeline_baseline.md), [visual reference](color_pipeline_visual_reference.md), [authored values](rc022f_authored_values_audit.md), [overlay contract](rc022g_pipeline_authoring_overlay.md). Их исходные GL-сценарии исторические; свежий Vulkan-аудит помечен отдельно в baseline.
-
-`art/` хранит before/after и технические отчёты, `art-references/` — авторские references, `profiling/` — датированные измерения, `playtests/` — протоколы человеческой и технической приёмки, `audits/` — датированные обзоры. Эти файлы сохраняют доказательства и ограничения. Завершённый RELEASE_AUTOMATION_PLAN удалён: действующий workflow находится в UPDATES, результаты U-001–U-005 — в [протоколе 1.3.2](playtests/release-1.3.2.md).
-
-При чтении старого отчёта `current`/«текущий», SHA256, число моделей, версия product и результат теста относятся к его датированному срезу. Для нового запуска используйте текущие presets и staged assets из DEVELOPMENT, фиксируйте новую идентичность файлов. Итоговый ticket status берётся из roadmap; последующие исправления не превращают прежний упавший запуск в успешный.
-
-| Проверочные материалы | Что искать |
-| --- | --- |
-| [IMG-01–03](art/img01-03-materials-reflections-ao.md), [IMG-04–06](art/img04-06-lighting-stability-emission.md) | MR/AO, bounded reflections, emissive, свет и ограниченный temporal proxy |
-| [VIS-34](art/vis34-service-pistol.md), [VIS-35](art/vis35-shotgun.md), [VIS-36–38](art/vis36-38-pickups-security-scientist.md), [VIS-39](art/vis39-player-body.md) | Оружие, руки, pickups, противники/учёный и тело игрока |
-| [VIS-48–49](art/vis48-49-cost-and-review.md), [graphics baselines](../tests/graphics-baselines/README.md) | Измеренная стоимость, причины расхождений и authority отдельных samples |
-| [G-012 profile](profiling/G-012-2026-10-07.md), [G-014 profile](profiling/G-014-2026-10-07.md), [E-018](profiling/E-018-2026-10-07.md), [H-008](profiling/H-008-2026-10-08.md) | Локальные before/after workloads; непрерывный sound-on проход этим не закрывается |
-| [G-011](playtests/G-011-2026-09-29.md), [G-012](playtests/G-012-2026-10-07.md), [G-017](playtests/G-017-2026-10-08.md) | Протоколы отдельных эпизодов и последующие отзывы |
-| [Авторские references](art-references/2026-10-07/README.md), [agent audit](audits/agent-infrastructure-2026-10-07.md) | Происхождение ориентиров и датированная оценка инфраструктуры |
-
-Происхождение внешних ресурсов: [Poly Haven](../content/third_party/polyhaven/README.md), [pressure transfer](../content/third_party/polyhaven/pressure_transfer/README.md), [containment](../content/third_party/polyhaven/containment/README.md), [Guardian](../content/third_party/game_ready_mutant/source.md), [MakeHuman](../content/third_party/makehuman/README.md). Эти записи сохраняют авторов, исходные файлы и выполненные адаптации.
-
-## Инструкции агентам и API-справочник
-
-[AGENTS](../AGENTS.MD) задаёт правила проекта. Repo-local skills и их references находятся в `.agents/skills`; [происхождение Blender skills](../.agents/skills/BLENDER_SOURCES.md) сохраняет upstream pins. [RmlUi skill](../.agents/skills/relaycore-rmlui/SKILL.md) направляет к реализованному player UI, [verify](../.agents/skills/relaycore-verify/SKILL.md) — к выбранным проверкам. Skills дополняют owning docs, а не дублируют очередь tickets.
-
-`Doxyfile` описывает генерацию API-справочника по README и `src`; вывод `docs/doxygen` генерируется локально и не является отдельным источником runtime contracts.
+`Doxyfile` генерирует API-справочник из README/`src`; `docs/doxygen` — generated output, а не ещё один источник контрактов. Repo-local skills находятся в `.agents/skills`; [Blender sources](../.agents/skills/BLENDER_SOURCES.md) сохраняют их upstream pins.
