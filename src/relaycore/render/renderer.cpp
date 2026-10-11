@@ -105,7 +105,13 @@ namespace RelayCore
         imgui_overlay_.initialize(window, *state_->device);
         player_ui_ = std::make_unique<render::PlayerUi>(window.handle(), *state_->device);
         initialized_ = true;
-        log::info("Renderer initialized: Vulkan 1.3, {}", state_->device->capabilities().device_name);
+        const auto& capabilities = state_->device->capabilities();
+        log::info(
+            "Renderer initialized: Vulkan {}.{}, {}",
+            VK_API_VERSION_MAJOR(capabilities.effective_api_version),
+            VK_API_VERSION_MINOR(capabilities.effective_api_version),
+            capabilities.device_name
+        );
     }
 
     auto Renderer::prepare_live_content_reload(

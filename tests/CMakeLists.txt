@@ -326,7 +326,11 @@ set_tests_properties(graphics.vulkan_presentation graphics.vulkan_recreation_fai
 # OBS retries failed vkCreateSwapchainKHR with an already retired oldSwapchain.
 # Isolate native allocation failure injection; the normal presentation test retains installed hooks.
 set_tests_properties(graphics.vulkan_recreation_failure PROPERTIES ENVIRONMENT "DISABLE_VULKAN_OBS_CAPTURE=1")
-set_tests_properties(graphics.vulkan_device PROPERTIES
+add_test(NAME graphics.vulkan_device_force_1_3 COMMAND relaycore_vulkan_device_tests)
+add_test(NAME graphics.vulkan_device_invalid_api_override COMMAND relaycore_vulkan_device_tests --expect-invalid-api-override)
+set_tests_properties(graphics.vulkan_device_force_1_3 PROPERTIES ENVIRONMENT "RELAYCORE_VULKAN_FORCE_1_3=1")
+set_tests_properties(graphics.vulkan_device_invalid_api_override PROPERTIES ENVIRONMENT "RELAYCORE_VULKAN_FORCE_1_3=invalid")
+set_tests_properties(graphics.vulkan_device graphics.vulkan_device_force_1_3 graphics.vulkan_device_invalid_api_override PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77

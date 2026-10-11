@@ -4,6 +4,7 @@
 #include "relaycore/core/sdl_error.h"
 #include "relaycore/platform/window.h"
 
+#include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
 #include <algorithm>
@@ -88,6 +89,14 @@ namespace RelayCore::render
                 "RelayCore requires Vulkan loader API 1.3 or newer; update the Vulkan driver/loader"
             );
 
+        const char* force_api = SDL_getenv_unsafe("RELAYCORE_VULKAN_FORCE_1_3");
+        if (force_api != nullptr && std::string_view{force_api} != "0" && std::string_view{force_api} != "1")
+            throw std::runtime_error("RELAYCORE_VULKAN_FORCE_1_3 must be 0 or 1");
+        const bool force_api_1_3 = force_api != nullptr && std::string_view{force_api} == "1";
+        const auto requested_api = !force_api_1_3 && system.instance_api_version >= kVulkanPreferredApiVersion
+                                       ? kVulkanPreferredApiVersion
+                                       : kVulkanApiVersion;
+
 #if RELAYCORE_VULKAN_VALIDATION
         if (!system.is_layer_available("VK_LAYER_KHRONOS_validation")
             || !system.is_extension_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
@@ -109,7 +118,7 @@ namespace RelayCore::render
         }
         builder.set_app_name("RelayCore")
             .set_engine_name("RelayCore")
-            .require_api_version(kVulkanApiVersion)
+            .require_api_version(requested_api)
             .enable_extensions(extensions.size(), extensions.data());
 #if RELAYCORE_VULKAN_VALIDATION
         builder.enable_validation_layers()
@@ -120,7 +129,7 @@ namespace RelayCore::render
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
             );
 #endif
-        state_->instance = require_bootstrap(builder.build(), "Failed to create Vulkan 1.3 instance");
+        state_->instance = require_bootstrap(builder.build(), "Failed to create negotiated Vulkan instance");
         core::require_sdl(
             SDL_Vulkan_CreateSurface(window.handle(), state_->instance.instance, nullptr, &state_->surface),
             "Failed to create SDL Vulkan surface"
@@ -152,6 +161,8 @@ namespace RelayCore::render
             "queues for the SDL surface"
         );
         const bool anisotropy = physical.enable_features_if_present({.samplerAnisotropy = VK_TRUE});
+        const auto effective_api =
+            physical.properties.apiVersion >= kVulkanPreferredApiVersion ? requested_api : kVulkanApiVersion;
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -173,7 +184,7 @@ namespace RelayCore::render
             .device = state_->device.device,
             .pVulkanFunctions = &functions,
             .instance = state_->instance.instance,
-            .vulkanApiVersion = kVulkanApiVersion,
+            .vulkanApiVersion = effective_api,
         };
         const auto allocation_result = vmaCreateAllocator(&allocator_info, &state_->allocator);
         if (allocation_result != VK_SUCCESS)
@@ -183,28 +194,52 @@ namespace RelayCore::render
 
         state_->capabilities = {
             .device_name = physical.name,
+            .loader_api_version = system.instance_api_version,
+            .instance_api_version = state_->instance.api_version,
             .physical_api_version = physical.properties.apiVersion,
+            .effective_api_version = effective_api,
             .driver_version = physical.properties.driverVersion,
             .graphics_queue_family = graphics.second,
             .present_queue_family = present.second,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
+            .force_api_1_3 = force_api_1_3,
             .max_texture_anisotropy =
                 anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
         log::info(
-            "Vulkan device created: {} | GPU API {}.{}.{} | required API 1.3 | graphics family={} | present family={} "
+            "Vulkan device created: {} | loader API {}.{}.{} | instance API {}.{} | GPU API {}.{}.{} "
+            "| effective API {}.{} | required API 1.3 | force 1.3={} | driver={} | graphics family={} | present "
+            "family={} "
             "| "
             "dynamicRendering/synchronization2/timelineSemaphore/swapchainMaintenance1 enabled | validation={} "
             "| texture anisotropy={}",
             physical.name,
+            VK_API_VERSION_MAJOR(system.instance_api_version),
+            VK_API_VERSION_MINOR(system.instance_api_version),
+            VK_API_VERSION_PATCH(system.instance_api_version),
+            VK_API_VERSION_MAJOR(state_->instance.api_version),
+            VK_API_VERSION_MINOR(state_->instance.api_version),
             VK_API_VERSION_MAJOR(physical.properties.apiVersion),
             VK_API_VERSION_MINOR(physical.properties.apiVersion),
             VK_API_VERSION_PATCH(physical.properties.apiVersion),
+            VK_API_VERSION_MAJOR(effective_api),
+            VK_API_VERSION_MINOR(effective_api),
+            force_api_1_3,
+            physical.properties.driverVersion,
             graphics.second,
             present.second,
             state_->capabilities.validation_enabled,
             state_->capabilities.max_texture_anisotropy
         );
+        if (effective_api < kVulkanPreferredApiVersion)
+            log::info(
+                "Vulkan 1.3 selected: {}",
+                force_api_1_3                                ? "developer override"
+                : requested_api < kVulkanPreferredApiVersion ? "loader does not support 1.4"
+                                                             : "selected GPU does not support 1.4"
+            );
+        for (const auto& extension : physical.get_extensions())
+            log::info("Vulkan enabled device extension: {}", extension);
     }
 
     VulkanDevice::~VulkanDevice() noexcept = default;

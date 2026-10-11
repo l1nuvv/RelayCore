@@ -80,7 +80,8 @@ namespace
         RelayCore::render::VulkanSwapchain& swapchain,
         const RelayCore::Window& window,
         const std::array<float, 4>& color,
-        const COLORREF expected
+        const COLORREF expected,
+        const std::string_view phase
     )
     {
         const auto hwnd = static_cast<HWND>(SDL_GetPointerProperty(
@@ -91,6 +92,7 @@ namespace
         if (hwnd == nullptr)
             throw std::runtime_error("SDL did not expose the presentation test HWND");
         COLORREF observed = CLR_INVALID;
+        POINT center{};
         // Observe the presented client pixel, rather than only successful Vulkan return codes.
         for (int attempt = 0; attempt < 120; ++attempt)
         {
@@ -101,7 +103,7 @@ namespace
             RECT client{};
             if (!GetClientRect(hwnd, &client))
                 throw std::runtime_error("Failed to query presentation test client rectangle");
-            POINT center{client.right / 2, client.bottom / 2};
+            center = {client.right / 2, client.bottom / 2};
             if (!ClientToScreen(hwnd, &center))
                 throw std::runtime_error("Failed to locate presentation test client pixel");
             const auto dc = GetDC(nullptr);
@@ -111,8 +113,10 @@ namespace
                 return;
         }
         throw std::runtime_error(
-            "Presented client pixel did not match the Vulkan clear color: expected " + std::to_string(expected)
-            + ", observed " + std::to_string(observed)
+            "Presented client pixel did not match the Vulkan clear color during " + std::string{phase} + ": expected "
+            + std::to_string(expected) + ", observed " + std::to_string(observed)
+            + ", client exposed=" + std::to_string(WindowFromPoint(center) == hwnd)
+            + ", screen position=" + std::to_string(center.x) + "," + std::to_string(center.y)
         );
     }
 
@@ -140,7 +144,13 @@ namespace
             };
             {
                 RelayCore::render::VulkanSwapchain swapchain{device, window, cycle == 0, &callbacks};
-                show_color(swapchain, window, {1, 0, 0, 1}, RGB(255, 0, 0));
+                show_color(
+                    swapchain,
+                    window,
+                    {1, 0, 0, 1},
+                    RGB(255, 0, 0),
+                    cycle == 0 ? "FIFO initial" : "immediate initial"
+                );
                 for (int resize = 0; resize < 3; ++resize)
                 {
                     RelayCore::core::require_sdl(
@@ -151,7 +161,7 @@ namespace
                         SDL_SyncWindow(window.handle()),
                         "Failed to synchronize Vulkan resize"
                     );
-                    show_color(swapchain, window, {0, 1, 0, 1}, RGB(0, 255, 0));
+                    show_color(swapchain, window, {0, 1, 0, 1}, RGB(0, 255, 0), "resize");
                     const auto pixels = window.pixel_extent();
                     if (swapchain.extent().width != static_cast<uint32_t>(pixels.width)
                         || swapchain.extent().height != static_cast<uint32_t>(pixels.height))
@@ -167,13 +177,13 @@ namespace
                         throw std::runtime_error("Minimized Vulkan window continued presenting");
                     RelayCore::core::require_sdl(SDL_RestoreWindow(window.handle()), "Failed to restore Vulkan window");
                     RelayCore::core::require_sdl(SDL_SyncWindow(window.handle()), "Failed to synchronize restore");
-                    show_color(swapchain, window, {0, 0, 1, 1}, RGB(0, 0, 255));
+                    show_color(swapchain, window, {0, 0, 1, 1}, RGB(0, 0, 255), "minimize/restore");
                 }
                 RelayCore::core::require_sdl(SDL_HideWindow(window.handle()), "Failed to hide Vulkan window");
                 if (swapchain.draw_clear({1, 0, 0, 1}))
                     throw std::runtime_error("Hidden Vulkan window continued presenting");
                 RelayCore::core::require_sdl(SDL_ShowWindow(window.handle()), "Failed to show Vulkan window");
-                show_color(swapchain, window, {1, 0, 0, 1}, RGB(255, 0, 0));
+                show_color(swapchain, window, {1, 0, 0, 1}, RGB(255, 0, 0), "hide/show");
 
                 if (inject_allocation_failure)
                 {
@@ -204,7 +214,7 @@ namespace
                     if (!presentation_stopped)
                         throw std::runtime_error("Presentation reused a retired swapchain after failed recreation");
                     swapchain.recreate();
-                    show_color(swapchain, window, {0, 1, 0, 1}, RGB(0, 255, 0));
+                    show_color(swapchain, window, {0, 1, 0, 1}, RGB(0, 255, 0), "allocation failure recovery");
                 }
                 for (int frame = 0; frame < 120; ++frame)
                 {

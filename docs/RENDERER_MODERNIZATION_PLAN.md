@@ -58,6 +58,67 @@ Seven matching captures were inspected in `build/vk14-00/containment-profile/` (
 
 Debug baseline: `cmake --preset msvc-debug -DVCPKG_MANIFEST_INSTALL=OFF`; targeted build of `relaycore_containment_loop_graphics`, `relaycore_vulkan_device_tests`, `relaycore_vulkan_presentation_tests`, `relaycore_player_ui_graphics`, `relaycore_game_lifecycle`; `ctest --preset graphics-debug -R '^graphics\.(containment_loop(_hdr)?|vulkan_device|vulkan_presentation|player_ui|game_lifecycle)$' --output-on-failure --no-tests=error --output-junit vk14-00-results.xml`: **5 passed / 1 failed / 0 skipped**. G-019 SDR/internal HDR, RmlUi, device and lifecycle pass with core/synchronization validation and no warning/error. Presentation fails repeatedly **before VK14-01** on its second cycle's initial IMMEDIATE clear, expected red `255`, observed white `16777215`. Added phase/exposure diagnostics prove the client window is exposed at `(960,540)`; do not attribute this to occlusion without further evidence. FIFO and first-cycle resize/minimize/restore/hide/show complete before the failure. Retained reruns: `vk14-00-presentation-retry.xml`, `vk14-00-presentation-diagnostic.xml` in `build/msvc-debug`. Baseline is evidence of this open defect, not a green presentation gate. Negotiation can proceed independently, retaining this known baseline failure and its coverage limitation.
 
+## VK14-01 execution — 2026-10-11
+
+Implementation complete; **full milestone acceptance remains open** for the baseline screen-pixel failure and unavailable native 1.3-only hardware. Selected-device preference/required features/extensions are unchanged. Loader ≥1.4 requests instance 1.4; a suitable physical device limited to 1.3 selects effective 1.3. `RELAYCORE_VULKAN_FORCE_1_3=1` caps instance/effective/VMA to 1.3; absent/`0` prefers 1.4, invalid values fail with an actionable diagnostic. Existing Vulkan 1.2/1.3 feature chains and SPIR-V 1.5 remain; no 1.4-only command, optional feature consumer, scheduling change, dependency or content-format change was added. No performance improvement is claimed.
+
+Changed implementation: `vulkan_device.h/.cpp` API capability fields/selection/VMA and loader-instance-physical-effective/driver/queue/extension diagnostics; `renderer.cpp` reports actual effective API; `vulkan_device_tests.cpp` checks negotiation bounds, timeline/allocation/lifetime and invalid override; CMake adds forced-1.3 and invalid-override cases. `vulkan_presentation_tests.cpp` only adds failure phase/window-exposure information, retaining strict color checks. Rollback is the local negotiation/report/test patch; no assets/save data need migration.
+
+Debug checks use the same baseline build targets and regex, expanded with `vulkan_device(_force_1_3|_invalid_api_override)?`. The first preferred run was interrupted after OBS hook loader warnings were identified; it is not a completed suite. The installed implicit `VK_LAYER_OBS_HOOK` advertises API 1.3 and generates a strict validation warning when the application requests 1.4. Existing `DISABLE_VULKAN_OBS_CAPTURE=1` was applied **only to subsequent child test processes**, without changing installed/global hooks or relaxing warning checks.
+
+| Executed profile | Result | Evidence in `build/msvc-debug` |
+|---|---|---|
+| Preferred 1.4, OBS isolated; normal selection plus forced-device and invalid-override cases | **7 passed / 1 failed / 0 skipped** | `vk14-01-preferred-isolated.xml` |
+| Forced 1.3, OBS isolated; device, presentation, RmlUi, G-019 SDR/internal HDR, lifecycle | **5 passed / 1 failed / 0 skipped** | `vk14-01-forced-isolated.xml` |
+
+Both failed cases are the same pre-change `graphics.vulkan_presentation` IMMEDIATE initial red-versus-white screen-pixel check. It also fails with OBS isolated, so OBS has not been established as its cause. All other selected cases pass without validation warnings/errors; logs confirm instance/effective 1.4 versus 1.3 on physical 1.4.329 and retain swapchain/maintenance extensions in both. All **134** G-019 SDR/HDR BMP hashes match the pre-negotiation Debug baseline in both profiles (`build/vk14-00/debug-captures-before.json`). These captures and executed lifecycle/UI checks establish covered scene parity; they do not replace the failed on-screen presentation check.
+
+A focused forced-1.3 RenderDoc diagnostic retains `build/vk14-00/presentation_frame1.rdc` and `presentation-renderdoc.json`: the captured first-cycle green resize attachment replays green with no debug messages. Queued frame 150/200 captures were not produced, so this capture does not explain or close the failing second-cycle IMMEDIATE pixel. Native 1.3-only GPU/driver, separate queue-family hardware and physical HDR remain unavailable; force-1.3 is emulation coverage only. Next renderer milestone stays pending while the known presentation discrepancy is unresolved.
+
+The normal **RelayCore — Play** executable was rebuilt with `cmake --build --preset demo-dev -j 2`. Additional `msvc-dev` build of `relaycore_vulkan_device_tests` and `relaycore_containment_profile` passed. `ctest --test-dir build/msvc-dev -R '^graphics\.vulkan_device(_force_1_3|_invalid_api_override)?$' --no-tests=error --output-on-failure --output-junit vk14-01-optimized-device.xml`: **3/3 passed, zero skips**, with Tracy-required device features. The two-pass integrated G-019 workload on this optimized/Tracy build in preferred 1.4 also exited 0, covering sound, combat, disk Continue, respawn, pause and resize; logs/capture are `build/vk14-01-dev/workload.log` and `runtime.tracy`. GPU CSV export confirms 10,015 executed scene/presentation/RmlUi intervals and shadow/viewmodel events, not just enabled profiling flags. This development build disables IPO/unity and is not a controlled performance comparison to the `msvc-relwithdebinfo` baseline. `git diff --check` passed after source/docs edits; no commit/push/package.
+
+### VK14-01 presentation follow-up — 2026-10-11
+
+Owner requested the next planned step. Reused the current Debug tree and built only
+`relaycore_vulkan_presentation_tests`, `relaycore_vulkan_device_tests`,
+`relaycore_player_ui_graphics`, `relaycore_containment_loop_graphics` and
+`relaycore_game_lifecycle` through `graphics-debug`, in the Visual Studio x64
+developer environment with the existing `VCPKG_ROOT`. Build completed successfully;
+no source, shader, asset, dependency or color tolerance changed in this follow-up.
+
+The historical IMMEDIATE red-versus-white screen-pixel failure did **not** reproduce.
+With process-local `DISABLE_VULKAN_OBS_CAPTURE=1`, both presentation and injected
+recreation-failure checks passed five consecutive runs each on preferred 1.4 and
+forced 1.3: **20 executed checks, zero failures/skips**, including FIFO/IMMEDIATE,
+resize, minimize/restore, hide/show and allocation-failure recovery. Evidence:
+`build/msvc-debug/vk14-01-presentation-repeat.xml` and
+`vk14-01-presentation-force13-repeat.xml`. These successful runs do not establish
+the cause of the previously recorded white pixel or prove that it was fixed.
+
+The first broader sandbox run returned **5 passed / 4 failed / 0 skipped**:
+UI/G-019 failed at `filesystem::canonical` with access denied on existing staged
+models; lifecycle failed at a temporary snapshot rename with access denied.
+`vk14-01-preferred-recheck.xml` retains these results. The identical tests then ran
+outside the filesystem sandbox with process-local OBS isolation:
+
+| Profile | Result | Evidence in `build/msvc-debug` |
+|---|---|---|
+| Preferred 1.4, including forced-device and invalid-override cases | **9 passed / 0 failed / 0 skipped** | `vk14-01-preferred-desktop.xml` |
+| Forced 1.3, device/presentation/recreation/UI/G-019 SDR and HDR/lifecycle | **7 passed / 0 failed / 0 skipped** | `vk14-01-forced-desktop.xml` |
+
+Both completed suites passed the unchanged validation warning/error and shutdown
+gates. Logs confirm effective 1.4 and 1.3 respectively. All **134** G-019 capture
+SHA256 values match `build/vk14-00/debug-captures-before.json` after each suite.
+`git diff --check` passed. No package, commit or push was made.
+
+**Current acceptance:** VK14-01 passes the covered local technical regression on
+both effective profiles. Native 1.3-only hardware remains unavailable; the historical
+presentation discrepancy remains unexplained and must be reopened if it recurs.
+No speculative swapchain correction or relaxed pixel check is justified by this run.
+The next bounded milestone is **VK14-02**, reproducing the SDR/exposure complaint
+on matching views before selecting a color correction. Later effects/scheduling and
+human visual acceptance remain separate.
+
 ## 1. Executive decision
 
 1. **Minimum runtime:** Vulkan 1.3, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.
