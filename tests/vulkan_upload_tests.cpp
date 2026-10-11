@@ -3,6 +3,7 @@
 #include "relaycore/render/mesh.h"
 #include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/vulkan_device.h"
+#include "relaycore/render/vulkan_scene_submissions.h"
 #include "relaycore/render/vulkan_uploads.h"
 
 #include <algorithm>
@@ -194,6 +195,165 @@ namespace
             throw std::runtime_error("Completed upload retirement did not release all VMA allocations");
     }
 
+    void check_scene_retirement(const VulkanDevice& device, const CpuColorMeshData& mesh)
+    {
+        struct Commands {
+            const VulkanDevice& device;
+            VkCommandPool pool = VK_NULL_HANDLE;
+            ~Commands()
+            {
+                if (pool)
+                    vkDestroyCommandPool(device.handle(), pool, nullptr);
+            }
+        } commands{device};
+        const VkCommandPoolCreateInfo pool{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .queueFamilyIndex = device.capabilities().graphics_queue_family
+        };
+        require_result(vkCreateCommandPool(device.handle(), &pool, nullptr, &commands.pool), "Scene test pool");
+        std::array<VkCommandBuffer, 2> buffers{};
+        const VkCommandBufferAllocateInfo allocate{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = commands.pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 2
+        };
+        require_result(vkAllocateCommandBuffers(device.handle(), &allocate, buffers.data()), "Scene test commands");
+        VulkanUploads uploads{device};
+        auto vertices =
+            uploads.upload_mesh_buffer(std::as_bytes(std::span{mesh.vertices}), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        auto texture = uploads.upload_rgba(checkerboard(), TextureEncoding::linear);
+        uploads.wait(texture.completion);
+        uploads.collect();
+        VulkanBuffer
+            readback{device, vertices.buffer.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, VulkanBufferMemory::readback};
+        VulkanBuffer pixels{device, 4 * 4 * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VulkanBufferMemory::readback};
+        const VkCommandBufferBeginInfo begin{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        require_result(vkBeginCommandBuffer(buffers[0], &begin), "Scene buffer begin");
+        const VkBufferCopy copy{0, 0, vertices.buffer.size()};
+        vkCmdCopyBuffer(buffers[0], vertices.buffer.handle(), readback.handle(), 1, &copy);
+        require_result(vkEndCommandBuffer(buffers[0]), "Scene buffer end");
+        require_result(vkBeginCommandBuffer(buffers[1], &begin), "Scene texture begin");
+        const VkImageMemoryBarrier2 barrier{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = texture.texture.image(),
+            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &barrier
+        };
+        vkCmdPipelineBarrier2(buffers[1], &dependency);
+        const VkBufferImageCopy image_copy{
+            .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+            .imageExtent = {4, 4, 1}
+        };
+        vkCmdCopyImageToBuffer(
+            buffers[1],
+            texture.texture.image(),
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            pixels.handle(),
+            1,
+            &image_copy
+        );
+        require_result(vkEndCommandBuffer(buffers[1]), "Scene texture end");
+        {
+            VulkanSceneSubmissions scene{device};
+            BlockGraphicsQueue gate{device};
+            gate.block();
+            expect_failure(
+                [&] {
+                    static_cast<void>(scene.submit(VK_NULL_HANDLE));
+                },
+                "command buffer"
+            );
+            if (scene.last_submission().value != 0)
+                throw std::runtime_error("Rejected scene submission published a completion");
+            const auto first = scene.submit(buffers[0]);
+            const auto last = scene.submit(buffers[1]);
+            if (first.value != 1 || last.value != 2 || scene.completed() != 0)
+                throw std::runtime_error("Blocked scene timeline advanced or lost submission order");
+            expect_failure(
+                [&] {
+                    scene.wait({last.timeline, last.value + 1});
+                },
+                "submitted value"
+            );
+            expect_failure(
+                [&] {
+                    scene.retire(std::move(vertices.buffer), {last.timeline, last.value + 1});
+                },
+                "submitted value"
+            );
+            {
+                VulkanSceneSubmissions other{device};
+                expect_failure(
+                    [&] {
+                        other.retire(std::move(vertices.buffer), first);
+                    },
+                    "this timeline"
+                );
+            }
+            if (!vertices.buffer.handle())
+                throw std::runtime_error("Rejected scene retirement took resource ownership");
+            scene.retire(std::move(vertices.buffer), first);
+            scene.retire(std::move(texture.texture), last);
+            scene.retire(std::move(readback), first);
+            scene.retire(std::move(pixels), last);
+            scene.collect();
+            if (allocation_count(device) != 4)
+                throw std::runtime_error("Scene retirement freed GPU-pending resources");
+            gate.release();
+            scene.wait(last);
+            scene.collect();
+            if (allocation_count(device) != 0)
+                throw std::runtime_error("Scene retirement retained completed resources");
+        }
+        {
+            auto uploaded =
+                uploads.upload_mesh_buffer(std::as_bytes(std::span{mesh.vertices}), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            uploads.wait(uploaded.completion);
+            uploads.collect();
+            // Re-record the completed command to retain a real pending buffer reference at owner shutdown.
+            require_result(vkResetCommandPool(device.handle(), commands.pool, 0), "Scene shutdown reset");
+            VulkanBuffer destination{
+                device,
+                uploaded.buffer.size(),
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VulkanBufferMemory::readback
+            };
+            require_result(vkBeginCommandBuffer(buffers[0], &begin), "Scene shutdown begin");
+            vkCmdCopyBuffer(buffers[0], uploaded.buffer.handle(), destination.handle(), 1, &copy);
+            require_result(vkEndCommandBuffer(buffers[0]), "Scene shutdown end");
+            BlockGraphicsQueue gate{device};
+            gate.block();
+            VulkanSceneSubmissions scene{device};
+            try
+            {
+                const auto last = scene.submit(buffers[0]);
+                scene.retire(std::move(uploaded.buffer), last);
+                scene.retire(std::move(destination), last);
+                gate.release();
+            } catch (...)
+            {
+                gate.release();
+                throw;
+            }
+            // No explicit scene wait/collect; its destructor must drain before freeing resources.
+        }
+        if (allocation_count(device) != 0)
+            throw std::runtime_error("Scene shutdown leaked VMA resources");
+    }
+
     void check_uploads(const VulkanDevice& device)
     {
         const auto mesh = make_color_box_mesh_data();
@@ -322,6 +482,7 @@ namespace
         if (allocation_count(device) != 0)
             throw std::runtime_error("Reflection cube upload/readback leaked VMA allocations");
         check_deferred_retirement(device, mesh);
+        check_scene_retirement(device, mesh);
         {
             VulkanUploads uploads{device};
             auto texture = uploads.upload_rgba(checkerboard(), TextureEncoding::srgb);

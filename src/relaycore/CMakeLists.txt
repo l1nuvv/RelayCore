@@ -41,6 +41,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/vulkan_swapchain.cpp
     render/vulkan_resources.cpp
     render/vulkan_uploads.cpp
+    render/vulkan_scene_submissions.cpp
     render/vulkan_mesh_renderer.cpp
     render/vma_impl.cpp
     render/mesh.cpp
@@ -108,6 +109,7 @@ set(RELAYCORE_ENGINE_HEADERS
     render/vulkan_swapchain.h
     render/vulkan_resources.h
     render/vulkan_uploads.h
+    render/vulkan_scene_submissions.h
     render/vulkan_mesh_renderer.h
     render/mesh.h
     render/reflection_probe.h

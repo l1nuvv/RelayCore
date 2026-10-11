@@ -12,6 +12,7 @@ namespace RelayCore::render
 {
     class VulkanDevice;
     class VulkanUploads;
+    class VulkanSceneSubmissions;
 
     enum class VulkanBufferMemory {
         device,
@@ -49,6 +50,7 @@ namespace RelayCore::render
 
     private:
         friend class VulkanUploads;
+        friend class VulkanSceneSubmissions;
         void reset() noexcept;
         VmaAllocator allocator_ = nullptr;
         VkBuffer buffer_ = VK_NULL_HANDLE;
@@ -78,6 +80,7 @@ namespace RelayCore::render
 
     private:
         friend class VulkanUploads;
+        friend class VulkanSceneSubmissions;
         VulkanTexture(const VulkanDevice& device, int width, int height, TextureEncoding encoding, bool cube = false);
         struct State {
             explicit State(const VulkanDevice& owner);

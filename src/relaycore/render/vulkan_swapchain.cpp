@@ -104,15 +104,25 @@ namespace RelayCore::render
         void wait_frame(Frame& frame)
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan frame fences");
-            wait_fence(frame.acquire_fence, frame.acquire_pending);
-            wait_fence(frame.render_fence, frame.render_pending);
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan acquire fence wait");
+                wait_fence(frame.acquire_fence, frame.acquire_pending);
+            }
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan presentation copy fence wait");
+                wait_fence(frame.render_fence, frame.render_pending);
+            }
             // A submission fence alone does not protect presentation's semaphore references.
-            wait_fence(frame.present_fence, frame.present_pending);
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan present fence wait");
+                wait_fence(frame.present_fence, frame.present_pending);
+            }
             profiler.collect();
         }
 
         void drain()
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan swapchain drain");
             for (auto& frame : frames)
                 wait_frame(frame);
         }
@@ -485,7 +495,10 @@ namespace RelayCore::render
             needs_recreation = acquisition == VK_SUBOPTIMAL_KHR || presentation != VK_SUCCESS;
             // Return ownership of the source image only after the GPU blit. Presentation owns only swapchain images.
             if (scene_image)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan presentation source image wait");
                 wait_fence(frame.render_fence, frame.render_pending);
+            }
             frame_index = (frame_index + 1) % frames.size();
             return presentation != VK_ERROR_OUT_OF_DATE_KHR;
         }

@@ -10,6 +10,7 @@
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_gpu_profiler.h"
+#include "relaycore/render/vulkan_scene_submissions.h"
 #include "relaycore/render/vulkan_uploads.h"
 
 #include <algorithm>
@@ -548,6 +549,8 @@ namespace RelayCore::render
             std::weak_ptr<const CpuColorMeshData> source;
             VulkanBuffer vertices, indices;
             uint32_t index_count;
+            VulkanSceneCompletion last_use{};
+            uint64_t recording = 0;
         };
         struct MaterialKey {
             const CpuRgbaTextureData* color;
@@ -578,6 +581,8 @@ namespace RelayCore::render
         };
         struct Material {
             VkDevice device;
+            VulkanSceneCompletion last_use{};
+            uint64_t recording = 0;
             std::weak_ptr<const CpuRgbaTextureData> source;
             std::weak_ptr<const CpuRgbaTextureData> normal_source;
             std::weak_ptr<const CpuRgbaTextureData> mr_source, occlusion_source, emissive_source;
@@ -603,6 +608,7 @@ namespace RelayCore::render
         const VulkanDevice& device;
         VulkanGpuProfiler profiler;
         VulkanUploads uploads;
+        VulkanSceneSubmissions submissions;
         VulkanBuffer material_data;
         VulkanBuffer light_data;
         VulkanBuffer reflection_data;
@@ -631,14 +637,17 @@ namespace RelayCore::render
         std::array<VkPipeline, 3> pipelines{};
         VkCommandPool pool = VK_NULL_HANDLE;
         VkCommandBuffer commands = VK_NULL_HANDLE;
-        VkFence fence = VK_NULL_HANDLE;
-        bool pending = false;
+        VulkanSceneCompletion pending{};
+        uint64_t recording = 0;
+        std::vector<Mesh*> used_meshes;
+        std::vector<Material*> used_materials;
+        std::vector<std::unique_ptr<Material>> retired_materials;
         uint32_t max_target_width = 0, max_target_height = 0;
         std::unique_ptr<MeshTarget> target;
         std::unique_ptr<ToneMapping> tone_mapping;
 
         explicit State(const VulkanDevice& owner) :
-            device(owner), profiler(owner, "RelayCore Vulkan scene"), uploads(owner),
+            device(owner), profiler(owner, "RelayCore Vulkan scene"), uploads(owner), submissions(owner),
             material_data(
                 owner,
                 sizeof(MaterialParameters),
@@ -664,20 +673,18 @@ namespace RelayCore::render
 
         void wait()
         {
-            if (!pending)
+            if (!pending.value)
                 return;
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan scene fence");
-                require_mesh_vk(
-                    vkWaitForFences(device.handle(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
-                    "Failed to wait for Vulkan mesh frame"
-                );
+                submissions.wait(pending);
             }
-            pending = false;
+            pending = {};
             profiler.collect();
         }
         ~State() noexcept
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan scene shutdown drain");
             try
             {
                 wait();
@@ -690,9 +697,8 @@ namespace RelayCore::render
                     ImGui_ImplVulkan_RemoveTexture(preview);
             if (pool)
                 vkDestroyCommandPool(device.handle(), pool, nullptr);
-            if (fence)
-                vkDestroyFence(device.handle(), fence, nullptr);
             materials.clear();
+            retired_materials.clear();
             for (const auto pipeline : pipelines)
                 if (pipeline)
                     vkDestroyPipeline(device.handle(), pipeline, nullptr);
@@ -1000,11 +1006,6 @@ namespace RelayCore::render
                 vkAllocateCommandBuffers(device.handle(), &command_info, &commands),
                 "Failed to allocate mesh commands"
             );
-            const VkFenceCreateInfo fence_info{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-            require_mesh_vk(
-                vkCreateFence(device.handle(), &fence_info, nullptr, &fence),
-                "Failed to create mesh frame fence"
-            );
             if (config.hdr_enabled)
             {
                 tone_mapping = std::make_unique<ToneMapping>(device.handle());
@@ -1180,7 +1181,10 @@ namespace RelayCore::render
             auto uploaded = uploads.upload_reflection(probe ? *probe : fallback);
             uploads.wait(uploaded.completion);
             // Material descriptors reference the shared cube. Frames are complete before replacing it.
-            materials.clear();
+            retire_materials();
+            if (reflection_texture.image())
+                submissions.retire(std::move(reflection_texture), submissions.last_submission());
+            collect_retired_resources();
             reflection_texture = std::move(uploaded.texture);
             reflection = std::move(probe);
             const std::array data{
@@ -1528,17 +1532,72 @@ namespace RelayCore::render
             return *materials.emplace(key, std::move(result)).first->second;
         }
 
+        void collect_retired_resources()
+        {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan material retirement collect");
+            const auto completed = submissions.completed();
+            std::erase_if(retired_materials, [completed](const auto& material) {
+                return material->last_use.value <= completed;
+            });
+            submissions.collect();
+        }
+
+        void retire_materials()
+        {
+            retired_materials.reserve(retired_materials.size() + materials.size());
+            for (auto& [key, material] : materials)
+                retired_materials.push_back(std::move(material));
+            materials.clear();
+        }
+
         void collect_expired_resources()
         {
-            std::erase_if(meshes, [](const auto& entry) {
-                return entry.second.source.expired();
-            });
-            std::erase_if(materials, [](const auto& entry) {
-                return entry.second->source.expired() || (entry.first.normal && entry.second->normal_source.expired())
-                       || (entry.first.mr_map && entry.second->mr_source.expired())
-                       || (entry.first.occlusion && entry.second->occlusion_source.expired())
-                       || (entry.first.emissive && entry.second->emissive_source.expired());
-            });
+            for (auto it = meshes.begin(); it != meshes.end();)
+            {
+                auto& mesh = it->second;
+                if (!mesh.source.expired())
+                {
+                    ++it;
+                    continue;
+                }
+                submissions.retire(std::move(mesh.vertices), mesh.last_use);
+                submissions.retire(std::move(mesh.indices), mesh.last_use);
+                it = meshes.erase(it);
+            }
+            for (auto it = materials.begin(); it != materials.end();)
+            {
+                const auto& key = it->first;
+                auto& material = it->second;
+                if (!material->source.expired() && (!key.normal || !material->normal_source.expired())
+                    && (!key.mr_map || !material->mr_source.expired())
+                    && (!key.occlusion || !material->occlusion_source.expired())
+                    && (!key.emissive || !material->emissive_source.expired()))
+                {
+                    ++it;
+                    continue;
+                }
+                retired_materials.push_back(std::move(material));
+                it = materials.erase(it);
+            }
+            collect_retired_resources();
+        }
+
+        void use(Mesh& mesh)
+        {
+            if (mesh.recording != recording)
+            {
+                used_meshes.push_back(&mesh);
+                mesh.recording = recording;
+            }
+        }
+
+        void use(Material& material)
+        {
+            if (material.recording != recording)
+            {
+                used_materials.push_back(&material);
+                material.recording = recording;
+            }
         }
 
         void prepare(const std::span<const RenderItem> items)
@@ -1572,21 +1631,22 @@ namespace RelayCore::render
             {
                 if ((!viewmodel && item.pass != pass) || !item.mesh)
                     continue;
-                const auto& geometry = meshes.at(item.mesh->cpu_data().get());
+                auto& geometry = meshes.at(item.mesh->cpu_data().get());
+                use(geometry);
                 const auto& texture = item.diffuse_texture ? *item.diffuse_texture : atlas_source;
-                const auto set = materials
-                                     .at(material_key(
-                                         texture,
-                                         item.normal_texture,
-                                         item.normal_scale,
-                                         item.metallic_roughness,
-                                         item.metallic_roughness_map,
-                                         item.occlusion_texture,
-                                         item.occlusion_strength,
-                                         item.emissive_texture,
-                                         item.emissive_factor
-                                     ))
-                                     ->set;
+                auto& surface = *materials.at(material_key(
+                    texture,
+                    item.normal_texture,
+                    item.normal_scale,
+                    item.metallic_roughness,
+                    item.metallic_roughness_map,
+                    item.occlusion_texture,
+                    item.occlusion_strength,
+                    item.emissive_texture,
+                    item.emissive_factor
+                ));
+                use(surface);
+                const auto set = surface.set;
                 const auto vertex = geometry.vertices.handle();
                 const VkDeviceSize offset = 0;
                 vkCmdBindVertexBuffers(commands, 0, 1, &vertex, &offset);
@@ -1692,6 +1752,7 @@ namespace RelayCore::render
                         continue;
                 }
                 auto& geometry = mesh(*item.mesh);
+                use(geometry);
                 ShadowPush push{.mvp = view_projection * item.model_matrix};
                 for (int row = 0; row < 3; ++row)
                     push.model_rows[row] = {
@@ -1872,7 +1933,13 @@ namespace RelayCore::render
 
         void begin_commands()
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan scene command reuse");
             wait();
+            ++recording;
+            used_meshes.clear();
+            used_materials.clear();
+            used_meshes.reserve(meshes.size());
+            used_materials.reserve(materials.size());
             require_mesh_vk(vkResetCommandPool(device.handle(), pool, 0), "Failed to reset mesh commands");
             const VkCommandBufferBeginInfo begin{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1884,18 +1951,14 @@ namespace RelayCore::render
         void submit_and_wait()
         {
             require_mesh_vk(vkEndCommandBuffer(commands), "Failed to end mesh frame");
-            require_mesh_vk(vkResetFences(device.handle(), 1, &fence), "Failed to reset mesh fence");
-            const VkCommandBufferSubmitInfo command{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-                .commandBuffer = commands
-            };
-            const VkSubmitInfo2 submit{
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-                .commandBufferInfoCount = 1,
-                .pCommandBufferInfos = &command
-            };
-            require_mesh_vk(vkQueueSubmit2(device.graphics_queue(), 1, &submit, fence), "Failed to submit mesh frame");
-            pending = true;
+            pending = submissions.submit(commands);
+            // Publish use only after successful submission; failed recording/prepare owns no GPU references.
+            for (auto* mesh : used_meshes)
+                mesh->last_use = pending;
+            for (auto* material : used_materials)
+                material->last_use = pending;
+            used_meshes.clear();
+            used_materials.clear();
             wait();
         }
 
