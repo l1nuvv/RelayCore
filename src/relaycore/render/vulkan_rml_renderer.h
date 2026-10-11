@@ -15,6 +15,7 @@ namespace RelayCore::render
         ~VulkanRmlRenderer() override;
         void begin_frame(int width, int height);
         void record(VkCommandBuffer commands);
+        [[nodiscard]] auto retain_render_resources() const -> std::shared_ptr<const void>;
         auto CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices)
             -> Rml::CompiledGeometryHandle override;
         void RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture)

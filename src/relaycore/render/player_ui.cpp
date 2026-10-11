@@ -241,6 +241,10 @@ namespace RelayCore::render
         state_->context->Update();
         state_->context->Render();
     }
+    auto PlayerUi::retain_render_resources() const -> std::shared_ptr<const void>
+    {
+        return state_->renderer.retain_render_resources();
+    }
     void PlayerUi::record(VkCommandBuffer commands)
     {
         state_->renderer.record(commands);

@@ -376,7 +376,7 @@ namespace RelayCore::render
             VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
             VkPipelineLayout layout = VK_NULL_HANDLE;
             VkDescriptorPool pool = VK_NULL_HANDLE;
-            VkDescriptorSet set = VK_NULL_HANDLE;
+            std::array<VkDescriptorSet, 2> sets{};
             VkSampler sampler = VK_NULL_HANDLE;
             VkPipeline pipeline = VK_NULL_HANDLE;
             explicit ToneMapping(const VkDevice owner) : device(owner) {}
@@ -425,28 +425,29 @@ namespace RelayCore::render
                     .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
                 };
                 require_mesh_vk(vkCreateSampler(device, &sampler_info, nullptr, &sampler), "HDR scene sampler");
-                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1};
+                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2};
                 const VkDescriptorPoolCreateInfo pool_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                    .maxSets = 1,
+                    .maxSets = 2,
                     .poolSizeCount = 1,
                     .pPoolSizes = &size
                 };
                 require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "HDR descriptor pool");
+                const std::array layouts{descriptor_layout, descriptor_layout};
                 const VkDescriptorSetAllocateInfo allocate{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                     .descriptorPool = pool,
-                    .descriptorSetCount = 1,
-                    .pSetLayouts = &descriptor_layout
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data()
                 };
-                require_mesh_vk(vkAllocateDescriptorSets(device, &allocate, &set), "HDR descriptor set");
+                require_mesh_vk(vkAllocateDescriptorSets(device, &allocate, sets.data()), "HDR descriptor set");
             }
-            void bind(const VkImageView view) const
+            void bind(const VkImageView view, const size_t slot) const
             {
                 const VkDescriptorImageInfo image{sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
                 const VkWriteDescriptorSet write{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = set,
+                    .dstSet = sets[slot],
                     .dstBinding = 0,
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -591,7 +592,7 @@ namespace RelayCore::render
             VulkanTexture texture, normal_texture, mr_texture, occlusion_texture, emissive_texture;
             VulkanBuffer surface_data;
             VkDescriptorPool pool = VK_NULL_HANDLE;
-            VkDescriptorSet set = VK_NULL_HANDLE;
+            std::array<VkDescriptorSet, 2> sets{};
             explicit Material(const VulkanDevice& owner) :
                 device(owner.handle()), surface_data(
                                             owner,
@@ -607,21 +608,65 @@ namespace RelayCore::render
             }
         };
 
+        struct Frame {
+            const VulkanDevice& device;
+            VulkanGpuProfiler profiler;
+            VulkanBuffer material_data, light_data, irradiance_data, frame_data, shadow_data;
+            VkCommandPool pool = VK_NULL_HANDLE;
+            std::array<VkCommandBuffer, 3> buffers{};
+            VkCommandBuffer commands = VK_NULL_HANDLE;
+            size_t command_index = 0;
+            VulkanSceneCompletion pending{};
+            std::unique_ptr<MeshTarget> target;
+            std::vector<std::shared_ptr<const void>> ui_resources;
+            explicit Frame(const VulkanDevice& owner) :
+                device(owner), profiler(owner, "RelayCore Vulkan scene"), material_data(
+                                                                              owner,
+                                                                              sizeof(MaterialParameters),
+                                                                              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                                              VulkanBufferMemory::upload
+                                                                          ),
+                light_data(
+                    owner,
+                    sizeof(LightParameters),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                ),
+                irradiance_data(
+                    owner,
+                    sizeof(IrradianceParameters),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                ),
+                frame_data(
+                    owner,
+                    sizeof(FrameParameters),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                ),
+                shadow_data(
+                    owner,
+                    sizeof(ShadowParameters),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                )
+            {}
+            ~Frame() noexcept
+            {
+                if (pool)
+                    vkDestroyCommandPool(device.handle(), pool, nullptr);
+            }
+        };
+
         const VulkanDevice& device;
-        VulkanGpuProfiler profiler;
         VulkanUploads uploads;
         VulkanSceneSubmissions submissions;
-        VulkanBuffer material_data;
-        VulkanBuffer light_data;
         VulkanBuffer reflection_data;
         VulkanTexture reflection_texture;
         std::shared_ptr<const ReflectionProbe> reflection;
-        VulkanBuffer irradiance_data;
         std::shared_ptr<const IrradianceProbeVolume> irradiance;
-        VulkanBuffer frame_data;
         float scene_time = 0;
         LightParameters lights{};
-        VulkanBuffer shadow_data;
         RendererConfig renderer_config{};
         MaterialParameters material_parameters{};
         std::array<VkDescriptorSet, 2> shadow_previews{};
@@ -637,52 +682,58 @@ namespace RelayCore::render
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
         std::array<VkPipeline, 3> pipelines{};
-        VkCommandPool pool = VK_NULL_HANDLE;
-        VkCommandBuffer commands = VK_NULL_HANDLE;
-        VulkanSceneCompletion pending{};
         uint64_t recording = 0;
         std::vector<Mesh*> used_meshes;
         std::vector<Material*> used_materials;
         std::vector<std::unique_ptr<Material>> retired_materials;
         uint32_t max_target_width = 0, max_target_height = 0;
-        std::unique_ptr<MeshTarget> target;
         std::unique_ptr<ToneMapping> tone_mapping;
 
+        std::array<Frame, 2> frames;
+        size_t frame_index = 0;
+        auto frame() noexcept -> Frame&
+        {
+            return frames[frame_index];
+        }
+        auto frame() const noexcept -> const Frame&
+        {
+            return frames[frame_index];
+        }
+
         explicit State(const VulkanDevice& owner) :
-            device(owner), profiler(owner, "RelayCore Vulkan scene"), uploads(owner), submissions(owner),
-            material_data(
-                owner,
-                sizeof(MaterialParameters),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VulkanBufferMemory::upload
-            ),
-            light_data(owner, sizeof(LightParameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload),
-            reflection_data(
-                owner,
-                sizeof(glm::vec4) * 3,
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VulkanBufferMemory::upload
-            ),
-            irradiance_data(
-                owner,
-                sizeof(IrradianceParameters),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VulkanBufferMemory::upload
-            ),
-            frame_data(owner, sizeof(FrameParameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload),
-            shadow_data(owner, sizeof(ShadowParameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VulkanBufferMemory::upload)
+            device(owner), uploads(owner), submissions(owner), reflection_data(
+                                                                   owner,
+                                                                   sizeof(glm::vec4) * 3,
+                                                                   VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                                   VulkanBufferMemory::upload
+                                                               ),
+            frames{Frame{owner}, Frame{owner}}
         {}
 
-        void wait()
+        void wait_frame(Frame& slot)
         {
-            if (!pending.value)
-                return;
+            if (slot.pending.value)
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan scene fence");
-                submissions.wait(pending);
+                submissions.wait(slot.pending);
+                slot.pending = {};
+                slot.profiler.collect();
             }
-            pending = {};
-            profiler.collect();
+            slot.ui_resources.clear();
+        }
+        void wait()
+        {
+            for (auto& slot : frames)
+                wait_frame(slot);
+        }
+        void select_frame(const bool synchronous)
+        {
+            if (!synchronous)
+                frame_index = (frame_index + 1) % frames.size();
+            auto& slot = frame();
+            wait_frame(slot);
+            require_mesh_vk(vkResetCommandPool(device.handle(), slot.pool, 0), "Failed to reset scene slot");
+            slot.command_index = 0;
         }
         ~State() noexcept
         {
@@ -698,8 +749,6 @@ namespace RelayCore::render
             for (auto preview : shadow_previews)
                 if (preview)
                     ImGui_ImplVulkan_RemoveTexture(preview);
-            if (pool)
-                vkDestroyCommandPool(device.handle(), pool, nullptr);
             materials.clear();
             retired_materials.clear();
             for (const auto pipeline : pipelines)
@@ -991,24 +1040,27 @@ namespace RelayCore::render
                 vkCreatePipelineLayout(device.handle(), &layout_info, nullptr, &layout),
                 "Failed to create Vulkan mesh pipeline layout"
             );
-            const VkCommandPoolCreateInfo pool_info{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                .queueFamilyIndex = device.capabilities().graphics_queue_family,
-            };
-            require_mesh_vk(
-                vkCreateCommandPool(device.handle(), &pool_info, nullptr, &pool),
-                "Failed to create mesh commands"
-            );
-            const VkCommandBufferAllocateInfo command_info{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                .commandPool = pool,
-                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                .commandBufferCount = 1,
-            };
-            require_mesh_vk(
-                vkAllocateCommandBuffers(device.handle(), &command_info, &commands),
-                "Failed to allocate mesh commands"
-            );
+            for (auto& slot : frames)
+            {
+                const VkCommandPoolCreateInfo pool_info{
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                    .queueFamilyIndex = device.capabilities().graphics_queue_family
+                };
+                require_mesh_vk(
+                    vkCreateCommandPool(device.handle(), &pool_info, nullptr, &slot.pool),
+                    "Failed to create scene slot pool"
+                );
+                const VkCommandBufferAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                    .commandPool = slot.pool,
+                    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                    .commandBufferCount = static_cast<uint32_t>(slot.buffers.size())
+                };
+                require_mesh_vk(
+                    vkAllocateCommandBuffers(device.handle(), &allocation, slot.buffers.data()),
+                    "Failed to allocate scene slot commands"
+                );
+            }
             if (config.hdr_enabled)
             {
                 tone_mapping = std::make_unique<ToneMapping>(device.handle());
@@ -1326,12 +1378,12 @@ namespace RelayCore::render
                 };
                 result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
                 const std::array sizes{
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 7},
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 14},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20}
                 };
                 const VkDescriptorPoolCreateInfo pool_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                    .maxSets = 1,
+                    .maxSets = 2,
                     .poolSizeCount = static_cast<uint32_t>(sizes.size()),
                     .pPoolSizes = sizes.data(),
                 };
@@ -1339,212 +1391,236 @@ namespace RelayCore::render
                     vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &result->pool),
                     "Failed to create mesh material pool"
                 );
+                const std::array layouts{descriptor_layout, descriptor_layout};
                 const VkDescriptorSetAllocateInfo allocation{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                     .descriptorPool = result->pool,
-                    .descriptorSetCount = 1,
-                    .pSetLayouts = &descriptor_layout,
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data(),
                 };
                 require_mesh_vk(
-                    vkAllocateDescriptorSets(device.handle(), &allocation, &result->set),
+                    vkAllocateDescriptorSets(device.handle(), &allocation, result->sets.data()),
                     "Failed to allocate mesh material descriptors"
                 );
-                const VkDescriptorBufferInfo buffer{material_data.handle(), 0, material_data.size()};
-                const VkDescriptorBufferInfo lighting{light_data.handle(), 0, light_data.size()};
-                const VkDescriptorBufferInfo irradiance_buffer{irradiance_data.handle(), 0, irradiance_data.size()};
-                const VkDescriptorBufferInfo shadow_buffer{shadow_data.handle(), 0, shadow_data.size()};
-                const VkDescriptorBufferInfo frame_buffer{frame_data.handle(), 0, frame_data.size()};
-                std::array<VkDescriptorImageInfo, 4> shadow_images{};
-                for (size_t i = 0; i < 4; ++i)
+                for (size_t slot = 0; slot < frames.size(); ++slot)
                 {
-                    const auto& map = i < 3 ? *shadow_maps[i] : *point_shadows;
-                    shadow_images[i] = {map.sampler, map.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL};
+                    const VkDescriptorBufferInfo buffer{
+                        frames[slot].material_data.handle(),
+                        0,
+                        frames[slot].material_data.size()
+                    };
+                    const VkDescriptorBufferInfo lighting{
+                        frames[slot].light_data.handle(),
+                        0,
+                        frames[slot].light_data.size()
+                    };
+                    const VkDescriptorBufferInfo irradiance_buffer{
+                        frames[slot].irradiance_data.handle(),
+                        0,
+                        frames[slot].irradiance_data.size()
+                    };
+                    const VkDescriptorBufferInfo shadow_buffer{
+                        frames[slot].shadow_data.handle(),
+                        0,
+                        frames[slot].shadow_data.size()
+                    };
+                    const VkDescriptorBufferInfo frame_buffer{
+                        frames[slot].frame_data.handle(),
+                        0,
+                        frames[slot].frame_data.size()
+                    };
+                    std::array<VkDescriptorImageInfo, 4> shadow_images{};
+                    for (size_t i = 0; i < 4; ++i)
+                    {
+                        const auto& map = i < 3 ? *shadow_maps[i] : *point_shadows;
+                        shadow_images[i] = {map.sampler, map.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL};
+                    }
+                    const VkDescriptorImageInfo image{
+                        result->texture.sampler(),
+                        result->texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const auto& normal_image_texture = normal ? result->normal_texture : result->texture;
+                    const VkDescriptorImageInfo normal_image{
+                        normal_image_texture.sampler(),
+                        normal_image_texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const auto& mr_image_texture = mr_map ? result->mr_texture : result->texture;
+                    const auto& ao_image_texture = occlusion ? result->occlusion_texture : result->texture;
+                    const VkDescriptorImageInfo mr_image{
+                        mr_image_texture.sampler(),
+                        mr_image_texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const VkDescriptorImageInfo ao_image{
+                        ao_image_texture.sampler(),
+                        ao_image_texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const VkDescriptorBufferInfo normal_buffer{
+                        result->surface_data.handle(),
+                        0,
+                        result->surface_data.size()
+                    };
+                    const VkDescriptorImageInfo reflection_image{
+                        reflection_texture.sampler(),
+                        reflection_texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const VkDescriptorBufferInfo reflection_buffer{reflection_data.handle(), 0, reflection_data.size()};
+                    const auto& emissive_image_texture = emissive ? result->emissive_texture : result->texture;
+                    const VkDescriptorImageInfo emissive_image{
+                        emissive_image_texture.sampler(),
+                        emissive_image_texture.view(),
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    const std::array writes{
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 16,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &emissive_image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 14,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &reflection_image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 15,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &reflection_buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 12,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &mr_image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 13,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &ao_image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 11,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &irradiance_buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 9,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &normal_image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 10,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &normal_buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 8,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &frame_buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 0,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 1,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &image
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 2,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &lighting
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 3,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .pBufferInfo = &shadow_buffer
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 4,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &shadow_images[0]
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 5,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &shadow_images[1]
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 6,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &shadow_images[2]
+                        },
+                        VkWriteDescriptorSet{
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = result->sets[slot],
+                            .dstBinding = 7,
+                            .descriptorCount = 1,
+                            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .pImageInfo = &shadow_images[3]
+                        },
+                    };
+                    vkUpdateDescriptorSets(
+                        device.handle(),
+                        static_cast<uint32_t>(writes.size()),
+                        writes.data(),
+                        0,
+                        nullptr
+                    );
                 }
-                const VkDescriptorImageInfo image{
-                    result->texture.sampler(),
-                    result->texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const auto& normal_image_texture = normal ? result->normal_texture : result->texture;
-                const VkDescriptorImageInfo normal_image{
-                    normal_image_texture.sampler(),
-                    normal_image_texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const auto& mr_image_texture = mr_map ? result->mr_texture : result->texture;
-                const auto& ao_image_texture = occlusion ? result->occlusion_texture : result->texture;
-                const VkDescriptorImageInfo mr_image{
-                    mr_image_texture.sampler(),
-                    mr_image_texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const VkDescriptorImageInfo ao_image{
-                    ao_image_texture.sampler(),
-                    ao_image_texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const VkDescriptorBufferInfo normal_buffer{
-                    result->surface_data.handle(),
-                    0,
-                    result->surface_data.size()
-                };
-                const VkDescriptorImageInfo reflection_image{
-                    reflection_texture.sampler(),
-                    reflection_texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const VkDescriptorBufferInfo reflection_buffer{reflection_data.handle(), 0, reflection_data.size()};
-                const auto& emissive_image_texture = emissive ? result->emissive_texture : result->texture;
-                const VkDescriptorImageInfo emissive_image{
-                    emissive_image_texture.sampler(),
-                    emissive_image_texture.view(),
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                };
-                const std::array writes{
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 16,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &emissive_image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 14,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &reflection_image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 15,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &reflection_buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 12,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &mr_image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 13,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &ao_image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 11,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &irradiance_buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 9,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &normal_image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 10,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &normal_buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 8,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &frame_buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 0,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 1,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &image
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 2,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &lighting
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 3,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &shadow_buffer
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 4,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &shadow_images[0]
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 5,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &shadow_images[1]
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 6,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &shadow_images[2]
-                    },
-                    VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = result->set,
-                        .dstBinding = 7,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .pImageInfo = &shadow_images[3]
-                    },
-                };
-                vkUpdateDescriptorSets(
-                    device.handle(),
-                    static_cast<uint32_t>(writes.size()),
-                    writes.data(),
-                    0,
-                    nullptr
-                );
                 result->upload_completion = uploads.dependency().value;
                 return *result;
             } catch (...)
@@ -1657,7 +1733,7 @@ namespace RelayCore::render
             const bool viewmodel = false
         )
         {
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[static_cast<size_t>(pass)]);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[static_cast<size_t>(pass)]);
             for (const auto& item : items)
             {
                 if ((!viewmodel && item.pass != pass) || !item.mesh)
@@ -1677,12 +1753,21 @@ namespace RelayCore::render
                     item.emissive_factor
                 ));
                 use(surface);
-                const auto set = surface.set;
+                const auto set = surface.sets[frame_index];
                 const auto vertex = geometry.vertices.handle();
                 const VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(commands, 0, 1, &vertex, &offset);
-                vkCmdBindIndexBuffer(commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+                vkCmdBindVertexBuffers(frame().commands, 0, 1, &vertex, &offset);
+                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    0,
+                    1,
+                    &set,
+                    0,
+                    nullptr
+                );
                 const auto position = camera.position();
                 DrawPush push{
                     camera.view_projection_matrix() * item.model_matrix,
@@ -1696,14 +1781,14 @@ namespace RelayCore::render
                     for (int col = 0; col < 4; ++col)
                         push.model_rows[row][col] = item.model_matrix[col][row];
                 vkCmdPushConstants(
-                    commands,
+                    frame().commands,
                     layout,
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                     0,
                     sizeof(push),
                     &push
                 );
-                vkCmdDrawIndexed(commands, geometry.index_count, 1, 0, 0, 0);
+                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
             }
         }
 
@@ -1735,7 +1820,7 @@ namespace RelayCore::render
                 .imageMemoryBarrierCount = 1,
                 .pImageMemoryBarriers = &barrier
             };
-            vkCmdPipelineBarrier2(commands, &info);
+            vkCmdPipelineBarrier2(frame().commands, &info);
         }
         void draw_shadow(
             const std::span<const RenderItem> items,
@@ -1746,7 +1831,7 @@ namespace RelayCore::render
             const LocalLight* light = nullptr
         )
         {
-            RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "Shadow depth draws");
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Shadow depth draws");
             const VkRenderingAttachmentInfo depth{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
                 .imageView = map.layer_views[layer],
@@ -1764,10 +1849,10 @@ namespace RelayCore::render
             // Positive height preserves GL shadow texture coordinates, including the point-face convention.
             const VkViewport viewport{0, 0, float(map.extent.width), float(map.extent.height), 0, 1};
             const VkRect2D scissor{{0, 0}, map.extent};
-            vkCmdSetViewport(commands, 0, 1, &viewport);
-            vkCmdSetScissor(commands, 0, 1, &scissor);
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipelines[kind]);
-            vkCmdBeginRendering(commands, &info);
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipelines[kind]);
+            vkCmdBeginRendering(frame().commands, &info);
             const auto planes = shadow_frustum_planes(view_projection);
             for (const auto& item : items)
             {
@@ -1795,7 +1880,7 @@ namespace RelayCore::render
                 if (light)
                     push.light_position_radius = {light->position, light->radius};
                 vkCmdPushConstants(
-                    commands,
+                    frame().commands,
                     layout,
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                     0,
@@ -1804,15 +1889,15 @@ namespace RelayCore::render
                 );
                 const auto buffer = geometry.vertices.handle();
                 constexpr VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(commands, 0, 1, &buffer, &offset);
-                vkCmdBindIndexBuffer(commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(commands, geometry.index_count, 1, 0, 0, 0);
+                vkCmdBindVertexBuffers(frame().commands, 0, 1, &buffer, &offset);
+                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
             }
-            vkCmdEndRendering(commands);
+            vkCmdEndRendering(frame().commands);
         }
         void render_shadows(const std::span<const RenderItem> items, const PerspectiveCamera& camera)
         {
-            RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "Shadows");
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Shadows");
             const auto& config = renderer_config;
             shadow_parameters = {};
             shadow_parameters.view_projection[0] = shadow_light_view_projection(
@@ -1861,7 +1946,7 @@ namespace RelayCore::render
                 const VkClearDepthStencilValue clear{1, 0};
                 const VkImageSubresourceRange range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, map.layers};
                 vkCmdClearDepthStencilImage(
-                    commands,
+                    frame().commands,
                     map.image,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     &clear,
@@ -1924,7 +2009,7 @@ namespace RelayCore::render
                 }
             }
             end_map(*point_shadows);
-            shadow_data.write(std::as_bytes(std::span{&shadow_parameters, 1}));
+            frame().shadow_data.write(std::as_bytes(std::span{&shadow_parameters, 1}));
         }
 
         void set_config(const RendererConfig& config)
@@ -1959,44 +2044,53 @@ namespace RelayCore::render
             };
             parameters.grading = {config.postfx_saturation, config.hdr_enabled ? 1.0F : 0.0F, 0, 0};
             parameters.local.w = std::max(config.indirect_bounce_strength, 0.0F);
-            material_data.write(std::as_bytes(std::span{&parameters, 1}));
         }
 
         void begin_commands()
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan scene command reuse");
-            wait();
+            auto& slot = frame();
+            if (slot.command_index == slot.buffers.size())
+            {
+                wait_frame(slot);
+                require_mesh_vk(
+                    vkResetCommandPool(device.handle(), slot.pool, 0),
+                    "Failed to reset scene slot commands"
+                );
+                slot.command_index = 0;
+            }
+            slot.commands = slot.buffers[slot.command_index++];
             ++recording;
             used_meshes.clear();
             used_materials.clear();
             used_meshes.reserve(meshes.size());
             used_materials.reserve(materials.size());
-            require_mesh_vk(vkResetCommandPool(device.handle(), pool, 0), "Failed to reset mesh commands");
             const VkCommandBufferBeginInfo begin{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
             };
-            require_mesh_vk(vkBeginCommandBuffer(commands, &begin), "Failed to begin mesh commands");
+            require_mesh_vk(vkBeginCommandBuffer(frame().commands, &begin), "Failed to begin mesh commands");
         }
 
-        void submit_and_wait()
+        void submit_and_wait(const bool synchronous = true)
         {
-            require_mesh_vk(vkEndCommandBuffer(commands), "Failed to end mesh frame");
-            pending = submissions.submit(commands, uploads.dependency());
+            require_mesh_vk(vkEndCommandBuffer(frame().commands), "Failed to end mesh frame");
+            frame().pending = submissions.submit(frame().commands, uploads.dependency());
             // Publish use only after successful submission; failed recording/prepare owns no GPU references.
             for (auto* mesh : used_meshes)
-                mesh->last_use = pending;
+                mesh->last_use = frame().pending;
             for (auto* material : used_materials)
-                material->last_use = pending;
+                material->last_use = frame().pending;
             used_meshes.clear();
             used_materials.clear();
-            wait();
+            if (synchronous)
+                wait_frame(frame());
             uploads.collect();
         }
 
         void record_tone_mapping()
         {
-            RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "HDR tone mapping");
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "HDR tone mapping");
             const std::array barriers{
                 VkImageMemoryBarrier2{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -2008,7 +2102,7 @@ namespace RelayCore::render
                     .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .image = target->hdr_scene->image,
+                    .image = frame().target->hdr_scene->image,
                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
                 },
                 VkImageMemoryBarrier2{
@@ -2021,7 +2115,7 @@ namespace RelayCore::render
                     .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .image = target->color.image,
+                    .image = frame().target->color.image,
                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
                 }
             };
@@ -2030,68 +2124,79 @@ namespace RelayCore::render
                 .imageMemoryBarrierCount = uint32_t(barriers.size()),
                 .pImageMemoryBarriers = barriers.data()
             };
-            vkCmdPipelineBarrier2(commands, &dependency);
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
             const VkRenderingAttachmentInfo color{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = target->color.view,
+                .imageView = frame().target->color.view,
                 .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE
             };
             const VkRenderingInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {{0, 0}, target->extent},
+                .renderArea = {{0, 0}, frame().target->extent},
                 .layerCount = 1,
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
             };
-            vkCmdBeginRendering(commands, &rendering);
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, tone_mapping->pipeline);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, tone_mapping->pipeline);
             vkCmdBindDescriptorSets(
-                commands,
+                frame().commands,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 tone_mapping->layout,
                 0,
                 1,
-                &tone_mapping->set,
+                &tone_mapping->sets[frame_index],
                 0,
                 nullptr
             );
             const ToneMappingPush push{
                 material_parameters.postfx,
-                {float(target->extent.width), float(target->extent.height), scene_time, renderer_config.exposure_ev},
+                {float(frame().target->extent.width),
+                 float(frame().target->extent.height),
+                 scene_time,
+                 renderer_config.exposure_ev},
                 material_parameters.grading
             };
-            vkCmdPushConstants(commands, tone_mapping->layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
-            vkCmdDraw(commands, 3, 1, 0, 0);
-            vkCmdEndRendering(commands);
+            vkCmdPushConstants(
+                frame().commands,
+                tone_mapping->layout,
+                VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
         }
 
         void record_ui(ImDrawData* ui)
         {
-            RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "ImGui");
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "ImGui");
             const VkRenderingAttachmentInfo color{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = target->color.unorm_view ? target->color.unorm_view : target->color.view,
+                .imageView =
+                    frame().target->color.unorm_view ? frame().target->color.unorm_view : frame().target->color.view,
                 .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE
             };
             const VkRenderingInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {{0, 0}, target->extent},
+                .renderArea = {{0, 0}, frame().target->extent},
                 .layerCount = 1,
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
             };
-            vkCmdBeginRendering(commands, &rendering);
-            ImGui_ImplVulkan_RenderDrawData(ui, commands);
-            vkCmdEndRendering(commands);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            ImGui_ImplVulkan_RenderDrawData(ui, frame().commands);
+            vkCmdEndRendering(frame().commands);
         }
 
         void append_ui(ImDrawData* ui, PlayerUi* player_ui = nullptr)
         {
-            if (!target)
+            if (!frame().target)
                 throw std::logic_error("Vulkan UI requires a prepared scene");
             if (!ui && !player_ui)
                 return;
@@ -2106,7 +2211,7 @@ namespace RelayCore::render
                 .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = target->color.image,
+                .image = frame().target->color.image,
                 .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
             };
             const VkDependencyInfo dependency{
@@ -2114,27 +2219,28 @@ namespace RelayCore::render
                 .imageMemoryBarrierCount = 1,
                 .pImageMemoryBarriers = &barrier
             };
-            vkCmdPipelineBarrier2(commands, &dependency);
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
             if (player_ui)
             {
-                RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "RmlUi");
+                RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "RmlUi");
                 const VkRenderingAttachmentInfo color{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = target->color.unorm_view ? target->color.unorm_view : target->color.view,
+                    .imageView = frame().target->color.unorm_view ? frame().target->color.unorm_view
+                                                                  : frame().target->color.view,
                     .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE
                 };
                 const VkRenderingInfo rendering{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                    .renderArea = {{0, 0}, target->extent},
+                    .renderArea = {{0, 0}, frame().target->extent},
                     .layerCount = 1,
                     .colorAttachmentCount = 1,
                     .pColorAttachments = &color
                 };
-                vkCmdBeginRendering(commands, &rendering);
-                player_ui->record(commands);
-                vkCmdEndRendering(commands);
+                vkCmdBeginRendering(frame().commands, &rendering);
+                player_ui->record(frame().commands);
+                vkCmdEndRendering(frame().commands);
             } else
                 record_ui(ui);
             barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -2143,21 +2249,23 @@ namespace RelayCore::render
             barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
             barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            vkCmdPipelineBarrier2(commands, &dependency);
-            submit_and_wait();
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
+            if (player_ui)
+                frame().ui_resources.push_back(player_ui->retain_render_resources());
+            submit_and_wait(!player_ui);
         }
 
         void record_readback()
         {
             const VkBufferImageCopy copy{
                 .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                .imageExtent = {target->extent.width, target->extent.height, 1}
+                .imageExtent = {frame().target->extent.width, frame().target->extent.height, 1}
             };
             vkCmdCopyImageToBuffer(
-                commands,
-                target->color.image,
+                frame().commands,
+                frame().target->color.image,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                target->readback.handle(),
+                frame().target->readback.handle(),
                 1,
                 &copy
             );
@@ -2173,12 +2281,12 @@ namespace RelayCore::render
                 .memoryBarrierCount = 1,
                 .pMemoryBarriers = &host
             };
-            vkCmdPipelineBarrier2(commands, &host_info);
+            vkCmdPipelineBarrier2(frame().commands, &host_info);
         }
 
         auto capture_shadow_depth(size_t cascade) -> std::vector<float>
         {
-            if (cascade >= 2 || !target)
+            if (cascade >= 2 || !frame().target)
                 throw std::logic_error("Shadow capture requires a prepared directional cascade");
             const auto& map = *shadow_maps[cascade];
             VulkanBuffer readback{
@@ -2206,13 +2314,13 @@ namespace RelayCore::render
                 .imageMemoryBarrierCount = 1,
                 .pImageMemoryBarriers = &barrier
             };
-            vkCmdPipelineBarrier2(commands, &dependency);
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
             const VkBufferImageCopy copy{
                 .imageSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1},
                 .imageExtent = {map.extent.width, map.extent.height, 1}
             };
             vkCmdCopyImageToBuffer(
-                commands,
+                frame().commands,
                 map.image,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 readback.handle(),
@@ -2225,7 +2333,7 @@ namespace RelayCore::render
             barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
             barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-            vkCmdPipelineBarrier2(commands, &dependency);
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
             const VkMemoryBarrier2 host{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
                 .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -2238,7 +2346,7 @@ namespace RelayCore::render
                 .memoryBarrierCount = 1,
                 .pMemoryBarriers = &host
             };
-            vkCmdPipelineBarrier2(commands, &host_info);
+            vkCmdPipelineBarrier2(frame().commands, &host_info);
             submit_and_wait();
             std::vector<uint32_t> packed(size_t(map.extent.width) * map.extent.height);
             readback.read(std::as_writable_bytes(std::span{packed}));
@@ -2251,14 +2359,14 @@ namespace RelayCore::render
 
         auto capture_prepared_image() -> CpuRgbaTextureData
         {
-            if (!target)
+            if (!frame().target)
                 throw std::logic_error("Vulkan capture requires a prepared scene");
             begin_commands();
             record_readback();
             submit_and_wait();
-            CpuRgbaTextureData output{int(target->extent.width), int(target->extent.height), {}};
+            CpuRgbaTextureData output{int(frame().target->extent.width), int(frame().target->extent.height), {}};
             output.pixels.resize(size_t(output.width) * output.height * 4);
-            target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
+            frame().target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
             return output;
         }
 
@@ -2277,8 +2385,9 @@ namespace RelayCore::render
                 throw std::invalid_argument("Vulkan mesh target requires positive dimensions");
             if (static_cast<uint32_t>(width) > max_target_width || static_cast<uint32_t>(height) > max_target_height)
                 throw std::invalid_argument("Vulkan mesh target exceeds the device framebuffer/image limits");
-            wait();
-            light_data.write(std::as_bytes(std::span{&lights, 1}));
+            select_frame(capture || ui);
+            frame().material_data.write(std::as_bytes(std::span{&material_parameters, 1}));
+            frame().light_data.write(std::as_bytes(std::span{&lights, 1}));
             IrradianceParameters indirect{};
             if (irradiance)
             {
@@ -2289,11 +2398,11 @@ namespace RelayCore::render
                     for (std::size_t sh = 0; sh < 9; ++sh)
                         indirect.coefficients[probe * 9 + sh] = {irradiance->probes[probe][sh], 0};
             }
-            irradiance_data.write(std::as_bytes(std::span{&indirect, 1}));
-            const FrameParameters frame{
+            frame().irradiance_data.write(std::as_bytes(std::span{&indirect, 1}));
+            const FrameParameters frame_parameters{
                 {float(width), float(height), scene_time, renderer_config.shadow_debug_cascades ? 1.0F : 0.0F}
             };
-            frame_data.write(std::as_bytes(std::span{&frame, 1}));
+            frame().frame_data.write(std::as_bytes(std::span{&frame_parameters, 1}));
             collect_expired_resources();
             prepare(items);
             // Opaque shadow pipelines consume geometry only.
@@ -2303,9 +2412,10 @@ namespace RelayCore::render
             prepare(viewmodel);
             uploads.collect();
             const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-            if (!target || target->extent.width != extent.width || target->extent.height != extent.height)
+            if (!frame().target || frame().target->extent.width != extent.width
+                || frame().target->extent.height != extent.height)
             {
-                target = std::make_unique<MeshTarget>(
+                frame().target = std::make_unique<MeshTarget>(
                     device,
                     extent,
                     scene_format(),
@@ -2313,15 +2423,15 @@ namespace RelayCore::render
                     static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
                 );
                 if (tone_mapping)
-                    tone_mapping->bind(target->hdr_scene->view);
+                    tone_mapping->bind(frame().target->hdr_scene->view, frame_index);
             }
             CpuRgbaTextureData output{width, height, {}};
             if (capture)
                 output.pixels.resize(size_t(width) * height * 4);
-            auto& scene_image = target->hdr_scene ? *target->hdr_scene : target->color;
+            auto& scene_image = frame().target->hdr_scene ? *frame().target->hdr_scene : frame().target->color;
             begin_commands();
             {
-                RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "Scene frame");
+                RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Scene frame");
                 render_shadows(shadow_casters, camera);
                 std::array<VkImageMemoryBarrier2, 3> barriers{
                     VkImageMemoryBarrier2{
@@ -2349,31 +2459,33 @@ namespace RelayCore::render
                         .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .image = target->depth.image,
+                        .image = frame().target->depth.image,
                         .subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}
                     },
                 };
-                if (target->multisample_scene)
+                if (frame().target->multisample_scene)
                 {
                     barriers[2] = barriers[0];
-                    barriers[2].image = target->multisample_scene->image;
+                    barriers[2].image = frame().target->multisample_scene->image;
                 }
                 VkDependencyInfo dependency{
                     .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .imageMemoryBarrierCount = target->multisample_scene ? 3u : 2u,
+                    .imageMemoryBarrierCount = frame().target->multisample_scene ? 3u : 2u,
                     .pImageMemoryBarriers = barriers.data()
                 };
-                vkCmdPipelineBarrier2(commands, &dependency);
+                vkCmdPipelineBarrier2(frame().commands, &dependency);
                 const auto clear_rgb = visual_rgb_for_pipeline(
                     {renderer_config.clear_r, renderer_config.clear_g, renderer_config.clear_b},
                     color_pipeline
                 );
                 VkRenderingAttachmentInfo color{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = target->multisample_scene ? target->multisample_scene->view : scene_image.view,
+                    .imageView =
+                        frame().target->multisample_scene ? frame().target->multisample_scene->view : scene_image.view,
                     .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    .resolveMode = target->multisample_scene ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE,
-                    .resolveImageView = target->multisample_scene ? scene_image.view : VK_NULL_HANDLE,
+                    .resolveMode =
+                        frame().target->multisample_scene ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE,
+                    .resolveImageView = frame().target->multisample_scene ? scene_image.view : VK_NULL_HANDLE,
                     .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -2381,7 +2493,7 @@ namespace RelayCore::render
                 };
                 const VkRenderingAttachmentInfo depth{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = target->depth.view,
+                    .imageView = frame().target->depth.view,
                     .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -2405,18 +2517,18 @@ namespace RelayCore::render
                     1
                 };
                 const VkRect2D scissor{{0, 0}, extent};
-                vkCmdSetViewport(commands, 0, 1, &viewport);
-                vkCmdSetScissor(commands, 0, 1, &scissor);
-                vkCmdBeginRendering(commands, &rendering);
+                vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+                vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                vkCmdBeginRendering(frame().commands, &rendering);
                 {
-                    RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "World passes");
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "World passes");
                     for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
                         draw(items, camera, pass);
                 }
-                vkCmdEndRendering(commands);
+                vkCmdEndRendering(frame().commands);
                 if (!viewmodel.empty())
                 {
-                    RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "Viewmodel");
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Viewmodel");
                     VkMemoryBarrier2 reuse{
                         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
                         .srcStageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
@@ -2432,17 +2544,17 @@ namespace RelayCore::render
                         .memoryBarrierCount = 1,
                         .pMemoryBarriers = &reuse
                     };
-                    vkCmdPipelineBarrier2(commands, &reuse_info);
+                    vkCmdPipelineBarrier2(frame().commands, &reuse_info);
                     color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-                    vkCmdBeginRendering(commands, &rendering);
+                    vkCmdBeginRendering(frame().commands, &rendering);
                     draw(viewmodel, camera, RenderPass::Opaque, true);
-                    vkCmdEndRendering(commands);
+                    vkCmdEndRendering(frame().commands);
                 }
                 if (tone_mapping)
                     record_tone_mapping();
                 if (ui)
                 {
-                    RELAYCORE_PROFILE_VK_ZONE(profiler, commands, "ImGui");
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "ImGui");
                     const VkMemoryBarrier2 reuse{
                         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
                         .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -2455,11 +2567,11 @@ namespace RelayCore::render
                         .memoryBarrierCount = 1,
                         .pMemoryBarriers = &reuse
                     };
-                    vkCmdPipelineBarrier2(commands, &reuse_info);
+                    vkCmdPipelineBarrier2(frame().commands, &reuse_info);
                     record_ui(ui);
                 }
                 auto& transfer = barriers[0];
-                transfer.image = target->color.image;
+                transfer.image = frame().target->color.image;
                 transfer.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
                 transfer.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
                 transfer.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
@@ -2467,13 +2579,13 @@ namespace RelayCore::render
                 transfer.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
                 dependency.imageMemoryBarrierCount = 1;
-                vkCmdPipelineBarrier2(commands, &dependency);
+                vkCmdPipelineBarrier2(frame().commands, &dependency);
                 if (capture)
                     record_readback();
             }
-            submit_and_wait();
+            submit_and_wait(capture || ui);
             if (capture)
-                target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
+                frame().target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
             return output;
         }
     };
@@ -2539,7 +2651,7 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::append_player_ui(PlayerUi& ui)
     {
-        const auto extent = state_->target->extent;
+        const auto extent = state_->frame().target->extent;
         ui.prepare(int(extent.width), int(extent.height));
         state_->append_ui(nullptr, &ui);
     }
@@ -2547,15 +2659,25 @@ namespace RelayCore::render
     {
         return state_->capture_prepared_image();
     }
+    void VulkanMeshRenderer::submit_presentation(
+        const VkCommandBuffer commands,
+        const VkSemaphoreSubmitInfo acquired,
+        const VkSemaphoreSubmitInfo rendered,
+        const VkFence fence
+    )
+    {
+        // Copy completion extends this slot's source-image and UI-resource lifetime.
+        state_->frame().pending = state_->submissions.submit(commands, acquired, rendered, fence);
+    }
     auto VulkanMeshRenderer::prepared_image(VkDevice device) const -> VkImage
     {
-        if (device != state_->device.handle() || !state_->target)
+        if (device != state_->device.handle() || !state_->frame().target)
             throw std::logic_error("Vulkan presentation requires a prepared image on the same device");
-        return state_->target->color.image;
+        return state_->frame().target->color.image;
     }
     auto VulkanMeshRenderer::prepared_extent() const -> VkExtent2D
     {
-        return state_->target ? state_->target->extent : VkExtent2D{};
+        return state_->frame().target ? state_->frame().target->extent : VkExtent2D{};
     }
 
     void VulkanMeshRenderer::set_reflection_probe(std::shared_ptr<const ReflectionProbe> probe)
@@ -2658,6 +2780,6 @@ namespace RelayCore::render
             ui,
             items
         ));
-        return state_->target->color.image;
+        return state_->frame().target->color.image;
     }
 } // namespace RelayCore::render

@@ -73,8 +73,12 @@ namespace RelayCore::render
         vkDestroySemaphore(state_->device.handle(), state_->timeline, nullptr);
     }
 
-    auto VulkanSceneSubmissions::submit(const VkCommandBuffer commands, const VkSemaphoreSubmitInfo dependency)
-        -> VulkanSceneCompletion
+    auto VulkanSceneSubmissions::submit(
+        const VkCommandBuffer commands,
+        const VkSemaphoreSubmitInfo dependency,
+        const VkSemaphoreSubmitInfo extra_signal,
+        const VkFence fence
+    ) -> VulkanSceneCompletion
     {
         if (!commands)
             throw std::invalid_argument("Vulkan scene submission requires a command buffer");
@@ -98,6 +102,7 @@ namespace RelayCore::render
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
         };
         const std::array waits{previous, dependency};
+        const std::array signals{signal, extra_signal};
         const auto first = state_->submitted ? 0U : 1U;
         const auto count = (state_->submitted ? 1U : 0U) + (dependency.semaphore ? 1U : 0U);
         const VkSubmitInfo2 info{
@@ -106,11 +111,11 @@ namespace RelayCore::render
             .pWaitSemaphoreInfos = waits.data() + first,
             .commandBufferInfoCount = 1,
             .pCommandBufferInfos = &command,
-            .signalSemaphoreInfoCount = 1,
-            .pSignalSemaphoreInfos = &signal
+            .signalSemaphoreInfoCount = extra_signal.semaphore ? 2U : 1U,
+            .pSignalSemaphoreInfos = signals.data()
         };
         require_scene_vk(
-            vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, VK_NULL_HANDLE),
+            vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, fence),
             "Failed to submit Vulkan scene"
         );
         state_->submitted = next.value;

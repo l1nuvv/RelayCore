@@ -32,6 +32,7 @@
 #include <unordered_map>
 
 #include "scoped_temp_directory.h"
+#include "vulkan_queue_gate.h"
 
 namespace
 {
@@ -389,13 +390,24 @@ namespace
                 caster.metallic_roughness.reset();
             }
             const auto lazy = renderer.render_image(scene.render_items(), camera, width, height, viewmodel);
+            renderer.prepare_frame(scene.render_items(), casters, camera, width, height, viewmodel);
+            require(renderer.capture_prepared_image().pixels == lazy.pixels, "Second scene slot changed pixels");
             const auto lazy_stats = statistics();
             renderer.prepare_resources(scene.resource_items());
             const auto prepared = statistics();
             std::cout << "pressure_resources: cycle=" << cycle << "; lazy_bytes=" << lazy_stats.allocationBytes
                       << "; prepared_bytes=" << prepared.allocationBytes << "; allocations=" << prepared.allocationCount
                       << '\n';
-            renderer.prepare_frame(scene.render_items(), casters, camera, width, height, viewmodel);
+            {
+                RelayCore::test::BlockGraphicsQueue gate{device};
+                gate.block();
+                // Both prepared frames must return while the GPU is still blocked.
+                renderer.prepare_frame(scene.render_items(), casters, camera, width, height, viewmodel);
+                renderer.prepare_frame(scene.render_items(), casters, camera, width, height, viewmodel);
+                gate.release();
+                if (cycle == 0)
+                    renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            }
             require(
                 renderer.capture_prepared_image().pixels == lazy.pixels,
                 "Resource preparation changed first-frame pixels"
@@ -2888,6 +2900,27 @@ namespace
             overlay.shutdown();
             const auto without = renderer.render_image(scene.render_items(), camera, w, h, weapon);
             require(without.pixels == base.pixels, "UI teardown changed core scene rendering");
+        }
+        {
+            auto hud = std::make_unique<PlayerUi>(window.handle(), device);
+            hud->set_screen(PlayerUiScreen::Hud);
+            hud->set_hud({.visible = true, .health = 72, .max_health = 100, .weapon = "Дробовик"});
+            camera.set_viewport(width, height);
+            renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
+            renderer.append_player_ui(*hud);
+            const auto expected = renderer.capture_prepared_image();
+            {
+                RelayCore::test::BlockGraphicsQueue gate{device};
+                gate.block();
+                renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
+                renderer.append_player_ui(*hud);
+                hud.reset();
+                gate.release();
+            }
+            require(
+                renderer.capture_prepared_image().pixels == expected.pixels,
+                "Destroying an in-flight RmlUi context changed its retained draw"
+            );
         }
         RelayCore::debug::ImGuiOverlay disabled{{.enabled = false}};
         disabled.initialize(window, device);

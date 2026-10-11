@@ -27,10 +27,13 @@ After the scene's tone mapping/display conversion, `VulkanMeshRenderer` appends
 RmlUi to the final target's UNORM view using encoded premultiplied alpha, then
 developer ImGui. Current HDR setting is an FP16 scene/tone-mapping path with SDR
 presentation, not an HDR10 swapchain. UI bypasses exposure, fog and scene grading.
-Geometry and atlases are persistent; the existing synchronous mesh submission fence
-completes before the next UI update/resource release. Presentation drains before
-context shutdown, while SDL/Vulkan/VMA still exist. A future asynchronous frame
-submission must add UI retirement to its frame fences before changing this contract.
+Geometry and atlases are persistent. Two scene slots retain RmlUi draw references
+and their descriptor/pipeline owner through scene → UI → presentation-copy timeline
+completion. Document changes or context teardown can release CPU ownership while
+those snapshots remain alive. Mutable scene data and targets belong to each slot;
+reuse waits for its final GPU use. ImGui/readback and intentional reconfiguration
+remain synchronous. Renderer drains presentation and both slots before destroying
+SDL/Vulkan/VMA. VK14-04 evidence is in the renderer modernization plan.
 
 Use existing `demo-debug`/`graphics-debug` presets; relevant checks are
 `graphics.game_hud`, `graphics.player_ui`, `graphics.game_lifecycle`, `graphics.hdr_settings` and

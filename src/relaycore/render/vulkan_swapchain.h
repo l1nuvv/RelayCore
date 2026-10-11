@@ -35,7 +35,7 @@ namespace RelayCore::render
 
         // False means presentation is suspended or the surface needs recreation on the next frame.
         [[nodiscard]] auto draw_clear(const std::array<float, 4>& color) -> bool;
-        // First mesh parity path. Frame fences protect the renderer's offscreen image until the blit finishes.
+        // Presentation copies extend the renderer's scene-slot completion until the blit finishes.
         [[nodiscard]] auto draw_scene(
             VulkanMeshRenderer& renderer,
             std::span<const RenderItem> items,

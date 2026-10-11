@@ -405,6 +405,32 @@ The new actual GPU-gated consumer returns before uploads complete, then verifies
 copied mesh bytes after scene completion. Scene scheduling is still synchronous
 at this point; its impact is measured after point 3.
 
+**Point 3 complete:** each of two scene slots owns five mutable uniform buffers,
+its material/tone-mapping descriptor sets, color/depth/MSAA/readback targets,
+command pool/three buffers, profiler and final completion. Ordinary scene/RmlUi
+submissions return without a host completion wait; slot reuse waits for its final
+presentation copy. Capture-only renders reuse their current slot synchronously;
+ImGui remains synchronous. Shared shadow images/pipelines and immutable materials
+are ordered through the existing graphics timeline, without duplicating shadows.
+
+The presentation copy waits for the prior scene/UI value plus acquisition and
+signals both the scene timeline and WSI semaphore. Its completion extends the
+source slot before present can fail. Swapchain acquire/copy/present fence reuse
+and maintenance lifetime remain independent. Reload/reflection replacement and
+backend shutdown drain both slots. RmlUi snapshots hold geometry, textures and
+their descriptor/pipeline owner, including after context teardown; cached snapshot
+vectors reuse storage in steady rendering.
+
+Debug builds the existing upload, mesh, player UI, G-019, lifecycle and presentation
+targets. Focused `vulkan_upload|mesh_pipeline|resource_preparation|material_maps_reflections|game_hud`
+checks pass **5/5 on each effective profile**, zero failures/skips, with core/sync
+validation. `vk14-04-scheduling-{preferred,force13}.xml` retains the results.
+Actual host-gated tests prove two outstanding scene slots, shader reload afterward,
+unchanged pixels/settled VMA allocations, and destruction of an in-flight RmlUi
+context without losing its draw or prematurely destroying GPU objects. Existing
+HUD checks include four resolutions, Cyrillic, hit/hurt/death and ImGui coexistence.
+The common test queue gate is shared by the upload and mesh fixtures.
+
 ## 1. Executive decision
 
 1. **Minimum runtime:** Vulkan 1.3, retaining all existing playable/gameplay functionality, current visual features, editor/debug tools, HUD/menu and save/continue flows.

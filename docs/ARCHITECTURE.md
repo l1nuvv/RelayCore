@@ -10,8 +10,9 @@ at the next game update, before session changes. The single SDL loop routes menu
 to RmlUi, gameplay to the controller, and developer tools to ImGui. Passive HUD
 does not capture input. Renderer appends UI after scene display conversion and
 before the optional developer overlay, on its existing Vulkan device and VMA.
-Synchronous mesh submission protects persistent UI geometry/atlases; presentation
-drains before RmlUi shutdown and before destroying SDL/device/allocator.
+Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
+pipelines through their final GPU use. Presentation drains before device/allocator
+destruction; ImGui and readback remain synchronous.
 See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
 
 Этот документ описывает актуальный runtime contract по состоянию на 2026-10-02, после VK-013/014. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md); здесь описаны владельцы и границы текущего кода.
@@ -69,14 +70,14 @@ SDL events
 → update
 → renderer begin
 → game/world queue и viewmodel
-→ Vulkan scene submit / fence wait
-→ RmlUi submit / fence wait → optional ImGui developer submit / fence wait
-→ acquire / image blit / present / copy fence wait
+→ reuse completed scene slot / Vulkan scene submit
+→ RmlUi submit → optional synchronous ImGui developer submit
+→ acquire / image blit on scene timeline / present
 ```
 
 `GameWorldRuntime` ведёт fixed simulation: шаг `1/120` секунды, не более 8 fixed steps за frame. RmlUi menu захватывает игровой ввод; passive HUD/finale не захватывают его. Захваченное ImGui developer device также не передаёт соответствующий gameplay input.
 
-Scene backend повторно использует один command pool, fence и render target; два swapchain frame slots относятся к presentation, а не к двум scene frames in flight. В обычном кадре нет `vkDeviceWaitIdle`; текущие ожидания защищают UBO/command/image reuse и замену игровых ресурсов из UI. Первое обращение к mesh/texture выполняет GPU upload с ожиданием; его влияние на заметные пики требует отдельного измерения. `frame_backend` удерживает подготовленное изображение до presentation даже при live reload из UI.
+Scene backend owns two slots with separate command pools/buffers, mutable UBOs, material/tone-mapping descriptor sets and color/depth targets. Scene, RmlUi and presentation copy signal the same serialized graphics timeline; slot reuse waits for its final copy. Shared shadows and pipelines remain ordered on that timeline. Mesh/material construction uses GPU upload dependencies, with 64 MiB/32-batch staging backpressure; readback, ImGui, reflection replacement, reload and shutdown retain deliberate waits. `frame_backend` retains the prepared backend through presentation during live reload; backend destruction drains both slots. There is no normal-frame `vkDeviceWaitIdle`.
 
 `WorldSceneRenderer` получает подготовленные данные и состояния объектов от игры. `GameWorldRuntime::build_hud_presentation` читает combat/mission/inventory/usable state напрямую и передаёт минимальный `HudPresentation`; HUD не читает diagnostics. Обычный HUD показывает здоровье, действие, цель, предметы и актуальное предупреждение; счётчики боя остаются в diagnostics. Сообщения задач не перекрашивают весь кадр; попадание и урон имеют отдельные краткие сигналы. Более тяжёлые runtime/audio/inspector diagnostics зависят от видимости соответствующих инструментов.
 

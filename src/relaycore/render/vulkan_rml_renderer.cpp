@@ -32,17 +32,40 @@ namespace RelayCore::render
     struct VulkanRmlRenderer::State {
         const VulkanDevice& device;
         VulkanUploads uploads;
-        VkDescriptorSetLayout descriptor_layout{};
-        VkDescriptorPool pool{};
-        VkPipelineLayout layout{};
-        VkPipeline pipeline{};
+        struct GpuResources {
+            VkDevice device;
+            VkDescriptorSetLayout descriptor_layout{};
+            VkDescriptorPool pool{};
+            VkPipelineLayout layout{};
+            VkPipeline pipeline{};
+            explicit GpuResources(VkDevice owner) : device(owner) {}
+            ~GpuResources() noexcept
+            {
+                if (pipeline)
+                    vkDestroyPipeline(device, pipeline, nullptr);
+                if (layout)
+                    vkDestroyPipelineLayout(device, layout, nullptr);
+                if (pool)
+                    vkDestroyDescriptorPool(device, pool, nullptr);
+                if (descriptor_layout)
+                    vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+            }
+        };
+        std::shared_ptr<GpuResources> gpu;
         struct Geometry {
             VulkanBuffer vertices, indices;
             uint32_t count;
         };
         struct Texture {
+            std::shared_ptr<GpuResources> gpu;
             VulkanTexture image;
-            VkDescriptorSet set;
+            VkDescriptorSet set = VK_NULL_HANDLE;
+            explicit Texture(std::shared_ptr<GpuResources> owner) : gpu(std::move(owner)) {}
+            ~Texture() noexcept
+            {
+                if (set)
+                    vkFreeDescriptorSets(gpu->device, gpu->pool, 1, &set);
+            }
         };
         struct Draw {
             std::shared_ptr<Geometry> geometry;
@@ -53,27 +76,21 @@ namespace RelayCore::render
         std::unordered_map<uintptr_t, std::shared_ptr<Geometry>> geometries;
         std::unordered_map<uintptr_t, std::shared_ptr<Texture>> textures;
         std::vector<Draw> draws;
+        struct Snapshot {
+            std::shared_ptr<GpuResources> gpu;
+            std::vector<Draw> draws;
+        };
+        std::vector<std::shared_ptr<Snapshot>> snapshots;
         uintptr_t next_handle = 1;
         uintptr_t white = 0;
         VkExtent2D extent{};
         VkRect2D scissor{};
         bool clipping = false;
         glm::mat4 transform{1};
-        explicit State(const VulkanDevice& owner) : device(owner), uploads(owner) {}
-        ~State()
-        {
-            draws.clear();
-            geometries.clear();
-            textures.clear();
-            if (pipeline)
-                vkDestroyPipeline(device.handle(), pipeline, nullptr);
-            if (layout)
-                vkDestroyPipelineLayout(device.handle(), layout, nullptr);
-            if (pool)
-                vkDestroyDescriptorPool(device.handle(), pool, nullptr);
-            if (descriptor_layout)
-                vkDestroyDescriptorSetLayout(device.handle(), descriptor_layout, nullptr);
-        }
+        explicit State(const VulkanDevice& owner) :
+            device(owner), uploads(owner), gpu(std::make_shared<GpuResources>(owner.handle()))
+        {}
+        ~State() = default;
         void initialize(const std::filesystem::path& shaders)
         {
             const VkDescriptorSetLayoutBinding
@@ -84,7 +101,7 @@ namespace RelayCore::render
                 .pBindings = &binding
             };
             require_ui_vk(
-                vkCreateDescriptorSetLayout(device.handle(), &descriptors, nullptr, &descriptor_layout),
+                vkCreateDescriptorSetLayout(device.handle(), &descriptors, nullptr, &gpu->descriptor_layout),
                 "RmlUi descriptor layout"
             );
             const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024};
@@ -95,17 +112,20 @@ namespace RelayCore::render
                 .poolSizeCount = 1,
                 .pPoolSizes = &pool_size
             };
-            require_ui_vk(vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &pool), "RmlUi descriptor pool");
+            require_ui_vk(
+                vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &gpu->pool),
+                "RmlUi descriptor pool"
+            );
             const VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UiPush)};
             const VkPipelineLayoutCreateInfo layout_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .setLayoutCount = 1,
-                .pSetLayouts = &descriptor_layout,
+                .pSetLayouts = &gpu->descriptor_layout,
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = &range
             };
             require_ui_vk(
-                vkCreatePipelineLayout(device.handle(), &layout_info, nullptr, &layout),
+                vkCreatePipelineLayout(device.handle(), &layout_info, nullptr, &gpu->layout),
                 "RmlUi pipeline layout"
             );
             std::array<VkShaderModule, 2> modules{};
@@ -219,10 +239,10 @@ namespace RelayCore::render
                     .pMultisampleState = &samples,
                     .pColorBlendState = &blend,
                     .pDynamicState = &dynamic,
-                    .layout = layout
+                    .layout = gpu->layout
                 };
                 require_ui_vk(
-                    vkCreateGraphicsPipelines(device.handle(), {}, 1, &info, nullptr, &pipeline),
+                    vkCreateGraphicsPipelines(device.handle(), {}, 1, &info, nullptr, &gpu->pipeline),
                     "RmlUi pipeline"
                 );
             } catch (...)
@@ -310,13 +330,13 @@ namespace RelayCore::render
         auto upload = state_->uploads.upload_rgba(data, TextureEncoding::linear);
         state_->uploads.wait(upload.completion);
         state_->uploads.collect();
-        auto texture = std::make_shared<State::Texture>();
+        auto texture = std::make_shared<State::Texture>(state_->gpu);
         texture->image = std::move(upload.texture);
         const VkDescriptorSetAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = state_->pool,
+            .descriptorPool = state_->gpu->pool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &state_->descriptor_layout
+            .pSetLayouts = &state_->gpu->descriptor_layout
         };
         require_ui_vk(
             vkAllocateDescriptorSets(state_->device.handle(), &allocate, &texture->set),
@@ -342,16 +362,20 @@ namespace RelayCore::render
     }
     void VulkanRmlRenderer::ReleaseTexture(Rml::TextureHandle texture)
     {
-        const auto it = state_->textures.find(texture);
-        if (it != state_->textures.end())
-        {
-            // The mesh UI submission is synchronous; the previous frame has completed before document updates.
-            require_ui_vk(
-                vkFreeDescriptorSets(state_->device.handle(), state_->pool, 1, &it->second->set),
-                "RmlUi texture release"
-            );
-            state_->textures.erase(it);
-        }
+        state_->textures.erase(texture);
+    }
+    auto VulkanRmlRenderer::retain_render_resources() const -> std::shared_ptr<const void>
+    {
+        // The scene slot owns this snapshot until its UI submission completes.
+        for (auto& snapshot : state_->snapshots)
+            if (snapshot.use_count() == 1)
+            {
+                snapshot->draws = state_->draws;
+                return snapshot;
+            }
+        auto snapshot = std::make_shared<State::Snapshot>(State::Snapshot{state_->gpu, state_->draws});
+        state_->snapshots.push_back(snapshot);
+        return snapshot;
     }
     void VulkanRmlRenderer::EnableScissorRegion(bool enable)
     {
@@ -380,7 +404,7 @@ namespace RelayCore::render
     {
         const VkViewport viewport{0, 0, float(state_->extent.width), float(state_->extent.height), 0, 1};
         vkCmdSetViewport(commands, 0, 1, &viewport);
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, state_->pipeline);
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, state_->gpu->pipeline);
         for (const auto& draw : state_->draws)
         {
             if (!draw.clip.extent.width || !draw.clip.extent.height)
@@ -393,14 +417,21 @@ namespace RelayCore::render
             vkCmdBindDescriptorSets(
                 commands,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
-                state_->layout,
+                state_->gpu->layout,
                 0,
                 1,
                 &draw.texture->set,
                 0,
                 nullptr
             );
-            vkCmdPushConstants(commands, state_->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UiPush), &draw.push);
+            vkCmdPushConstants(
+                commands,
+                state_->gpu->layout,
+                VK_SHADER_STAGE_VERTEX_BIT,
+                0,
+                sizeof(UiPush),
+                &draw.push
+            );
             vkCmdDrawIndexed(commands, draw.geometry->count, 1, 0, 0, 0);
         }
     }

@@ -29,6 +29,7 @@ namespace RelayCore::render
         auto wants_text_input() const noexcept -> bool;
         void prepare(int width, int height);
         void record(VkCommandBuffer commands);
+        [[nodiscard]] auto retain_render_resources() const -> std::shared_ptr<const void>;
 
     private:
         struct State;

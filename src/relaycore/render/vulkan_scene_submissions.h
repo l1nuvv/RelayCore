@@ -19,8 +19,12 @@ namespace RelayCore::render
         VulkanSceneSubmissions(const VulkanSceneSubmissions&) = delete;
         auto operator=(const VulkanSceneSubmissions&) -> VulkanSceneSubmissions& = delete;
 
-        [[nodiscard]] auto submit(VkCommandBuffer commands, VkSemaphoreSubmitInfo dependency = {})
-            -> VulkanSceneCompletion;
+        [[nodiscard]] auto submit(
+            VkCommandBuffer commands,
+            VkSemaphoreSubmitInfo dependency = {},
+            VkSemaphoreSubmitInfo extra_signal = {},
+            VkFence fence = VK_NULL_HANDLE
+        ) -> VulkanSceneCompletion;
         [[nodiscard]] auto last_submission() const noexcept -> VulkanSceneCompletion;
         [[nodiscard]] auto completed() const -> uint64_t;
         void wait(VulkanSceneCompletion completion) const;

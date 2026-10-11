@@ -460,10 +460,13 @@ namespace RelayCore::render
             };
             {
                 RELAYCORE_PROFILE_ZONE_N("Vulkan submit");
-                require_vk(
-                    vkQueueSubmit2(device.graphics_queue(), 1, &submission, frame.render_fence),
-                    "Failed to submit Vulkan frame"
-                );
+                if (renderer)
+                    renderer->submit_presentation(frame.commands, wait, signal, frame.render_fence);
+                else
+                    require_vk(
+                        vkQueueSubmit2(device.graphics_queue(), 1, &submission, frame.render_fence),
+                        "Failed to submit Vulkan frame"
+                    );
             }
             frame.render_pending = true;
             require_vk(vkResetFences(device.handle(), 1, &frame.present_fence), "Failed to reset Vulkan present fence");
@@ -493,12 +496,7 @@ namespace RelayCore::render
                 && presentation != VK_ERROR_OUT_OF_DATE_KHR)
                 require_vk(presentation, "Failed to present Vulkan frame");
             needs_recreation = acquisition == VK_SUBOPTIMAL_KHR || presentation != VK_SUCCESS;
-            // Return ownership of the source image only after the GPU blit. Presentation owns only swapchain images.
-            if (scene_image)
-            {
-                RELAYCORE_PROFILE_ZONE_N("Vulkan presentation source image wait");
-                wait_fence(frame.render_fence, frame.render_pending);
-            }
+            // The scene timeline retains the source slot until this copy completes.
             frame_index = (frame_index + 1) % frames.size();
             return presentation != VK_ERROR_OUT_OF_DATE_KHR;
         }

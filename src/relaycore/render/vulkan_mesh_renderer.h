@@ -37,7 +37,7 @@ namespace RelayCore::render
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 
-        // Returns top-down RGBA8. A submission fence completes before readback, reload or resource reuse.
+        // Returns top-down RGBA8 after GPU completion. Readback and ImGui remain synchronous.
         [[nodiscard]] auto render_image(
             std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
@@ -46,7 +46,7 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel = {},
             ImDrawData* ui = nullptr
         ) -> CpuRgbaTextureData;
-        // Scene submission completes before UI can replace game-owned mesh data or reload this backend.
+        // Uses two scene slots; resource reuse/reload waits for their final GPU use.
         void prepare_frame(
             std::span<const RenderItem> items,
             std::span<const RenderItem> shadow_casters,
@@ -80,6 +80,12 @@ namespace RelayCore::render
             std::span<const RenderItem> viewmodel,
             ImDrawData* ui
         ) -> VkImage;
+        void submit_presentation(
+            VkCommandBuffer commands,
+            VkSemaphoreSubmitInfo acquired,
+            VkSemaphoreSubmitInfo rendered,
+            VkFence fence
+        );
         [[nodiscard]] auto prepared_image(VkDevice device) const -> VkImage;
         [[nodiscard]] auto prepared_extent() const -> VkExtent2D;
         struct State;
