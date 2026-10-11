@@ -50,6 +50,11 @@ namespace RelayCore::render
         [[nodiscard]] auto allocator() const noexcept -> VmaAllocator;
         // Render-thread access, shared by scene, HDR and UI pipeline creation.
         [[nodiscard]] auto pipeline_cache() const noexcept -> VkPipelineCache;
+        [[nodiscard]] auto select_depth_format(
+            bool sampled_shadow,
+            VkSampleCountFlagBits samples,
+            VkFormat preferred = VK_FORMAT_UNDEFINED
+        ) const -> VkFormat;
         [[nodiscard]] auto
         load_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const -> bool;
         [[nodiscard]] auto

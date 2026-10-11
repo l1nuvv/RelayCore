@@ -334,6 +334,52 @@ namespace RelayCore::render
         return state_->pipeline_cache;
     }
 
+    auto VulkanDevice::select_depth_format(
+        const bool sampled_shadow,
+        const VkSampleCountFlagBits samples,
+        const VkFormat preferred
+    ) const -> VkFormat
+    {
+        const std::array candidates =
+            sampled_shadow ? std::array{VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM}
+                           : std::array{VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D16_UNORM};
+        const VkImageUsageFlags usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                        | (sampled_shadow ? VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                                                                | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                                                          : 0u);
+        const VkFormatFeatureFlags required =
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+            | (sampled_shadow ? VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+                                    | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT
+                              : 0u);
+        for (const auto format : candidates)
+        {
+            if (preferred != VK_FORMAT_UNDEFINED && format != preferred)
+                continue;
+            VkFormatProperties properties{};
+            vkGetPhysicalDeviceFormatProperties(physical_device(), format, &properties);
+            VkImageFormatProperties image{};
+            if ((properties.optimalTilingFeatures & required) == required
+                && vkGetPhysicalDeviceImageFormatProperties(
+                       physical_device(),
+                       format,
+                       VK_IMAGE_TYPE_2D,
+                       VK_IMAGE_TILING_OPTIMAL,
+                       usage,
+                       0,
+                       &image
+                   ) == VK_SUCCESS
+                && (image.sampleCounts & samples) && image.maxArrayLayers >= (sampled_shadow ? 48u : 1u))
+                return format;
+        }
+        throw std::runtime_error(
+            std::string("No compatible Vulkan ") + (sampled_shadow ? "sampled shadow" : "scene")
+            + " depth format: D32_SFLOAT/X8_D24_UNORM_PACK32/D16_UNORM; require attachment"
+            + (sampled_shadow ? "/linear sampling/transfer/48 layers" : "") + ", samples=" + std::to_string(samples)
+            + ", preferred=" + std::to_string(preferred)
+        );
+    }
+
     auto
     VulkanDevice::load_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const
         -> bool

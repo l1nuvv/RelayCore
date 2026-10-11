@@ -1,6 +1,7 @@
 #include "relaycore/render/vulkan_mesh_renderer.h"
 
 #include "relaycore/core/engine_config.h"
+#include "relaycore/core/log.h"
 #include "relaycore/render/authored_color.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/irradiance_probes.h"
@@ -124,13 +125,31 @@ namespace RelayCore::render
             {
                 VkFormatProperties properties{};
                 vkGetPhysicalDeviceFormatProperties(device.physical_device(), format, &properties);
-                constexpr auto required =
-                    VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
-                    | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+                constexpr auto required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                          | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+                                          | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+                                          | VK_FORMAT_FEATURE_TRANSFER_DST_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
                 if ((properties.optimalTilingFeatures & required) != required)
                     throw std::runtime_error(
-                        "Vulkan shadows require sampled/linear-filtered D24_UNORM depth attachments"
+                        "Vulkan shadows require sampled/linear-filtered depth attachments with transfer support"
                     );
+                VkImageFormatProperties image_properties{};
+                require_mesh_vk(
+                    vkGetPhysicalDeviceImageFormatProperties(
+                        device.physical_device(),
+                        format,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        0,
+                        &image_properties
+                    ),
+                    "Shadow depth image format support"
+                );
+                if (extent.width > image_properties.maxExtent.width || extent.height > image_properties.maxExtent.height
+                    || layers > image_properties.maxArrayLayers)
+                    throw std::runtime_error("Shadow depth image exceeds the selected format extent/layer limits");
                 const VkImageCreateInfo info{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                     .imageType = VK_IMAGE_TYPE_2D,
@@ -285,6 +304,7 @@ namespace RelayCore::render
                 const VkExtent2D size,
                 const VkFormat scene_format,
                 const VkFormat display_format,
+                const VkFormat depth_format,
                 const VkSampleCountFlagBits samples
             ) :
                 extent(size), color(device), depth(device), readback(
@@ -325,7 +345,7 @@ namespace RelayCore::render
                 }
                 depth.initialize(
                     size,
-                    VK_FORMAT_D32_SFLOAT,
+                    depth_format,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                     VK_IMAGE_ASPECT_DEPTH_BIT,
                     VK_FORMAT_UNDEFINED,
@@ -706,6 +726,7 @@ namespace RelayCore::render
         MaterialParameters material_parameters{};
         std::array<VkDescriptorSet, 2> shadow_previews{};
         ColorPipelineMode color_pipeline = ColorPipelineMode::legacy_gamma;
+        VulkanDepthFormats depth_formats{};
         SpotLight spot{};
         ShadowParameters shadow_parameters{};
         std::array<std::unique_ptr<ShadowImage>, 3> shadow_maps;
@@ -816,7 +837,8 @@ namespace RelayCore::render
             const CpuRgbaTextureData& atlas,
             const TextureEncoding encoding,
             const RendererConfig& config,
-            const ColorPipelineMode pipeline
+            const ColorPipelineMode pipeline,
+            const VulkanDepthFormats preferred_depth
         )
         {
             renderer_config = config;
@@ -824,11 +846,19 @@ namespace RelayCore::render
             if (config.msaa_samples != 1 && config.msaa_samples != 2 && config.msaa_samples != 4)
                 throw std::invalid_argument("Vulkan render.msaa_samples must be 1, 2 or 4");
             const auto samples = static_cast<VkSampleCountFlagBits>(config.msaa_samples);
-            for (const auto format : {scene_format(), VK_FORMAT_D32_SFLOAT})
+            depth_formats.scene = device.select_depth_format(false, samples, preferred_depth.scene);
+            depth_formats.shadow = device.select_depth_format(true, VK_SAMPLE_COUNT_1_BIT, preferred_depth.shadow);
+            log::info(
+                "Vulkan depth formats: scene={} shadow={} samples={}",
+                static_cast<int>(depth_formats.scene),
+                static_cast<int>(depth_formats.shadow),
+                config.msaa_samples
+            );
+            for (const auto format : {scene_format(), depth_formats.scene})
             {
                 VkImageFormatProperties support{};
-                const auto usage = format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-                                                                  : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                const auto usage = format == depth_formats.scene ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                                                 : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
                 require_mesh_vk(
                     vkGetPhysicalDeviceImageFormatProperties(
                         device.physical_device(),
@@ -850,10 +880,6 @@ namespace RelayCore::render
             vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
             max_target_width = std::min(properties.limits.maxFramebufferWidth, properties.limits.maxImageDimension2D);
             max_target_height = std::min(properties.limits.maxFramebufferHeight, properties.limits.maxImageDimension2D);
-            VkFormatProperties depth_properties{};
-            vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_D32_SFLOAT, &depth_properties);
-            if (!(depth_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
-                throw std::runtime_error("Vulkan mesh renderer requires D32_SFLOAT depth attachments");
             VkFormatProperties color_properties{};
             vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &color_properties);
             constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
@@ -918,17 +944,14 @@ namespace RelayCore::render
                     throw std::invalid_argument("Vulkan shadow resolution exceeds the device framebuffer/image limits");
                 shadow_maps[i] = std::make_unique<ShadowImage>(device, VkExtent2D{size, size}, 1);
                 shadow_maps[i]->initialize(
-                    VK_FORMAT_X8_D24_UNORM_PACK32,
-                    i == 0   ? "Shadow near cascade D24"
-                    : i == 1 ? "Shadow far cascade D24"
-                             : "Shadow spot D24"
+                    depth_formats.shadow,
+                    i == 0   ? "Shadow near cascade depth"
+                    : i == 1 ? "Shadow far cascade depth"
+                             : "Shadow spot depth"
                 );
             }
             point_shadows = std::make_unique<ShadowImage>(device, VkExtent2D{512, 512}, 48);
-            point_shadows->initialize(
-                VK_FORMAT_X8_D24_UNORM_PACK32,
-                "Shadow point faces D24 (eight lights, six faces)"
-            );
+            point_shadows->initialize(depth_formats.shadow, "Shadow point faces depth (eight lights, six faces)");
             atlas_source.initialize_rgba(atlas.width, atlas.height, atlas.pixels, encoding);
             const std::array bindings{
                 VkDescriptorSetLayoutBinding{
@@ -1199,7 +1222,7 @@ namespace RelayCore::render
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
                 .colorAttachmentCount = shadow_kind < 0 ? 1u : 0u,
                 .pColorAttachmentFormats = shadow_kind < 0 ? &color : nullptr,
-                .depthAttachmentFormat = shadow_kind < 0 ? VK_FORMAT_D32_SFLOAT : VK_FORMAT_X8_D24_UNORM_PACK32,
+                .depthAttachmentFormat = shadow_kind < 0 ? depth_formats.scene : depth_formats.shadow,
             };
             const VkGraphicsPipelineCreateInfo info{
                 .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -2344,7 +2367,8 @@ namespace RelayCore::render
             const auto& map = *shadow_maps[cascade];
             VulkanBuffer readback{
                 device,
-                VkDeviceSize(map.extent.width) * map.extent.height * 4,
+                VkDeviceSize(map.extent.width) * map.extent.height
+                    * (depth_formats.shadow == VK_FORMAT_D16_UNORM ? 2 : 4),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VulkanBufferMemory::readback
             };
@@ -2401,12 +2425,24 @@ namespace RelayCore::render
             };
             vkCmdPipelineBarrier2(frame().commands, &host_info);
             submit_and_wait();
-            std::vector<uint32_t> packed(size_t(map.extent.width) * map.extent.height);
-            readback.read(std::as_writable_bytes(std::span{packed}));
-            std::vector<float> output(packed.size());
-            std::transform(packed.begin(), packed.end(), output.begin(), [](uint32_t depth) {
-                return float(depth & 0xffffffu) / float(0xffffffu);
-            });
+            std::vector<float> output(size_t(map.extent.width) * map.extent.height);
+            if (depth_formats.shadow == VK_FORMAT_D32_SFLOAT)
+                readback.read(std::as_writable_bytes(std::span{output}));
+            else if (depth_formats.shadow == VK_FORMAT_D16_UNORM)
+            {
+                std::vector<uint16_t> packed(output.size());
+                readback.read(std::as_writable_bytes(std::span{packed}));
+                std::transform(packed.begin(), packed.end(), output.begin(), [](uint16_t depth) {
+                    return float(depth) / 65535.0F;
+                });
+            } else
+            {
+                std::vector<uint32_t> packed(output.size());
+                readback.read(std::as_writable_bytes(std::span{packed}));
+                std::transform(packed.begin(), packed.end(), output.begin(), [](uint32_t depth) {
+                    return float(depth & 0xffffffu) / float(0xffffffu);
+                });
+            }
             return output;
         }
 
@@ -2473,6 +2509,7 @@ namespace RelayCore::render
                     extent,
                     scene_format(),
                     display_format(),
+                    depth_formats.scene,
                     static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
                 );
                 if (tone_mapping)
@@ -2650,10 +2687,11 @@ namespace RelayCore::render
         const CpuRgbaTextureData& atlas,
         const TextureEncoding encoding,
         const RendererConfig& config,
-        const ColorPipelineMode pipeline
+        const ColorPipelineMode pipeline,
+        const VulkanDepthFormats depth_formats
     ) : state_(std::make_unique<State>(device))
     {
-        state_->initialize(authoring, atlas, encoding, config, pipeline);
+        state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
         reload_shaders(shader_directory);
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;

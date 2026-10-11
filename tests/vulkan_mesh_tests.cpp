@@ -878,6 +878,124 @@ namespace
         std::cout << "pipeline_cache=passed (warm restart, schema/vendor/device/driver/UUID/shaders/corruption)\n";
     }
 
+    void check_depth_formats(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        expect_failure(
+            [&] {
+                static_cast<void>(device.select_depth_format(false, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_UNORM));
+            },
+            "No compatible Vulkan scene depth format"
+        );
+        StaticColorMesh mesh;
+        mesh.initialize(make_color_box_mesh_data());
+        RenderQueue queue;
+        queue.push(mesh, glm::translate(glm::mat4{1}, {0, -.6F, -2}) * glm::scale(glm::mat4{1}, {12, .2F, 18}));
+        queue.push(mesh, glm::mat4{1});
+        queue.push(mesh, glm::translate(glm::mat4{1}, {-1.5F, .4F, -3}) * glm::scale(glm::mat4{1}, {1.2F, 2, 1.5F}));
+        PerspectiveCamera camera{{.position = {4, 3, 8}, .target = {0, 0, -2}}};
+        camera.set_viewport(width, height);
+        RendererConfig config{};
+        config.shadow_enabled = true;
+        config.shadow_map_resolution = 512;
+        config.shadow_light_direction = {.5F, -1, .25F};
+        config.shadow_light_intensity = 1.8F;
+        const auto render = [&](const VulkanDepthFormats formats, const int samples) {
+            auto settings = config;
+            settings.msaa_samples = samples;
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::linear,
+                settings,
+                ColorPipelineMode::legacy_gamma,
+                formats
+            };
+            auto image = renderer.render_image(queue.items(), camera, width, height);
+            auto depth = renderer.capture_shadow_depth(0);
+            require(
+                std::all_of(
+                    depth.begin(),
+                    depth.end(),
+                    [](float value) {
+                        return std::isfinite(value) && value >= 0 && value <= 1;
+                    }
+                ),
+                "Selected shadow format produced invalid readback"
+            );
+            require(
+                std::any_of(
+                    depth.begin(),
+                    depth.end(),
+                    [](float value) {
+                        return value < .99F;
+                    }
+                ),
+                "Shadow format fixture contains no geometry"
+            );
+            save(
+                image,
+                captures
+                    / ("depth-" + std::to_string(formats.scene) + "-" + std::to_string(formats.shadow) + "-"
+                       + std::to_string(samples) + ".bmp")
+            );
+            return std::pair{std::move(image), std::move(depth)};
+        };
+        for (const int samples : {1, 4})
+        {
+            const auto baseline = render({}, samples);
+            for (const bool shadow : {false, true})
+            {
+                if (shadow && samples != 1)
+                    continue;
+                for (const auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D16_UNORM})
+                {
+                    try
+                    {
+                        static_cast<void>(device.select_depth_format(
+                            shadow,
+                            shadow ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(samples),
+                            format
+                        ));
+                    } catch (const std::runtime_error& error)
+                    {
+                        require(
+                            std::string_view{error.what()}.starts_with("No compatible Vulkan "),
+                            "Unexpected depth selection failure"
+                        );
+                        std::cout << "depth_candidate=" << format << "; shadow=" << shadow << "; unsupported\n";
+                        continue;
+                    }
+                    const auto alternate = render(
+                        shadow ? VulkanDepthFormats{.shadow = format} : VulkanDepthFormats{.scene = format},
+                        samples
+                    );
+                    double delta = 0;
+                    for (size_t i = 0; i < baseline.first.pixels.size(); ++i)
+                        delta += std::abs(int(baseline.first.pixels[i]) - int(alternate.first.pixels[i]));
+                    delta /= baseline.first.pixels.size();
+                    float max_depth_delta = 0;
+                    for (size_t i = 0; i < baseline.second.size(); ++i)
+                        max_depth_delta = std::max(max_depth_delta, std::abs(baseline.second[i] - alternate.second[i]));
+                    std::cout << "depth_candidate=" << format << "; shadow=" << shadow << "; samples=" << samples
+                              << "; mean_rgba_delta=" << delta << "; max_depth_delta=" << max_depth_delta << '\n';
+                    require(delta <= (shadow ? 1.5 : .5), "Depth fallback changed the rendered scene beyond tolerance");
+                    require(
+                        max_depth_delta <= 2.0F / 65535.0F,
+                        "Shadow depth fallback exceeded D16 quantization tolerance"
+                    );
+                }
+            }
+        }
+        std::cout << "depth_formats=passed\n";
+    }
+
     void check_lighting(
         const VulkanDevice& device,
         const RenderAuthoringConfig& defaults,
@@ -3287,11 +3405,12 @@ int main(int argc, char** argv)
     const bool power_slice_only = argc == 2 && std::string_view{argv[1]} == "--power-restoration-slice";
     const bool ui_only = argc == 2 && std::string_view{argv[1]} == "--ui-only";
     const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
+    const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
-        && !descriptors_only)
+        && !descriptors_only && !depth_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -3316,6 +3435,8 @@ int main(int argc, char** argv)
             check_pistol_viewmodel(device, authoring, atlas, captures);
         else if (shotgun_only)
             check_shotgun_viewmodel(device, authoring, atlas, captures);
+        else if (depth_only)
+            check_depth_formats(device, authoring, atlas, captures);
         else if (pipeline_only)
         {
             check_mesh_pipeline(device, atlas, captures);

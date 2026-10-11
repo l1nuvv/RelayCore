@@ -25,6 +25,11 @@ namespace RelayCore::render
         size_t materials = 0;
     };
 
+    struct VulkanDepthFormats {
+        VkFormat scene = VK_FORMAT_UNDEFINED;
+        VkFormat shadow = VK_FORMAT_UNDEFINED;
+    };
+
     class VulkanMeshRenderer {
     public:
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
@@ -35,7 +40,8 @@ namespace RelayCore::render
             const CpuRgbaTextureData& atlas,
             TextureEncoding encoding,
             const RendererConfig& config,
-            ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma
+            ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma,
+            VulkanDepthFormats depth_formats = {}
         );
         ~VulkanMeshRenderer() noexcept;
         void prepare_resources(std::span<const RenderItem> items);

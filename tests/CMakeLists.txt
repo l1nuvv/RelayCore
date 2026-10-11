@@ -267,6 +267,7 @@ add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation
 add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
 add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
 add_test(NAME graphics.mesh_pipeline COMMAND relaycore_vulkan_mesh_tests --pipeline-only)
+add_test(NAME graphics.depth_formats COMMAND relaycore_vulkan_mesh_tests --depth-formats)
 add_test(NAME graphics.power_restoration_slice COMMAND relaycore_vulkan_mesh_tests --power-restoration-slice)
 add_test(NAME graphics.game_hud COMMAND relaycore_vulkan_mesh_tests --ui-only)
 add_test(NAME graphics.player_ui COMMAND relaycore_player_ui_graphics)
@@ -300,7 +301,7 @@ add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --i
 add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
 add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
