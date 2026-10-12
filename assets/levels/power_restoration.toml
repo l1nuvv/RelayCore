@@ -9,7 +9,7 @@ entries = [
   { model = "models/power_switchgear.rcmodel", origin = [0,0,0] },
   { model = "models/power_maintenance.rcmodel", origin = [0,0,0] },
   { model = "models/power_filtration.rcmodel", origin = [0,0,0] },
-  { model = "models/power_pump.rcmodel", origin = [0,0,0] },
+  { model = "models/power_pump.rcmodel", collision_asset = "collision/power_pump.rccollision", origin = [0,0,0] },
 ]
 
 [[entity]]
@@ -32,6 +32,9 @@ entries = [
 [[entity_group]]
 classname = "prop_static"
 model = "models/utility_pipe.rcmodel"
+collision_mins = [-1.5,0.03,-0.24]
+collision_maxs = [1.5,0.37,0.41]
+collision_material = "Metal"
 entries = [
   { origin = [2,2.65,-4.65] },
   { origin = [4.65,2.65,2.8], angles = [270,0,0] },
@@ -818,12 +821,20 @@ entries = [
   { origin = [5.25,3.58,27] },
 ]
 
-# VIS-25: painted occult intrusion; no backing or gameplay collision.
+# VIS-25: emissive occult intrusion; no backing or gameplay collision.
 [[entity]]
 classname = "prop_static"
 model = "models/blood_pentagram.rcmodel"
 origin = [0,1.15,-4.80]
 scale = [0.82,0.82,0.82]
+
+[[entity]]
+classname = "render_light"
+origin = [0,1.85,-4.58]
+color = [1,0.015,0.005]
+intensity = 1.8
+radius = 2.6
+fixture_width = 0
 
 # VIS-26: retained route glyphs mounted on local physical carriers.
 [[entity]]

@@ -1,0 +1,31 @@
+# Simplified head, telescoping stand and three separate tripod legs; keep gaps open.
+version = 1
+units = "metres"
+axes = "right-handed-y-up"
+winding = "ccw"
+model = "models/b17_observation_camera.rcmodel"
+
+[[boxes]]
+mins = [-0.98650, 1.57316, -3.78698]
+maxs = [-0.58670, 1.75289, -3.30810]
+surface = "metal"
+
+[[boxes]]
+mins = [-0.84720, 0.75400, -3.63248]
+maxs = [-0.79520, 1.58711, -3.58048]
+surface = "metal"
+
+[[boxes]]
+mins = [-1.17420, 0.00200, -3.88948]
+maxs = [-0.78820, 0.98300, -3.57348]
+surface = "metal"
+
+[[boxes]]
+mins = [-0.85420, 0.00200, -3.88948]
+maxs = [-0.46820, 0.98300, -3.57348]
+surface = "metal"
+
+[[boxes]]
+mins = [-0.85420, 0.00200, -3.63948]
+maxs = [-0.78820, 0.98300, -3.21348]
+surface = "metal"

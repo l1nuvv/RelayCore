@@ -1,5 +1,6 @@
 """Reuse the authored B-17 board/notice construction with sector-specific artwork."""
 from pathlib import Path
+import sys
 import bpy
 import numpy as np
 
@@ -34,10 +35,11 @@ def variant(base, name, texture):
     temporary.replace(OUTPUT / f"{name}.glb")
 
 
-for sector in ("pressure", "cooling", "power"):
-    for base, kind in (("lab_notes_board", "procedure"), ("safety_notice", "pictograms")):
-        variant(base, f"{sector}_{base}", f"{sector}_{kind}")
-variant("lab_notes_board", "occult_research_board", "occult_research_board")
+if "--pentagram-only" not in sys.argv:
+    for sector in ("pressure", "cooling", "power"):
+        for base, kind in (("lab_notes_board", "procedure"), ("safety_notice", "pictograms")):
+            variant(base, f"{sector}_{base}", f"{sector}_{kind}")
+    variant("lab_notes_board", "occult_research_board", "occult_research_board")
 
 # The existing native contract is opaque. Cut geometry to the image silhouette
 # instead of adding a rectangular backing or a new renderer alpha mode.
@@ -92,6 +94,18 @@ shader.inputs["Roughness"].default_value = .86
 texture = material.node_tree.nodes.new("ShaderNodeTexImage")
 texture.image = opaque
 material.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
+# Emission follows the paint variation; geometry still owns silhouette coverage.
+emission_pixels = pixels.reshape(height, width, 4).copy()
+emission_pixels[:, :, 0] = .65 + .35 * emission_pixels[:, :, 0]
+emission_pixels[:, :, 1] = .008
+emission_pixels[:, :, 2] = .003
+emission = bpy.data.images.new("Crimson glyph emission", width=width, height=height, alpha=False)
+emission.pixels.foreach_set(emission_pixels.ravel())
+emission.pack()
+emission_texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+emission_texture.image = emission
+material.node_tree.links.new(emission_texture.outputs["Color"], shader.inputs["Emission Color"])
+shader.inputs["Emission Strength"].default_value = .35
 mesh.materials.append(material)
 obj = bpy.data.objects.new("Wall pentagram / 1.7m / render only", mesh)
 bpy.context.collection.objects.link(obj)

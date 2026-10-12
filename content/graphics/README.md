@@ -59,6 +59,9 @@ The original transparent PNG remains intact; native RGB is opaque, and uncovered
 wall remains visible because no geometry is emitted there. No alpha pipeline or
 new collision is introduced. The wall motif is 1.7 m across its authored square;
 the research board uses the existing 1.8 by 1.05 m frame.
+The wall paint now exports a crimson emissive map; use `-- --pentagram-only`
+after the exporter command to rebuild just this asset. The research board keeps
+its non-emissive marker artwork.
 
 ## Instrument faces (VIS-27–28)
 

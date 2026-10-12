@@ -338,6 +338,7 @@ angles = [0, 0, 0]
 classname = "prop_static"
 targetname = "b17_observation_camera_02"
 model = "models/b17_observation_camera.rcmodel"
+collision_asset = "collision/b17_observation_camera.rccollision"
 origin = [0,0,0]
 
 [[entity]]

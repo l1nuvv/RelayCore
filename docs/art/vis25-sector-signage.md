@@ -101,3 +101,33 @@ again (HDR and SDR, 38.44 seconds total); the current in-game board was inspecte
 Geometry and gameplay-preservation checks and git diff --check passed. The
 previous 29 content tests remain applicable because the final edit changes only
 the board's raster artwork. No archive, commit or release was created.
+
+### Owner follow-up, 2026-10-13
+
+The shared wall-pentagram asset now has a crimson emissive map. After the owner's
+brightness feedback, its linear emission factor is 0.35; separate red lights in
+power_restoration and containment_loop use intensity 1.8 to strengthen the wall
+halo. The research board is unchanged. The exporter supports
+`-- --pentagram-only` for this isolated update.
+
+The same request adds explicit power_pump collision above the existing enclosure,
+box collision to the first level's utility pipes, and separate head/stand/tripod
+collision for the B-17 observation camera. Sources are
+`content/collision/{power_pump,b17_observation_camera}.toml`, paired with their
+models in `cmake/RelayCoreCollisionAssets.cmake` and staged under `collision/`.
+
+MSVC Development demo/content/level-check/signage targets built. Initial sandbox
+attempts failed with C1902 (PDB manager) and Access denied on temporary save-file
+renames; the same checks passed outside the sandbox. Final checks:
+
+- `ctest --preset validation-dev -R '^validation\.(power restoration|power pump pipes|all shipped maps)' --output-on-failure --no-tests=error`: 12 passed,
+  including native ray hits, player movement blocking and adjacent clearance.
+- `ctest --preset validation-dev -R '^graphics\.sector_signage(_sdr)?$' --output-on-failure --no-tests=error`: 2 passed, zero skips, repeated after the brightness adjustment.
+- `relaycore_level_check` on power_restoration, occult_lab_b17 and containment_loop:
+  valid, zero warnings. Blender 5.2.2 fresh-import: 6396 faces, silhouette retained.
+- HDR power-wall capture inspected at
+  `build/msvc-dev/tests/power-captures/hdr/shadows/signage-power-wall.bmp`.
+
+Development runtime assets are updated. These are technical and rendered checks;
+no independent player run or new art acceptance is claimed. The Development GPU
+checks run without Vulkan validation layers. No package was produced.

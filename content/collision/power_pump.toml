@@ -1,0 +1,51 @@
+# Simplified P-02 hardware above the existing drive enclosure; retain the service aisle.
+version = 1
+units = "metres"
+axes = "right-handed-y-up"
+winding = "ccw"
+model = "models/power_pump.rcmodel"
+
+[[boxes]]
+mins = [5.65,1.8,8.75]
+maxs = [7.15,1.86,10.25]
+surface = "metal"
+
+[[boxes]]
+mins = [6.04,1.83,8.88]
+maxs = [6.76,2.63,10.02]
+surface = "metal"
+
+[[boxes]]
+mins = [6.325,2.115,8.40]
+maxs = [6.475,2.265,8.90]
+surface = "metal"
+
+[[boxes]]
+mins = [5.235,2.115,8.225]
+maxs = [6.4,2.265,8.575]
+surface = "metal"
+
+[[boxes]]
+mins = [5.235,2.115,7.125]
+maxs = [5.385,2.475,8.375]
+surface = "metal"
+
+[[boxes]]
+mins = [5.31,2.27,7.07]
+maxs = [5.45,2.53,7.33]
+surface = "metal"
+
+[[boxes]]
+mins = [6.315,2.48,8.945]
+maxs = [6.485,3.135,9.115]
+surface = "metal"
+
+[[boxes]]
+mins = [5.09,2.965,8.945]
+maxs = [6.4,3.135,9.115]
+surface = "metal"
+
+[[boxes]]
+mins = [6.4,2.565,8.905]
+maxs = [6.83,2.815,9.155]
+surface = "metal"
