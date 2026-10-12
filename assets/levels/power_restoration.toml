@@ -8,7 +8,7 @@ entries = [
   { model = "models/power_service.rcmodel", origin = [0,0,0] },
   { model = "models/power_switchgear.rcmodel", origin = [0,0,0] },
   { model = "models/power_maintenance.rcmodel", origin = [0,0,0] },
-  { model = "models/power_filtration.rcmodel", origin = [0,0,0] },
+  { model = "models/power_filtration.rcmodel", collision_asset = "collision/power_filtration.rccollision", origin = [0,0,0] },
   { model = "models/power_pump.rcmodel", collision_asset = "collision/power_pump.rccollision", origin = [0,0,0] },
 ]
 
@@ -825,6 +825,7 @@ entries = [
 [[entity]]
 classname = "prop_static"
 model = "models/blood_pentagram.rcmodel"
+casts_shadow = false
 origin = [0,1.15,-4.80]
 scale = [0.82,0.82,0.82]
 

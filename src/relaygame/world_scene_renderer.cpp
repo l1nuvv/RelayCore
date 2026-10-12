@@ -607,7 +607,7 @@ namespace RelayGame
                                       : RelayCore::render::TextureEncoding::linear;
             if (prop.model.extension() == ".rcmodel")
             {
-                props_.push_back({{}, prop.transform, models.load(prop.model, encoding)});
+                props_.push_back({{}, prop.transform, models.load(prop.model, encoding), prop.casts_shadow});
                 continue;
             }
             props_.push_back(
@@ -618,7 +618,9 @@ namespace RelayGame
                          ? RelayCore::render::TextureEncoding::srgb
                          : RelayCore::render::TextureEncoding::linear
                  ),
-                 prop.transform}
+                 prop.transform,
+                 {},
+                 prop.casts_shadow}
             );
         }
         RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
@@ -910,7 +912,8 @@ namespace RelayGame
                         surface.occlusion.valid() ? &surface.occlusion : nullptr,
                         surface.occlusion_strength,
                         surface.emissive.valid() ? &surface.emissive : nullptr,
-                        surface.emissive_factor
+                        surface.emissive_factor,
+                        prop.casts_shadow
                     );
                     record_render_draw(
                         RelayCore::render::RenderPass::Opaque,
@@ -921,6 +924,7 @@ namespace RelayGame
             }
             render_queue_
                 .push(prop.model->mesh, prop.transform, RelayCore::render::RenderPass::Opaque, &prop.model->texture);
+            render_queue_.items().back().casts_shadow = prop.casts_shadow;
             record_render_draw(
                 RelayCore::render::RenderPass::Opaque,
                 static_cast<std::uint32_t>(prop.model->mesh.index_count() / 3)
@@ -1111,7 +1115,7 @@ namespace RelayGame
         RELAYCORE_PROFILE_PLOT("Render/LocalLightsActive", diagnostics_.local_light_count);
         for (const RelayCore::render::RenderItem& item : render_queue_.items())
         {
-            if (item.mesh != nullptr && item.pass == RelayCore::render::RenderPass::Opaque)
+            if (item.mesh != nullptr && item.pass == RelayCore::render::RenderPass::Opaque && item.casts_shadow)
                 shadow_casters_.push(
                     *item.mesh,
                     item.model_matrix,

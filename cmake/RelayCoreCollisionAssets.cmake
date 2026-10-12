@@ -1,7 +1,8 @@
 # Each declaration explicitly pairs an authored collision source with a native model product.
-set(RELAYCORE_COLLISION_SOURCES lab_bench power_pump b17_observation_camera)
+set(RELAYCORE_COLLISION_SOURCES lab_bench power_pump power_filtration b17_observation_camera)
 set(RELAYCORE_COLLISION_MODEL_lab_bench lab_bench)
 set(RELAYCORE_COLLISION_MODEL_power_pump power_pump)
+set(RELAYCORE_COLLISION_MODEL_power_filtration power_filtration)
 set(RELAYCORE_COLLISION_MODEL_b17_observation_camera b17_observation_camera)
 set(collision_runtime_paths)
 set(collision_products)

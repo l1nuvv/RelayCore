@@ -642,6 +642,7 @@ entries = [
 [[entity]]
 classname = "prop_static"
 model = "models/blood_pentagram.rcmodel"
+casts_shadow = false
 origin = [8, 1.2, 41.81]
 angles = [180, 0, 0]
 scale = [1.6, 1.6, 1.6]

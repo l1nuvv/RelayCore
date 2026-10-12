@@ -131,3 +131,24 @@ renames; the same checks passed outside the sandbox. Final checks:
 Development runtime assets are updated. These are technical and rendered checks;
 no independent player run or new art acceptance is claimed. The Development GPU
 checks run without Vulkan validation layers. No package was produced.
+
+### Screenshot follow-up, 2026-10-13
+
+The owner identified a displaced glyph-shaped shadow and two traversable F-04
+filter pipes. The preceding collision fix covered P-02 pump hardware, not those
+filter pipes. `power_filtration.rccollision` now explicitly covers the supply at
+Y=1.2 and return at Y=0.55, using the dimensions in the existing model exporter.
+Native ray and player-box checks cover both pipes and the adjacent clear aisle.
+
+The wall paint had been submitted as opaque shadow-casting geometry. Authored
+`casts_shadow = false` now excludes all four wall-pentagram placements from
+directional, spot and point shadow passes while retaining normal surface lighting
+and emission. Invalid values fail with a prop-specific diagnostic. The rendered
+power-wall view confirms that the displaced duplicate is gone.
+
+Final Development demo/content/signage build passed. The preceding content and
+HDR/SDR CTest selections were rerun together: 14 passed, zero skips. Formatting
+checks on the changed C++ files and `git diff --check` passed. Runtime assets are
+staged in `build/msvc-dev/src/relaygame/assets`; the latest HDR evidence is the
+same power-wall capture path above. GPU validation layers and an independent
+player run remain outside these checks.

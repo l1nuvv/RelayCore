@@ -30,6 +30,7 @@ namespace RelayCore::render
         RenderPass pass = RenderPass::Opaque;
         const Texture2D* diffuse_texture = nullptr;
         bool casts_directional_shadow = true;
+        bool casts_shadow = true;
         const Texture2D* normal_texture = nullptr;
         float normal_scale = 1;
         std::optional<MetallicRoughness> metallic_roughness;
@@ -75,7 +76,8 @@ namespace RelayCore::render
             const Texture2D* occlusion_texture = nullptr,
             const float occlusion_strength = 1,
             const Texture2D* emissive_texture = nullptr,
-            const glm::vec3 emissive_factor = glm::vec3{0}
+            const glm::vec3 emissive_factor = glm::vec3{0},
+            const bool casts_shadow = true
         )
         {
             items_.push_back(RenderItem{
@@ -84,6 +86,7 @@ namespace RelayCore::render
                 .pass = pass,
                 .diffuse_texture = diffuse_texture,
                 .casts_directional_shadow = casts_directional_shadow,
+                .casts_shadow = casts_shadow,
                 .normal_texture = normal_texture,
                 .normal_scale = normal_scale,
                 .metallic_roughness = metallic_roughness,

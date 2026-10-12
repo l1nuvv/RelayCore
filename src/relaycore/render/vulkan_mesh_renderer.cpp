@@ -2349,7 +2349,8 @@ namespace RelayCore::render
             const auto planes = shadow_frustum_planes(view_projection);
             for (const auto& item : items)
             {
-                if (!item.mesh || item.pass != RenderPass::Opaque || (kind == 0 && !item.casts_directional_shadow))
+                if (!item.mesh || item.pass != RenderPass::Opaque || !item.casts_shadow
+                    || (kind == 0 && !item.casts_directional_shadow))
                     continue;
                 if (light)
                 {

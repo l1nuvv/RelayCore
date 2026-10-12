@@ -428,6 +428,7 @@ entries = [
 [[entity]]
 classname = "prop_static"
 model = "models/blood_pentagram.rcmodel"
+casts_shadow = false
 origin = [36,1.15,26.135]
 
 # VIS-26: retained route glyphs mounted on local physical carriers.

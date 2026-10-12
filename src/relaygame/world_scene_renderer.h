@@ -307,6 +307,7 @@ namespace RelayGame
             std::shared_ptr<const RelayCore::render::StaticModel> model;
             glm::mat4 transform{1};
             std::shared_ptr<const RelayCore::render::ModelAsset> asset;
+            bool casts_shadow = true;
         };
         std::vector<PropInstance> props_;
         RelayCore::render::RenderQueue render_queue_{};
