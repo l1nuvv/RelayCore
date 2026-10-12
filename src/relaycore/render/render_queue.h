@@ -38,6 +38,8 @@ namespace RelayCore::render
         float occlusion_strength = 1;
         const Texture2D* emissive_texture = nullptr;
         glm::vec3 emissive_factor{0};
+        // Missing correspondence is rejected by temporal consumers, never inferred from draw order.
+        std::optional<glm::mat4> previous_model_matrix;
     };
 
     struct SpotLight {
@@ -94,6 +96,11 @@ namespace RelayCore::render
         }
 
         [[nodiscard]] auto items() const noexcept -> std::span<const RenderItem>
+        {
+            return items_;
+        }
+
+        [[nodiscard]] auto items() noexcept -> std::span<RenderItem>
         {
             return items_;
         }

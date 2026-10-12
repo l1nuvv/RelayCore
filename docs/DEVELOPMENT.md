@@ -212,6 +212,13 @@ selected graphics queue and storage target support it. Other values fail. This
 diagnostic override does not change authored/player settings; SDR is unchanged.
 Compute shader compilation/staging and local evidence: [VK14-06a](renderer/VK14-06.md).
 
+For pass-input diagnostics set process-local `RELAYCORE_VULKAN_PASS_INPUT_VIEW`
+to `scene`, `depth`, `normals`, `velocity`, `history` (green accepted/red rejected),
+or `previous_color` (raw reprojected history). `off`/unset disables the extra
+targets/work. Values are strict; these modes do not alter saved graphics settings.
+UI remains over the selected view. Encodings, conservative dynamic/viewmodel
+rejection, history resets and checks: [VK14-06](renderer/VK14-06.md#06bc-contract--2026-10-12).
+
 В Advanced Diagnostics окно `Vulkan memory` обновляется кнопкой `Refresh GPU memory`.
 Оно показывает heap usage/budget, VMA allocations/blocks, retained upload staging,
 pending retirements и material descriptor pools. Снимок сохраняется до следующего

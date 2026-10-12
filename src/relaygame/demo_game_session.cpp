@@ -52,6 +52,7 @@ namespace RelayGame
 
     void DemoGame::enter_editor(RelayCore::EngineServices& services)
     {
+        services.renderer().reset_render_history();
         try
         {
             if (editor_return_)

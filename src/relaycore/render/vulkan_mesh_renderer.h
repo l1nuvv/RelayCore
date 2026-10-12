@@ -36,6 +36,23 @@ namespace RelayCore::render
         size_t scene_retirements = 0, material_retirements = 0;
     };
 
+    enum class PassInputView {
+        off,
+        scene,
+        depth,
+        normals,
+        velocity,
+        history,
+        previous_color
+    };
+
+    struct VulkanPassInputCapture {
+        int width = 0, height = 0;
+        std::vector<glm::vec4> normal_depth;
+        std::vector<glm::vec4> velocity;
+        bool history_valid = false;
+    };
+
     class VulkanMeshRenderer {
     public:
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
@@ -89,6 +106,10 @@ namespace RelayCore::render
         void set_irradiance_probes(std::shared_ptr<const IrradianceProbeVolume> probes);
         void set_spot_light(const SpotLight& light) noexcept;
         void set_scene_time(float seconds) noexcept;
+        void set_pass_input_view(PassInputView view);
+        // Scene switches, restores, respawns, teleports and camera cuts call this explicitly.
+        void reset_history() noexcept;
+        [[nodiscard]] auto capture_pass_inputs() -> VulkanPassInputCapture;
 
     private:
         friend class VulkanSwapchain;

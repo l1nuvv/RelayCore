@@ -120,6 +120,7 @@ namespace RelayCore
         void set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes);
 
         void set_scene_time(float seconds) noexcept;
+        void reset_render_history() noexcept;
         void set_spot_light(const render::SpotLight& light) noexcept;
         void set_field_of_view(float degrees);
 

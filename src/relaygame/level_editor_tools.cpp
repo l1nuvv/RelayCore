@@ -198,6 +198,7 @@ namespace RelayGame
         );
         if (spawn != document_.level().entities.end())
             services.camera().set_position(spawn->origin + glm::vec3{0, 1.65F, 0});
+        services.renderer().reset_render_history();
     }
 
     void LevelEditor::new_map(RelayCore::EngineServices& services, bool discard)
@@ -222,6 +223,7 @@ namespace RelayGame
         validated_revision_ = 0;
         placing_ = false;
         services.camera().set_position({0, 1.65F, -2});
+        services.renderer().reset_render_history();
         services.camera().set_target({0, 1.65F, 3});
         message_ = "Новая комната: старт, дверь с кнопкой и зона выхода. Добавьте оборудование и запустите F11.";
     }

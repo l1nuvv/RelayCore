@@ -217,6 +217,13 @@ namespace RelayCore
         viewport_width_ = width;
         viewport_height_ = height;
         camera_.set_viewport(width, height);
+        reset_render_history();
+    }
+
+    void Renderer::reset_render_history() noexcept
+    {
+        if (state_->backend)
+            state_->backend->reset_history();
     }
 
     void Renderer::begin_frame()

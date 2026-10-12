@@ -49,6 +49,12 @@ namespace RelayCore::render
         static_assert(offsetof(DrawPush, camera_position) == 116);
         static_assert(sizeof(DrawPush) == 128);
 
+        struct PreviousDraw {
+            glm::mat4 mvp;
+            glm::vec4 valid;
+        };
+        static_assert(sizeof(PreviousDraw) == 80);
+
         struct MaterialParameters {
             std::array<glm::vec4, 32> atlas;
             glm::vec4 scene;
@@ -302,6 +308,39 @@ namespace RelayCore::render
             }
         };
 
+        struct InputTarget {
+            MeshImage normal_depth, velocity, depth, color_history;
+            VulkanBuffer readback;
+            InputTarget(
+                const VulkanDevice& device,
+                const VkExtent2D size,
+                const VkFormat depth_format,
+                const VkFormat color_format
+            ) : normal_depth(device), velocity(device), depth(device), color_history(device), readback()
+            {
+                for (auto* image : {&normal_depth, &velocity})
+                    image->initialize(
+                        size,
+                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                depth.initialize(
+                    size,
+                    depth_format,
+                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                    VK_IMAGE_ASPECT_DEPTH_BIT
+                );
+                color_history.initialize(
+                    size,
+                    color_format,
+                    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                    VK_IMAGE_ASPECT_COLOR_BIT
+                );
+            }
+        };
+
         struct MeshTarget {
             VkExtent2D extent;
             MeshImage color, depth;
@@ -315,7 +354,8 @@ namespace RelayCore::render
                 const VkFormat display_format,
                 const VkFormat depth_format,
                 const VkSampleCountFlagBits samples,
-                const bool compute_tone_mapping
+                const bool compute_tone_mapping,
+                const bool input_history
             ) :
                 extent(size), color(device), depth(device), readback(
                                                                 device,
@@ -338,7 +378,8 @@ namespace RelayCore::render
                     hdr_scene->initialize(
                         size,
                         scene_format,
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | (input_history ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0u),
                         VK_IMAGE_ASPECT_COLOR_BIT
                     );
                 }
@@ -753,6 +794,9 @@ namespace RelayCore::render
             size_t command_index = 0;
             VulkanSceneCompletion pending{};
             std::unique_ptr<MeshTarget> target;
+            std::unique_ptr<InputTarget> inputs;
+            VulkanBuffer previous_draws;
+            std::vector<PreviousDraw> previous_records;
             std::vector<std::shared_ptr<const void>> ui_resources;
             explicit Frame(const VulkanDevice& owner) :
                 device(owner), profiler(owner, "RelayCore Vulkan scene"), material_data(
@@ -825,6 +869,18 @@ namespace RelayCore::render
         std::vector<std::unique_ptr<Material>> retired_materials;
         uint32_t max_target_width = 0, max_target_height = 0;
         std::unique_ptr<ToneMapping> tone_mapping;
+        PassInputView input_view = PassInputView::off;
+        VkDescriptorSetLayout input_layout = VK_NULL_HANDLE;
+        VkDescriptorPool input_pool = VK_NULL_HANDLE;
+        VkSampler input_sampler = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, 2> input_sets{};
+        std::array<VkPipeline, 4> input_pipelines{};
+        std::filesystem::path shader_directory;
+        glm::mat4 previous_projection{1}, previous_view_projection{1};
+        VkExtent2D history_extent{};
+        float previous_exposure = 0;
+        bool history_valid = false, frame_history_valid = false;
+        size_t history_slot = 0;
 
         std::array<Frame, 2> frames;
         size_t frame_index = 0;
@@ -899,6 +955,15 @@ namespace RelayCore::render
             if (descriptor_layout)
                 vkDestroyDescriptorSetLayout(device.handle(), descriptor_layout, nullptr);
             tone_mapping.reset();
+            for (auto pipeline : input_pipelines)
+                if (pipeline)
+                    vkDestroyPipeline(device.handle(), pipeline, nullptr);
+            if (input_pool)
+                vkDestroyDescriptorPool(device.handle(), input_pool, nullptr);
+            if (input_sampler)
+                vkDestroySampler(device.handle(), input_sampler, nullptr);
+            if (input_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), input_layout, nullptr);
         }
 
         auto display_format() const noexcept -> VkFormat
@@ -1163,6 +1228,21 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &descriptor_info, nullptr, &descriptor_layout),
                 "Failed to create Vulkan mesh descriptor layout"
             );
+            std::array<VkDescriptorSetLayoutBinding, 6> input_bindings{};
+            input_bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+            for (uint32_t i = 1; i < input_bindings.size(); ++i)
+                input_bindings[i] =
+                    {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+            const VkDescriptorSetLayoutCreateInfo input_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = static_cast<uint32_t>(input_bindings.size()),
+                .pBindings = input_bindings.data()
+            };
+            require_mesh_vk(
+                vkCreateDescriptorSetLayout(device.handle(), &input_info, nullptr, &input_layout),
+                "Pass input descriptor layout"
+            );
+            const std::array set_layouts{descriptor_layout, input_layout};
             const VkPushConstantRange push{
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
@@ -1170,8 +1250,8 @@ namespace RelayCore::render
             };
             const VkPipelineLayoutCreateInfo layout_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount = 1,
-                .pSetLayouts = &descriptor_layout,
+                .setLayoutCount = static_cast<uint32_t>(set_layouts.size()),
+                .pSetLayouts = set_layouts.data(),
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = &push,
             };
@@ -1212,21 +1292,33 @@ namespace RelayCore::render
             -> VkPipeline
         {
             MeshShaders shaders{device.handle()};
-            const auto prefix = shadow_kind < 0 ? "mesh" : shadow_kind == 2 ? "point_shadow" : "shadow";
-            shaders.vertex = shaders.load(directory / (std::string(prefix) + ".vert.spv"), "vertex_main");
-            shaders.fragment = shaders.load(directory / (std::string(prefix) + ".frag.spv"), "fragment_main");
+            const bool inputs = shadow_kind == -2, debug_inputs = shadow_kind == -3;
+            const auto prefix = inputs || debug_inputs ? "pass_inputs"
+                                : shadow_kind < 0      ? "mesh"
+                                : shadow_kind == 2     ? "point_shadow"
+                                                       : "shadow";
+            const auto vertex_entry = inputs ? "input_vertex" : debug_inputs ? "debug_vertex" : "vertex_main";
+            const auto fragment_entry = inputs ? "input_fragment" : debug_inputs ? "debug_fragment" : "fragment_main";
+            shaders.vertex = shaders.load(
+                directory / (std::string(prefix) + "." + (inputs || debug_inputs ? vertex_entry : "vert") + ".spv"),
+                vertex_entry
+            );
+            shaders.fragment = shaders.load(
+                directory / (std::string(prefix) + "." + (inputs || debug_inputs ? fragment_entry : "frag") + ".spv"),
+                fragment_entry
+            );
             const std::array stages{
                 VkPipelineShaderStageCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
                     .module = shaders.vertex,
-                    .pName = "vertex_main"
+                    .pName = vertex_entry
                 },
                 VkPipelineShaderStageCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .module = shaders.fragment,
-                    .pName = "fragment_main"
+                    .pName = fragment_entry
                 },
             };
             const VkVertexInputBindingDescription binding{0, sizeof(ColorVertex), VK_VERTEX_INPUT_RATE_VERTEX};
@@ -1238,12 +1330,16 @@ namespace RelayCore::render
                 VkVertexInputAttributeDescription{4, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ColorVertex, uv)},
                 VkVertexInputAttributeDescription{5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ColorVertex, tangent)},
             };
+            const std::array input_attributes{attributes[0], attributes[2], attributes[4], attributes[5]};
             const VkPipelineVertexInputStateCreateInfo vertex_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-                .vertexBindingDescriptionCount = 1,
+                .vertexBindingDescriptionCount = debug_inputs ? 0u : 1u,
                 .pVertexBindingDescriptions = &binding,
-                .vertexAttributeDescriptionCount = shadow_kind < 0 ? static_cast<uint32_t>(attributes.size()) : 1u,
-                .pVertexAttributeDescriptions = attributes.data(),
+                .vertexAttributeDescriptionCount = debug_inputs      ? 0u
+                                                   : inputs          ? static_cast<uint32_t>(input_attributes.size())
+                                                   : shadow_kind < 0 ? static_cast<uint32_t>(attributes.size())
+                                                                     : 1u,
+                .pVertexAttributeDescriptions = inputs ? input_attributes.data() : attributes.data(),
             };
             const VkPipelineInputAssemblyStateCreateInfo assembly{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -1257,7 +1353,8 @@ namespace RelayCore::render
             const VkPipelineRasterizationStateCreateInfo raster{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                 .polygonMode = VK_POLYGON_MODE_FILL,
-                .cullMode = shadow_kind == 0                                ? VkCullModeFlags{VK_CULL_MODE_FRONT_BIT}
+                .cullMode = debug_inputs                                    ? VkCullModeFlags{VK_CULL_MODE_NONE}
+                            : shadow_kind == 0                              ? VkCullModeFlags{VK_CULL_MODE_FRONT_BIT}
                             : shadow_kind > 0 || pass == RenderPass::Opaque ? VkCullModeFlags{VK_CULL_MODE_BACK_BIT}
                                                                             : VkCullModeFlags{VK_CULL_MODE_NONE},
                 .frontFace = shadow_kind < 0 ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE,
@@ -1265,18 +1362,18 @@ namespace RelayCore::render
             };
             const VkPipelineMultisampleStateCreateInfo multisample{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                .rasterizationSamples = shadow_kind < 0
+                .rasterizationSamples = shadow_kind == -1
                                             ? static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
                                             : VK_SAMPLE_COUNT_1_BIT,
             };
             const VkPipelineDepthStencilStateCreateInfo depth{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-                .depthTestEnable = VK_TRUE,
-                .depthWriteEnable = pass == RenderPass::Opaque ? VK_TRUE : VK_FALSE,
+                .depthTestEnable = debug_inputs ? VK_FALSE : VK_TRUE,
+                .depthWriteEnable = !debug_inputs && pass == RenderPass::Opaque ? VK_TRUE : VK_FALSE,
                 .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
             };
             const VkPipelineColorBlendAttachmentState blend_attachment{
-                .blendEnable = pass == RenderPass::Opaque ? VK_FALSE : VK_TRUE,
+                .blendEnable = pass == RenderPass::Opaque || inputs ? VK_FALSE : VK_TRUE,
                 .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
                 .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
                 .colorBlendOp = VK_BLEND_OP_ADD,
@@ -1286,10 +1383,13 @@ namespace RelayCore::render
                 .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT
                                   | VK_COLOR_COMPONENT_A_BIT,
             };
+            const std::array blend_attachments{blend_attachment, blend_attachment};
             const VkPipelineColorBlendStateCreateInfo blend{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                .attachmentCount = shadow_kind < 0 ? 1u : 0u,
-                .pAttachments = shadow_kind < 0 ? &blend_attachment : nullptr,
+                .attachmentCount = inputs            ? 2u
+                                   : shadow_kind < 0 ? 1u
+                                                     : 0u,
+                .pAttachments = shadow_kind < 0 ? blend_attachments.data() : nullptr,
             };
             const std::array dynamics{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             const VkPipelineDynamicStateCreateInfo dynamic{
@@ -1297,12 +1397,21 @@ namespace RelayCore::render
                 .dynamicStateCount = static_cast<uint32_t>(dynamics.size()),
                 .pDynamicStates = dynamics.data(),
             };
-            const VkFormat color = scene_format();
+            const std::array colors{
+                inputs         ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : debug_inputs ? VK_FORMAT_R8G8B8A8_UNORM
+                               : scene_format(),
+                VK_FORMAT_R32G32B32A32_SFLOAT
+            };
             const VkPipelineRenderingCreateInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                .colorAttachmentCount = shadow_kind < 0 ? 1u : 0u,
-                .pColorAttachmentFormats = shadow_kind < 0 ? &color : nullptr,
-                .depthAttachmentFormat = shadow_kind < 0 ? depth_formats.scene : depth_formats.shadow,
+                .colorAttachmentCount = inputs            ? 2u
+                                        : shadow_kind < 0 ? 1u
+                                                          : 0u,
+                .pColorAttachmentFormats = shadow_kind < 0 ? colors.data() : nullptr,
+                .depthAttachmentFormat = debug_inputs      ? VK_FORMAT_UNDEFINED
+                                         : shadow_kind < 0 ? depth_formats.scene
+                                                           : depth_formats.shadow,
             };
             const VkGraphicsPipelineCreateInfo info{
                 .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -1886,12 +1995,19 @@ namespace RelayCore::render
             const std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
             const RenderPass pass,
-            const bool viewmodel = false
+            const bool viewmodel = false,
+            const bool inputs = false,
+            const uint32_t first_draw = 0
         )
         {
-            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[static_cast<size_t>(pass)]);
-            for (const auto& item : items)
+            vkCmdBindPipeline(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
+            );
+            for (size_t index = 0; index < items.size(); ++index)
             {
+                const auto& item = items[index];
                 if ((!viewmodel && item.pass != pass) || !item.mesh)
                     continue;
                 auto& geometry = meshes.at(item.mesh->cpu_data().get());
@@ -1944,7 +2060,14 @@ namespace RelayCore::render
                     sizeof(push),
                     &push
                 );
-                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
+                vkCmdDrawIndexed(
+                    frame().commands,
+                    geometry.index_count,
+                    1,
+                    0,
+                    0,
+                    inputs ? first_draw + static_cast<uint32_t>(index) : 0u
+                );
             }
         }
 
@@ -2242,6 +2365,357 @@ namespace RelayCore::render
             if (synchronous)
                 wait_frame(frame());
             uploads.collect();
+        }
+
+        void input_barrier(
+            MeshImage& image,
+            const VkImageLayout old_layout,
+            const VkImageLayout new_layout,
+            const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT
+        )
+        {
+            const VkImageMemoryBarrier2 barrier{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                .oldLayout = old_layout,
+                .newLayout = new_layout,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = image.image,
+                .subresourceRange = {aspect, 0, 1, 0, 1}
+            };
+            const VkDependencyInfo dependency{
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &barrier
+            };
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
+        }
+
+        void set_input_view(const PassInputView view)
+        {
+            if (view < PassInputView::off || view > PassInputView::previous_color)
+                throw std::invalid_argument("Invalid pass input view");
+            if (view == input_view)
+                return;
+            wait();
+            if (view != PassInputView::off && !input_pipelines[0])
+            {
+                VkImageFormatProperties properties{};
+                require_mesh_vk(
+                    vkGetPhysicalDeviceImageFormatProperties(
+                        device.physical_device(),
+                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        0,
+                        &properties
+                    ),
+                    "Pass inputs require sampled/transfer RGBA32F attachments"
+                );
+                std::array<VkPipeline, 4> replacements{};
+                try
+                {
+                    for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                        replacements[static_cast<size_t>(pass)] = create_pipeline(shader_directory, pass, -2);
+                    replacements[3] = create_pipeline(shader_directory, RenderPass::Opaque, -3);
+                } catch (...)
+                {
+                    for (auto pipeline : replacements)
+                        if (pipeline)
+                            vkDestroyPipeline(device.handle(), pipeline, nullptr);
+                    throw;
+                }
+                input_pipelines = replacements;
+            }
+            if (view != PassInputView::off && !input_pool)
+            {
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
+                };
+                const VkDescriptorPoolCreateInfo pool{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 2,
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device.handle(), &pool, nullptr, &input_pool),
+                    "Pass input pool"
+                );
+                const std::array layouts{input_layout, input_layout};
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = input_pool,
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data()
+                };
+                require_mesh_vk(
+                    vkAllocateDescriptorSets(device.handle(), &allocation, input_sets.data()),
+                    "Pass input sets"
+                );
+                const VkSamplerCreateInfo sampler{
+                    .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                    .magFilter = VK_FILTER_NEAREST,
+                    .minFilter = VK_FILTER_NEAREST,
+                    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                    .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                    .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                    .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+                };
+                require_mesh_vk(
+                    vkCreateSampler(device.handle(), &sampler, nullptr, &input_sampler),
+                    "Pass input sampler"
+                );
+            }
+            if (view == PassInputView::off || input_view == PassInputView::off)
+                for (auto& slot : frames)
+                {
+                    slot.target.reset();
+                    slot.inputs.reset();
+                    slot.previous_draws = {};
+                }
+            history_valid = false;
+            input_view = view;
+        }
+
+        void prepare_inputs(
+            const std::span<const RenderItem> items,
+            const std::span<const RenderItem> viewmodel,
+            const PerspectiveCamera& camera,
+            const VkExtent2D extent
+        )
+        {
+            frame_history_valid = history_valid && history_slot != frame_index && history_extent.width == extent.width
+                                  && history_extent.height == extent.height
+                                  && previous_projection == camera.projection_matrix()
+                                  && previous_exposure == renderer_config.exposure_ev;
+            if (history_extent.width != extent.width || history_extent.height != extent.height)
+            {
+                wait();
+                for (auto& slot : frames)
+                    slot.inputs.reset();
+                frame_history_valid = false;
+            }
+            if (!frame().inputs)
+                frame().inputs = std::make_unique<InputTarget>(device, extent, depth_formats.scene, scene_format());
+            const size_t count = std::max(size_t{1}, items.size() + viewmodel.size());
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+            if (count > std::numeric_limits<uint32_t>::max()
+                || count * sizeof(PreviousDraw) > properties.limits.maxStorageBufferRange)
+                throw std::invalid_argument("Pass input draw correspondence exceeds storage buffer limits");
+            auto& previous = frame().previous_records;
+            previous.resize(count);
+            for (size_t i = 0; i < items.size(); ++i)
+            {
+                const auto& item = items[i];
+                previous[i] = {
+                    frame_history_valid
+                        ? previous_view_projection * item.previous_model_matrix.value_or(item.model_matrix)
+                        : camera.view_projection_matrix() * item.model_matrix,
+                    {item.previous_model_matrix ? 1.0F : 0.0F, 0, 0, 0}
+                };
+            }
+            for (size_t i = 0; i < viewmodel.size(); ++i)
+                previous[items.size() + i] = {
+                    camera.view_projection_matrix() * viewmodel[i].model_matrix,
+                    {0, 0, 0, 0}
+                };
+            const auto bytes = std::as_bytes(std::span{previous});
+            if (frame().previous_draws.size() < bytes.size())
+                frame().previous_draws =
+                    VulkanBuffer(device, bytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::upload);
+            frame().previous_draws.write(bytes);
+            auto& current = *frame().inputs;
+            auto& old = frame_history_valid ? *frames[history_slot].inputs : current;
+            const std::array images{
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{input_sampler, current.velocity.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                VkDescriptorImageInfo{input_sampler, old.normal_depth.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    frame_history_valid ? old.color_history.view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{input_sampler, old.velocity.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
+            };
+            const VkDescriptorBufferInfo buffer{frame().previous_draws.handle(), 0, bytes.size()};
+            std::array<VkWriteDescriptorSet, 6> writes{};
+            writes[0] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = input_sets[frame_index],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &buffer
+            };
+            for (uint32_t i = 1; i < writes.size(); ++i)
+                writes[i] = {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = input_sets[frame_index],
+                    .dstBinding = i,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &images[i - 1]
+                };
+            vkUpdateDescriptorSets(device.handle(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        }
+
+        void record_inputs(
+            const std::span<const RenderItem> items,
+            const std::span<const RenderItem> viewmodel,
+            const PerspectiveCamera& camera
+        )
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Pass inputs");
+            auto& target = *frame().inputs;
+            for (auto* image : {&target.normal_depth, &target.velocity})
+                input_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            input_barrier(
+                target.depth,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT
+            );
+            std::array<VkRenderingAttachmentInfo, 2> colors{};
+            const std::array views{target.normal_depth.view, target.velocity.view};
+            for (size_t i = 0; i < colors.size(); ++i)
+                colors[i] = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = views[i],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {.color = {{0, 0, 0, 0}}}
+                };
+            const VkRenderingAttachmentInfo depth{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.depth.view,
+                .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .clearValue = {.depthStencil = {1, 0}}
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 2,
+                .pColorAttachments = colors.data(),
+                .pDepthAttachment = &depth
+            };
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            vkCmdBeginRendering(frame().commands, &rendering);
+            for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                draw(items, camera, pass, false, true);
+            draw(viewmodel, camera, RenderPass::Opaque, true, true, static_cast<uint32_t>(items.size()));
+            vkCmdEndRendering(frame().commands);
+            for (auto* image : {&target.normal_depth, &target.velocity})
+                input_barrier(
+                    *image,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+        }
+
+        void record_color_history()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Color history");
+            auto& source = frame().target->hdr_scene ? *frame().target->hdr_scene : frame().target->color;
+            auto& destination = frame().inputs->color_history;
+            input_barrier(source, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            input_barrier(destination, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            const VkImageCopy copy{
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .extent = {frame().target->extent.width, frame().target->extent.height, 1}
+            };
+            vkCmdCopyImage(
+                frame().commands,
+                source.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                destination.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &copy
+            );
+            input_barrier(source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            input_barrier(destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        void record_input_view()
+        {
+            if (input_view == PassInputView::scene)
+                return;
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Pass input visualizer");
+            input_barrier(
+                frame().target->color,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            );
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView =
+                    frame().target->color.unorm_view ? frame().target->color.unorm_view : frame().target->color.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, input_pipelines[3]);
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            const DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {},
+                .flags = static_cast<uint32_t>(input_view),
+                .camera_position = {frame_history_valid ? 1.0F : 0.0F, 0, 0}
+            };
+            vkCmdPushConstants(
+                frame().commands,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
         }
 
         void record_tone_mapping()
@@ -2592,7 +3066,7 @@ namespace RelayCore::render
                 throw std::invalid_argument("Vulkan mesh target requires positive dimensions");
             if (static_cast<uint32_t>(width) > max_target_width || static_cast<uint32_t>(height) > max_target_height)
                 throw std::invalid_argument("Vulkan mesh target exceeds the device framebuffer/image limits");
-            select_frame(capture || ui);
+            select_frame(input_view == PassInputView::off && (capture || ui));
             frame().material_data.write(std::as_bytes(std::span{&material_parameters, 1}));
             frame().light_data.write(std::as_bytes(std::span{&lights, 1}));
             IrradianceParameters indirect{};
@@ -2629,10 +3103,16 @@ namespace RelayCore::render
                     display_format(),
                     depth_formats.scene,
                     static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples),
-                    tone_mapping && tone_mapping->compute
+                    tone_mapping && tone_mapping->compute,
+                    input_view != PassInputView::off
                 );
                 if (tone_mapping)
                     tone_mapping->bind(frame().target->hdr_scene->view, frame().target->color.unorm_view, frame_index);
+            }
+            if (input_view != PassInputView::off)
+            {
+                prepare_inputs(items, viewmodel, camera, extent);
+                history_valid = false;
             }
             CpuRgbaTextureData output{width, height, {}};
             if (capture)
@@ -2728,6 +3208,8 @@ namespace RelayCore::render
                 const VkRect2D scissor{{0, 0}, extent};
                 vkCmdSetViewport(frame().commands, 0, 1, &viewport);
                 vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                if (input_view != PassInputView::off)
+                    record_inputs(items, viewmodel, camera);
                 vkCmdBeginRendering(frame().commands, &rendering);
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "World passes");
@@ -2759,8 +3241,12 @@ namespace RelayCore::render
                     draw(viewmodel, camera, RenderPass::Opaque, true);
                     vkCmdEndRendering(frame().commands);
                 }
+                if (input_view != PassInputView::off)
+                    record_color_history();
                 if (tone_mapping)
                     record_tone_mapping();
+                if (input_view != PassInputView::off)
+                    record_input_view();
                 if (ui)
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "ImGui");
@@ -2793,6 +3279,15 @@ namespace RelayCore::render
                     record_readback();
             }
             submit_and_wait(capture || ui);
+            if (input_view != PassInputView::off)
+            {
+                previous_projection = camera.projection_matrix();
+                previous_view_projection = camera.view_projection_matrix();
+                previous_exposure = renderer_config.exposure_ev;
+                history_extent = extent;
+                history_slot = frame_index;
+                history_valid = true;
+            }
             if (capture)
                 frame().target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
             return output;
@@ -2812,6 +3307,15 @@ namespace RelayCore::render
     {
         state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
         reload_shaders(shader_directory);
+        if (const auto* value = std::getenv("RELAYCORE_VULKAN_PASS_INPUT_VIEW"))
+        {
+            const std::array names{"off", "scene", "depth", "normals", "velocity", "history", "previous_color"};
+            const auto found = std::find(names.begin(), names.end(), std::string_view{value});
+            if (found == names.end())
+                throw std::invalid_argument("RELAYCORE_VULKAN_PASS_INPUT_VIEW must be off, scene, depth, normals, "
+                                            "velocity, history or previous_color");
+            set_pass_input_view(static_cast<PassInputView>(found - names.begin()));
+        }
     }
 
     auto VulkanMeshRenderer::resource_usage() const noexcept -> VulkanResourceUsage
@@ -2941,13 +3445,82 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::set_scene_time(const float seconds) noexcept
     {
+        if (seconds < state_->scene_time)
+            reset_history();
         state_->scene_time = seconds;
+    }
+
+    void VulkanMeshRenderer::set_pass_input_view(const PassInputView view)
+    {
+        state_->set_input_view(view);
+    }
+
+    void VulkanMeshRenderer::reset_history() noexcept
+    {
+        state_->history_valid = false;
+    }
+
+    auto VulkanMeshRenderer::capture_pass_inputs() -> VulkanPassInputCapture
+    {
+        if (!state_->frame().inputs)
+            throw std::logic_error("Pass inputs require an enabled, prepared frame");
+        state_->wait();
+        state_->begin_commands();
+        auto& target = *state_->frame().inputs;
+        const auto extent = state_->frame().target->extent;
+        const size_t pixels = size_t(extent.width) * extent.height;
+        if (!target.readback.handle())
+            target.readback = VulkanBuffer(
+                state_->device,
+                pixels * sizeof(glm::vec4) * 2,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VulkanBufferMemory::readback
+            );
+        const std::array images{&target.normal_depth, &target.velocity};
+        for (size_t i = 0; i < images.size(); ++i)
+        {
+            state_->input_barrier(
+                *images[i],
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+            );
+            const VkBufferImageCopy copy{
+                .bufferOffset = pixels * sizeof(glm::vec4) * i,
+                .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .imageExtent = {extent.width, extent.height, 1}
+            };
+            vkCmdCopyImageToBuffer(
+                state_->frame().commands,
+                images[i]->image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                target.readback.handle(),
+                1,
+                &copy
+            );
+            state_->input_barrier(
+                *images[i],
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
+        }
+        state_->submit_and_wait();
+        VulkanPassInputCapture capture{
+            int(extent.width),
+            int(extent.height),
+            std::vector<glm::vec4>(pixels),
+            std::vector<glm::vec4>(pixels),
+            state_->frame_history_valid
+        };
+        target.readback.read(std::as_writable_bytes(std::span{capture.normal_depth}));
+        target.readback.read(std::as_writable_bytes(std::span{capture.velocity}), pixels * sizeof(glm::vec4));
+        return capture;
     }
 
     void VulkanMeshRenderer::reload_shaders(const std::filesystem::path& directory)
     {
         state_->wait();
-        std::array<VkPipeline, 7> replacement{};
+        auto staged_directory = directory;
+        std::array<VkPipeline, 11> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -2956,6 +3529,12 @@ namespace RelayCore::render
                 replacement[3 + i] = state_->create_pipeline(directory, RenderPass::Opaque, i);
             if (state_->tone_mapping)
                 replacement[6] = state_->tone_mapping->create_pipeline(directory);
+            if (state_->input_pipelines[0])
+            {
+                for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                    replacement[7 + static_cast<size_t>(pass)] = state_->create_pipeline(directory, pass, -2);
+                replacement[10] = state_->create_pipeline(directory, RenderPass::Opaque, -3);
+            }
         } catch (...)
         {
             for (const auto pipeline : replacement)
@@ -2977,6 +3556,14 @@ namespace RelayCore::render
                 vkDestroyPipeline(state_->device.handle(), state_->tone_mapping->pipeline, nullptr);
             state_->tone_mapping->pipeline = replacement[6];
         }
+        for (size_t i = 0; i < state_->input_pipelines.size(); ++i)
+        {
+            if (state_->input_pipelines[i])
+                vkDestroyPipeline(state_->device.handle(), state_->input_pipelines[i], nullptr);
+            state_->input_pipelines[i] = replacement[7 + i];
+        }
+        state_->shader_directory = std::move(staged_directory);
+        reset_history();
     }
     auto VulkanMeshRenderer::render_image(
         const std::span<const RenderItem> items,

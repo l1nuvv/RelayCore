@@ -133,6 +133,17 @@ there are no temporal inputs/history in this pass. Technique diagnostics and the
 raster verification override are in [Development](DEVELOPMENT.md#vulkan-capture-и-validation),
 with [06a evidence](renderer/VK14-06.md).
 
+VK14-06 pass inputs are renderer-owned, opt-in diagnostics: a single-sample
+geometry pass produces mapped world normals, view depth and previous-minus-current
+top-down UV velocity. Explicit previous model transforms cross the existing
+`RenderItem` boundary; missing/dynamic correspondence, transparents and viewmodels
+reject history. Two scene slots retain pre-UI color and geometry for GPU
+reprojection/acceptance views. Resize/projection/exposure, scene activation,
+restore/respawn/camera cuts and successful reload invalidate history. The full
+[input/history contract and evidence](renderer/VK14-06.md#06bc-contract--2026-10-12)
+define encodings, resets and limitations; temporal filtering belongs to a later
+consumer.
+
 Memory statistics and retention counters are explicit diagnostic snapshots, with
 no heap queries in the normal frame loop. [Development](DEVELOPMENT.md#vulkan-capture-и-validation)
 owns the UI procedure; [VK14-05 evidence](renderer/VK14-05.md) owns the fixtures and

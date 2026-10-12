@@ -171,6 +171,7 @@ namespace RelayGame
     void GameWorldRuntime::activate_level_session(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::activate_level_session");
+        services.renderer().reset_render_history();
         services.audio_system().stop_one_shots();
         player_controller_.apply_camera(services.camera());
         try
@@ -990,6 +991,7 @@ namespace RelayGame
             actions.weapon_selection.reset();
             if (advance_dead_player_state(sim_delta_seconds))
             {
+                services.renderer().reset_render_history();
                 play_gameplay_audio(services, audio_cues_.player_respawn);
                 push_transient_hud_event(
                     "Вы у входа. Выполненные задачи и состояние врагов сохранены.",

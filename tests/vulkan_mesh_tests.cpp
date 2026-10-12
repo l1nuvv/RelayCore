@@ -3251,6 +3251,8 @@ namespace
             hud->set_screen(PlayerUiScreen::Hud);
             hud->set_hud({.visible = true, .health = 72, .max_health = 100, .weapon = "Дробовик"});
             camera.set_viewport(width, height);
+            // Warm history after resize so this lifetime check compares the same diagnostic state.
+            renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
             renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
             renderer.append_player_ui(*hud);
             const auto expected = renderer.capture_prepared_image();
@@ -3416,6 +3418,270 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    void check_pass_inputs(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        constexpr int w = 319, h = 181;
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(w, h);
+        CpuColorMeshData triangle{
+            {{{-2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {0, 0}, {1, 0, 0, 1}},
+             {{2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {1, 0}, {1, 0, 0, 1}},
+             {{0, 2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {.5F, 1}, {1, 0, 0, 1}}},
+            {0, 1, 2}
+        };
+        StaticColorMesh mesh;
+        mesh.initialize(triangle);
+        std::array items{RenderItem{.mesh = &mesh, .previous_model_matrix = glm::mat4{1}}};
+        const size_t center = size_t(h / 2) * w + w / 2;
+        for (bool hdr : {false, true})
+            for (int samples : {1, 4})
+            {
+                RendererConfig config;
+                config.hdr_enabled = hdr;
+                config.msaa_samples = samples;
+                config.shadow_enabled = config.fog_enabled = false;
+                config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                const auto baseline = renderer.render_image(items, camera, w, h);
+                renderer.set_pass_input_view(PassInputView::scene);
+                const auto scene = renderer.render_image(items, camera, w, h);
+                require(scene.pixels == baseline.pixels, "Pass-input preparation changed scene color");
+                auto input = renderer.capture_pass_inputs();
+                require(
+                    !input.history_valid && glm::length(glm::vec2(input.velocity[center])) < .00001F,
+                    "First frame reused history or produced motion"
+                );
+                require(
+                    glm::length(glm::vec3(input.normal_depth[center]) - glm::vec3{0, 0, 1}) < .0001F
+                        && std::abs(input.normal_depth[center].w - 3) < .0001F,
+                    "Normal/depth encoding differs from analytic plane"
+                );
+                for (size_t p = 0; p < input.normal_depth.size(); ++p)
+                    for (int c = 0; c < 4; ++c)
+                        require(
+                            std::isfinite(input.normal_depth[p][c]) && std::isfinite(input.velocity[p][c]),
+                            "Pass input contains nonfinite values"
+                        );
+                for (int i = 0; i < 4; ++i)
+                {
+                    renderer.prepare_frame(items, items, camera, w, h);
+                    input = renderer.capture_pass_inputs();
+                    require(
+                        input.history_valid && input.velocity[center].w == 1
+                            && glm::length(glm::vec2(input.velocity[center])) < .00001F,
+                        "Stationary history/velocity differs across scene slots"
+                    );
+                }
+                for (int i = 0; i < 8; ++i)
+                    renderer.prepare_frame(items, items, camera, w, h);
+                require(renderer.capture_pass_inputs().history_valid, "Queued scene slots lost history");
+                renderer.set_pass_input_view(PassInputView::history);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                auto history = renderer.render_image(items, camera, w, h);
+                require(
+                    history.pixels[center * 4 + 1] == 255 && history.pixels[center * 4] == 0,
+                    "GPU reprojection rejected stationary geometry"
+                );
+                save(
+                    history,
+                    captures / ("inputs-history-" + std::to_string(samples) + (hdr ? "-hdr.bmp" : "-sdr.bmp"))
+                );
+                camera.set_position({.1F, .1F, 3});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                const auto projection = camera.projection_matrix();
+                const glm::vec2 expected{projection[0][0] * .1F / 6, -projection[1][1] * .1F / 6};
+                require(
+                    glm::length(glm::vec2(input.velocity[center]) - expected) < .00001F,
+                    "Camera velocity sign/units differ from top-down UV convention"
+                );
+                camera.set_position({0, 0, 3});
+                camera.set_position({10, 0, 3});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                camera.set_position({0, 0, 3});
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Out-of-bounds reprojection accepted history");
+                renderer.reset_history();
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                items[0].model_matrix = glm::translate(glm::mat4{1}, glm::vec3{.1F, .1F, 0});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                require(
+                    glm::length(glm::vec2(input.velocity[center]) + expected) < .00001F,
+                    "Object velocity omitted previous transform"
+                );
+                items[0].model_matrix = glm::mat4{1};
+                items[0].previous_model_matrix.reset();
+                history = renderer.render_image(items, camera, w, h);
+                require(
+                    renderer.capture_pass_inputs().velocity[center].w == 0 && history.pixels[center * 4] == 255,
+                    "Unknown correspondence reused history"
+                );
+                items[0].previous_model_matrix = glm::mat4{1};
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Previous unknown-motion pixel accepted history");
+                for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+                {
+                    items[0].pass = pass;
+                    static_cast<void>(renderer.render_image(items, camera, w, h));
+                    require(
+                        renderer.capture_pass_inputs().velocity[center].w == 0,
+                        "Nonopaque fragment reused opaque history"
+                    );
+                }
+                items[0].pass = RenderPass::Opaque;
+                auto backface = triangle;
+                backface.indices = {0, 2, 1};
+                StaticColorMesh backface_mesh;
+                backface_mesh.initialize(backface);
+                auto glass = items[0];
+                glass.mesh = &backface_mesh;
+                glass.pass = RenderPass::Transparent;
+                glass.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, .5F});
+                const std::array glass_items{items[0], glass};
+                static_cast<void>(renderer.render_image(glass_items, camera, w, h));
+                require(
+                    renderer.capture_pass_inputs().normal_depth[center].w == 0,
+                    "Back-facing transparent fragment failed to mask history"
+                );
+                static_cast<void>(renderer.render_image(items, camera, w, h, items));
+                require(renderer.capture_pass_inputs().velocity[center].w == 0, "Viewmodel reused world history");
+                auto foreground = items[0];
+                foreground.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, .5F});
+                foreground.previous_model_matrix = foreground.model_matrix;
+                const std::array occluded{items[0], foreground};
+                static_cast<void>(renderer.render_image(occluded, camera, w, h));
+                history = renderer.render_image(occluded, camera, w, h);
+                require(
+                    history.pixels[center * 4 + 1] == 255
+                        && std::abs(renderer.capture_pass_inputs().velocity[center].z - 2.5F) < .0001F,
+                    "Shared-mesh instances lost independent previous transforms"
+                );
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Disoccluded background accepted foreground history");
+                for (auto& vertex : triangle.vertices)
+                    vertex.normal = {0, 0, -1};
+                StaticColorMesh reversed;
+                reversed.initialize(triangle);
+                items[0].mesh = &reversed;
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Normal discontinuity accepted history");
+                items[0].mesh = &mesh;
+                for (auto& vertex : triangle.vertices)
+                    vertex.normal = {0, 0, 1};
+                Texture2D normal;
+                const std::array<uint8_t, 4> normal_pixel{191, 128, 238, 255};
+                normal.initialize_rgba(1, 1, normal_pixel, TextureEncoding::linear);
+                auto double_sided = triangle;
+                double_sided.indices.insert(double_sided.indices.end(), {0, 2, 1});
+                StaticColorMesh mirrored;
+                mirrored.initialize(double_sided);
+                items[0].mesh = &mirrored;
+                items[0].normal_texture = &normal;
+                items[0].model_matrix = glm::scale(glm::mat4{1}, glm::vec3{-1.2F, .8F, 1});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                const glm::vec3 sampled = glm::normalize(glm::vec3{191, 128, 238} * (2.0F / 255) - 1.0F);
+                require(
+                    glm::length(glm::vec3(input.normal_depth[center]) - glm::vec3{-sampled.x, sampled.y, sampled.z})
+                        < .0001F,
+                    "Mapped normal lost mirrored/nonuniform tangent transform"
+                );
+                items[0].normal_texture = nullptr;
+                items[0].mesh = &mesh;
+                items[0].model_matrix = glm::mat4{1};
+                for (auto view :
+                     {PassInputView::depth,
+                      PassInputView::normals,
+                      PassInputView::velocity,
+                      PassInputView::previous_color})
+                {
+                    renderer.set_pass_input_view(view);
+                    static_cast<void>(renderer.render_image(items, camera, w, h));
+                    save(
+                        renderer.render_image(items, camera, w, h),
+                        captures
+                            / ("inputs-view-" + std::to_string(int(view)) + "-" + std::to_string(samples)
+                               + (hdr ? "-hdr.bmp" : "-sdr.bmp"))
+                    );
+                }
+                renderer.reset_history();
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Explicit camera cut kept history");
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Shader reload kept history");
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                RelayCore::test::ScopedTempDirectory broken;
+                for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+                    if (file.path().extension() == ".spv")
+                        std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
+                std::ofstream(broken.path() / "pass_inputs.debug_fragment.spv", std::ios::binary | std::ios::trunc)
+                    << "invalid";
+                expect_failure(
+                    [&] {
+                        renderer.reload_shaders(broken.path());
+                    },
+                    "pass_inputs.debug_fragment.spv"
+                );
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(
+                    renderer.capture_pass_inputs().history_valid,
+                    "Failed staged reload discarded working history/pipelines"
+                );
+                auto changed = config;
+                changed.exposure_ev = 1;
+                renderer.set_config(changed);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Exposure change kept history");
+                auto camera_config = changed.camera;
+                camera_config.vertical_fov_radians = .8F;
+                camera.apply_projection_config(camera_config);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Projection change kept history");
+                camera.apply_projection_config(config.camera);
+                renderer.set_scene_time(2);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                renderer.set_scene_time(1);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Rewound scene kept history");
+                for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 9}, glm::ivec2{641, 359}, glm::ivec2{w, h}})
+                {
+                    camera.set_viewport(size.x, size.y);
+                    static_cast<void>(renderer.render_image(items, camera, size.x, size.y));
+                    require(!renderer.capture_pass_inputs().history_valid, "Resize kept history");
+                }
+                renderer.set_pass_input_view(PassInputView::off);
+                expect_failure(
+                    [&] {
+                        static_cast<void>(renderer.capture_pass_inputs());
+                    },
+                    "enabled, prepared"
+                );
+                renderer.set_config(config);
+                require(
+                    renderer.render_image(items, camera, w, h).pixels == baseline.pixels,
+                    "Disabling inputs changed baseline"
+                );
+            }
+    }
+} // namespace
+
 int main(int argc, char** argv)
 {
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
@@ -3426,6 +3692,7 @@ int main(int argc, char** argv)
     const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
     const bool emission_only = argc == 2 && std::string_view{argv[1]} == "--emission";
     const bool msaa_only = argc == 2 && std::string_view{argv[1]} == "--msaa";
+    const bool inputs_only = argc == 2 && std::string_view{argv[1]} == "--pass-inputs";
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
@@ -3441,7 +3708,7 @@ int main(int argc, char** argv)
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
-        && !descriptors_only && !depth_only)
+        && !descriptors_only && !depth_only && !inputs_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -3462,7 +3729,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (pistol_only)
+        if (inputs_only)
+            check_pass_inputs(device, authoring, atlas, captures);
+        else if (pistol_only)
             check_pistol_viewmodel(device, authoring, atlas, captures);
         else if (shotgun_only)
             check_shotgun_viewmodel(device, authoring, atlas, captures);

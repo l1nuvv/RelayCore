@@ -402,6 +402,18 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
     return result;
 }
 
+float3 surface_normal(Varying input)
+{
+    float3 geometricNormal = normalize(input.worldNormal);
+    if ((draw.flags & 8) == 0) return geometricNormal;
+    float3 tangent = normalize(input.worldTangent.xyz - geometricNormal * dot(geometricNormal, input.worldTangent.xyz));
+    float3 bitangent = cross(geometricNormal, tangent) * input.worldTangent.w;
+    float3 sampled = normalMap.Sample(input.uv).rgb * 2 - 1;
+    sampled.xy *= surfaceData.parameters.x;
+    sampled /= max(max(abs(sampled.x), abs(sampled.y)), abs(sampled.z));
+    return normalize(tangent * sampled.x + bitangent * sampled.y + geometricNormal * sampled.z);
+}
+
 [shader("fragment")]
 float4 fragment_main(Varying input) : SV_Target
 {
@@ -445,17 +457,7 @@ float4 fragment_main(Varying input) : SV_Target
     float3 geometricNormal = normalize(input.worldNormal);
     // Interpolated mesh normals describe shading, not the rasterized triangle plane.
     float3 receiverPlaneNormal = normalize(cross(ddx(input.worldPosition), ddy(input.worldPosition)));
-    float3 shadingNormal = geometricNormal;
-    if ((draw.flags & 8) != 0)
-    {
-        float3 tangent = normalize(input.worldTangent.xyz - geometricNormal * dot(geometricNormal, input.worldTangent.xyz));
-        float3 bitangent = cross(geometricNormal, tangent) * input.worldTangent.w;
-        float3 sampled = normalMap.Sample(input.uv).rgb * 2 - 1;
-        sampled.xy *= surfaceData.parameters.x;
-        // Keep finite glTF strengths from overflowing the normalization length.
-        sampled /= max(max(abs(sampled.x), abs(sampled.y)), abs(sampled.z));
-        shadingNormal = normalize(tangent * sampled.x + bitangent * sampled.y + geometricNormal * sampled.z);
-    }
+    float3 shadingNormal = surface_normal(input);
     float3 emissive;
     float3 materialColor = apply_material_surface(color, uv, normalize(input.worldNormal), input.worldPosition, int(id), emissive);
     if (clothing || model) { materialColor = color; emissive = 0; }

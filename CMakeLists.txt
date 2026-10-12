@@ -130,6 +130,25 @@ foreach(stage IN ITEMS vert frag comp)
         COMMENT "Compiling tone_mapping.slang (${entry}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(entry IN ITEMS input_vertex input_fragment debug_vertex debug_fragment)
+    if(entry MATCHES "vertex$")
+        set(shader_stage vertex)
+    else()
+        set(shader_stage fragment)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/pass_inputs.${entry}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling pass_inputs.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
 foreach(shadow IN ITEMS shadow point_shadow)
     if(shadow STREQUAL "point_shadow")
         set(point_shadow 1)

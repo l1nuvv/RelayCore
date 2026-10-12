@@ -971,6 +971,10 @@ namespace RelayGame
             }
         }
 
+        // Authored props and level chunks do not move; dynamic submissions below require correspondence.
+        for (auto& item : render_queue_.items())
+            item.previous_model_matrix = item.model_matrix;
+
         render_doors(camera, doors);
         render_scientist(scientist);
         if (containment)
