@@ -3808,6 +3808,122 @@ namespace
         }
     }
 
+    void profile_graphics_settings(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        constexpr int w = 2560, h = 1440;
+        struct Mode {
+            const char* name;
+            bool hdr, bloom, ao, ssr, volumes, taa;
+            float scale = 1;
+            int samples = 4;
+        };
+        constexpr std::array modes{
+            Mode{"off", false, false, false, false, false, false},
+            Mode{"hdr", true, false, false, false, false, false},
+            Mode{"bloom", true, true, false, false, false, false},
+            Mode{"ao", true, false, true, false, false, false},
+            Mode{"ssr", true, false, false, true, false, false},
+            Mode{"volumes", true, false, false, false, true, false},
+            Mode{"taa", true, false, false, false, false, true},
+            Mode{"combined_no_taa", true, true, true, true, true, false},
+            Mode{"combined", true, true, true, true, true, true},
+            Mode{"combined_no_volumes", true, true, true, true, false, true},
+            Mode{"combined_no_ssr", true, true, true, false, true, true},
+            Mode{"combined_scale_75", true, true, true, true, true, true, .75F},
+            Mode{"combined_msaa_1", true, true, true, true, true, true, 1, 1}
+        };
+        struct View {
+            const char* name;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"entrance", {0, 1.65F, -3.5F}, {0, 1.65F, 4}},
+            View{"maintenance", {14.3F, 1.65F, 20.2F}, {14.3F, 1.65F, 34}},
+            View{"maintenance_corridor", {13, 1.65F, 34}, {13, 1.65F, 16}}
+        };
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/power_restoration.toml"));
+        StaticModelCache models;
+        RelayGame::WorldSceneRenderer scene;
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        scene.initialize(prepared, models);
+        std::ofstream output{captures / "graphics-settings-profile.csv"};
+        output.exceptions(std::ios::failbit | std::ios::badbit);
+        output << "view,mode,frame,cpu_ms,gpu_ms,scale,width,height\n";
+        for (const auto& view : views)
+        {
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto weapon = scene.prepare_pistol_viewmodel(camera, 0, .24F);
+            for (const auto& mode : modes)
+            {
+                auto config =
+                    RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+                config.hdr_enabled = mode.hdr;
+                config.bloom_enabled = mode.bloom;
+                config.ssao_enabled = mode.ao;
+                config.ssr_enabled = mode.ssr;
+                config.volumetrics_enabled = mode.volumes;
+                config.taa_enabled = mode.taa;
+                config.render_scale = mode.scale;
+                config.msaa_samples = mode.samples;
+                // Reuse GPU timestamps while holding the authored scale, checked on every frame.
+                config.dynamic_resolution_enabled = mode.hdr;
+                config.dynamic_resolution_target_ms = 50;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                renderer.set_local_lights(scene.local_lights());
+                renderer.set_irradiance_probes(scene.irradiance());
+                renderer.set_reflection_probe(prepared.reflection);
+                struct Sample {
+                    double cpu_ms;
+                    VulkanResolutionStatus resolution;
+                };
+                std::array<Sample, 240> measured{};
+                for (auto& sample : measured)
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                    sample.cpu_ms =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    sample.resolution = renderer.resolution_status();
+                    require(std::abs(sample.resolution.scale - mode.scale) < .0001F, "Profile resolution changed");
+                    SDL_PumpEvents();
+                }
+                save(
+                    renderer.capture_prepared_image(),
+                    captures / (std::string{"settings-"} + view.name + "-" + mode.name + ".bmp")
+                );
+                for (size_t frame = 0; frame < measured.size(); ++frame)
+                {
+                    const auto& sample = measured[frame];
+                    if (frame >= 40 && mode.hdr)
+                        require(sample.resolution.gpu_scene_ms > 0, "Profile missing completed GPU timestamps");
+                    output << view.name << ',' << mode.name << ',' << frame << ',' << sample.cpu_ms << ',';
+                    if (mode.hdr)
+                        output << sample.resolution.gpu_scene_ms;
+                    output << ',' << sample.resolution.scale << ',' << sample.resolution.render_width << ','
+                           << sample.resolution.render_height << '\n';
+                }
+                std::cout << "settings_profile view=" << view.name << " mode=" << mode.name << " resolution=" << w
+                          << 'x' << h << " scale=" << mode.scale << " msaa=" << mode.samples << " warm_samples=200\n";
+            }
+        }
+    }
+
     void profile_temporal(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -4469,6 +4585,7 @@ int main(int argc, char** argv)
     const bool msaa_only = argc == 2 && std::string_view{argv[1]} == "--msaa";
     const bool effects_only = argc == 2 && std::string_view{argv[1]} == "--visual-effects";
     const bool effects_profile = argc == 2 && std::string_view{argv[1]} == "--visual-effects-profile";
+    const bool settings_profile = argc == 2 && std::string_view{argv[1]} == "--graphics-settings-profile";
     const bool effects_analytic = argc == 2 && std::string_view{argv[1]} == "--visual-effects-analytic";
     const bool temporal_profile = argc == 2 && std::string_view{argv[1]} == "--temporal-profile";
     const bool temporal_dynamic = argc == 2 && std::string_view{argv[1]} == "--temporal-dynamic";
@@ -4491,7 +4608,7 @@ int main(int argc, char** argv)
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
         && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile && !effects_analytic
-        && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic)
+        && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -4512,7 +4629,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (temporal_profile || temporal_scene || temporal_dynamic)
+        if (settings_profile)
+            profile_graphics_settings(device, authoring, atlas, captures);
+        else if (temporal_profile || temporal_scene || temporal_dynamic)
             profile_temporal(
                 device,
                 authoring,

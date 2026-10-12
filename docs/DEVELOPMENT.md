@@ -158,6 +158,12 @@ cmake --build --preset demo-relwithdebinfo
 Оба показателя исключают color readback, presentation и gameplay update. Исторические GL-измерения и ограничения —
 в [протоколе G-006/H-002](playtests/G-006-H-002-2026-09-28.md).
 
+Для сравнения новых графических настроек при 2560×1440 используйте
+`relaycore_vulkan_mesh_tests --graphics-settings-profile` из оптимизированного
+`msvc-dev` с его staged `RELAYCORE_ASSET_ROOT`. CSV/BMP записываются в
+`vulkan-mesh-captures` рабочей папки; границы CPU/GPU измерений, fixed-scale
+timestamp mode и результаты — в [отчёте 2026-10-13](profiling/GRAPHICS_SETTINGS-2026-10-13.md).
+
 Для интегрированного scripted workload используйте отдельный target
 `relaycore_containment_profile` для актуальной G-019:
 
