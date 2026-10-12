@@ -13,6 +13,11 @@ namespace RelayCore::gameplay
 
 namespace RelayGame
 {
+    struct BulletImpactMark {
+        RelayCore::physics::WorldQueryHit hit;
+        float radius = 0.032F;
+    };
+
     struct WeaponImpactFeedback {
         std::optional<RelayCore::physics::WorldQueryHit> hard{};
         std::optional<RelayCore::physics::WorldQueryHit> metal{};

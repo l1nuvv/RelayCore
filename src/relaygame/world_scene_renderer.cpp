@@ -419,6 +419,8 @@ namespace RelayGame
             add_mesh(mesh);
         for (const auto& mesh : decal_meshes_)
             add_mesh(mesh);
+        for (const auto& mesh : bullet_impact_meshes_)
+            add_mesh(mesh);
         for (const auto& mesh : lamp_meshes_)
             add_mesh(mesh);
         for (const auto& mesh : rover_signal_meshes_)
@@ -668,6 +670,39 @@ namespace RelayGame
         inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
         player_shot_mesh_.initialize(player_shot_mesh_data);
         pellet_mesh_.initialize(pellet_mesh_data);
+        for (std::size_t material = 0; material < bullet_impact_meshes_.size(); ++material)
+        {
+            RelayCore::render::CpuColorMeshData mark;
+            const auto core =
+                RelayCore::render::visual_rgb_for_pipeline({0.025F, 0.023F, 0.021F}, scene_data.color_pipeline_mode);
+            const auto rim = RelayCore::render::visual_rgb_for_pipeline(
+                material == 0 ? glm::vec3{0.38F, 0.35F, 0.31F} : glm::vec3{0.16F, 0.15F, 0.13F},
+                scene_data.color_pipeline_mode
+            );
+            mark.vertices.push_back({{0, 0, 0}, core, {0, 0, 1}, static_cast<float>(RelayCore::SurfaceMaterial::Matte)}
+            );
+            for (int ring = 0; ring < 2; ++ring)
+                for (int i = 0; i < 12; ++i)
+                {
+                    const float angle = static_cast<float>(i) * 6.2831853F / 12;
+                    const float radius = ring == 0 ? 0.42F : 0.88F + 0.12F * std::sin(static_cast<float>(i) * 2.7F);
+                    mark.vertices.push_back(
+                        {{radius * std::cos(angle), radius * std::sin(angle), 0},
+                         ring == 0 ? core : rim,
+                         {0, 0, 1},
+                         static_cast<float>(RelayCore::SurfaceMaterial::Matte)}
+                    );
+                }
+            for (std::uint32_t i = 0; i < 12; ++i)
+            {
+                const auto next = (i + 1) % 12;
+                mark.indices.insert(
+                    mark.indices.end(),
+                    {0, 1 + i, 1 + next, 1 + i, 13 + i, 13 + next, 1 + i, 13 + next, 1 + next}
+                );
+            }
+            bullet_impact_meshes_[material].initialize(mark);
+        }
         turret_shot_mesh_.initialize(turret_shot_mesh_data);
         constexpr std::array<glm::vec3, 4> containment_colors{
             {{.46F, .32F, .26F}, {.24F, .28F, .26F}, {.9F, .3F, .08F}, {.2F, .8F, .3F}}
@@ -775,6 +810,7 @@ namespace RelayGame
         inspector_hit_mesh_ = RelayCore::render::StaticColorMesh{};
         player_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         pellet_mesh_ = RelayCore::render::StaticColorMesh{};
+        bullet_impact_meshes_ = {};
         turret_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         turret_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         rover_signal_meshes_ = {};
@@ -815,7 +851,8 @@ namespace RelayGame
         const std::span<const RuntimeEnemy> enemies,
         const RelayCore::gameplay::PlayerCombatState* player_combat,
         const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces,
-        const ContainmentEncounter* containment
+        const ContainmentEncounter* containment,
+        const std::span<const BulletImpactMark> bullet_impact_marks
     )
     {
         prepare_render_queue(
@@ -833,7 +870,8 @@ namespace RelayGame
             enemies,
             player_combat,
             pellet_traces,
-            containment
+            containment,
+            bullet_impact_marks
         );
         renderer.set_local_lights(active_local_lights_);
         renderer.set_irradiance_probes(irradiance_);
@@ -856,7 +894,8 @@ namespace RelayGame
         const std::span<const RuntimeEnemy> enemies,
         const RelayCore::gameplay::PlayerCombatState* player_combat,
         const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces,
-        const ContainmentEncounter* containment
+        const ContainmentEncounter* containment,
+        const std::span<const BulletImpactMark> bullet_impact_marks
     )
     {
         RELAYCORE_PROFILE_ZONE_N("WorldSceneRenderer::render");
@@ -995,6 +1034,33 @@ namespace RelayGame
                 camera.position()
             );
         render_turrets(camera, turrets);
+        for (std::size_t i = 0; i < bullet_impact_marks.size(); ++i)
+        {
+            const auto& mark = bullet_impact_marks[i];
+            auto position = mark.hit.position;
+            if (mark.hit.object.kind == RelayCore::physics::WorldObjectKind::Door)
+            {
+                const auto& door = doors[mark.hit.object.index];
+                position += door.open_offset * door.open_fraction;
+            }
+            const auto normal = mark.hit.normal;
+            const auto tangent =
+                glm::normalize(glm::cross(std::abs(normal.y) < 0.9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0}, normal));
+            const auto bitangent = glm::cross(normal, tangent);
+            const float angle = glm::dot(mark.hit.position, glm::vec3{17, 23, 31});
+            glm::mat4 transform{1};
+            transform[0] = glm::vec4{(tangent * std::cos(angle) + bitangent * std::sin(angle)) * mark.radius, 0};
+            transform[1] = glm::vec4{(bitangent * std::cos(angle) - tangent * std::sin(angle)) * mark.radius, 0};
+            transform[2] = glm::vec4{normal, 0};
+            transform[3] = glm::vec4{position + normal * 0.025F, 1};
+            const auto& mesh = bullet_impact_meshes_[weapon_impact_is_metal(mark.hit.surface) ? 1 : 0];
+            render_queue_.push(mesh, transform, RelayCore::render::RenderPass::Opaque, nullptr, false);
+            render_queue_.items().back().casts_shadow = false;
+            record_render_draw(
+                RelayCore::render::RenderPass::Opaque,
+                static_cast<std::uint32_t>(mesh.index_count() / 3)
+            );
+        }
         if (player_combat != nullptr)
             render_shot_trace(camera, player_combat->shot_trace, false);
         for (const auto& trace : pellet_traces)

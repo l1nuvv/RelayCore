@@ -195,6 +195,7 @@ int main(int argc, char** argv)
                               || (contact_views && std::string_view{argv[1]} == "--contact-views-sdr")
                               || (atmosphere_views && std::string_view{argv[1]} == "--atmosphere-views-sdr");
     const bool signage_views = argc > 1 && std::string_view{argv[1]}.starts_with("--signage-views");
+    const bool impact_marks = argc > 1 && std::string_view{argv[1]}.starts_with("--impact-marks");
     const bool art_review = character_views || intake_views || pump_views || b17_views || hardware_views
                             || material_views || wear_views || surface_views || signage_views || route_views
                             || instrument_views || lighting_views
@@ -215,9 +216,10 @@ int main(int argc, char** argv)
     const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--no-shadows";
     });
-    const bool hdr = (effect_views && !effect_sdr) || (body_views && std::string_view{argv[1]} != "--body-views-sdr")
-                     || (art_review && !art_legacy && !lighting_sdr)
-                     || (argc > 1 && std::string_view{argv[1]} == "--hdr");
+    const bool hdr =
+        (effect_views && !effect_sdr) || (body_views && std::string_view{argv[1]} != "--body-views-sdr")
+        || (art_review && !art_legacy && !lighting_sdr)
+        || (argc > 1 && (std::string_view{argv[1]} == "--hdr" || std::string_view{argv[1]} == "--impact-marks-hdr"));
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -268,6 +270,70 @@ int main(int argc, char** argv)
         };
         renderer.initialize(window);
         renderer.on_resize(width, height);
+        if (impact_marks)
+        {
+            const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
+                RelayCore::core::asset_path("levels/bench_relay.toml")
+            );
+            RelayGame::GameWorldRuntime runtime;
+            runtime.load_level_session(config, session);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    session.level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            renderer.camera().set_position({0, 1.55F, -2.6F});
+            renderer.camera().set_target({0, 1.55F, -3.9F});
+            const auto draw = [&] {
+                renderer.begin_frame();
+                scene.render(
+                    renderer,
+                    renderer.camera(),
+                    0,
+                    runtime.doors(),
+                    {},
+                    runtime.usables(),
+                    -1,
+                    {},
+                    false,
+                    {},
+                    {},
+                    {},
+                    {},
+                    nullptr,
+                    {},
+                    nullptr,
+                    runtime.bullet_impact_marks()
+                );
+                return read_rgb(renderer);
+            };
+            const auto before = draw();
+            if (!runtime.debug_apply_player_fire({-0.25F, 1.55F, -2}, {0, 0, -1}).fired)
+                throw std::runtime_error("Impact fixture pistol did not fire");
+            const auto pickup =
+                std::ranges::find(runtime.usables(), "bay_shotgun", &RelayCore::gameplay::RuntimeUsable::name);
+            if (pickup == runtime.usables().end()
+                || !runtime.debug_apply_usable_interaction(static_cast<std::size_t>(pickup - runtime.usables().begin()))
+                        .primary_applied
+                || !runtime.select_weapon(RelayGame::PlayerWeapon::Shotgun))
+                throw std::runtime_error("Impact fixture could not equip shotgun");
+            runtime.debug_tick_combat(2);
+            (void) runtime.debug_apply_player_fire({0.25F, 1.55F, -2.8F}, {0, 0, -1});
+            runtime.debug_tick_combat(2);
+            if (runtime.bullet_impact_marks().size() != 8 || draw() == before)
+                throw std::runtime_error("Persistent bullet/pellet marks are missing from the rendered wall");
+            (void) capture(
+                renderer,
+                std::filesystem::path{"power-captures"} / (hdr ? "impact-marks-hdr.bmp" : "impact-marks-sdr.bmp")
+            );
+            scene.shutdown();
+            std::cout << "weapon_impacts=passed; pistol and seven pellets visible after traces expire\n";
+            return 0;
+        }
         if (effect_views)
         {
             const auto directory = std::filesystem::path{"power-captures"} / (hdr ? "effects-hdr" : "effects-sdr");

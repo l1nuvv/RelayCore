@@ -108,6 +108,8 @@ namespace RelayGame
         RelayCore::gameplay::reset_player_combat_state(combat_state_.player);
         transient_hud_event_ = {};
         damage_numbers_.clear();
+        bullet_impact_marks_.clear();
+        bullet_impact_marks_.reserve(256);
         inspector_state_ = {};
         mission_runtime_.reset(loaded_mission_definition_);
         interaction_state_.use_binding_label =
@@ -589,6 +591,24 @@ namespace RelayGame
                 }
         if (hit_guardian)
             add_number(containment_->state.position + glm::vec3{0, 3.9F, 0}, 0);
+        for (std::size_t i = 0; i < attack.ray_count; ++i)
+        {
+            const auto& ray = attack.rays[i];
+            if (!ray.fired || !ray.world_impact
+                || ray.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Player
+                || ray.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Enemy
+                || (containment_ && ray.world_impact->object == containment_->collider().object))
+                continue;
+            auto hit = *ray.world_impact;
+            if (hit.object.kind == RelayCore::physics::WorldObjectKind::Door)
+            {
+                const auto& door = doors_.at(hit.object.index);
+                hit.position -= door.open_offset * door.open_fraction;
+            }
+            if (bullet_impact_marks_.size() == 256)
+                bullet_impact_marks_.erase(bullet_impact_marks_.begin());
+            bullet_impact_marks_.push_back({hit, selected_weapon_ == PlayerWeapon::Shotgun ? 0.014F : 0.032F});
+        }
         return attack;
     }
 
@@ -827,6 +847,7 @@ namespace RelayGame
             (void) player_controller_.consume_weapon_selection();
             transient_hud_event_ = {};
             damage_numbers_.clear();
+            bullet_impact_marks_.clear();
             interaction_state_.last_event = {};
             interaction_state_.fired_triggers = 0;
             combat_state_.active_hazard_contacts = 0;

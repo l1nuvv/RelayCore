@@ -162,6 +162,10 @@ namespace RelayGame
         {
             return selected_weapon_;
         }
+        [[nodiscard]] auto bullet_impact_marks() const noexcept -> std::span<const BulletImpactMark>
+        {
+            return bullet_impact_marks_;
+        }
         auto select_weapon(PlayerWeapon weapon) noexcept -> bool;
         [[nodiscard]] auto shotgun_cycle_remaining_seconds() const noexcept -> float
         {
@@ -449,6 +453,7 @@ namespace RelayGame
             float amount = 0, remaining_seconds = 0;
         };
         std::vector<DamageNumber> damage_numbers_;
+        std::vector<BulletImpactMark> bullet_impact_marks_;
         RelayGame::MissionRuntime mission_runtime_{};
         AudioCueSet audio_cues_{};
         AudioState audio_state_{};

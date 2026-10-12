@@ -450,6 +450,13 @@ add_test(NAME graphics.route_signage COMMAND relaycore_power_restoration_graphic
 add_test(NAME graphics.route_signage_sdr COMMAND relaycore_power_restoration_graphics --route-views-sdr)
 add_test(NAME graphics.sector_signage COMMAND relaycore_power_restoration_graphics --signage-views)
 add_test(NAME graphics.sector_signage_sdr COMMAND relaycore_power_restoration_graphics --signage-views-sdr)
+add_test(NAME graphics.weapon_impacts COMMAND relaycore_power_restoration_graphics --impact-marks)
+add_test(NAME graphics.weapon_impacts_hdr COMMAND relaycore_power_restoration_graphics --impact-marks-hdr)
+set_tests_properties(graphics.weapon_impacts graphics.weapon_impacts_hdr PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
+    ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
+    RUN_SERIAL TRUE SKIP_RETURN_CODE 77
+    FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 add_test(NAME graphics.special_materials COMMAND relaycore_power_restoration_graphics --surface-views)
 add_test(NAME graphics.special_materials_sdr COMMAND relaycore_power_restoration_graphics --surface-views-sdr)
 add_test(NAME graphics.interactive_hardware COMMAND relaycore_power_restoration_graphics --hardware-views)

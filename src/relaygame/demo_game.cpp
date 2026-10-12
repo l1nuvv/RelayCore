@@ -287,7 +287,8 @@ namespace RelayGame
             runtime_.enemies(),
             &runtime_.player_combat_state(),
             runtime_.player_pellet_traces(),
-            runtime_.containment() ? &*runtime_.containment() : nullptr
+            runtime_.containment() ? &*runtime_.containment() : nullptr,
+            runtime_.bullet_impact_marks()
         );
         if ((screen_ == Screen::Playing || screen_ == Screen::Paused) && runtime_.player_combat_state().alive)
         {
