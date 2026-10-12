@@ -74,7 +74,12 @@ float3 probe_indirect(float3 position, float3 normal, float reflectionRoughness 
 }
 struct LightData { float4 positionRadius[8]; float4 color[8]; int4 count; };
 [[vk::binding(2, 0)]] ConstantBuffer<LightData> lights;
-struct FrameData { float4 viewportTimeDebug; };
+struct FrameData
+{
+    float4 viewportTimeDebug;
+    column_major float4x4 viewProjection, inverseViewProjection, viewMatrix;
+    float4 cameraPosition, effects;
+};
 [[vk::binding(8, 0)]] ConstantBuffer<FrameData> frame;
 
 struct ShadowData
@@ -358,6 +363,10 @@ float3 environment_brdf(float3 f0, float roughness, float nv)
     float2 integrated = float2(-1.04,1.04)*a+r.zw;
     return max(f0*integrated.x+integrated.y, 0);
 }
+#ifdef SCREEN_EFFECTS
+#include "scene_effects.slang"
+#endif
+
 float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float3 position, float fogDistance, float roughness, float metallic, float ao)
 {
     float3 base = mr_linear(color);
@@ -379,6 +388,10 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
         float3 lookup = position + reflected*distance - reflectionData.position.xyz;
         environment = reflectionMap.SampleLevel(lookup, roughness*reflectionData.maxs.w).rgb;
     }
+#if defined(SCREEN_EFFECTS) && !defined(VOLUME_ONLY)
+    float4 screen = screen_reflection(position, normal, reflected, roughness);
+    environment = lerp(environment, screen.rgb, screen.a);
+#endif
     float3 f0 = lerp(float3(.04),base,metallic);
     result += environment * environment_brdf(f0,roughness,saturate(dot(normal,view)));
     result *= ao;
@@ -421,6 +434,10 @@ float4 fragment_main(Varying input) : SV_Target
     bool overlay = (draw.flags & 4) != 0;
     float fog = saturate((input.fogDistance - materials.scene.x) / max(materials.scene.y - materials.scene.x, 0.001));
     float fogAmount = saturate(fog * (overlay ? 0.18 : 1.0));
+#ifdef SCREEN_EFFECTS
+    // SSR source radiance excludes camera-to-hit fog; the receiver integrates its own view ray.
+    if ((draw.flags & 64) != 0) fogAmount = 0;
+#endif
     if (id == uint(materials.scene.z) + 1 || id == uint(materials.scene.z) + 2)
     {
         float alpha = id == uint(materials.scene.z) + 1
@@ -465,7 +482,27 @@ float4 fragment_main(Varying input) : SV_Target
     float2 mr = surfaceData.parameters.yz;
     if (surfaceData.maps.x != 0) mr *= metallicRoughnessMap.Sample(input.uv).gb;
     float ao = surfaceData.maps.y != 0 ? lerp(1.0, occlusionMap.Sample(input.uv).r, surfaceData.maps.z) : 1.0;
+#if defined(SCREEN_EFFECTS) && !defined(VOLUME_ONLY)
+    if (frame.effects.x != 0 && (draw.flags & (2 | 4 | 32)) == 0)
+        ao = min(ao, screen_ao(input.position.xy, shadingNormal, mul(frame.viewMatrix, float4(input.worldPosition, 1)).z * -1));
+#endif
     bool metallicRoughness = (draw.flags & 16) != 0;
+#ifdef SCREEN_EFFECTS
+    if ((draw.flags & (2 | 4 | 32)) == 0)
+    {
+#ifndef VOLUME_ONLY
+        if ((draw.flags & 128) != 0) return float4(ao.xxx, 1);
+        if ((draw.flags & 256) != 0)
+        {
+            float3 view = normalize(input.worldPosition - frame.cameraPosition.xyz);
+            float confidence = metallicRoughness ? screen_reflection(input.worldPosition, shadingNormal,
+                reflect(view, shadingNormal), mr.x).a : 0;
+            return float4(confidence.xxx, 1);
+        }
+#endif
+        if ((draw.flags & 512) != 0) return float4(exp(-frame.effects.z * min(input.fogDistance, 24)).xxx, 1);
+    }
+#endif
     if (metallicRoughness && (draw.flags & 8) != 0)
     {
         // Broaden GGX only where mapped normals vary across a pixel footprint.
@@ -485,6 +522,10 @@ float4 fragment_main(Varying input) : SV_Target
     float3 fogColor = metallicRoughness ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
     bool hdr = materials.grading.y != 0;
     color = lerp(max(lighting + emissive, 0), fogColor, fogAmount);
+#ifdef SCREEN_EFFECTS
+    if (frame.effects.z > 0 && (draw.flags & 64) == 0)
+        color = volumetric_color(max(lighting + emissive, 0), input.worldPosition, geometricNormal, fogAmount, metallicRoughness);
+#endif
     if (frame.viewportTimeDebug.w != 0)
     {
         float blend = max(shadows.cascade.y, 0.0001);

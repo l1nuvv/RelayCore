@@ -24,6 +24,10 @@ namespace RelayGame
         settings_.fov = glm::degrees(services.config().renderer.camera.vertical_fov_radians);
         settings_.vsync = services.window().vsync_enabled();
         settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+        settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+        settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+        settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+        settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
         sdr_color_pipeline_ = services.renderer().color_pipeline_mode();
         if (user_data_directory_.empty())
         {
@@ -60,6 +64,10 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+            settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+            settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+            settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+            settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
             settings_message_ = error.what();
             RelayCore::log::warn("Player settings: {}", error.what());
         }
@@ -68,11 +76,19 @@ namespace RelayGame
     void DemoGame::apply_player_settings(RelayCore::EngineServices& services)
     {
         auto& renderer = services.renderer();
-        if (settings_.hdr_enabled != renderer.config().hdr_enabled)
+        if (settings_.hdr_enabled != renderer.config().hdr_enabled
+            || settings_.bloom_enabled != renderer.config().bloom_enabled
+            || settings_.ssao_enabled != renderer.config().ssao_enabled
+            || settings_.ssr_enabled != renderer.config().ssr_enabled
+            || settings_.volumetrics_enabled != renderer.config().volumetrics_enabled)
         {
             auto config = services.config();
             config.renderer = renderer.config();
             config.renderer.hdr_enabled = settings_.hdr_enabled;
+            config.renderer.bloom_enabled = settings_.bloom_enabled;
+            config.renderer.ssao_enabled = settings_.ssao_enabled;
+            config.renderer.ssr_enabled = settings_.ssr_enabled;
+            config.renderer.volumetrics_enabled = settings_.volumetrics_enabled;
             const auto pipeline =
                 settings_.hdr_enabled ? RelayCore::render::ColorPipelineMode::hardware_srgb : sdr_color_pipeline_;
             auto backend = renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config(), pipeline);
@@ -190,7 +206,8 @@ namespace RelayGame
                     settings_message_ = error.what();
                 }
             } else if (name == "volume" || name == "sensitivity" || name == "fov" || name == "camera-motion"
-                       || name == "vsync" || name == "hdr")
+                       || name == "vsync" || name == "hdr" || name == "bloom" || name == "ssao" || name == "ssr"
+                       || name == "volumetrics")
             {
                 if (name == "volume")
                     settings_.volume = std::stof(action.value);
@@ -203,7 +220,21 @@ namespace RelayGame
                 if (name == "vsync")
                     settings_.vsync = action.value == "1";
                 if (name == "hdr")
+                {
                     settings_.hdr_enabled = action.value == "1";
+                    if (!settings_.hdr_enabled)
+                        settings_.bloom_enabled = settings_.ssr_enabled = false;
+                }
+                if (name == "bloom")
+                    settings_.bloom_enabled = action.value == "1";
+                if (name == "ssao")
+                    settings_.ssao_enabled = action.value == "1";
+                if (name == "ssr")
+                    settings_.ssr_enabled = action.value == "1";
+                if (name == "volumetrics")
+                    settings_.volumetrics_enabled = action.value == "1";
+                if (settings_.bloom_enabled || settings_.ssr_enabled)
+                    settings_.hdr_enabled = true;
                 settings_dirty_ = true;
                 try
                 {
@@ -212,6 +243,10 @@ namespace RelayGame
                 } catch (const std::exception& error)
                 {
                     settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+                    settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+                    settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+                    settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+                    settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
                     settings_message_ = error.what();
                 }
             } else if (name == "check-update" && !update_check_.valid() && can_update_game())
@@ -363,6 +398,10 @@ namespace RelayGame
         ui.set_value("camera-motion", std::to_string(settings_.camera_motion));
         ui.set_value("vsync", settings_.vsync ? "1" : "0");
         ui.set_value("hdr", settings_.hdr_enabled ? "1" : "0");
+        ui.set_value("bloom", settings_.bloom_enabled ? "1" : "0");
+        ui.set_value("ssao", settings_.ssao_enabled ? "1" : "0");
+        ui.set_value("ssr", settings_.ssr_enabled ? "1" : "0");
+        ui.set_value("volumetrics", settings_.volumetrics_enabled ? "1" : "0");
         ui.set_text("settings-message", settings_message_);
         ui.set_visible("controls", !complete);
         ui.set_visible("update-notice", main && update_notification_);

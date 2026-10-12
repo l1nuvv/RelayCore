@@ -219,6 +219,11 @@ targets/work. Values are strict; these modes do not alter saved graphics setting
 UI remains over the selected view. Encodings, conservative dynamic/viewmodel
 rejection, history resets and checks: [VK14-06](renderer/VK14-06.md#06bc-contract--2026-10-12).
 
+The spatial effects also expose `ao`, `reflection_confidence` and
+`volume_transmittance` through this override. Enable the corresponding effect
+first; invalid combinations fail explicitly. Controls, composition and measured
+local limits: [VK14-07](renderer/VK14-07.md).
+
 В Advanced Diagnostics окно `Vulkan memory` обновляется кнопкой `Refresh GPU memory`.
 Оно показывает heap usage/budget, VMA allocations/blocks, retained upload staging,
 pending retirements и material descriptor pools. Снимок сохраняется до следующего

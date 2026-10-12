@@ -21,6 +21,10 @@
 <p class="secondary">Ноль отключает покачивание и проседание камеры при приземлении.</p>
 <label>Вертикальная синхронизация <select id="vsync" data-action="vsync" data-event="change"><option value="1">Включена</option><option value="0">Выключена</option></select></label>
 <label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR</option></select></label>
+<label>Свечение <select id="bloom" data-action="bloom" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Затенение углов <select id="ssao" data-action="ssao" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Отражения на экране <select id="ssr" data-action="ssr" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Объёмный свет <select id="volumetrics" data-action="volumetrics" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <button id="save-settings" class="primary" data-action="save-settings">Сохранить настройки</button><div id="settings-message" class="error"></div>
 </div>
 <div id="controls" class="secondary">WASD — движение · Shift — бег · Space — прыжок<br />E — взаимодействие · F — фонарик</div>

@@ -11,6 +11,10 @@ namespace RelayGame
         float camera_motion = 0.6F;
         bool vsync = true;
         bool hdr_enabled = false;
+        bool bloom_enabled = false;
+        bool ssao_enabled = false;
+        bool ssr_enabled = false;
+        bool volumetrics_enabled = false;
     };
 
     [[nodiscard]] auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults)

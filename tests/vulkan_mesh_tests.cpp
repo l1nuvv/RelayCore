@@ -3420,6 +3420,394 @@ namespace
 
 namespace
 {
+    void check_visual_effects(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile,
+        const bool analytic_only
+    )
+    {
+        const int w = profile ? 1920 : 319, h = profile ? 1080 : 181;
+        PerspectiveCamera camera{{.position = {0, 1.2F, 3}, .target = {0, .1F, 0}}};
+        camera.set_viewport(w, h);
+        CpuColorMeshData quad{
+            {{{-1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}},
+             {{1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}},
+             {{1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}},
+             {{-1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}}},
+            {0, 1, 2, 0, 2, 3}
+        };
+        StaticColorMesh plane, box;
+        plane.initialize(quad);
+        box.initialize(make_color_box_mesh_data());
+        Texture2D white, black_ao;
+        white.initialize_rgba(1, 1, std::array<uint8_t, 4>{180, 180, 180, 255}, TextureEncoding::srgb);
+        black_ao.initialize_rgba(1, 1, std::array<uint8_t, 4>{0, 0, 0, 255}, TextureEncoding::linear);
+        std::array items{
+            RenderItem{
+                .mesh = &plane,
+                .model_matrix = glm::scale(glm::mat4{1}, {3, 3, 1}),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.8F, 0}
+            },
+            RenderItem{
+                .mesh = &plane,
+                .model_matrix = glm::scale(
+                    glm::rotate(glm::translate(glm::mat4{1}, {0, -.5F, 1}), -glm::half_pi<float>(), glm::vec3{1, 0, 0}),
+                    {3, 3, 1}
+                ),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.12F, .9F}
+            },
+            RenderItem{
+                .mesh = &box,
+                .model_matrix = glm::scale(glm::translate(glm::mat4{1}, {-.65F, -.15F, .5F}), glm::vec3{.4F}),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.5F, 0},
+                .emissive_factor = {1, .2F, .1F}
+            }
+        };
+        RendererConfig base;
+        base.hdr_enabled = true;
+        base.shadow_enabled = base.fog_enabled = false;
+        base.shadow_light_intensity = .8F;
+        base.postfx_vignette_strength = base.postfx_grain_strength = base.postfx_scanline_strength = 0;
+        base.postfx_contrast = base.postfx_saturation = 1;
+        const auto make_renderer = [&](const RendererConfig& config,
+                                       const ColorPipelineMode pipeline = ColorPipelineMode::hardware_srgb) {
+            return std::make_unique<VulkanMeshRenderer>(
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                pipeline
+            );
+        };
+        auto reference = make_renderer(base);
+        const auto baseline = reference->render_image(items, camera, w, h);
+        save(baseline, captures / "effects-off.bmp");
+        const auto measure = [&](VulkanMeshRenderer& renderer) {
+            for (int frame = 0; frame < 240; ++frame)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Effects CPU frame");
+                renderer.prepare_frame(items, items, camera, w, h);
+                SDL_PumpEvents();
+                RELAYCORE_PROFILE_FRAME();
+            }
+            uint64_t allocation_bytes = 0;
+            for (const auto& heap : device.memory_usage().heaps)
+                allocation_bytes += heap.allocation_bytes;
+            std::cout << "profile_vma_allocation_bytes=" << allocation_bytes << '\n';
+        };
+        if (profile)
+        {
+            RELAYCORE_PROFILE_ZONE_N("Effects off");
+            measure(*reference);
+        }
+        std::array<CpuRgbaTextureData, 5> images;
+        for (int effect = 0; effect < 5; ++effect)
+        {
+            auto config = base;
+            config.bloom_enabled = effect == 0 || effect == 4;
+            config.ssao_enabled = effect == 1 || effect == 4;
+            config.ssr_enabled = effect == 2 || effect == 4;
+            config.volumetrics_enabled = effect == 3 || effect == 4;
+            auto renderer = make_renderer(config);
+            images[effect] = renderer->render_image(items, camera, w, h);
+            save(images[effect], captures / ("effects-" + std::to_string(effect) + ".bmp"));
+            size_t changed = 0, lighter = 0, darker = 0;
+            for (size_t p = 0; p < baseline.pixels.size(); p += 4)
+            {
+                const int delta = int(images[effect].pixels[p]) - baseline.pixels[p];
+                changed += std::abs(delta) > 2;
+                lighter += delta > 2;
+                darker += delta < -2;
+            }
+            std::cout << "effect=" << effect << " changed=" << changed << " lighter=" << lighter << " darker=" << darker
+                      << '\n';
+            require(changed > 20, "Enabled visual effect produced no visible change");
+            if (effect == 0)
+                require(lighter > 20 && darker == 0, "Bloom did not selectively add light");
+            if (effect == 1)
+                require(darker > 20 && lighter == 0, "SSAO did not selectively occlude indirect light");
+            if (!profile && !analytic_only)
+            {
+                if (effect < 4)
+                {
+                    const auto view = effect == 1   ? PassInputView::ao
+                                      : effect == 2 ? PassInputView::reflection_confidence
+                                      : effect == 3 ? PassInputView::volume_transmittance
+                                                    : PassInputView::scene;
+                    renderer->set_pass_input_view(view);
+                    save(
+                        renderer->render_image(items, camera, w, h),
+                        captures / ("effects-debug-" + std::to_string(effect) + ".bmp")
+                    );
+                    renderer->set_pass_input_view(PassInputView::off);
+                }
+                renderer->reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                require(
+                    renderer->render_image(items, camera, w, h).pixels == images[effect].pixels,
+                    "Successful shader reload changed a stable spatial effect"
+                );
+                RelayCore::test::ScopedTempDirectory missing;
+                expect_failure(
+                    [&] {
+                        renderer->reload_shaders(missing.path());
+                    },
+                    "SPIR-V"
+                );
+                require(
+                    renderer->render_image(items, camera, w, h).pixels == images[effect].pixels,
+                    "Failed shader reload replaced working effects"
+                );
+                renderer->prepare_frame(items, items, camera, w, h);
+                renderer->prepare_frame(items, items, camera, w, h);
+                require(
+                    renderer->capture_prepared_image().pixels == images[effect].pixels,
+                    "Overlapping effect frames changed output"
+                );
+                for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 3}, glm::ivec2{w, h}})
+                {
+                    camera.set_viewport(size.x, size.y);
+                    static_cast<void>(renderer->render_image(items, camera, size.x, size.y));
+                }
+                camera.set_viewport(w, h);
+            } else if (profile)
+            {
+                switch (effect)
+                {
+                    case 0:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects bloom");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 1:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects AO");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 2:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects SSR");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 3:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects volumes");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 4:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects combined");
+                        measure(*renderer);
+                        break;
+                    }
+                }
+            }
+        }
+        if (analytic_only)
+            return;
+        // A plane reflecting behind the camera has no screen hit: preserve its probe exactly.
+        if (!profile)
+        {
+            auto config = base;
+            config.bloom_enabled = true;
+            config.bloom_strength = 0;
+            auto bloom = make_renderer(config);
+            require(
+                bloom->render_image(items, camera, w, h).pixels == baseline.pixels,
+                "Zero bloom strength changed the scene"
+            );
+            config = base;
+            config.volumetrics_enabled = true;
+            config.volumetric_density = 0;
+            auto volume = make_renderer(config);
+            require(
+                volume->render_image(items, camera, w, h).pixels == baseline.pixels,
+                "Zero volumetric density changed the scene"
+            );
+            for (int samples : {1, 4})
+            {
+                config = base;
+                config.hdr_enabled = false;
+                config.msaa_samples = samples;
+                config.ssao_enabled = config.volumetrics_enabled = true;
+                auto sdr = make_renderer(config);
+                const auto sdr_image = sdr->render_image(items, camera, w, h);
+                save(sdr_image, captures / ("effects-sdr-msaa-" + std::to_string(samples) + ".bmp"));
+                if (samples == 1)
+                {
+                    auto legacy = make_renderer(config, ColorPipelineMode::legacy_gamma);
+                    Texture2D legacy_white;
+                    legacy_white
+                        .initialize_rgba(1, 1, std::array<uint8_t, 4>{180, 180, 180, 255}, TextureEncoding::linear);
+                    auto legacy_items = items;
+                    for (auto& item : legacy_items)
+                        item.diffuse_texture = &legacy_white;
+                    const auto legacy_image = legacy->render_image(legacy_items, camera, w, h);
+                    uint64_t difference = 0;
+                    for (size_t p = 0; p < sdr_image.pixels.size(); p += 4)
+                        for (size_t channel = 0; channel < 3; ++channel)
+                            difference +=
+                                std::abs(int(sdr_image.pixels[p + channel]) - legacy_image.pixels[p + channel]);
+                    const double mean = double(difference) / (w * h * 3);
+                    std::cout << "volumetric_sdr_encoding_mean_delta=" << mean << '\n';
+                    require(mean < .5, "Volumetric lighting differs between SDR color encodings");
+                    save(legacy_image, captures / "effects-sdr-legacy.bmp");
+                }
+                config.hdr_enabled = config.bloom_enabled = config.ssr_enabled = true;
+                auto combined = make_renderer(config);
+                save(
+                    combined->render_image(items, camera, w, h),
+                    captures / ("effects-hdr-msaa-" + std::to_string(samples) + ".bmp")
+                );
+            }
+        }
+        auto probe = std::make_shared<ReflectionProbe>();
+        probe->settings = {{0, 0, 0}, {-4, -4, -4}, {4, 4, 4}, 8, 32};
+        for (uint32_t size = 8; size; size >>= 1)
+            probe->mips.emplace_back(6 * size * size, glm::vec4{.05F, .2F, .6F, 1});
+        items[0].metallic_roughness = MetallicRoughness{.1F, .8F};
+        reference->set_reflection_probe(probe);
+        const auto probe_baseline = reference->render_image(std::span{items}.first(1), camera, w, h);
+        auto config = base;
+        config.ssr_enabled = true;
+        auto ssr = make_renderer(config);
+        ssr->set_reflection_probe(probe);
+        const auto miss = ssr->render_image(std::span{items}.first(1), camera, w, h);
+        require(miss.pixels == probe_baseline.pixels, "SSR miss changed the probe fallback");
+        save(miss, captures / "effects-ssr-probe-miss.bmp");
+        // Asset AO=0 stays zero: SSAO must not multiply a second darkening onto indirect lighting.
+        for (auto& item : items)
+            item.occlusion_texture = &black_ao;
+        config = base;
+        config.ssao_enabled = true;
+        auto ao = make_renderer(config);
+        require(
+            ao->render_image(items, camera, w, h).pixels == reference->render_image(items, camera, w, h).pixels,
+            "SSAO changed fully occluded indirect or direct/emissive lighting"
+        );
+        config.bloom_enabled = true;
+        config.hdr_enabled = false;
+        expect_failure(
+            [&] {
+                static_cast<void>(make_renderer(config));
+            },
+            "require HDR"
+        );
+        config = base;
+        config.bloom_strength = std::numeric_limits<float>::quiet_NaN();
+        expect_failure(
+            [&] {
+                static_cast<void>(make_renderer(config));
+            },
+            "Invalid bloom"
+        );
+        // Real content comparisons retain its probes, lights, native models and viewmodel.
+        StaticModelCache models;
+        for (const auto level_name : {"power_restoration", "pressure_transfer", "containment_loop"})
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + level_name + ".toml")
+            );
+            RelayGame::WorldSceneRenderer scene;
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            scene.initialize(prepared, models);
+            camera = PerspectiveCamera{{.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}}};
+            if (std::string_view{level_name} == "power_restoration")
+                camera = PerspectiveCamera{{.position = {0, 1.65F, -3.5F}, .target = {0, 1.65F, 4}}};
+            if (std::string_view{level_name} == "containment_loop")
+                camera = PerspectiveCamera{{.position = {-21, 1.65F, 19}, .target = {-21, .6F, 23}}};
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, .4F);
+            for (int effect = -1; effect < 5; ++effect)
+            {
+                config =
+                    RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+                config.hdr_enabled = true;
+                config.bloom_enabled = effect == 0 || effect == 4;
+                config.ssao_enabled = effect == 1 || effect == 4;
+                config.ssr_enabled = effect == 2 || effect == 4;
+                config.volumetrics_enabled = effect == 3 || effect == 4;
+                auto renderer = make_renderer(config);
+                renderer->set_local_lights(scene.local_lights());
+                renderer->set_irradiance_probes(scene.irradiance());
+                renderer->set_reflection_probe(prepared.reflection);
+                save(
+                    renderer->render_image(scene.render_items(), camera, w, h, weapon),
+                    captures / (std::string{"effects-"} + level_name + "-" + std::to_string(effect) + ".bmp")
+                );
+                if (profile)
+                {
+                    const auto measure_scene = [&] {
+                        for (int frame = 0; frame < 240; ++frame)
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real CPU frame");
+                            renderer->prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                            SDL_PumpEvents();
+                            RELAYCORE_PROFILE_FRAME();
+                        }
+                        uint64_t bytes = 0;
+                        for (const auto& heap : device.memory_usage().heaps)
+                            bytes += heap.allocation_bytes;
+                        std::cout << "profile_level=" << level_name << " effect=" << effect << " vma_bytes=" << bytes
+                                  << '\n';
+                    };
+                    switch (effect)
+                    {
+                        case -1:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real off");
+                            measure_scene();
+                            break;
+                        }
+                        case 0:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real bloom");
+                            measure_scene();
+                            break;
+                        }
+                        case 1:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real AO");
+                            measure_scene();
+                            break;
+                        }
+                        case 2:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real SSR");
+                            measure_scene();
+                            break;
+                        }
+                        case 3:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real volumes");
+                            measure_scene();
+                            break;
+                        }
+                        case 4:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real combined");
+                            measure_scene();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void check_pass_inputs(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -3692,6 +4080,9 @@ int main(int argc, char** argv)
     const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
     const bool emission_only = argc == 2 && std::string_view{argv[1]} == "--emission";
     const bool msaa_only = argc == 2 && std::string_view{argv[1]} == "--msaa";
+    const bool effects_only = argc == 2 && std::string_view{argv[1]} == "--visual-effects";
+    const bool effects_profile = argc == 2 && std::string_view{argv[1]} == "--visual-effects-profile";
+    const bool effects_analytic = argc == 2 && std::string_view{argv[1]} == "--visual-effects-analytic";
     const bool inputs_only = argc == 2 && std::string_view{argv[1]} == "--pass-inputs";
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
@@ -3708,7 +4099,7 @@ int main(int argc, char** argv)
     if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
-        && !descriptors_only && !depth_only && !inputs_only)
+        && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile && !effects_analytic)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -3729,7 +4120,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (inputs_only)
+        if (effects_only || effects_profile || effects_analytic)
+            check_visual_effects(device, authoring, atlas, captures, effects_profile, effects_analytic);
+        else if (inputs_only)
             check_pass_inputs(device, authoring, atlas, captures);
         else if (pistol_only)
             check_pistol_viewmodel(device, authoring, atlas, captures);

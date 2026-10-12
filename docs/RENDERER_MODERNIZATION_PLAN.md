@@ -6,7 +6,7 @@ VK14-00–05 have covered local technical evidence. Since the owner revision of 
 
 ## Execution reports
 
-[Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Material pooling](renderer/VK14-05a.md) · [Pipelines and portability](renderer/VK14-05.md) · [Compute/pass inputs](renderer/VK14-06.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md).
+[Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Material pooling](renderer/VK14-05a.md) · [Pipelines and portability](renderer/VK14-05.md) · [Compute/pass inputs](renderer/VK14-06.md) · [Spatial effects](renderer/VK14-07.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md).
 
 <a id="9-ordered-milestone-sequence-and-deliverables"></a>
 ## Milestones and acceptance
@@ -22,7 +22,7 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 | **VK14-04** | [Local technical gate](renderer/VK14-04.md) | Scene scheduling and upload fixes | Two scene slots and GPU timeline waits for resource consumption. [Local technical gate complete; measured benefit and tail limit](renderer/VK14-04.md#vk14-04-execution--2026-10-12) | Measured first-use/frame benefit; no lifetime regressions; rollback if not beneficial |
 | **VK14-05** | [Local technical gate, 05a–e complete](renderer/VK14-05.md) | Descriptors/pipelines/portability | Shared allocator, pipeline cache, format candidates, surface-loss policy, VMA telemetry | Stable churn, tested cache invalidation, clear errors, validation-clean |
 | **VK14-06** | [06a–c implemented; local correctness/input budgets pass](renderer/VK14-06.md) (2026-10-12); default timing gate provisional | Compute/pass inputs | Compute shader toolchain, depth/normals/motion/temporal history targets as needed, debug visualizers | Single correct compute consumer; known synchronization and history-reset behavior |
-| **VK14-07** | `pending` | Visual quality I | Bloom, GTAO/SSAO, optional volumetrics and SSR with probe fallback | Visible improvement on real G-019 scenes; effect-off parity and GPU budgets |
+| **VK14-07** | [07a–d implemented; local effects checks/budgets pass](renderer/VK14-07.md); pre-existing power baseline drift and human art acceptance remain explicit | Visual quality I | Bloom, SSAO, volumetrics and SSR with probe fallback | Visible improvement on real G-019 scenes; effect-off parity and GPU budgets |
 | **VK14-08** | `pending` | Temporal and resolution | TAA, optional TAAU/spatial upscaler, dynamic resolution and evaluated FSR integration | Moving-enemy/viewmodel tests, camera cuts, ghosting/shimmer review, no UI blur, predictable quality/performance |
 | **VK14-09** | `pending` | Visual quality II | SSGI, improved reflections, bounded DoF/motion blur | Temporal stability, no energy/AO double counting; use off/low/high comparison |
 | **VK14-10** | `pending` | Scalable scene submission | CPU instancing → indirect draws → optional GPU culling | Image parity, correct object picking/shadows/transparency, real CPU/GPU improvement under stress |

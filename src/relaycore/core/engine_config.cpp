@@ -232,6 +232,21 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("postfx_saturation", postfx_saturation);
             RELAYCORE_ASSIGN_RENDER("hdr_enabled", hdr_enabled);
             RELAYCORE_ASSIGN_RENDER("exposure_ev", exposure_ev);
+            RELAYCORE_ASSIGN_RENDER("bloom_enabled", bloom_enabled);
+            RELAYCORE_ASSIGN_RENDER("bloom_strength", bloom_strength);
+            RELAYCORE_ASSIGN_RENDER("bloom_threshold", bloom_threshold);
+            RELAYCORE_ASSIGN_RENDER("ssao_enabled", ssao_enabled);
+            RELAYCORE_ASSIGN_RENDER("ssr_enabled", ssr_enabled);
+            RELAYCORE_ASSIGN_RENDER("volumetrics_enabled", volumetrics_enabled);
+            RELAYCORE_ASSIGN_RENDER("volumetric_density", volumetric_density);
+            if ((config.renderer.bloom_enabled || config.renderer.ssr_enabled) && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "bloom and SSR require HDR enabled");
+            if (config.renderer.bloom_strength < 0 || config.renderer.bloom_strength > 1)
+                invalid_config_value(config_path, "render.bloom_strength", "must be in [0, 1]");
+            if (config.renderer.bloom_threshold < 0 || config.renderer.bloom_threshold > 10)
+                invalid_config_value(config_path, "render.bloom_threshold", "must be in [0, 10] scene-linear units");
+            if (config.renderer.volumetric_density < 0 || config.renderer.volumetric_density > 0.1F)
+                invalid_config_value(config_path, "render.volumetric_density", "must be in [0, 0.1]");
             RELAYCORE_ASSIGN_RENDER("msaa_samples", msaa_samples);
             if (config.renderer.msaa_samples != 1 && config.renderer.msaa_samples != 2
                 && config.renderer.msaa_samples != 4)

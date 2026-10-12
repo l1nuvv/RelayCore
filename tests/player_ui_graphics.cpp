@@ -248,9 +248,30 @@ int main()
         change("volume", "0.35");
         change("fov", "82");
         change("sensitivity", "2.5");
+        change("bloom", "1");
+        change("ssao", "1");
+        change("ssr", "1");
+        change("volumetrics", "1");
+        require(
+            renderer.config().hdr_enabled && renderer.config().bloom_enabled && renderer.config().ssao_enabled
+                && renderer.config().ssr_enabled && renderer.config().volumetrics_enabled,
+            "RML effect controls did not apply to the renderer"
+        );
         (void) draw("settings-adjusted");
+        control("menu-panel")->SetScrollTop(control("menu-panel")->GetScrollHeight());
+        (void) draw("settings-effects");
         click("save-settings");
         const auto settings = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
+        require(
+            settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.ssr_enabled
+                && settings.volumetrics_enabled,
+            "RML effect settings were not persisted"
+        );
+        change("hdr", "0");
+        require(
+            !renderer.config().hdr_enabled && !renderer.config().bloom_enabled && !renderer.config().ssr_enabled,
+            "Selecting SDR retained HDR-only effects"
+        );
         std::cout << "Saved settings: volume=" << settings.volume << " fov=" << settings.fov
                   << " sensitivity=" << settings.sensitivity << '\n';
         require(

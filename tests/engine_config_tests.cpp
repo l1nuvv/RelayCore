@@ -91,6 +91,35 @@ TEST_CASE("engine config validates explicit HDR exposure")
     check_invalid_config(temp.path(), "[render]\nhdr_enabled = 1\n", "render.hdr_enabled");
 }
 
+TEST_CASE("engine config validates spatial effect controls and HDR dependencies")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = write_engine_config(
+        temp.path(),
+        "[render]\nhdr_enabled = true\nbloom_enabled = true\nbloom_strength = 0.2\n"
+        "bloom_threshold = 1.5\nssao_enabled = true\nssr_enabled = true\n"
+        "volumetrics_enabled = true\nvolumetric_density = 0.04\n"
+    );
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.renderer.bloom_enabled);
+    CHECK(config.renderer.ssao_enabled);
+    CHECK(config.renderer.ssr_enabled);
+    CHECK(config.renderer.volumetrics_enabled);
+    CHECK(config.renderer.bloom_strength == doctest::Approx(.2F));
+    CHECK(config.renderer.bloom_threshold == doctest::Approx(1.5F));
+    CHECK(config.renderer.volumetric_density == doctest::Approx(.04F));
+    for (const auto effect : {"bloom_enabled", "ssr_enabled"})
+        check_invalid_config(temp.path(), std::string{"[render]\n"} + effect + " = true\n", "render.hdr_enabled");
+    for (const auto key : {"bloom_strength", "bloom_threshold", "volumetric_density"})
+        for (const auto value : {"nan", "inf", "-0.1", "11", "'bright'"})
+            check_invalid_config(
+                temp.path(),
+                std::string{"[render]\n"} + key + " = " + value + "\n",
+                std::string{"render."} + key
+            );
+}
+
 TEST_CASE("engine config validates MSAA sample counts")
 {
     RelayCore::test::ScopedTempDirectory temp;

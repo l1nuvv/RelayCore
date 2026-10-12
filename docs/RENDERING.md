@@ -120,6 +120,17 @@ Irradiance `.rcprobe` и статический reflection `.rcreflection` уж�
 их bake/runtime contracts описаны выше и в разделе Static reflection probes.
 
 
+## Spatial quality effects — VK14-07
+
+Bloom, SSAO, SSR and homogeneous volumetric lighting are optional renderer
+effects, disabled by default and selectable in the saved player settings.
+Bloom and SSR use the internal HDR path; output remains SDR. Selecting SDR
+disables those two effects. SSAO combines with authored AO on indirect light,
+SSR retains reflection probes on rejected/missing hits, and volumetrics replace
+opaque distance fog. Player/developer UI is composed after the effects.
+The authored controls, resource/pass contract, diagnostic views, captures,
+budgets and limitations belong to [VK14-07](renderer/VK14-07.md).
+
 ## Static reflection probes (IMG-02)
 
 The engine accepts one `reflection_probe` per level. Its `origin` is the capture

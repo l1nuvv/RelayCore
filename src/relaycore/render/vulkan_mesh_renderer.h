@@ -43,7 +43,10 @@ namespace RelayCore::render
         normals,
         velocity,
         history,
-        previous_color
+        previous_color,
+        ao,
+        reflection_confidence,
+        volume_transmittance
     };
 
     struct VulkanPassInputCapture {

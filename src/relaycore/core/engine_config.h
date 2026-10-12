@@ -47,6 +47,13 @@ namespace RelayCore::render
         float postfx_saturation = 0.94F;          ///< Final color saturation after lighting and fog.
         bool hdr_enabled = false;
         float exposure_ev = 0;
+        bool bloom_enabled = false;
+        float bloom_strength = 0.12F;
+        float bloom_threshold = 1.0F;
+        bool ssao_enabled = false;
+        bool ssr_enabled = false;
+        bool volumetrics_enabled = false;
+        float volumetric_density = 0.025F;
         int msaa_samples = 1;
         bool shadow_enabled = true;                            ///< Enables scene shadow passes.
         int shadow_map_resolution = 1536;                      ///< Square shadow map size in texels.

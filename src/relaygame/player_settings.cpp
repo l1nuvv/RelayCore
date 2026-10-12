@@ -15,6 +15,8 @@ namespace RelayGame
                 if (!std::isfinite(value) || value < low || value > high)
                     throw std::runtime_error(std::string{"player_settings."} + key + " is out of range");
             };
+            if ((settings.bloom_enabled || settings.ssr_enabled) && !settings.hdr_enabled)
+                throw std::runtime_error("player_settings: bloom and SSR require HDR enabled");
             range("volume", settings.volume, 0, 1);
             range("sensitivity", settings.sensitivity, 0.0003F, 0.008F);
             range("fov", settings.fov, 50, 100);
@@ -53,6 +55,34 @@ namespace RelayGame
                 throw std::runtime_error("player_settings.hdr_enabled must be a boolean");
             defaults.hdr_enabled = *value;
         }
+        if (table.contains("bloom_enabled"))
+        {
+            const auto value = table["bloom_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.bloom_enabled must be a boolean");
+            defaults.bloom_enabled = *value;
+        }
+        if (table.contains("ssao_enabled"))
+        {
+            const auto value = table["ssao_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.ssao_enabled must be a boolean");
+            defaults.ssao_enabled = *value;
+        }
+        if (table.contains("ssr_enabled"))
+        {
+            const auto value = table["ssr_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.ssr_enabled must be a boolean");
+            defaults.ssr_enabled = *value;
+        }
+        if (table.contains("volumetrics_enabled"))
+        {
+            const auto value = table["volumetrics_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.volumetrics_enabled must be a boolean");
+            defaults.volumetrics_enabled = *value;
+        }
         validate(defaults);
         return defaults;
     }
@@ -66,7 +96,11 @@ namespace RelayGame
             {"fov", settings.fov},
             {"camera_motion", settings.camera_motion},
             {"vsync", settings.vsync},
-            {"hdr_enabled", settings.hdr_enabled}
+            {"hdr_enabled", settings.hdr_enabled},
+            {"bloom_enabled", settings.bloom_enabled},
+            {"ssao_enabled", settings.ssao_enabled},
+            {"ssr_enabled", settings.ssr_enabled},
+            {"volumetrics_enabled", settings.volumetrics_enabled}
         };
         std::filesystem::create_directories(path.parent_path());
         auto temporary = path;
