@@ -123,6 +123,15 @@ pipeline declarations and normalized shadow readback. The current policy is:
 | Preferred | Scene D32 → D24 → D16; shadow D24 → D32 → D16, without stencil | Next compatible candidate; fail if none |
 | Preferred | samplerAnisotropy | 1x sampling when unavailable |
 | Optional | VK_EXT_memory_budget | Labelled VMA estimates; no device rejection |
+| Preferred | HDR compute tone mapping on the selected graphics queue, mutable RGBA8 UNORM storage target | Existing raster tone mapping when queue/format support is missing |
+
+HDR tone mapping uses an offline Slang compute shader with bounded 8x8 groups
+when supported. It shares display mapping with the raster pass, reads resolved
+FP16 color, writes encoded RGB through the UNORM view, then synchronizes UI and
+readback/presentation. Both scene slots retain their own targets/descriptors;
+there are no temporal inputs/history in this pass. Technique diagnostics and the
+raster verification override are in [Development](DEVELOPMENT.md#vulkan-capture-и-validation),
+with [06a evidence](renderer/VK14-06.md).
 
 Memory statistics and retention counters are explicit diagnostic snapshots, with
 no heap queries in the normal frame loop. [Development](DEVELOPMENT.md#vulkan-capture-и-validation)

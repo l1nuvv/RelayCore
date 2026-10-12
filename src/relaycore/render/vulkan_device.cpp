@@ -226,6 +226,10 @@ namespace RelayCore::render
         );
         state_->graphics_queue = graphics.first;
         state_->present_queue = present.first;
+        uint32_t queue_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physical.physical_device, &queue_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queues(queue_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical.physical_device, &queue_count, queues.data());
 
         const VkPipelineCacheCreateInfo cache_info{.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
         const auto cache_result =
@@ -262,6 +266,7 @@ namespace RelayCore::render
             .driver_version = physical.properties.driverVersion,
             .graphics_queue_family = graphics.second,
             .present_queue_family = present.second,
+            .graphics_compute = (queues[graphics.second].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
             .memory_budget_enabled = memory_budget,
             .max_texture_anisotropy =

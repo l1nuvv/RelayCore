@@ -205,6 +205,13 @@ scene HDR, изолированные Continue/бой/respawn/пауза/resize.
 
 ### Vulkan: capture и validation
 
+HDR tone mapping logs the selected compute/raster technique at backend creation.
+For a process-local raster comparison set
+`RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING=1`; unset/0 uses compute when the
+selected graphics queue and storage target support it. Other values fail. This
+diagnostic override does not change authored/player settings; SDR is unchanged.
+Compute shader compilation/staging and local evidence: [VK14-06a](renderer/VK14-06.md).
+
 В Advanced Diagnostics окно `Vulkan memory` обновляется кнопкой `Refresh GPU memory`.
 Оно показывает heap usage/budget, VMA allocations/blocks, retained upload staging,
 pending retirements и material descriptor pools. Снимок сохраняется до следующего

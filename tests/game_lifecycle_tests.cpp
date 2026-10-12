@@ -202,8 +202,14 @@ namespace
             auto backup = tone_shader;
             backup += ".settings-test";
             std::filesystem::rename(tone_shader, backup);
+            const auto compute_shader = RelayCore::core::asset_path("shaders/vulkan/tone_mapping.comp.spv");
+            auto compute_backup = compute_shader;
+            compute_backup += ".settings-test";
+            bool compute_moved = false;
             try
             {
+                std::filesystem::rename(compute_shader, compute_backup);
+                compute_moved = true;
                 choose_range("HDR");
                 require(
                     !renderer.config().hdr_enabled && !config.renderer.hdr_enabled,
@@ -215,10 +221,13 @@ namespace
                 );
             } catch (...)
             {
+                if (compute_moved)
+                    std::filesystem::rename(compute_backup, compute_shader);
                 std::filesystem::rename(backup, tone_shader);
                 throw;
             }
             std::filesystem::rename(backup, tone_shader);
+            std::filesystem::rename(compute_backup, compute_shader);
             choose_range("HDR");
             require(
                 renderer.config().hdr_enabled && config.renderer.hdr_enabled,

@@ -2882,15 +2882,35 @@ namespace
         );
         check_center(renderer.render_image(queue.items(), camera, width / 2, height / 2), expected(radiance, 0));
         check_center(renderer.render_image(queue.items(), camera, width, height), expected(radiance, 0));
+        RenderQueue full_screen;
+        full_screen.push(mesh, glm::scale(glm::mat4{1}, glm::vec3{100}));
+        for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 9}, glm::ivec2{319, 181}, glm::ivec2{641, 359}})
+        {
+            camera.set_viewport(size.x, size.y);
+            renderer.prepare_frame(full_screen.items(), {}, camera, size.x, size.y);
+            const auto image = renderer.capture_prepared_image();
+            const auto reference = expected(radiance, 0);
+            for (size_t pixel = 0; pixel < image.pixels.size(); pixel += 4)
+            {
+                for (int channel = 0; channel < 3; ++channel)
+                    require(
+                        std::abs(int(image.pixels[pixel + channel]) - int(std::lround(reference[channel] * 255))) <= 2,
+                        "HDR partial workgroup left an incorrect pixel"
+                    );
+                require(image.pixels[pixel + 3] == 255, "HDR partial workgroup lost alpha");
+            }
+        }
+        camera.set_viewport(width, height);
         RelayCore::test::ScopedTempDirectory broken;
         for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
-            if (file.path().extension() == ".spv" && file.path().filename() != "tone_mapping.frag.spv")
+            if (file.path().extension() == ".spv" && file.path().filename() != "tone_mapping.frag.spv"
+                && file.path().filename() != "tone_mapping.comp.spv")
                 std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
         expect_failure(
             [&] {
                 renderer.reload_shaders(broken.path());
             },
-            "tone_mapping.frag.spv"
+            "tone_mapping."
         );
         require(
             renderer.render_image(queue.items(), camera, width, height).pixels == original.pixels,

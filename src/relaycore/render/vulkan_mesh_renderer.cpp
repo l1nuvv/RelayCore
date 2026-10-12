@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <imgui_impl_vulkan.h>
 #include <limits>
@@ -278,12 +279,20 @@ namespace RelayCore::render
                     .format = attachment_format == VK_FORMAT_UNDEFINED ? format : attachment_format,
                     .subresourceRange = {aspect, 0, 1, 0, 1},
                 };
+                // The sRGB attachment view cannot inherit the UNORM storage usage.
+                const VkImageViewUsageCreateInfo view_usage{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+                    .usage = usage & ~VK_IMAGE_USAGE_STORAGE_BIT
+                };
+                if (srgb_view && (usage & VK_IMAGE_USAGE_STORAGE_BIT))
+                    view_info.pNext = &view_usage;
                 require_mesh_vk(
                     vkCreateImageView(device.handle(), &view_info, nullptr, &view),
                     "Failed to create Vulkan mesh target view"
                 );
                 if (srgb_view)
                 {
+                    view_info.pNext = nullptr;
                     view_info.format = format;
                     require_mesh_vk(
                         vkCreateImageView(device.handle(), &view_info, nullptr, &unorm_view),
@@ -305,7 +314,8 @@ namespace RelayCore::render
                 const VkFormat scene_format,
                 const VkFormat display_format,
                 const VkFormat depth_format,
-                const VkSampleCountFlagBits samples
+                const VkSampleCountFlagBits samples,
+                const bool compute_tone_mapping
             ) :
                 extent(size), color(device), depth(device), readback(
                                                                 device,
@@ -317,7 +327,8 @@ namespace RelayCore::render
                 color.initialize(
                     size,
                     VK_FORMAT_R8G8B8A8_UNORM,
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                        | (compute_tone_mapping ? VK_IMAGE_USAGE_STORAGE_BIT : 0u),
                     VK_IMAGE_ASPECT_COLOR_BIT,
                     display_format
                 );
@@ -400,7 +411,39 @@ namespace RelayCore::render
             std::array<VkDescriptorSet, 2> sets{};
             VkSampler sampler = VK_NULL_HANDLE;
             VkPipeline pipeline = VK_NULL_HANDLE;
-            explicit ToneMapping(const VulkanDevice& owner) : device(owner.handle()), cache(owner.pipeline_cache()) {}
+            bool compute = false;
+            explicit ToneMapping(const VulkanDevice& owner) : device(owner.handle()), cache(owner.pipeline_cache())
+            {
+                VkFormatProperties format{};
+                vkGetPhysicalDeviceFormatProperties(owner.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &format);
+                compute = owner.capabilities().graphics_compute
+                          && (format.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+                if (compute)
+                {
+                    VkImageFormatProperties support{};
+                    const auto result = vkGetPhysicalDeviceImageFormatProperties(
+                        owner.physical_device(),
+                        VK_FORMAT_R8G8B8A8_UNORM,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                            | VK_IMAGE_USAGE_STORAGE_BIT,
+                        VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
+                        &support
+                    );
+                    if (result != VK_SUCCESS && result != VK_ERROR_FORMAT_NOT_SUPPORTED)
+                        require_mesh_vk(result, "Compute tone mapping target format support");
+                    compute = result == VK_SUCCESS;
+                }
+                if (const auto* disable = std::getenv("RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING"))
+                {
+                    const std::string_view value{disable};
+                    if (value != "0" && value != "1")
+                        throw std::invalid_argument("RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING must be 0 or 1");
+                    compute = compute && value != "1";
+                }
+                log::info("Vulkan HDR tone mapping: {}", compute ? "compute (8x8, graphics queue)" : "raster");
+            }
             ~ToneMapping() noexcept
             {
                 if (pipeline)
@@ -416,18 +459,21 @@ namespace RelayCore::render
             }
             void initialize()
             {
-                const VkDescriptorSetLayoutBinding
-                    binding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+                const VkShaderStageFlags stage = compute ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_FRAGMENT_BIT;
+                const std::array bindings{
+                    VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, stage, nullptr}
+                };
                 const VkDescriptorSetLayoutCreateInfo descriptor_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                    .bindingCount = 1,
-                    .pBindings = &binding
+                    .bindingCount = compute ? 2u : 1u,
+                    .pBindings = bindings.data()
                 };
                 require_mesh_vk(
                     vkCreateDescriptorSetLayout(device, &descriptor_info, nullptr, &descriptor_layout),
                     "HDR descriptor layout"
                 );
-                const VkPushConstantRange push{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ToneMappingPush)};
+                const VkPushConstantRange push{stage, 0, sizeof(ToneMappingPush)};
                 const VkPipelineLayoutCreateInfo layout_info{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                     .setLayoutCount = 1,
@@ -446,12 +492,15 @@ namespace RelayCore::render
                     .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
                 };
                 require_mesh_vk(vkCreateSampler(device, &sampler_info, nullptr, &sampler), "HDR scene sampler");
-                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2};
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}
+                };
                 const VkDescriptorPoolCreateInfo pool_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                     .maxSets = 2,
-                    .poolSizeCount = 1,
-                    .pPoolSizes = &size
+                    .poolSizeCount = compute ? 2u : 1u,
+                    .pPoolSizes = sizes.data()
                 };
                 require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "HDR descriptor pool");
                 const std::array layouts{descriptor_layout, descriptor_layout};
@@ -463,7 +512,7 @@ namespace RelayCore::render
                 };
                 require_mesh_vk(vkAllocateDescriptorSets(device, &allocate, sets.data()), "HDR descriptor set");
             }
-            void bind(const VkImageView view, const size_t slot) const
+            void bind(const VkImageView view, const VkImageView output, const size_t slot) const
             {
                 const VkDescriptorImageInfo image{sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
                 const VkWriteDescriptorSet write{
@@ -475,10 +524,41 @@ namespace RelayCore::render
                     .pImageInfo = &image
                 };
                 vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+                if (compute)
+                {
+                    const VkDescriptorImageInfo storage{VK_NULL_HANDLE, output, VK_IMAGE_LAYOUT_GENERAL};
+                    auto storage_write = write;
+                    storage_write.dstBinding = 1;
+                    storage_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                    storage_write.pImageInfo = &storage;
+                    vkUpdateDescriptorSets(device, 1, &storage_write, 0, nullptr);
+                }
             }
             auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
             {
                 MeshShaders shaders{device};
+                if (compute)
+                {
+                    shaders.vertex = shaders.load(directory / "tone_mapping.comp.spv", "compute_main");
+                    const VkComputePipelineCreateInfo info{
+                        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                        .stage =
+                            {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                             .module = shaders.vertex,
+                             .pName = "compute_main"},
+                        .layout = layout
+                    };
+                    VkPipeline replacement = VK_NULL_HANDLE;
+                    const auto result = vkCreateComputePipelines(device, cache, 1, &info, nullptr, &replacement);
+                    if (result != VK_SUCCESS)
+                    {
+                        if (replacement)
+                            vkDestroyPipeline(device, replacement, nullptr);
+                        require_mesh_vk(result, "Compute tone mapping pipeline from " + directory.string());
+                    }
+                    return replacement;
+                }
                 shaders.vertex = shaders.load(directory / "tone_mapping.vert.spv", "vertex_main");
                 shaders.fragment = shaders.load(directory / "tone_mapping.frag.spv", "fragment_main");
                 const std::array stages{
@@ -2167,12 +2247,14 @@ namespace RelayCore::render
         void record_tone_mapping()
         {
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "HDR tone mapping");
+            const bool compute = tone_mapping->compute;
             const std::array barriers{
                 VkImageMemoryBarrier2{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                     .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                     .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                    .dstStageMask =
+                        compute ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                     .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                     .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -2185,10 +2267,12 @@ namespace RelayCore::render
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                     .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                    .dstStageMask = compute ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .dstAccessMask =
+                        compute ? VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .newLayout = compute ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .image = frame().target->color.image,
@@ -2215,11 +2299,13 @@ namespace RelayCore::render
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
             };
-            vkCmdBeginRendering(frame().commands, &rendering);
-            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, tone_mapping->pipeline);
+            if (!compute)
+                vkCmdBeginRendering(frame().commands, &rendering);
+            const auto bind_point = compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+            vkCmdBindPipeline(frame().commands, bind_point, tone_mapping->pipeline);
             vkCmdBindDescriptorSets(
                 frame().commands,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                bind_point,
                 tone_mapping->layout,
                 0,
                 1,
@@ -2238,13 +2324,45 @@ namespace RelayCore::render
             vkCmdPushConstants(
                 frame().commands,
                 tone_mapping->layout,
-                VK_SHADER_STAGE_FRAGMENT_BIT,
+                compute ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
                 sizeof(push),
                 &push
             );
-            vkCmdDraw(frame().commands, 3, 1, 0, 0);
-            vkCmdEndRendering(frame().commands);
+            if (compute)
+            {
+                vkCmdDispatch(
+                    frame().commands,
+                    (frame().target->extent.width + 7) / 8,
+                    (frame().target->extent.height + 7) / 8,
+                    1
+                );
+                const VkImageMemoryBarrier2 ready{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                    .dstStageMask =
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                    .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+                                     | VK_ACCESS_2_TRANSFER_READ_BIT,
+                    .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+                    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = frame().target->color.image,
+                    .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+                };
+                const VkDependencyInfo ready_info{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .imageMemoryBarrierCount = 1,
+                    .pImageMemoryBarriers = &ready
+                };
+                vkCmdPipelineBarrier2(frame().commands, &ready_info);
+            } else
+            {
+                vkCmdDraw(frame().commands, 3, 1, 0, 0);
+                vkCmdEndRendering(frame().commands);
+            }
         }
 
         void record_ui(ImDrawData* ui)
@@ -2510,10 +2628,11 @@ namespace RelayCore::render
                     scene_format(),
                     display_format(),
                     depth_formats.scene,
-                    static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
+                    static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples),
+                    tone_mapping && tone_mapping->compute
                 );
                 if (tone_mapping)
-                    tone_mapping->bind(frame().target->hdr_scene->view, frame_index);
+                    tone_mapping->bind(frame().target->hdr_scene->view, frame().target->color.unorm_view, frame_index);
             }
             CpuRgbaTextureData output{width, height, {}};
             if (capture)
