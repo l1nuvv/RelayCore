@@ -123,6 +123,7 @@ set(RELAYCORE_ENGINE_HEADERS
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h
+    render/render_resolution.h
     render/shadow_math.h
     render/vulkan_gpu_profiler.h
     render/texture2d.h

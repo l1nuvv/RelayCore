@@ -15,6 +15,9 @@ namespace RelayGame
         bool ssao_enabled = false;
         bool ssr_enabled = false;
         bool volumetrics_enabled = false;
+        bool taa_enabled = false;
+        float render_scale = 1.0F;
+        bool dynamic_resolution_enabled = false;
     };
 
     [[nodiscard]] auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults)

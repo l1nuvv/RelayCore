@@ -16,6 +16,7 @@ struct InputVarying
     float2 uv;
     float4 currentClip;
     float4 previousClip;
+    nointerpolation float2 jitter;
     nointerpolation float valid;
 };
 
@@ -31,6 +32,7 @@ InputVarying input_vertex(Vertex input, uint instance : SV_VulkanInstanceID)
     output.currentClip = mul(draw.mvp, float4(input.position, 1));
     output.previousClip = mul(previousDraws[instance].mvp, float4(input.position, 1));
     output.valid = previousDraws[instance].valid.x;
+    output.jitter = previousDraws[instance].valid.yz;
     return output;
 }
 
@@ -46,7 +48,7 @@ InputOutput input_fragment(InputVarying input)
     output.normalDepth = float4(surface_normal(surface), input.currentClip.w);
     float2 currentUV = input.currentClip.xy / input.currentClip.w * float2(.5, -.5) + .5;
     float2 previousUV = input.previousClip.xy / max(input.previousClip.w, .0001) * float2(.5, -.5) + .5;
-    output.velocity = float4(previousUV - currentUV, input.previousClip.w,
+    output.velocity = float4(previousUV - currentUV + input.jitter, input.previousClip.w,
                              input.valid * float(input.previousClip.w > 0));
     // Transparent/overlay/viewmodel pixels cannot reuse opaque history.
     if ((draw.flags & (2 | 4 | 32)) != 0)
@@ -69,13 +71,14 @@ float4 debug_fragment(float4 position : SV_Position) : SV_Target
 {
     uint width, height;
     currentNormalDepth.GetDimensions(width, height);
-    int2 pixel = int2(position.xy);
+    float2 inputPosition = position.xy * float2(width, height) / float2(draw.cameraY, draw.cameraZ);
+    int2 pixel = int2(inputPosition);
     float4 nd = currentNormalDepth.Load(int3(pixel, 0));
     float4 velocity = currentVelocity.Load(int3(pixel, 0));
     if (draw.flags == 2) return float4((nd.w / (1 + nd.w)).xxx, 1);
     if (draw.flags == 3) return float4(nd.w > 0 ? nd.xyz * .5 + .5 : float3(0), 1);
     if (draw.flags == 4) return float4(.5 + velocity.xy * 8, velocity.w, 1);
-    float2 uv = position.xy / float2(width, height) + velocity.xy;
+    float2 uv = inputPosition / float2(width, height) + velocity.xy + draw.modelRow0.xy;
     bool valid = draw.cameraX != 0 && nd.w > 0 && velocity.w > 0 && all(uv >= 0) && all(uv < 1);
     float4 old = previousNormalDepth.Load(int3(int2(clamp(uv, 0, .999999) * float2(width, height)), 0));
     float oldEligibility = previousVelocity.Load(int3(int2(clamp(uv, 0, .999999) * float2(width, height)), 0)).w;

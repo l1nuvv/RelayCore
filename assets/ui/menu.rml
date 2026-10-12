@@ -25,6 +25,9 @@
 <label>Затенение углов <select id="ssao" data-action="ssao" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Отражения на экране <select id="ssr" data-action="ssr" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Объёмный свет <select id="volumetrics" data-action="volumetrics" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Сглаживание TAA <select id="taa" data-action="taa" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Разрешение сцены · <span id="render-scale-label"></span><input id="render-scale" type="range" min="0.5" max="1" step="0.01" data-action="render-scale" data-event="change" /></label>
+<label>Динамическое разрешение <select id="dynamic-resolution" data-action="dynamic-resolution" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <button id="save-settings" class="primary" data-action="save-settings">Сохранить настройки</button><div id="settings-message" class="error"></div>
 </div>
 <div id="controls" class="secondary">WASD — движение · Shift — бег · Space — прыжок<br />E — взаимодействие · F — фонарик</div>

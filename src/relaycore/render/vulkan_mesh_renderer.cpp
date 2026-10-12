@@ -8,6 +8,7 @@
 #include "relaycore/render/player_ui.h"
 #include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/render_authoring_config.h"
+#include "relaycore/render/render_resolution.h"
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_gpu_profiler.h"
@@ -312,16 +313,27 @@ namespace RelayCore::render
 
         struct InputTarget {
             MeshImage normal_depth, velocity, depth, color_history;
-            std::unique_ptr<MeshImage> ao;
+            std::unique_ptr<MeshImage> ao, temporal;
             VulkanBuffer readback;
             InputTarget(
                 const VulkanDevice& device,
                 const VkExtent2D size,
                 const VkFormat depth_format,
                 const VkFormat color_format,
-                const bool ssao
+                const bool ssao,
+                const bool taa
             ) : normal_depth(device), velocity(device), depth(device), color_history(device), readback()
             {
+                if (taa)
+                {
+                    temporal = std::make_unique<MeshImage>(device);
+                    temporal->initialize(
+                        size,
+                        color_format,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
                 if (ssao)
                 {
                     ao = std::make_unique<MeshImage>(device);
@@ -356,7 +368,7 @@ namespace RelayCore::render
         };
 
         struct MeshTarget {
-            VkExtent2D extent;
+            VkExtent2D extent, render_extent;
             MeshImage color, depth;
             std::unique_ptr<MeshImage> hdr_scene;
             std::unique_ptr<MeshImage> multisample_scene;
@@ -364,6 +376,7 @@ namespace RelayCore::render
             MeshTarget(
                 const VulkanDevice& device,
                 const VkExtent2D size,
+                const VkExtent2D internal_size,
                 const VkFormat scene_format,
                 const VkFormat display_format,
                 const VkFormat depth_format,
@@ -371,12 +384,13 @@ namespace RelayCore::render
                 const bool compute_tone_mapping,
                 const bool input_history
             ) :
-                extent(size), color(device), depth(device), readback(
-                                                                device,
-                                                                VkDeviceSize(size.width) * size.height * 4,
-                                                                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                                                VulkanBufferMemory::readback
-                                                            )
+                extent(size), render_extent(internal_size), color(device), depth(device),
+                readback(
+                    device,
+                    VkDeviceSize(size.width) * size.height * 4,
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VulkanBufferMemory::readback
+                )
             {
                 color.initialize(
                     size,
@@ -390,7 +404,7 @@ namespace RelayCore::render
                 {
                     hdr_scene = std::make_unique<MeshImage>(device);
                     hdr_scene->initialize(
-                        size,
+                        internal_size,
                         scene_format,
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
                             | (input_history ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0u),
@@ -401,7 +415,7 @@ namespace RelayCore::render
                 {
                     multisample_scene = std::make_unique<MeshImage>(device);
                     multisample_scene->initialize(
-                        size,
+                        internal_size,
                         scene_format,
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                         VK_IMAGE_ASPECT_COLOR_BIT,
@@ -410,7 +424,7 @@ namespace RelayCore::render
                     );
                 }
                 depth.initialize(
-                    size,
+                    internal_size,
                     depth_format,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                     VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -471,6 +485,7 @@ namespace RelayCore::render
             VkPipeline bloom_pipeline = VK_NULL_HANDLE;
             VkSampler bloom_sampler = VK_NULL_HANDLE;
             std::array<std::vector<std::unique_ptr<MeshImage>>, 2> bloom;
+            std::array<VkExtent2D, 2> bloom_extent{};
             explicit ToneMapping(const VulkanDevice& device_owner) :
                 device(device_owner.handle()), cache(device_owner.pipeline_cache()), owner(device_owner)
             {
@@ -602,8 +617,12 @@ namespace RelayCore::render
                     .pImageInfo = &image
                 };
                 vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
-                bloom[slot].clear();
-                if (bloom_enabled)
+                if (bloom_enabled
+                    && (bloom[slot].empty() || bloom_extent[slot].width != extent.width
+                        || bloom_extent[slot].height != extent.height))
+                {
+                    bloom_extent[slot] = extent;
+                    bloom[slot].clear();
                     for (int level = 0; level < 4; ++level)
                     {
                         extent = {std::max(1u, (extent.width + 1) / 2), std::max(1u, (extent.height + 1) / 2)};
@@ -617,6 +636,7 @@ namespace RelayCore::render
                         );
                         bloom[slot].push_back(std::move(bloom_image));
                     }
+                }
                 for (uint32_t level = 0; level < 4; ++level)
                 {
                     const VkDescriptorImageInfo info{
@@ -860,6 +880,9 @@ namespace RelayCore::render
             VkCommandBuffer commands = VK_NULL_HANDLE;
             size_t command_index = 0;
             VulkanSceneCompletion pending{};
+            VkQueryPool resolution_queries = VK_NULL_HANDLE;
+            bool resolution_sample_pending = false;
+            float rendered_scale = 1;
             std::unique_ptr<MeshTarget> target;
             std::unique_ptr<InputTarget> inputs;
             VulkanBuffer previous_draws;
@@ -899,6 +922,8 @@ namespace RelayCore::render
             {}
             ~Frame() noexcept
             {
+                if (resolution_queries)
+                    vkDestroyQueryPool(device.handle(), resolution_queries, nullptr);
                 if (pool)
                     vkDestroyCommandPool(device.handle(), pool, nullptr);
             }
@@ -942,9 +967,16 @@ namespace RelayCore::render
         VkSampler input_sampler = VK_NULL_HANDLE;
         std::array<VkDescriptorSet, 2> input_sets{};
         std::array<VkPipeline, 4> input_pipelines{};
-        VkPipeline ao_pipeline = VK_NULL_HANDLE;
+        VkPipeline ao_pipeline = VK_NULL_HANDLE, temporal_pipeline = VK_NULL_HANDLE;
         std::filesystem::path shader_directory;
-        glm::mat4 previous_projection{1}, previous_view_projection{1};
+        glm::mat4 previous_projection{1};
+        glm::mat4 current_view_projection{1};
+        glm::vec2 jitter_uv{}, previous_jitter_uv{};
+        glm::mat4 previous_unjittered_view_projection{1};
+        uint32_t jitter_index = 0;
+        RenderResolution resolution;
+        float gpu_scene_ms = 0, timestamp_period = 0;
+        uint32_t timestamp_bits = 0;
         VkExtent2D history_extent{};
         float previous_exposure = 0;
         bool history_valid = false, frame_history_valid = false;
@@ -978,6 +1010,33 @@ namespace RelayCore::render
                 RELAYCORE_PROFILE_ZONE_N("Vulkan scene fence");
                 submissions.wait(slot.pending);
                 slot.pending = {};
+                if (slot.resolution_sample_pending)
+                {
+                    std::array<uint64_t, 2> times{};
+                    require_mesh_vk(
+                        vkGetQueryPoolResults(
+                            device.handle(),
+                            slot.resolution_queries,
+                            0,
+                            2,
+                            sizeof(times),
+                            times.data(),
+                            sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT
+                        ),
+                        "Completed scene resolution timestamps"
+                    );
+                    const auto mask = timestamp_bits == 64 ? std::numeric_limits<uint64_t>::max()
+                                                           : (uint64_t{1} << timestamp_bits) - 1;
+                    gpu_scene_ms = float((times[1] - times[0]) & mask) * timestamp_period / 1e6F;
+                    resolution.update(
+                        gpu_scene_ms,
+                        slot.rendered_scale,
+                        renderer_config.render_scale,
+                        renderer_config.dynamic_resolution_target_ms
+                    );
+                    slot.resolution_sample_pending = false;
+                }
                 slot.profiler.collect();
             }
             slot.ui_resources.clear();
@@ -1023,6 +1082,8 @@ namespace RelayCore::render
             if (descriptor_layout)
                 vkDestroyDescriptorSetLayout(device.handle(), descriptor_layout, nullptr);
             tone_mapping.reset();
+            if (temporal_pipeline)
+                vkDestroyPipeline(device.handle(), temporal_pipeline, nullptr);
             if (ao_pipeline)
                 vkDestroyPipeline(device.handle(), ao_pipeline, nullptr);
             for (auto pipeline : input_pipelines)
@@ -1045,7 +1106,14 @@ namespace RelayCore::render
         auto needs_inputs() const noexcept -> bool
         {
             return (input_view != PassInputView::off && input_view != PassInputView::volume_transmittance)
-                   || renderer_config.ssao_enabled || renderer_config.ssr_enabled;
+                   || renderer_config.ssao_enabled || renderer_config.ssr_enabled || renderer_config.taa_enabled;
+        }
+
+        auto tone_source() -> MeshImage&
+        {
+            return renderer_config.taa_enabled && input_view != PassInputView::temporal_source
+                       ? *frame().inputs->temporal
+                       : *frame().target->hdr_scene;
         }
 
         auto scene_format() const noexcept -> VkFormat
@@ -1063,7 +1131,33 @@ namespace RelayCore::render
         )
         {
             renderer_config = config;
+            resolution.reset(config.render_scale);
             color_pipeline = pipeline;
+            if (config.dynamic_resolution_enabled)
+            {
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+                timestamp_period = properties.limits.timestampPeriod;
+                uint32_t count = 0;
+                vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device(), &count, nullptr);
+                std::vector<VkQueueFamilyProperties> families(count);
+                vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device(), &count, families.data());
+                timestamp_bits = families[device.capabilities().graphics_queue_family].timestampValidBits;
+                if (!timestamp_bits)
+                    throw std::runtime_error(
+                        "Dynamic resolution requires graphics GPU timestamps; disable render.dynamic_resolution_enabled"
+                    );
+                const VkQueryPoolCreateInfo query_info{
+                    .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                    .queryType = VK_QUERY_TYPE_TIMESTAMP,
+                    .queryCount = 2
+                };
+                for (auto& slot : frames)
+                    require_mesh_vk(
+                        vkCreateQueryPool(device.handle(), &query_info, nullptr, &slot.resolution_queries),
+                        "Dynamic resolution timestamp pool"
+                    );
+            }
             if (config.msaa_samples != 1 && config.msaa_samples != 2 && config.msaa_samples != 4)
                 throw std::invalid_argument("Vulkan render.msaa_samples must be 1, 2 or 4");
             const auto samples = static_cast<VkSampleCountFlagBits>(config.msaa_samples);
@@ -1304,7 +1398,7 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &descriptor_info, nullptr, &descriptor_layout),
                 "Failed to create Vulkan mesh descriptor layout"
             );
-            std::array<VkDescriptorSetLayoutBinding, 8> input_bindings{};
+            std::array<VkDescriptorSetLayoutBinding, 10> input_bindings{};
             input_bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
             for (uint32_t i = 1; i < input_bindings.size(); ++i)
                 input_bindings[i] =
@@ -1382,16 +1476,20 @@ namespace RelayCore::render
             -> VkPipeline
         {
             MeshShaders shaders{device.handle()};
-            const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, debug_inputs = shadow_kind == -3 || ao;
-            const auto prefix = inputs || debug_inputs ? "pass_inputs"
-                                : shadow_kind < 0      ? "mesh"
-                                : shadow_kind == 2     ? "point_shadow"
-                                                       : "shadow";
-            const auto vertex_entry = inputs         ? "input_vertex"
+            const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, temporal = shadow_kind == -5;
+            const bool debug_inputs = shadow_kind == -3 || ao || temporal;
+            const auto prefix = temporal                 ? "temporal"
+                                : inputs || debug_inputs ? "pass_inputs"
+                                : shadow_kind < 0        ? "mesh"
+                                : shadow_kind == 2       ? "point_shadow"
+                                                         : "shadow";
+            const auto vertex_entry = temporal       ? "temporal_vertex"
+                                      : inputs       ? "input_vertex"
                                       : ao           ? "ao_vertex"
                                       : debug_inputs ? "debug_vertex"
                                                      : "vertex_main";
-            const auto fragment_entry = inputs         ? "input_fragment"
+            const auto fragment_entry = temporal       ? "temporal_fragment"
+                                        : inputs       ? "input_fragment"
                                         : ao           ? "ao_fragment"
                                         : debug_inputs ? "debug_fragment"
                                                        : "fragment_main";
@@ -1503,10 +1601,10 @@ namespace RelayCore::render
                 .pDynamicStates = dynamics.data(),
             };
             const std::array colors{
-                inputs         ? VK_FORMAT_R32G32B32A32_SFLOAT
-                : ao           ? VK_FORMAT_R32G32B32A32_SFLOAT
-                : debug_inputs ? VK_FORMAT_R8G8B8A8_UNORM
-                               : scene_format(),
+                inputs                      ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : ao                        ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : debug_inputs && !temporal ? VK_FORMAT_R8G8B8A8_UNORM
+                                            : scene_format(),
                 VK_FORMAT_R32G32B32A32_SFLOAT
             };
             const VkPipelineRenderingCreateInfo rendering{
@@ -2149,7 +2247,11 @@ namespace RelayCore::render
                 );
                 const auto position = camera.position();
                 DrawPush push{
-                    camera.view_projection_matrix() * item.model_matrix,
+                    ((renderer_config.taa_enabled && !viewmodel && pass == RenderPass::Opaque
+                      && item.previous_model_matrix)
+                         ? current_view_projection
+                         : camera.view_projection_matrix())
+                        * item.model_matrix,
                     {},
                     (item.diffuse_texture ? 1U : 0U) | (pass == RenderPass::Transparent ? 2U : 0U)
                         | (pass == RenderPass::Overlay ? 4U : 0U) | (item.normal_texture ? 8U : 0U)
@@ -2405,6 +2507,25 @@ namespace RelayCore::render
 
         void set_config(const RendererConfig& config)
         {
+            if (config.dynamic_resolution_enabled != renderer_config.dynamic_resolution_enabled)
+                throw std::invalid_argument("Changing dynamic resolution requires a prepared renderer reload");
+            if (!std::isfinite(config.dynamic_resolution_target_ms) || config.dynamic_resolution_target_ms < 4
+                || config.dynamic_resolution_target_ms > 50)
+                throw std::invalid_argument("Dynamic resolution target must be finite and in [4, 50] ms");
+            if (config.taa_enabled != renderer_config.taa_enabled)
+                throw std::invalid_argument("Changing TAA requires a prepared renderer reload");
+            if (!std::isfinite(config.render_scale) || config.render_scale < .5F || config.render_scale > 1)
+                throw std::invalid_argument("Render scale must be finite and in [0.5, 1]");
+            if ((config.taa_enabled || config.render_scale != 1 || config.dynamic_resolution_enabled)
+                && !config.hdr_enabled)
+                throw std::invalid_argument("TAA and scaling require HDR enabled");
+            if (config.render_scale != renderer_config.render_scale
+                || config.dynamic_resolution_target_ms != renderer_config.dynamic_resolution_target_ms)
+            {
+                history_valid = false;
+                jitter_index = 0;
+                resolution.reset(config.render_scale);
+            }
             if (config.hdr_enabled != renderer_config.hdr_enabled)
                 throw std::invalid_argument("Changing HDR requires a prepared renderer reload");
             if (config.bloom_enabled != renderer_config.bloom_enabled
@@ -2475,10 +2596,11 @@ namespace RelayCore::render
             require_mesh_vk(vkBeginCommandBuffer(frame().commands, &begin), "Failed to begin mesh commands");
         }
 
-        void submit_and_wait(const bool synchronous = true)
+        void submit_and_wait(const bool synchronous = true, const bool resolution_sample = false)
         {
             require_mesh_vk(vkEndCommandBuffer(frame().commands), "Failed to end mesh frame");
             frame().pending = submissions.submit(frame().commands, uploads.dependency());
+            frame().resolution_sample_pending = frame().resolution_sample_pending || resolution_sample;
             // Publish use only after successful submission; failed recording/prepare owns no GPU references.
             for (auto* mesh : used_meshes)
                 mesh->last_use = frame().pending;
@@ -2521,8 +2643,10 @@ namespace RelayCore::render
 
         void set_input_view(const PassInputView view)
         {
-            if (view < PassInputView::off || view > PassInputView::volume_transmittance)
+            if (view < PassInputView::off || view > PassInputView::temporal_source)
                 throw std::invalid_argument("Invalid pass input view");
+            if (view == PassInputView::temporal_source && !renderer_config.taa_enabled)
+                throw std::invalid_argument("Temporal source diagnostic requires TAA enabled");
             if ((view == PassInputView::ao && !renderer_config.ssao_enabled)
                 || (view == PassInputView::reflection_confidence && !renderer_config.ssr_enabled)
                 || (view == PassInputView::volume_transmittance && !renderer_config.volumetrics_enabled))
@@ -2565,7 +2689,7 @@ namespace RelayCore::render
             {
                 const std::array sizes{
                     VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 14}
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 18}
                 };
                 const VkDescriptorPoolCreateInfo pool{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -2602,7 +2726,8 @@ namespace RelayCore::render
                     "Pass input sampler"
                 );
             }
-            if (view == PassInputView::off || input_view == PassInputView::off)
+            if (view == PassInputView::off || input_view == PassInputView::off || view == PassInputView::temporal_source
+                || input_view == PassInputView::temporal_source)
                 for (auto& slot : frames)
                 {
                     slot.target.reset();
@@ -2637,7 +2762,8 @@ namespace RelayCore::render
                     extent,
                     depth_formats.scene,
                     scene_format(),
-                    renderer_config.ssao_enabled
+                    renderer_config.ssao_enabled,
+                    renderer_config.taa_enabled
                 );
             const size_t count = std::max(size_t{1}, items.size() + viewmodel.size());
             VkPhysicalDeviceProperties properties{};
@@ -2652,9 +2778,9 @@ namespace RelayCore::render
                 const auto& item = items[i];
                 previous[i] = {
                     frame_history_valid
-                        ? previous_view_projection * item.previous_model_matrix.value_or(item.model_matrix)
+                        ? previous_unjittered_view_projection * item.previous_model_matrix.value_or(item.model_matrix)
                         : camera.view_projection_matrix() * item.model_matrix,
-                    {item.previous_model_matrix ? 1.0F : 0.0F, 0, 0, 0}
+                    {item.previous_model_matrix ? 1.0F : 0.0F, jitter_uv.x, jitter_uv.y, 0}
                 };
             }
             for (size_t i = 0; i < viewmodel.size(); ++i)
@@ -2692,10 +2818,20 @@ namespace RelayCore::render
                     input_sampler,
                     renderer_config.ssr_enabled ? current.color_history.view : current.normal_depth.view,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    renderer_config.taa_enabled ? frame().target->hdr_scene->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    renderer_config.taa_enabled && frame_history_valid ? old.temporal->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 }
             };
             const VkDescriptorBufferInfo buffer{frame().previous_draws.handle(), 0, bytes.size()};
-            std::array<VkWriteDescriptorSet, 8> writes{};
+            std::array<VkWriteDescriptorSet, 10> writes{};
             writes[0] = {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = input_sets[frame_index],
@@ -2753,7 +2889,7 @@ namespace RelayCore::render
             };
             const VkRenderingInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {{0, 0}, frame().target->extent},
+                .renderArea = {{0, 0}, frame().target->render_extent},
                 .layerCount = 1,
                 .colorAttachmentCount = 2,
                 .pColorAttachments = colors.data(),
@@ -2792,7 +2928,7 @@ namespace RelayCore::render
             const VkImageCopy copy{
                 .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                 .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                .extent = {frame().target->extent.width, frame().target->extent.height, 1}
+                .extent = {frame().target->render_extent.width, frame().target->render_extent.height, 1}
             };
             vkCmdCopyImage(
                 frame().commands,
@@ -2832,6 +2968,11 @@ namespace RelayCore::render
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
             };
+            const auto extent = frame().target->extent;
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
             vkCmdBeginRendering(frame().commands, &rendering);
             vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, input_pipelines[3]);
             vkCmdBindDescriptorSets(
@@ -2846,9 +2987,12 @@ namespace RelayCore::render
             );
             const DrawPush push{
                 .mvp = glm::mat4{1},
-                .model_rows = {},
+                .model_rows = {glm::vec4{previous_jitter_uv - jitter_uv, 0, 0}, glm::vec4{}, glm::vec4{}},
                 .flags = static_cast<uint32_t>(input_view),
-                .camera_position = {frame_history_valid ? 1.0F : 0.0F, 0, 0}
+                .camera_position =
+                    {frame_history_valid ? 1.0F : 0.0F,
+                     float(frame().target->extent.width),
+                     float(frame().target->extent.height)}
             };
             vkCmdPushConstants(
                 frame().commands,
@@ -2876,7 +3020,7 @@ namespace RelayCore::render
             };
             const VkRenderingInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {{0, 0}, frame().target->extent},
+                .renderArea = {{0, 0}, frame().target->render_extent},
                 .layerCount = 1,
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
@@ -2893,8 +3037,8 @@ namespace RelayCore::render
         void record_bloom()
         {
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Bloom");
-            auto extent = frame().target->extent;
-            auto& source = *frame().target->hdr_scene;
+            auto extent = frame().target->render_extent;
+            auto& source = tone_source();
             input_barrier(source, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             auto& levels = tone_mapping->bloom[frame_index];
             for (size_t level = 0; level < levels.size(); ++level)
@@ -2990,6 +3134,81 @@ namespace RelayCore::render
             input_barrier(source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         }
 
+        void record_temporal()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "TAA resolve");
+            auto& target = *frame().inputs->temporal;
+            input_barrier(
+                *frame().target->hdr_scene,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
+            input_barrier(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->render_extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            const auto extent = frame().target->render_extent;
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, temporal_pipeline);
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            const DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {},
+                .flags = 0,
+                .camera_position =
+                    {frame_history_valid ? 1.0F : 0.0F,
+                     previous_jitter_uv.x - jitter_uv.x,
+                     previous_jitter_uv.y - jitter_uv.y}
+            };
+            vkCmdPushConstants(
+                frame().commands,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+            input_barrier(
+                *frame().target->hdr_scene,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            );
+            if (input_view == PassInputView::temporal_source)
+                input_barrier(
+                    target,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            // Tone mapping transitions the selected source to sampling. Previous-slot
+            // history remains sampled until queue-ordered reuse of that slot.
+        }
+
         void record_tone_mapping()
         {
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "HDR tone mapping");
@@ -3006,7 +3225,7 @@ namespace RelayCore::render
                     .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .image = frame().target->hdr_scene->image,
+                    .image = tone_source().image,
                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
                 },
                 VkImageMemoryBarrier2{
@@ -3346,7 +3565,38 @@ namespace RelayCore::render
                 throw std::invalid_argument("Vulkan mesh target requires positive dimensions");
             if (static_cast<uint32_t>(width) > max_target_width || static_cast<uint32_t>(height) > max_target_height)
                 throw std::invalid_argument("Vulkan mesh target exceeds the device framebuffer/image limits");
-            select_frame(input_view == PassInputView::off && (capture || ui));
+            select_frame(!needs_inputs() && (capture || ui));
+            const float scale =
+                renderer_config.dynamic_resolution_enabled ? resolution.scale : renderer_config.render_scale;
+            frame().rendered_scale = scale;
+            const VkExtent2D extent{
+                std::max(1u, static_cast<uint32_t>(std::lround(width * scale))),
+                std::max(1u, static_cast<uint32_t>(std::lround(height * scale)))
+            };
+            const VkExtent2D display_extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+            if (!history_valid || history_extent.width != extent.width || history_extent.height != extent.height
+                || previous_projection != camera.projection_matrix()
+                || previous_exposure != renderer_config.exposure_ev)
+                jitter_index = 0;
+            jitter_uv = {};
+            if (renderer_config.taa_enabled)
+            {
+                constexpr std::array<glm::vec2, 8> halton{
+                    {{0, -1.0F / 6},
+                     {-.25F, 1.0F / 6},
+                     {.25F, -7.0F / 18},
+                     {-.375F, -1.0F / 18},
+                     {.125F, 5.0F / 18},
+                     {-.125F, -5.0F / 18},
+                     {.375F, 1.0F / 18},
+                     {-.4375F, 7.0F / 18}}
+                };
+                jitter_uv = halton[jitter_index % halton.size()] / glm::vec2{extent.width, extent.height};
+            }
+            glm::mat4 jitter{1};
+            jitter[3][0] = 2 * jitter_uv.x;
+            jitter[3][1] = -2 * jitter_uv.y;
+            current_view_projection = jitter * camera.view_projection_matrix();
             frame().material_data.write(std::as_bytes(std::span{&material_parameters, 1}));
             frame().light_data.write(std::as_bytes(std::span{&lights, 1}));
             IrradianceParameters indirect{};
@@ -3361,9 +3611,12 @@ namespace RelayCore::render
             }
             frame().irradiance_data.write(std::as_bytes(std::span{&indirect, 1}));
             const FrameParameters frame_parameters{
-                {float(width), float(height), scene_time, renderer_config.shadow_debug_cascades ? 1.0F : 0.0F},
-                camera.view_projection_matrix(),
-                glm::inverse(camera.view_projection_matrix()),
+                {float(extent.width),
+                 float(extent.height),
+                 scene_time,
+                 renderer_config.shadow_debug_cascades ? 1.0F : 0.0F},
+                current_view_projection,
+                glm::inverse(current_view_projection),
                 camera.view_matrix(),
                 {camera.position(), 0},
                 {renderer_config.ssao_enabled ? 1.0F : 0.0F,
@@ -3382,12 +3635,18 @@ namespace RelayCore::render
                     static_cast<void>(mesh(*caster.mesh));
             prepare(viewmodel);
             uploads.collect();
-            const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-            if (!frame().target || frame().target->extent.width != extent.width
-                || frame().target->extent.height != extent.height)
+            const bool replace_target = !frame().target || frame().target->extent.width != display_extent.width
+                                        || frame().target->extent.height != display_extent.height
+                                        || frame().target->render_extent.width != extent.width
+                                        || frame().target->render_extent.height != extent.height;
+            const bool replace_inputs =
+                needs_inputs()
+                && (!frame().inputs || history_extent.width != extent.width || history_extent.height != extent.height);
+            if (replace_target)
             {
                 frame().target = std::make_unique<MeshTarget>(
                     device,
+                    display_extent,
                     extent,
                     scene_format(),
                     display_format(),
@@ -3396,19 +3655,22 @@ namespace RelayCore::render
                     tone_mapping && tone_mapping->compute,
                     needs_inputs()
                 );
-                if (tone_mapping)
-                    tone_mapping->bind(
-                        frame().target->hdr_scene->view,
-                        frame().target->color.unorm_view,
-                        frame_index,
-                        extent,
-                        renderer_config.bloom_enabled
-                    );
             }
             if (needs_inputs())
             {
                 prepare_inputs(items, viewmodel, camera, extent);
                 history_valid = false;
+            }
+            if (tone_mapping && (replace_target || replace_inputs))
+            {
+                const auto source_view = tone_source().view;
+                tone_mapping->bind(
+                    source_view,
+                    frame().target->color.unorm_view,
+                    frame_index,
+                    extent,
+                    renderer_config.bloom_enabled
+                );
             }
             CpuRgbaTextureData output{width, height, {}};
             if (capture)
@@ -3417,6 +3679,16 @@ namespace RelayCore::render
             begin_commands();
             {
                 RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Scene frame");
+                if (frame().resolution_queries)
+                {
+                    vkCmdResetQueryPool(frame().commands, frame().resolution_queries, 0, 2);
+                    vkCmdWriteTimestamp2(
+                        frame().commands,
+                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                        frame().resolution_queries,
+                        0
+                    );
+                }
                 render_shadows(shadow_casters, camera);
                 std::array<VkImageMemoryBarrier2, 3> barriers{
                     VkImageMemoryBarrier2{
@@ -3495,9 +3767,9 @@ namespace RelayCore::render
                 // Negative viewport height maps the existing Y-up camera to top-down Vulkan images without changing winding.
                 const VkViewport viewport{
                     0,
-                    static_cast<float>(height),
-                    static_cast<float>(width),
-                    -static_cast<float>(height),
+                    static_cast<float>(extent.height),
+                    static_cast<float>(extent.width),
+                    -static_cast<float>(extent.height),
                     0,
                     1
                 };
@@ -3578,12 +3850,21 @@ namespace RelayCore::render
                 }
                 if (input_view != PassInputView::off && input_view != PassInputView::volume_transmittance)
                     record_color_history();
+                if (renderer_config.taa_enabled)
+                    record_temporal();
                 if (renderer_config.bloom_enabled)
                     record_bloom();
                 if (tone_mapping)
                     record_tone_mapping();
                 if (input_view != PassInputView::off)
                     record_input_view();
+                if (frame().resolution_queries)
+                    vkCmdWriteTimestamp2(
+                        frame().commands,
+                        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                        frame().resolution_queries,
+                        1
+                    );
                 if (ui)
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "ImGui");
@@ -3615,15 +3896,17 @@ namespace RelayCore::render
                 if (capture)
                     record_readback();
             }
-            submit_and_wait(capture || ui);
+            submit_and_wait(capture || ui, frame().resolution_queries != VK_NULL_HANDLE);
             if (needs_inputs())
             {
                 previous_projection = camera.projection_matrix();
-                previous_view_projection = camera.view_projection_matrix();
+                previous_unjittered_view_projection = camera.view_projection_matrix();
+                previous_jitter_uv = jitter_uv;
                 previous_exposure = renderer_config.exposure_ev;
                 history_extent = extent;
                 history_slot = frame_index;
                 history_valid = true;
+                ++jitter_index;
             }
             if (capture)
                 frame().target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
@@ -3644,7 +3927,7 @@ namespace RelayCore::render
     {
         state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
         reload_shaders(shader_directory);
-        if (config.ssao_enabled || config.ssr_enabled)
+        if (config.ssao_enabled || config.ssr_enabled || config.taa_enabled)
         {
             state_->set_input_view(PassInputView::scene);
             state_->input_view = PassInputView::off;
@@ -3661,14 +3944,14 @@ namespace RelayCore::render
                 "previous_color",
                 "ao",
                 "reflection_confidence",
-                "volume_transmittance"
+                "volume_transmittance",
+                "temporal_source"
             };
             const auto found = std::find(names.begin(), names.end(), std::string_view{value});
             if (found == names.end())
-                throw std::invalid_argument(
-                    "RELAYCORE_VULKAN_PASS_INPUT_VIEW must be off, scene, depth, normals, "
-                    "velocity, history, previous_color, ao, reflection_confidence or volume_transmittance"
-                );
+                throw std::invalid_argument("RELAYCORE_VULKAN_PASS_INPUT_VIEW must be off, scene, depth, normals, "
+                                            "velocity, history, previous_color, ao, reflection_confidence, "
+                                            "volume_transmittance or temporal_source");
             set_pass_input_view(static_cast<PassInputView>(found - names.begin()));
         }
     }
@@ -3682,6 +3965,16 @@ namespace RelayCore::render
             .upload_retirements = uploads.retirements,
             .scene_retirements = state_->submissions.pending_retirements(),
             .material_retirements = state_->retired_materials.size()
+        };
+    }
+    auto VulkanMeshRenderer::resolution_status() const noexcept -> VulkanResolutionStatus
+    {
+        const auto& slot = state_->frame();
+        return {
+            slot.target ? int(slot.target->render_extent.width) : 0,
+            slot.target ? int(slot.target->render_extent.height) : 0,
+            slot.rendered_scale,
+            state_->gpu_scene_ms
         };
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
@@ -3813,6 +4106,7 @@ namespace RelayCore::render
     void VulkanMeshRenderer::reset_history() noexcept
     {
         state_->history_valid = false;
+        state_->jitter_index = 0;
     }
 
     auto VulkanMeshRenderer::capture_pass_inputs() -> VulkanPassInputCapture
@@ -3822,7 +4116,7 @@ namespace RelayCore::render
         state_->wait();
         state_->begin_commands();
         auto& target = *state_->frame().inputs;
-        const auto extent = state_->frame().target->extent;
+        const auto extent = state_->frame().target->render_extent;
         const size_t pixels = size_t(extent.width) * extent.height;
         if (!target.readback.handle())
             target.readback = VulkanBuffer(
@@ -3864,7 +4158,8 @@ namespace RelayCore::render
             int(extent.height),
             std::vector<glm::vec4>(pixels),
             std::vector<glm::vec4>(pixels),
-            state_->frame_history_valid
+            state_->frame_history_valid,
+            state_->jitter_uv
         };
         target.readback.read(std::as_writable_bytes(std::span{capture.normal_depth}));
         target.readback.read(std::as_writable_bytes(std::span{capture.velocity}), pixels * sizeof(glm::vec4));
@@ -3875,7 +4170,7 @@ namespace RelayCore::render
     {
         state_->wait();
         auto staged_directory = directory;
-        std::array<VkPipeline, 13> replacement{};
+        std::array<VkPipeline, 14> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -3888,6 +4183,8 @@ namespace RelayCore::render
                 if (state_->renderer_config.bloom_enabled)
                     replacement[11] = state_->tone_mapping->create_pipeline(directory, true);
             }
+            if (state_->renderer_config.taa_enabled)
+                replacement[13] = state_->create_pipeline(directory, RenderPass::Opaque, -5);
             if (state_->renderer_config.ssao_enabled)
                 replacement[12] = state_->create_pipeline(directory, RenderPass::Opaque, -4);
             if (state_->input_pipelines[0])
@@ -3929,6 +4226,9 @@ namespace RelayCore::render
         if (state_->ao_pipeline)
             vkDestroyPipeline(state_->device.handle(), state_->ao_pipeline, nullptr);
         state_->ao_pipeline = replacement[12];
+        if (state_->temporal_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->temporal_pipeline, nullptr);
+        state_->temporal_pipeline = replacement[13];
         state_->shader_directory = std::move(staged_directory);
         reset_history();
     }

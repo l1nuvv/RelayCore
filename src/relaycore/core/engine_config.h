@@ -54,6 +54,10 @@ namespace RelayCore::render
         bool ssr_enabled = false;
         bool volumetrics_enabled = false;
         float volumetric_density = 0.025F;
+        bool taa_enabled = false;
+        float render_scale = 1.0F;
+        bool dynamic_resolution_enabled = false;
+        float dynamic_resolution_target_ms = 16.67F;
         int msaa_samples = 1;
         bool shadow_enabled = true;                            ///< Enables scene shadow passes.
         int shadow_map_resolution = 1536;                      ///< Square shadow map size in texels.

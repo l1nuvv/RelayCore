@@ -20,9 +20,35 @@ float4 vertex_main(uint id : SV_VulkanVertexID) : SV_Position
     return float4(position, 0, 1);
 }
 
+float4 spatial_source(float2 uv)
+{
+    uint width, height;
+    hdrScene.GetDimensions(width, height);
+    int2 size = int2(width, height);
+    if (all(float2(size) == tone.viewportTimeExposure.xy)) return hdrScene.SampleLevel(uv, 0);
+    float2 p = uv * float2(size) - .5;
+    int2 base = int2(floor(p));
+    float2 f = frac(p), f2 = f*f, f3 = f2*f;
+    float2 w[4] = {-.5*f + f2 - .5*f3, 1 - 2.5*f2 + 1.5*f3,
+                   .5*f + 2*f2 - 1.5*f3, -.5*f2 + .5*f3};
+    float4 result = 0, low = 1e20, high = -1e20;
+    for (int y = 0; y < 4; ++y)
+        for (int x = 0; x < 4; ++x)
+        {
+            float4 color = hdrScene.Load(int3(clamp(base + int2(x-1, y-1), 0, size-1), 0));
+            result += color * w[x].x * w[y].y;
+            if (x >= 1 && x <= 2 && y >= 1 && y <= 2)
+            {
+                low = min(low, color);
+                high = max(high, color);
+            }
+        }
+    return clamp(result, low, high);
+}
+
 float4 tone_mapped_display(float2 position)
 {
-    float4 source = hdrScene.SampleLevel(position / tone.viewportTimeExposure.xy, 0);
+    float4 source = spatial_source(position / tone.viewportTimeExposure.xy);
     if (tone.grading.y > 0)
     {
         float2 uv = position / tone.viewportTimeExposure.xy;

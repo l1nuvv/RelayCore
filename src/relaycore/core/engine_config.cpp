@@ -239,6 +239,18 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("ssr_enabled", ssr_enabled);
             RELAYCORE_ASSIGN_RENDER("volumetrics_enabled", volumetrics_enabled);
             RELAYCORE_ASSIGN_RENDER("volumetric_density", volumetric_density);
+            RELAYCORE_ASSIGN_RENDER("taa_enabled", taa_enabled);
+            RELAYCORE_ASSIGN_RENDER("render_scale", render_scale);
+            RELAYCORE_ASSIGN_RENDER("dynamic_resolution_enabled", dynamic_resolution_enabled);
+            RELAYCORE_ASSIGN_RENDER("dynamic_resolution_target_ms", dynamic_resolution_target_ms);
+            if (config.renderer.dynamic_resolution_target_ms < 4 || config.renderer.dynamic_resolution_target_ms > 50)
+                invalid_config_value(config_path, "render.dynamic_resolution_target_ms", "must be in [4, 50]");
+            if (config.renderer.render_scale < .5F || config.renderer.render_scale > 1)
+                invalid_config_value(config_path, "render.render_scale", "must be in [0.5, 1]");
+            if ((config.renderer.taa_enabled || config.renderer.render_scale != 1
+                 || config.renderer.dynamic_resolution_enabled)
+                && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "TAA and scaling require HDR enabled");
             if ((config.renderer.bloom_enabled || config.renderer.ssr_enabled) && !config.renderer.hdr_enabled)
                 invalid_config_value(config_path, "render.hdr_enabled", "bloom and SSR require HDR enabled");
             if (config.renderer.bloom_strength < 0 || config.renderer.bloom_strength > 1)

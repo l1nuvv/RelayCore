@@ -76,6 +76,9 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.volume = 0.25F;
     settings.vsync = false;
     settings.hdr_enabled = true;
+    settings.taa_enabled = true;
+    settings.dynamic_resolution_enabled = true;
+    settings.render_scale = .67F;
     settings.bloom_enabled = settings.ssao_enabled = settings.ssr_enabled = settings.volumetrics_enabled = true;
     RelayGame::save_player_settings(path, settings);
     auto loaded = RelayGame::load_player_settings(path, {});
@@ -88,10 +91,16 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     CHECK(loaded.ssao_enabled);
     CHECK(loaded.ssr_enabled);
     CHECK(loaded.volumetrics_enabled);
+    CHECK(loaded.taa_enabled);
+    CHECK(loaded.dynamic_resolution_enabled);
+    CHECK(loaded.render_scale == doctest::Approx(.67F));
     settings.fov = 63;
     settings.hdr_enabled = false;
     CHECK_THROWS(RelayGame::save_player_settings(path, settings));
     settings.bloom_enabled = settings.ssr_enabled = false;
+    settings.taa_enabled = false;
+    settings.dynamic_resolution_enabled = false;
+    settings.render_scale = 1;
     RelayGame::save_player_settings(path, settings);
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
     CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);

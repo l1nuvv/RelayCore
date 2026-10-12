@@ -36,6 +36,11 @@ namespace RelayCore::render
         size_t scene_retirements = 0, material_retirements = 0;
     };
 
+    struct VulkanResolutionStatus {
+        int render_width = 0, render_height = 0;
+        float scale = 1, gpu_scene_ms = 0;
+    };
+
     enum class PassInputView {
         off,
         scene,
@@ -46,7 +51,8 @@ namespace RelayCore::render
         previous_color,
         ao,
         reflection_confidence,
-        volume_transmittance
+        volume_transmittance,
+        temporal_source
     };
 
     struct VulkanPassInputCapture {
@@ -54,6 +60,7 @@ namespace RelayCore::render
         std::vector<glm::vec4> normal_depth;
         std::vector<glm::vec4> velocity;
         bool history_valid = false;
+        glm::vec2 jitter_uv{};
     };
 
     class VulkanMeshRenderer {
@@ -74,6 +81,7 @@ namespace RelayCore::render
         // Includes retired materials until their final GPU use completes.
         [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
         [[nodiscard]] auto resource_usage() const noexcept -> VulkanResourceUsage;
+        [[nodiscard]] auto resolution_status() const noexcept -> VulkanResolutionStatus;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 

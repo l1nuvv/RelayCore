@@ -73,6 +73,10 @@ namespace RelayGame::detail
             reloaded_config.renderer.ssao_enabled = services.renderer().config().ssao_enabled;
             reloaded_config.renderer.ssr_enabled = services.renderer().config().ssr_enabled;
             reloaded_config.renderer.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            reloaded_config.renderer.taa_enabled = services.renderer().config().taa_enabled;
+            reloaded_config.renderer.render_scale = services.renderer().config().render_scale;
+            reloaded_config.renderer.dynamic_resolution_enabled =
+                services.renderer().config().dynamic_resolution_enabled;
             const RelayCore::render::RenderAuthoringConfig reloaded_authoring_config =
                 RelayCore::render::load_default_render_authoring_config();
 

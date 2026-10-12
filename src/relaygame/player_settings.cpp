@@ -17,6 +17,10 @@ namespace RelayGame
             };
             if ((settings.bloom_enabled || settings.ssr_enabled) && !settings.hdr_enabled)
                 throw std::runtime_error("player_settings: bloom and SSR require HDR enabled");
+            range("render_scale", settings.render_scale, .5F, 1);
+            if ((settings.taa_enabled || settings.render_scale != 1 || settings.dynamic_resolution_enabled)
+                && !settings.hdr_enabled)
+                throw std::runtime_error("player_settings: TAA and scaling require HDR enabled");
             range("volume", settings.volume, 0, 1);
             range("sensitivity", settings.sensitivity, 0.0003F, 0.008F);
             range("fov", settings.fov, 50, 100);
@@ -41,6 +45,7 @@ namespace RelayGame
         defaults.sensitivity = read_float("sensitivity", defaults.sensitivity);
         defaults.fov = read_float("fov", defaults.fov);
         defaults.camera_motion = read_float("camera_motion", defaults.camera_motion);
+        defaults.render_scale = read_float("render_scale", defaults.render_scale);
         if (table.contains("vsync"))
         {
             const auto value = table["vsync"].value<bool>();
@@ -83,6 +88,20 @@ namespace RelayGame
                 throw std::runtime_error("player_settings.volumetrics_enabled must be a boolean");
             defaults.volumetrics_enabled = *value;
         }
+        if (table.contains("taa_enabled"))
+        {
+            const auto value = table["taa_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.taa_enabled must be a boolean");
+            defaults.taa_enabled = *value;
+        }
+        if (table.contains("dynamic_resolution_enabled"))
+        {
+            const auto value = table["dynamic_resolution_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.dynamic_resolution_enabled must be a boolean");
+            defaults.dynamic_resolution_enabled = *value;
+        }
         validate(defaults);
         return defaults;
     }
@@ -100,7 +119,10 @@ namespace RelayGame
             {"bloom_enabled", settings.bloom_enabled},
             {"ssao_enabled", settings.ssao_enabled},
             {"ssr_enabled", settings.ssr_enabled},
-            {"volumetrics_enabled", settings.volumetrics_enabled}
+            {"volumetrics_enabled", settings.volumetrics_enabled},
+            {"taa_enabled", settings.taa_enabled},
+            {"render_scale", settings.render_scale},
+            {"dynamic_resolution_enabled", settings.dynamic_resolution_enabled}
         };
         std::filesystem::create_directories(path.parent_path());
         auto temporary = path;

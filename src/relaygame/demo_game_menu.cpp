@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL_filesystem.h>
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <glm/trigonometric.hpp>
 #include <stdexcept>
@@ -28,6 +29,9 @@ namespace RelayGame
         settings_.ssao_enabled = services.renderer().config().ssao_enabled;
         settings_.ssr_enabled = services.renderer().config().ssr_enabled;
         settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+        settings_.taa_enabled = services.renderer().config().taa_enabled;
+        settings_.render_scale = services.renderer().config().render_scale;
+        settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
         sdr_color_pipeline_ = services.renderer().color_pipeline_mode();
         if (user_data_directory_.empty())
         {
@@ -68,6 +72,9 @@ namespace RelayGame
             settings_.ssao_enabled = services.renderer().config().ssao_enabled;
             settings_.ssr_enabled = services.renderer().config().ssr_enabled;
             settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            settings_.taa_enabled = services.renderer().config().taa_enabled;
+            settings_.render_scale = services.renderer().config().render_scale;
+            settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
             settings_message_ = error.what();
             RelayCore::log::warn("Player settings: {}", error.what());
         }
@@ -80,7 +87,10 @@ namespace RelayGame
             || settings_.bloom_enabled != renderer.config().bloom_enabled
             || settings_.ssao_enabled != renderer.config().ssao_enabled
             || settings_.ssr_enabled != renderer.config().ssr_enabled
-            || settings_.volumetrics_enabled != renderer.config().volumetrics_enabled)
+            || settings_.volumetrics_enabled != renderer.config().volumetrics_enabled
+            || settings_.taa_enabled != renderer.config().taa_enabled
+            || settings_.render_scale != renderer.config().render_scale
+            || settings_.dynamic_resolution_enabled != renderer.config().dynamic_resolution_enabled)
         {
             auto config = services.config();
             config.renderer = renderer.config();
@@ -89,6 +99,9 @@ namespace RelayGame
             config.renderer.ssao_enabled = settings_.ssao_enabled;
             config.renderer.ssr_enabled = settings_.ssr_enabled;
             config.renderer.volumetrics_enabled = settings_.volumetrics_enabled;
+            config.renderer.taa_enabled = settings_.taa_enabled;
+            config.renderer.render_scale = settings_.render_scale;
+            config.renderer.dynamic_resolution_enabled = settings_.dynamic_resolution_enabled;
             const auto pipeline =
                 settings_.hdr_enabled ? RelayCore::render::ColorPipelineMode::hardware_srgb : sdr_color_pipeline_;
             auto backend = renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config(), pipeline);
@@ -207,7 +220,8 @@ namespace RelayGame
                 }
             } else if (name == "volume" || name == "sensitivity" || name == "fov" || name == "camera-motion"
                        || name == "vsync" || name == "hdr" || name == "bloom" || name == "ssao" || name == "ssr"
-                       || name == "volumetrics")
+                       || name == "volumetrics" || name == "taa" || name == "render-scale"
+                       || name == "dynamic-resolution")
             {
                 if (name == "volume")
                     settings_.volume = std::stof(action.value);
@@ -223,7 +237,11 @@ namespace RelayGame
                 {
                     settings_.hdr_enabled = action.value == "1";
                     if (!settings_.hdr_enabled)
-                        settings_.bloom_enabled = settings_.ssr_enabled = false;
+                    {
+                        settings_.bloom_enabled = settings_.ssr_enabled = settings_.taa_enabled = false;
+                        settings_.render_scale = 1;
+                        settings_.dynamic_resolution_enabled = false;
+                    }
                 }
                 if (name == "bloom")
                     settings_.bloom_enabled = action.value == "1";
@@ -233,7 +251,14 @@ namespace RelayGame
                     settings_.ssr_enabled = action.value == "1";
                 if (name == "volumetrics")
                     settings_.volumetrics_enabled = action.value == "1";
-                if (settings_.bloom_enabled || settings_.ssr_enabled)
+                if (name == "taa")
+                    settings_.taa_enabled = action.value == "1";
+                if (name == "render-scale")
+                    settings_.render_scale = std::stof(action.value);
+                if (name == "dynamic-resolution")
+                    settings_.dynamic_resolution_enabled = action.value == "1";
+                if (settings_.bloom_enabled || settings_.ssr_enabled || settings_.taa_enabled
+                    || settings_.render_scale != 1 || settings_.dynamic_resolution_enabled)
                     settings_.hdr_enabled = true;
                 settings_dirty_ = true;
                 try
@@ -247,6 +272,9 @@ namespace RelayGame
                     settings_.ssao_enabled = services.renderer().config().ssao_enabled;
                     settings_.ssr_enabled = services.renderer().config().ssr_enabled;
                     settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+                    settings_.taa_enabled = services.renderer().config().taa_enabled;
+                    settings_.render_scale = services.renderer().config().render_scale;
+                    settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
                     settings_message_ = error.what();
                 }
             } else if (name == "check-update" && !update_check_.valid() && can_update_game())
@@ -402,6 +430,13 @@ namespace RelayGame
         ui.set_value("ssao", settings_.ssao_enabled ? "1" : "0");
         ui.set_value("ssr", settings_.ssr_enabled ? "1" : "0");
         ui.set_value("volumetrics", settings_.volumetrics_enabled ? "1" : "0");
+        ui.set_value("taa", settings_.taa_enabled ? "1" : "0");
+        ui.set_value("dynamic-resolution", settings_.dynamic_resolution_enabled ? "1" : "0");
+        ui.set_value("render-scale", std::to_string(settings_.render_scale));
+        ui.set_text(
+            "render-scale-label",
+            std::to_string(static_cast<int>(std::lround(settings_.render_scale * 100))) + "%"
+        );
         ui.set_text("settings-message", settings_message_);
         ui.set_visible("controls", !complete);
         ui.set_visible("update-notice", main && update_notification_);

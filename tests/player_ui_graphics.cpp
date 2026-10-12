@@ -252,9 +252,14 @@ int main()
         change("ssao", "1");
         change("ssr", "1");
         change("volumetrics", "1");
+        change("taa", "1");
+        change("render-scale", "0.67");
+        change("dynamic-resolution", "1");
         require(
             renderer.config().hdr_enabled && renderer.config().bloom_enabled && renderer.config().ssao_enabled
-                && renderer.config().ssr_enabled && renderer.config().volumetrics_enabled,
+                && renderer.config().ssr_enabled && renderer.config().volumetrics_enabled
+                && renderer.config().taa_enabled && renderer.config().render_scale == .67F
+                && renderer.config().dynamic_resolution_enabled,
             "RML effect controls did not apply to the renderer"
         );
         (void) draw("settings-adjusted");
@@ -264,12 +269,15 @@ int main()
         const auto settings = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
         require(
             settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.ssr_enabled
-                && settings.volumetrics_enabled,
+                && settings.volumetrics_enabled && settings.taa_enabled && settings.render_scale == .67F
+                && settings.dynamic_resolution_enabled,
             "RML effect settings were not persisted"
         );
         change("hdr", "0");
         require(
-            !renderer.config().hdr_enabled && !renderer.config().bloom_enabled && !renderer.config().ssr_enabled,
+            !renderer.config().hdr_enabled && !renderer.config().bloom_enabled && !renderer.config().ssr_enabled
+                && !renderer.config().taa_enabled && renderer.config().render_scale == 1
+                && !renderer.config().dynamic_resolution_enabled,
             "Selecting SDR retained HDR-only effects"
         );
         std::cout << "Saved settings: volume=" << settings.volume << " fov=" << settings.fov

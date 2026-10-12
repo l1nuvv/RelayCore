@@ -160,6 +160,16 @@ foreach(entry IN ITEMS input_vertex input_fragment debug_vertex debug_fragment a
         COMMENT "Compiling pass_inputs.slang (${entry}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(stage IN ITEMS vertex fragment)
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/temporal.temporal_${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/temporal.slang"
+            -entry temporal_${stage} -stage ${stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/temporal.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling temporal.slang (${stage}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
 foreach(effect IN ITEMS effects volume)
     set(effect_defines -DSCREEN_EFFECTS=1)
     if(effect STREQUAL "volume")

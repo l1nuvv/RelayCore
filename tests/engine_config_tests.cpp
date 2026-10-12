@@ -1,5 +1,6 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/core/log.h"
+#include "relaycore/render/render_resolution.h"
 
 #include <doctest/doctest.h>
 #include <filesystem>
@@ -118,6 +119,54 @@ TEST_CASE("engine config validates spatial effect controls and HDR dependencies"
                 std::string{"[render]\n"} + key + " = " + value + "\n",
                 std::string{"render."} + key
             );
+}
+
+TEST_CASE("engine config validates temporal and resolution controls")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path =
+        write_engine_config(temp.path(), "[render]\nhdr_enabled = true\ntaa_enabled = true\nrender_scale = 0.67\n");
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.renderer.taa_enabled);
+    CHECK(config.renderer.render_scale == doctest::Approx(.67F));
+    check_invalid_config(temp.path(), "[render]\ndynamic_resolution_enabled = true\n", "render.hdr_enabled");
+    for (const auto value : {"nan", "inf", "3.9", "50.1", "'fast'"})
+        check_invalid_config(
+            temp.path(),
+            std::string{"[render]\ndynamic_resolution_target_ms = "} + value,
+            "render.dynamic_resolution_target_ms"
+        );
+    check_invalid_config(temp.path(), "[render]\ntaa_enabled = true\n", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\nrender_scale = 0.75\n", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\ntaa_enabled = 1\n", "render.taa_enabled");
+    for (const auto value : {"nan", "inf", "0.49", "1.01", "'low'"})
+        check_invalid_config(temp.path(), std::string{"[render]\nrender_scale = "} + value, "render.render_scale");
+}
+
+TEST_CASE("render resolution filters GPU pressure and rejects stale-scale feedback")
+{
+    RelayCore::render::RenderResolution controller;
+    for (int i = 0; i < 96; ++i)
+        controller.update(i % 2 ? 17.0F : 16.0F, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == 1);
+    for (int i = 0; i < 32; ++i)
+        controller.update(30, controller.scale, 1, 16.67F);
+    CHECK(controller.scale < 1);
+    const float reduced = controller.scale;
+    for (int i = 0; i < 100; ++i)
+        controller.update(1, 1, 1, 16.67F);
+    CHECK(controller.scale == reduced);
+    for (int i = 0; i < 400; ++i)
+        controller.update(30, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == .5F);
+    for (int i = 0; i < 400; ++i)
+        controller.update(1, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == 1);
+    controller.reset(.67F);
+    for (int i = 0; i < 96; ++i)
+        controller.update(1, controller.scale, .67F, 16.67F);
+    CHECK(controller.scale == .67F);
 }
 
 TEST_CASE("engine config validates MSAA sample counts")

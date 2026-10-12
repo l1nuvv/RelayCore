@@ -219,6 +219,10 @@ targets/work. Values are strict; these modes do not alter saved graphics setting
 UI remains over the selected view. Encodings, conservative dynamic/viewmodel
 rejection, history resets and checks: [VK14-06](renderer/VK14-06.md#06bc-contract--2026-10-12).
 
+`temporal_source` compares the raw jittered source with TAA and requires TAA.
+Temporal/resolution controls, motion conventions and profiling fixtures:
+[VK14-08](renderer/VK14-08.md).
+
 The spatial effects also expose `ao`, `reflection_confidence` and
 `volume_transmittance` through this override. Enable the corresponding effect
 first; invalid combinations fail explicitly. Controls, composition and measured

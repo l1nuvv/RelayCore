@@ -19,7 +19,8 @@ irradiance probes, с roughness-фильтром и аналитической
 Это fallback вне authored reflection probe. IMG-02 добавляет статический cubemap
 с GGX mip chain и box projection; внутри bounds он заменяет hemisphere/SH specular.
 Diffuse probes, прямой GGX, shadows и authored texture data
-сохраняются. MSAA сглаживает покрытие геометрии; temporal AA здесь не реализован.
+сохраняются. MSAA сглаживает покрытие геометрии. Опциональные TAA, spatial upscale
+и dynamic resolution: [контракт, настройки и проверки VK14-08](renderer/VK14-08.md#selected-contract).
 
 IMG-05 broadens GGX roughness on native normal-mapped PBR surfaces using the
 screen-space variance of the mapped normal. The addition to squared GGX alpha is
