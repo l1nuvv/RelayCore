@@ -12,6 +12,7 @@
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_gpu_profiler.h"
+#include "relaycore/render/vulkan_material_table.h"
 #include "relaycore/render/vulkan_scene_submissions.h"
 #include "relaycore/render/vulkan_uploads.h"
 
@@ -968,6 +969,7 @@ namespace RelayCore::render
             std::weak_ptr<const CpuRgbaTextureData> mr_source, occlusion_source, emissive_source;
             VulkanTexture texture, normal_texture, mr_texture, occlusion_texture, emissive_texture;
             VulkanBuffer surface_data;
+            std::optional<uint32_t> table_index;
             MaterialDescriptorPool* pool = nullptr;
             std::array<VkDescriptorSet, 2> sets{};
             explicit Material(const VulkanDevice& owner) :
@@ -1091,6 +1093,8 @@ namespace RelayCore::render
         std::unordered_map<const CpuColorMeshData*, Mesh> meshes;
         std::vector<std::unique_ptr<MaterialDescriptorPool>> material_pools;
         std::unordered_map<MaterialKey, std::unique_ptr<Material>, MaterialKeyHash> materials;
+        std::unique_ptr<VulkanMaterialTable> material_table;
+        Material* global_material = nullptr;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout instance_layout = VK_NULL_HANDLE;
@@ -1295,6 +1299,12 @@ namespace RelayCore::render
         )
         {
             renderer_config = config;
+            if (config.descriptor_indexing && device.capabilities().indexed_material_capacity)
+            {
+                material_table = std::make_unique<VulkanMaterialTable>(device);
+                material_table->initialize(device.capabilities().indexed_material_capacity);
+            }
+            log::info("Vulkan scene materials: {}", material_table ? "descriptor indexing" : "pooled descriptor sets");
             resolution.reset(config.render_scale);
             color_pipeline = pipeline;
             if (config.dynamic_resolution_enabled)
@@ -1630,7 +1640,9 @@ namespace RelayCore::render
                 vkAllocateDescriptorSets(device.handle(), &instance_allocation, instance_sets.data()),
                 "Scene instance descriptor sets"
             );
-            const std::array set_layouts{descriptor_layout, input_layout, instance_layout};
+            std::vector set_layouts{descriptor_layout, input_layout, instance_layout};
+            if (material_table)
+                set_layouts.push_back(material_table->layout());
             const VkPushConstantRange push{
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
@@ -1729,7 +1741,7 @@ namespace RelayCore::render
                        + (advanced                 ? "vert"
                           : inputs || debug_inputs ? vertex_entry
                                                    : "vert")
-                       + ".spv"),
+                       + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
                 vertex_entry
             );
             shaders.fragment = shaders.load(
@@ -1749,7 +1761,7 @@ namespace RelayCore::render
                        + (advanced                 ? "frag"
                           : inputs || debug_inputs ? fragment_entry
                                                    : "frag")
-                       + ".spv"),
+                       + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
                 fragment_entry
             );
             const std::array stages{
@@ -2073,6 +2085,30 @@ namespace RelayCore::render
                     glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
                 };
                 result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
+                if (material_table)
+                {
+                    const auto image = [](const VulkanTexture& texture) {
+                        return VkDescriptorImageInfo{
+                            texture.sampler(),
+                            texture.view(),
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        };
+                    };
+                    result->table_index = material_table->allocate(
+                        {image(result->texture),
+                         image(normal ? result->normal_texture : result->texture),
+                         image(mr_map ? result->mr_texture : result->texture),
+                         image(occlusion ? result->occlusion_texture : result->texture),
+                         image(emissive ? result->emissive_texture : result->texture)},
+                        surface_parameters
+                    );
+                    if (*result->table_index != 0)
+                    {
+                        result->upload_completion = uploads.dependency().value;
+                        return *result;
+                    }
+                    global_material = result;
+                }
                 allocate_material_descriptors(*result);
                 for (size_t slot = 0; slot < frames.size(); ++slot)
                 {
@@ -2298,6 +2334,10 @@ namespace RelayCore::render
             } catch (...)
             {
                 uploads.wait(uploads.dependency().value);
+                if (result->table_index)
+                    material_table->release(*result->table_index);
+                if (global_material == result)
+                    global_material = nullptr;
                 materials.erase(entry);
                 throw;
             }
@@ -2344,8 +2384,12 @@ namespace RelayCore::render
             RELAYCORE_PROFILE_ZONE_N("Vulkan material retirement collect");
             const auto completed = submissions.completed();
             const auto uploaded = uploads.completed();
-            std::erase_if(retired_materials, [completed, uploaded](const auto& material) {
-                return material->last_use.value <= completed && material->upload_completion <= uploaded;
+            std::erase_if(retired_materials, [this, completed, uploaded](const auto& material) {
+                if (material->last_use.value > completed || material->upload_completion > uploaded)
+                    return false;
+                if (material->table_index)
+                    material_table->release(*material->table_index);
+                return true;
             });
             // Keep one reusable block; never reclaim a pool holding in-flight descriptors.
             if (!material_pools.empty())
@@ -2357,6 +2401,7 @@ namespace RelayCore::render
 
         void retire_materials()
         {
+            global_material = nullptr;
             retired_materials.reserve(retired_materials.size() + materials.size());
             for (auto& [key, material] : materials)
                 retired_materials.push_back(std::move(material));
@@ -2422,6 +2467,8 @@ namespace RelayCore::render
 
         void prepare(const std::span<const RenderItem> items)
         {
+            if (material_table && !global_material)
+                static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
             for (const auto& item : items)
                 if (item.mesh)
                 {
@@ -2626,12 +2673,18 @@ namespace RelayCore::render
             if (slot.instance_records.size() >= max_instance_records)
                 throw std::logic_error("Scene instance recording exceeded its reserved pass count");
             const auto first = static_cast<uint32_t>(slot.instance_records.size());
-            const auto instance = draw_instance(item, mvp, correspondence);
+            auto instance = draw_instance(item, mvp, correspondence);
+            if (material_table && surface)
+            {
+                instance.correspondence.y = *surface->table_index;
+                use(*surface);
+            }
             slot.instance_records.push_back(instance);
             const BatchKey key{&geometry, surface, flags};
             // Preserve submission order even for equal-depth opaque surfaces; merge only adjacent compatible draws.
             if (group && scene_submission != VulkanSceneSubmission::direct && !slot.batches.empty()
-                && slot.batches.back().key == key)
+                && slot.batches.back().key.geometry == key.geometry && slot.batches.back().key.flags == key.flags
+                && (slot.batches.back().key.surface == key.surface || (material_table && surface)))
                 ++slot.batches.back().count;
             else
                 slot.batches.push_back({key, first});
@@ -2709,14 +2762,28 @@ namespace RelayCore::render
         {
             const auto position = camera.position();
             use(*batch.key.surface);
-            const auto set = batch.key.surface->sets[frame_index];
-            vkCmdBindDescriptorSets(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+            if (!material_table)
+            {
+                const auto set = batch.key.surface->sets[frame_index];
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    0,
+                    1,
+                    &set,
+                    0,
+                    nullptr
+                );
+                ++frame().draw_usage.material_binds;
+            }
             const bool instance_storage = batch.count > 1 || scene_submission == VulkanSceneSubmission::gpu_culled
                                           || (inputs && scene_submission == VulkanSceneSubmission::indirect);
             DrawPush push{
                 instance.mvp,
                 instance.model_rows,
-                batch.key.flags | (instance_storage ? 2048U : 0U),
+                batch.key.flags | (instance_storage ? 2048U : 0U)
+                    | (material_table ? *batch.key.surface->table_index << 16 : 0U),
                 {position.x, position.y, position.z}
             };
             if (instance_storage)
@@ -2766,6 +2833,33 @@ namespace RelayCore::render
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
             );
+            if (material_table)
+            {
+                use(*global_material);
+                const auto globals = global_material->sets[frame_index];
+                const auto table = material_table->set(frame_index);
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    0,
+                    1,
+                    &globals,
+                    0,
+                    nullptr
+                );
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    3,
+                    1,
+                    &table,
+                    0,
+                    nullptr
+                );
+                ++frame().draw_usage.material_binds;
+            }
             const bool batching = scene_submission == VulkanSceneSubmission::gpu_culled
                                   || scene_submission == VulkanSceneSubmission::indirect
                                   || (scene_submission == VulkanSceneSubmission::instanced && !viewmodel
@@ -3060,6 +3154,8 @@ namespace RelayCore::render
 
         void set_config(const RendererConfig& config)
         {
+            if (config.descriptor_indexing != renderer_config.descriptor_indexing)
+                throw std::invalid_argument("Changing descriptor indexing requires a prepared renderer reload");
             if (config.dynamic_resolution_enabled != renderer_config.dynamic_resolution_enabled)
                 throw std::invalid_argument("Changing dynamic resolution requires a prepared renderer reload");
             if (!std::isfinite(config.dynamic_resolution_target_ms) || config.dynamic_resolution_target_ms < 4
@@ -3625,7 +3721,7 @@ namespace RelayCore::render
             };
             vkCmdBeginRendering(frame().commands, &rendering);
             vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, ao_pipeline);
-            const auto set = materials.begin()->second->sets[frame_index];
+            const auto set = (material_table ? global_material : materials.begin()->second.get())->sets[frame_index];
             vkCmdBindDescriptorSets(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
             vkCmdDraw(frame().commands, 3, 1, 0, 0);
             vkCmdEndRendering(frame().commands);
@@ -3762,7 +3858,7 @@ namespace RelayCore::render
             vkCmdSetScissor(frame().commands, 0, 1, &scissor);
             vkCmdBeginRendering(frame().commands, &rendering);
             vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-            auto& surface = *materials.begin()->second;
+            auto& surface = *(material_table ? global_material : materials.begin()->second.get());
             use(surface);
             const std::array sets{surface.sets[frame_index], input_sets[frame_index]};
             vkCmdBindDescriptorSets(
@@ -4313,6 +4409,8 @@ namespace RelayCore::render
                     static_cast<void>(mesh(*caster.mesh));
             prepare(viewmodel);
             uploads.collect();
+            if (material_table)
+                material_table->update(frame_index);
             const bool replace_target = !frame().target || frame().target->extent.width != display_extent.width
                                         || frame().target->extent.height != display_extent.height
                                         || frame().target->render_extent.width != extent.width
@@ -4753,7 +4851,17 @@ namespace RelayCore::render
         VulkanMaterialDescriptorUsage usage{.pools = state_->material_pools.size()};
         for (const auto& pool : state_->material_pools)
             usage.materials += pool->materials;
+        if (state_->material_table)
+        {
+            usage.materials = state_->materials.size() + state_->retired_materials.size();
+            usage.indexed_capacity = state_->material_table->capacity();
+        }
         return usage;
+    }
+
+    auto VulkanMeshRenderer::uses_descriptor_indexing() const noexcept -> bool
+    {
+        return state_->material_table != nullptr;
     }
 
     void VulkanMeshRenderer::prepare_resources(const std::span<const RenderItem> items)

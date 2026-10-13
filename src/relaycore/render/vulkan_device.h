@@ -29,6 +29,7 @@ namespace RelayCore::render
         bool graphics_compute = false;
         bool validation_enabled = false;
         bool memory_budget_enabled = false;
+        uint32_t indexed_material_capacity = 0;
         float max_texture_anisotropy = 1.0F;
     };
 

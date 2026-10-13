@@ -18,6 +18,9 @@ struct InputVarying
     float4 previousClip;
     nointerpolation float2 jitter;
     nointerpolation float valid;
+#if DESCRIPTOR_INDEXING
+    nointerpolation uint surfaceIndex;
+#endif
 };
 
 [shader("vertex")]
@@ -31,6 +34,9 @@ InputVarying input_vertex(Vertex input, uint instance : SV_VulkanInstanceID)
     output.worldNormal = surface.worldNormal;
     output.worldTangent = surface.worldTangent;
     output.uv = surface.uv;
+#if DESCRIPTOR_INDEXING
+    output.surfaceIndex = surface.surfaceIndex;
+#endif
     output.currentClip = mul(transform.mvp, float4(input.position, 1));
     output.previousClip = mul(previousDraws[correspondence].mvp, float4(input.position, 1));
     output.valid = previousDraws[correspondence].valid.x;
@@ -47,6 +53,9 @@ InputOutput input_fragment(InputVarying input)
     surface.worldNormal = input.worldNormal;
     surface.worldTangent = input.worldTangent;
     surface.uv = input.uv;
+#if DESCRIPTOR_INDEXING
+    surface.surfaceIndex = input.surfaceIndex;
+#endif
     output.normalDepth = float4(surface_normal(surface), input.currentClip.w);
     float2 currentUV = input.currentClip.xy / input.currentClip.w * float2(.5, -.5) + .5;
     float2 previousUV = input.previousClip.xy / max(input.previousClip.w, .0001) * float2(.5, -.5) + .5;

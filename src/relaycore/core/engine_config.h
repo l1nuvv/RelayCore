@@ -59,6 +59,7 @@ namespace RelayCore::render
         int dof_quality = 0;
         int motion_blur_quality = 0;
         float dof_focus_distance = 8.0F;
+        bool descriptor_indexing = false;
         bool taa_enabled = false;
         float render_scale = 1.0F;
         bool dynamic_resolution_enabled = false;

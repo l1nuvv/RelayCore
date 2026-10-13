@@ -266,6 +266,8 @@ add_test(NAME graphics.vulkan_device COMMAND relaycore_vulkan_device_tests)
 add_test(NAME graphics.vulkan_presentation COMMAND relaycore_vulkan_presentation_tests)
 add_test(NAME graphics.vulkan_upload COMMAND relaycore_vulkan_upload_tests)
 add_test(NAME graphics.vulkan_mesh COMMAND relaycore_vulkan_mesh_tests)
+add_test(NAME graphics.descriptor_indexing COMMAND relaycore_vulkan_mesh_tests --descriptor-indexing)
+add_test(NAME graphics.descriptor_indexing_fallback COMMAND relaycore_vulkan_mesh_tests --descriptor-indexing)
 add_test(NAME graphics.scene_submission COMMAND relaycore_vulkan_mesh_tests --scene-submission)
 add_test(NAME graphics.scene_culling COMMAND relaycore_vulkan_mesh_tests --scene-culling)
 add_test(NAME graphics.scene_culling_fallback COMMAND relaycore_vulkan_mesh_tests --scene-culling)
@@ -314,7 +316,7 @@ add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --i
 add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
 add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.scene_culling_fallback graphics.scene_culling graphics.scene_submission graphics.local_light_selection graphics.advanced_effects graphics.advanced_effects_raster graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.descriptor_indexing graphics.descriptor_indexing_fallback graphics.scene_culling_fallback graphics.scene_culling graphics.scene_submission graphics.local_light_selection graphics.advanced_effects graphics.advanced_effects_raster graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -322,6 +324,8 @@ set_tests_properties(graphics.scene_culling_fallback graphics.scene_culling grap
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_mesh_tests>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_property(TEST graphics.descriptor_indexing_fallback APPEND PROPERTY ENVIRONMENT
+    "RELAYCORE_VULKAN_DISABLE_DESCRIPTOR_INDEXING=1")
 set_property(TEST graphics.scene_culling_fallback APPEND PROPERTY ENVIRONMENT
     "RELAYCORE_VULKAN_DISABLE_GPU_CULLING=1")
 set_property(TEST graphics.advanced_effects_raster APPEND PROPERTY ENVIRONMENT

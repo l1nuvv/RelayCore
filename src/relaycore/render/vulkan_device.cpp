@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <span>
@@ -215,6 +216,21 @@ namespace RelayCore::render
         );
         const bool anisotropy = physical.enable_features_if_present({.samplerAnisotropy = VK_TRUE});
         const bool memory_budget = physical.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        VkPhysicalDeviceVulkan12Features indexing{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+        indexing.runtimeDescriptorArray = VK_TRUE;
+        indexing.descriptorBindingPartiallyBound = VK_TRUE;
+        indexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        const auto& limits = physical.properties.limits;
+        const auto descriptor_limit = std::min(
+            {limits.maxPerStageDescriptorSamplers,
+             limits.maxPerStageDescriptorSampledImages,
+             limits.maxDescriptorSetSamplers,
+             limits.maxDescriptorSetSampledImages,
+             limits.maxPerStageResources}
+        );
+        const uint32_t capacity = descriptor_limit > 32 ? std::min(512U, (descriptor_limit - 32) / 5) : 0;
+        const bool indexed = capacity >= 128 && !std::getenv("RELAYCORE_VULKAN_DISABLE_DESCRIPTOR_INDEXING")
+                             && physical.enable_extension_features_if_present(indexing);
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -269,6 +285,7 @@ namespace RelayCore::render
             .graphics_compute = (queues[graphics.second].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0,
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
             .memory_budget_enabled = memory_budget,
+            .indexed_material_capacity = indexed ? capacity : 0,
             .max_texture_anisotropy =
                 anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
@@ -295,6 +312,11 @@ namespace RelayCore::render
             present.second,
             state_->capabilities.validation_enabled,
             state_->capabilities.max_texture_anisotropy
+        );
+        log::info(
+            "Vulkan descriptor indexing: {} material slots (runtime arrays, nonuniform sampled images; scene-slot "
+            "updates)",
+            state_->capabilities.indexed_material_capacity
         );
         for (const auto& extension : physical.get_extensions())
             log::info("Vulkan enabled device extension: {}", extension);

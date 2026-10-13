@@ -43,6 +43,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/vulkan_uploads.cpp
     render/vulkan_scene_submissions.cpp
     render/vulkan_mesh_renderer.cpp
+    render/vulkan_material_table.cpp
     render/vma_impl.cpp
     render/mesh.cpp
     render/static_model.cpp

@@ -171,6 +171,22 @@ owner visual preference; [execution evidence](renderer/VK14-09.md) owns local
 budgets, checks, captures and limitations.
 
 <a id="scene-submission--vk14-10ab"></a>
+## Descriptor indexing — VK14-11a
+
+`render.descriptor_indexing = true` selects the optional scene material table at
+prepared-renderer creation. Runtime arrays, nonuniform sampled-image indexing,
+partially bound descriptors and sufficient limits are required; unavailable
+support uses the pooled material path and logs the selection. The table has a
+device-bounded capacity (128 minimum, 512 maximum), including retired materials;
+exhaustion reports an actionable error. Defaults remain pooled.
+
+Each slot owns a texture array and surface buffer, updated after its final GPU
+completion. Material indices remain stable until retirement; adjacent compatible
+opaque instances may share a batch across materials while retaining order.
+Transparent/overlay/viewmodel, temporal and shadow rules retain their existing
+owners. No update-after-bind or asset-format change is required. Changing the
+setting requires prepared renderer reload. [Evidence and budgets](renderer/VK14-11.md).
+
 ## Scene submission — VK14-10a/b/c
 
 The Vulkan backend batches adjacent opaque items sharing immutable CPU geometry,

@@ -5348,6 +5348,354 @@ namespace
             profile_gpu_culling_stress(device, authoring, atlas, captures);
     }
 
+    void check_indexed_world_views(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        bool profile
+    )
+    {
+        struct View {
+            const char* name;
+            const char* level;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"power", "power_restoration", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"workshop", "containment_loop", {-21, 1.63F, 19}, {-21, .6F, 23}},
+            View{"native", "native_lab", {1.5F, 1.45F, 1.7F}, {1.5F, 1.45F, 4}}
+        };
+        StaticModelCache models;
+        for (const auto& view : views)
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + view.level + ".toml")
+            );
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(prepared, models);
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(1280, 720);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto original = scene.render_items();
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, 0);
+            CpuRgbaTextureData reference;
+            for (int phase = 0; phase < 3; ++phase)
+            {
+                RendererConfig config;
+                config.descriptor_indexing = phase == 1;
+                config.hdr_enabled = true;
+                config.msaa_samples = 4;
+                config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                renderer.set_local_lights(scene.local_lights());
+                renderer.set_irradiance_probes(prepared.irradiance);
+                renderer.set_reflection_probe(prepared.reflection);
+                renderer.set_spot_light({camera.position(), camera.forward(), {1, .94F, .84F}, 18, true});
+                renderer.prepare_resources(original);
+                renderer.prepare_resources(weapon);
+                for (int frame = 0; frame < (profile ? 160 : 2); ++frame)
+                {
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Indexed world CPU frame");
+                        renderer.prepare_frame(original, original, camera, 1280, 720, weapon);
+                    }
+                    RELAYCORE_PROFILE_FRAME();
+                    SDL_PumpEvents();
+                    if (profile)
+                        SDL_Delay(4);
+                }
+                auto image = renderer.capture_prepared_image();
+                if (phase == 0)
+                    reference = image;
+                else
+                    require(
+                        image.pixels == reference.pixels,
+                        "Indexed world view changed native models, probes, shadows, or weapon"
+                    );
+                const auto usage = renderer.draw_usage();
+                std::cout << "indexed_world=" << view.name << " phase=" << phase << " draws=" << usage.draws
+                          << " material_binds=" << usage.material_binds << '\n';
+                save(
+                    image,
+                    captures / ("indexed-world-" + std::string{view.name} + "-" + std::to_string(phase) + ".bmp")
+                );
+            }
+        }
+    }
+
+    void check_descriptor_indexing(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        bool profile
+    )
+    {
+        StaticColorMesh box;
+        auto data = make_color_box_mesh_data();
+        for (auto& vertex : data.vertices)
+        {
+            vertex.color = {1, 1, 1};
+            vertex.material_kind = 0;
+            const auto axis = std::abs(vertex.normal.y) < .9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0};
+            vertex.tangent = {glm::normalize(glm::cross(axis, vertex.normal)), 1};
+        }
+        box.initialize(data);
+        std::vector<Texture2D> textures(profile ? 256 : 40);
+        for (size_t i = 0; i < textures.size(); ++i)
+            textures[i].initialize_rgba(
+                1,
+                1,
+                std::array<uint8_t, 4>{uint8_t(40 + i % 190), uint8_t(210 - i % 170), uint8_t(70 + i % 130), 255},
+                TextureEncoding::srgb
+            );
+        Texture2D normal, mr, ao, emission;
+        normal.initialize_rgba(1, 1, std::array<uint8_t, 4>{175, 145, 238, 255}, TextureEncoding::linear);
+        mr.initialize_rgba(1, 1, std::array<uint8_t, 4>{255, 170, 90, 255}, TextureEncoding::linear);
+        ao.initialize_rgba(1, 1, std::array<uint8_t, 4>{190, 255, 255, 255}, TextureEncoding::linear);
+        emission.initialize_rgba(1, 1, std::array<uint8_t, 4>{70, 100, 200, 255}, TextureEncoding::srgb);
+        std::vector<RenderItem> items;
+        const int side = profile ? 64 : 6;
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x)
+            {
+                const float step = profile ? .18F : 1.6F;
+                const auto model =
+                    glm::translate(glm::mat4{1}, glm::vec3{(x - side / 2) * step, 0, (y - side / 2) * step})
+                    * glm::rotate(glm::mat4{1}, (x + y) * .17F, glm::vec3{0, 1, 0})
+                    * glm::scale(glm::mat4{1}, profile ? glm::vec3{.12F} : glm::vec3{x % 2 ? -.5F : .5F, .65F, .35F});
+                RenderItem item{
+                    .mesh = &box,
+                    .model_matrix = model,
+                    .diffuse_texture = &textures[items.size() % textures.size()],
+                    .previous_model_matrix = model
+                };
+                if (!profile)
+                {
+                    item.normal_texture = &normal;
+                    item.normal_scale = .4F + float(items.size() % 5) * .2F;
+                    item.metallic_roughness = MetallicRoughness{.3F + float(items.size() % 5) * .1F, .3F};
+                    item.metallic_roughness_map = &mr;
+                    item.occlusion_texture = &ao;
+                    item.occlusion_strength = .6F;
+                    item.emissive_texture = &emission;
+                    item.emissive_factor = {.08F, .1F, .12F};
+                }
+                items.push_back(item);
+            }
+        if (!profile)
+        {
+            items.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, -1, 0})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{12, .3F, 12})}
+            );
+            for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+            {
+                auto item = items.front();
+                item.pass = pass;
+                item.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 1, 3});
+                items.push_back(item);
+            }
+        }
+        PerspectiveCamera camera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+        camera.set_viewport(640, 360);
+        std::vector<RenderItem> weapon;
+        if (!profile)
+        {
+            weapon.push_back(items[0]);
+            weapon[0].model_matrix =
+                glm::translate(glm::mat4{1}, glm::vec3{8, 6, 13}) * glm::scale(glm::mat4{1}, glm::vec3{.3F});
+        }
+        for (bool hdr : {false, true})
+        {
+            if (profile && hdr)
+                continue;
+            std::array<std::vector<CpuRgbaTextureData>, 3> images;
+            std::array<std::vector<VulkanPassInputCapture>, 3> inputs;
+            std::array<std::vector<float>, 3> shadows;
+            for (int mode = 0; mode < 3; ++mode)
+            {
+                RendererConfig config;
+                config.descriptor_indexing = mode == 1;
+                config.hdr_enabled = hdr;
+                config.taa_enabled = hdr;
+                config.msaa_samples = hdr ? 4 : 1;
+                config.shadow_enabled = !profile;
+                config.shadow_map_resolution = 256;
+                config.fog_enabled = false;
+                config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                const bool indexed = mode == 1 && device.capabilities().indexed_material_capacity != 0;
+                require(
+                    renderer.uses_descriptor_indexing() == indexed,
+                    "Descriptor indexing selection/fallback failed"
+                );
+                if (!profile)
+                    renderer.set_pass_input_view(PassInputView::scene);
+                renderer.prepare_resources(items);
+                std::vector<double> timings;
+                auto moving = items;
+                for (int frame = 0; frame < (profile ? 280 : 3); ++frame)
+                {
+                    if (!profile && frame)
+                        for (auto& item : moving)
+                        {
+                            item.previous_model_matrix = item.model_matrix;
+                            item.model_matrix[3].x += .03F;
+                        }
+                    const auto start = std::chrono::steady_clock::now();
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Descriptor indexing CPU frame");
+                        renderer.prepare_frame(
+                            moving,
+                            profile ? std::span<const RenderItem>{} : std::span<const RenderItem>{moving},
+                            camera,
+                            640,
+                            360,
+                            weapon
+                        );
+                    }
+                    const double ms =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    if (profile && frame >= 40)
+                        timings.push_back(ms);
+                    if (!profile)
+                    {
+                        images[mode].push_back(renderer.capture_prepared_image());
+                        inputs[mode].push_back(renderer.capture_pass_inputs());
+                    }
+                    RELAYCORE_PROFILE_FRAME();
+                    if (profile)
+                    {
+                        SDL_PumpEvents();
+                        SDL_Delay(4);
+                    }
+                }
+                auto usage = renderer.material_descriptor_usage();
+                auto draws = renderer.draw_usage();
+                if (indexed && !profile)
+                    require(
+                        usage.pools == 1 && usage.materials > 1 && draws.material_binds < draws.draws,
+                        "Indexed materials still allocate/bind per-material sets"
+                    );
+                std::cout << "descriptor_mode=" << mode << " hdr=" << hdr << " capacity=" << usage.indexed_capacity
+                          << " materials=" << usage.materials << " pools=" << usage.pools
+                          << " binds=" << draws.material_binds << " draws=" << draws.draws;
+                if (profile)
+                {
+                    std::sort(timings.begin(), timings.end());
+                    std::cout << " cpu_p50_ms=" << timings[120] << " cpu_p95_ms=" << timings[228]
+                              << " cpu_p99_ms=" << timings[237];
+                    images[mode].push_back(renderer.capture_prepared_image());
+                } else
+                {
+                    shadows[mode] = renderer.capture_shadow_depth(0);
+                    auto changed = config;
+                    changed.descriptor_indexing = !changed.descriptor_indexing;
+                    expect_failure(
+                        [&] {
+                            renderer.set_config(changed);
+                        },
+                        "prepared renderer reload"
+                    );
+                    renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    renderer.prepare_frame({}, {}, camera, 641, 361);
+                    renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                    RelayCore::test::ScopedTempDirectory broken;
+                    for (const auto& entry : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+                        if (entry.path().extension() == ".spv")
+                            std::filesystem::copy_file(entry.path(), broken.path() / entry.path().filename());
+                    std::ofstream{
+                        broken.path() / (indexed ? "mesh.frag.indexed.spv" : "mesh.frag.spv"),
+                        std::ios::binary
+                    } << "bad";
+                    expect_failure(
+                        [&] {
+                            renderer.reload_shaders(broken.path());
+                        },
+                        "SPIR-V"
+                    );
+                    textures[0].initialize_rgba(1, 1, std::array<uint8_t, 4>{40, 210, 70, 255}, TextureEncoding::srgb);
+                    renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    static_cast<void>(renderer.capture_prepared_image());
+                    if (indexed)
+                    {
+                        std::vector<Texture2D> excess(usage.indexed_capacity);
+                        std::vector<RenderItem> overflow;
+                        for (auto& texture : excess)
+                        {
+                            texture.initialize_rgba(
+                                1,
+                                1,
+                                std::array<uint8_t, 4>{255, 255, 255, 255},
+                                TextureEncoding::srgb
+                            );
+                            overflow.push_back({.mesh = &box, .diffuse_texture = &texture});
+                        }
+                        expect_failure(
+                            [&] {
+                                renderer.prepare_resources(overflow);
+                            },
+                            "Indexed material table exhausted"
+                        );
+                    }
+                }
+                std::cout << '\n';
+                save(
+                    images[mode].back(),
+                    captures / ("descriptor-" + std::to_string(hdr) + "-" + std::to_string(mode) + ".bmp")
+                );
+            }
+            for (int mode = 1; mode < 3; ++mode)
+            {
+                for (size_t frame = 0; frame < images[0].size(); ++frame)
+                {
+                    require(
+                        images[mode][frame].pixels == images[0][frame].pixels,
+                        "Descriptor indexing changed color/map/order/viewmodel parity"
+                    );
+                    if (!profile)
+                        for (size_t p = 0; p < inputs[0][frame].velocity.size(); ++p)
+                        {
+                            require(
+                                glm::length(inputs[mode][frame].normal_depth[p] - inputs[0][frame].normal_depth[p])
+                                    < .00001F,
+                                "Descriptor indexing changed mapped normals/depth"
+                            );
+                            require(
+                                glm::length(inputs[mode][frame].velocity[p] - inputs[0][frame].velocity[p]) < .00001F,
+                                "Descriptor indexing changed temporal correspondence"
+                            );
+                        }
+                }
+                if (!profile)
+                    require(shadows[mode] == shadows[0], "Descriptor indexing changed shadow depth");
+            }
+        }
+        check_indexed_world_views(device, authoring, atlas, captures, profile);
+        std::cout << "descriptor_indexing=passed\n";
+    }
+
     void check_scene_submission(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -5606,6 +5954,8 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const bool indexing_only = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing";
+    const bool indexing_profile = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing-profile";
     const bool submission_only = argc == 2 && std::string_view{argv[1]} == "--scene-submission";
     const bool culling_only = argc == 2 && std::string_view{argv[1]} == "--scene-culling";
     const bool culling_profile = argc == 2 && std::string_view{argv[1]} == "--scene-culling-profile";
@@ -5642,11 +5992,11 @@ int main(int argc, char** argv)
     const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
     const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
-    if (argc > 1 && !submission_only && !submission_profile && !shadows_only && !color_baseline && !profiling
-        && !native_view && !mr_only && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only
-        && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only && !pipeline_only
-        && !power_slice_only && !pistol_only && !shotgun_only && !descriptors_only && !depth_only && !inputs_only
-        && !effects_only && !effects_profile && !effects_analytic && !advanced_only && !advanced_profile
+    if (argc > 1 && !indexing_only && !indexing_profile && !submission_only && !submission_profile && !shadows_only
+        && !color_baseline && !profiling && !native_view && !mr_only && !emission_only && !hdr_only && !msaa_only
+        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only
+        && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only && !descriptors_only && !depth_only
+        && !inputs_only && !effects_only && !effects_profile && !effects_analytic && !advanced_only && !advanced_profile
         && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile
         && !light_selection_only && !culling_profile && !culling_only)
         return 1;
@@ -5669,7 +6019,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (culling_only || culling_profile)
+        if (indexing_only || indexing_profile)
+            check_descriptor_indexing(device, authoring, atlas, captures, indexing_profile);
+        else if (culling_only || culling_profile)
             profile_scene_culling(device, authoring, atlas, captures, culling_profile);
         else if (submission_only || submission_profile)
             check_scene_submission(device, authoring, atlas, captures, submission_profile);

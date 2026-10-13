@@ -265,6 +265,48 @@ foreach(stage IN ITEMS vert frag)
         VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(variant IN ITEMS mesh mesh_effects mesh_volume pass_inputs mesh_vertex pass_inputs_vertex)
+    set(defines -DDESCRIPTOR_INDEXING=1)
+    set(shader_stage fragment)
+    set(output_prefix ${variant})
+    set(source mesh)
+    set(entry fragment_main)
+    set(stage frag)
+    if(variant STREQUAL "mesh_effects")
+        list(APPEND defines -DSCREEN_EFFECTS=1)
+    elseif(variant STREQUAL "mesh_volume")
+        list(APPEND defines -DSCREEN_EFFECTS=1 -DVOLUME_ONLY=1)
+    elseif(variant STREQUAL "pass_inputs")
+        set(source pass_inputs)
+        set(entry input_fragment)
+        set(stage input_fragment)
+    endif()
+    if(variant STREQUAL "mesh_vertex" OR variant STREQUAL "pass_inputs_vertex")
+        set(shader_stage vertex)
+        set(stage vert)
+        set(entry vertex_main)
+        set(output_prefix mesh)
+        if(variant STREQUAL "pass_inputs_vertex")
+            set(source pass_inputs)
+            set(output_prefix pass_inputs)
+            set(stage input_vertex)
+            set(entry input_vertex)
+        endif()
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/${output_prefix}.${stage}.indexed.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/${source}.slang"
+            ${defines} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
 add_custom_target(relaycore_vulkan_shaders ALL
     DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})
 set(runtime_shader_names)
