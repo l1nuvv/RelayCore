@@ -270,6 +270,10 @@ int main(int argc, char** argv)
             throw std::runtime_error("Apparatus failed to resume");
         runtime.debug_update_containment(2);
         capture("ready");
+        const auto grip_model = renderer.static_models().load(
+            RelayCore::core::asset_path("models/containment_grip.rcmodel"),
+            RelayCore::render::TextureEncoding::srgb
+        );
         for (const bool powered : {false, true})
             for (const bool flashlight : {false, true})
             {
@@ -300,8 +304,11 @@ int main(int argc, char** argv)
                     {},
                     &*runtime.containment()
                 );
-                const bool emitting = std::ranges::any_of(scene.render_items(), [](const auto& item) {
-                    return item.emissive_texture && item.emissive_factor != glm::vec3{0};
+                const bool emitting = std::ranges::any_of(scene.render_items(), [&](const auto& item) {
+                    return item.emissive_texture && item.emissive_factor != glm::vec3{0}
+                           && std::ranges::any_of(grip_model->meshes, [&](const auto& mesh) {
+                                  return item.mesh == &mesh;
+                              });
                 });
                 if (emitting != powered)
                     throw std::runtime_error("Containment plate emission disagrees with apparatus power");
