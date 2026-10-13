@@ -4991,6 +4991,134 @@ namespace
                 );
             }
     }
+    void profile_scene_culling(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        struct View {
+            const char* name;
+            const char* level;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"power", "power_restoration", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"pressure", "pressure_transfer", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"observation", "containment_loop", {0, 1.63F, 9}, {0, 2, 34}},
+            View{"workshop", "containment_loop", {-21, 1.63F, 19}, {-21, .6F, 23}},
+            View{"archive", "containment_loop", {-26, 1.63F, 51}, {-17.5F, 1.2F, 51.5F}},
+            View{"return", "containment_loop", {-7, 1.63F, 24}, {0, 3, 33}}
+        };
+        constexpr int w = 1280, h = 720;
+        const int frames = profile ? 160 : 2;
+        StaticModelCache models;
+        for (const auto& view : views)
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + view.level + ".toml")
+            );
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(prepared, models);
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(w, h);
+            for (int frame = 0; frame < frames; ++frame)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Culling gate world queue");
+                scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            }
+            const std::vector<RenderItem> original{scene.render_items().begin(), scene.render_items().end()};
+            std::vector<RenderItem> filtered;
+            size_t removed_indices = 0;
+            // An optimistic frustum experiment: exclude filtering/upload/compute cost from the GPU comparison.
+            // Keep every original shadow caster, overlay and transparent; only opaque camera bounds are tested.
+            for (const auto& item : original)
+            {
+                bool visible = true;
+                if (item.mesh && item.pass == RenderPass::Opaque)
+                {
+                    const auto mvp = camera.view_projection_matrix() * item.model_matrix;
+                    const auto mins = item.mesh->bounds_min(), maxs = item.mesh->bounds_max();
+                    std::array<glm::vec4, 8> corners;
+                    for (size_t corner = 0; corner < corners.size(); ++corner)
+                        corners[corner] = mvp
+                                          * glm::vec4{
+                                              corner & 1 ? maxs.x : mins.x,
+                                              corner & 2 ? maxs.y : mins.y,
+                                              corner & 4 ? maxs.z : mins.z,
+                                              1
+                                          };
+                    for (int plane = 0; plane < 6; ++plane)
+                        if (std::ranges::all_of(corners, [plane](const glm::vec4& corner) {
+                                return corner.w + (plane % 2 ? -corner[plane / 2] : corner[plane / 2]) < -.0001F;
+                            }))
+                        {
+                            visible = false;
+                            break;
+                        }
+                }
+                if (visible)
+                    filtered.push_back(item);
+                else
+                    removed_indices += static_cast<size_t>(item.mesh->index_count());
+            }
+            RendererConfig config;
+            config.hdr_enabled = true;
+            config.msaa_samples = 4;
+            config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            };
+            renderer.set_local_lights(scene.local_lights());
+            renderer.set_irradiance_probes(prepared.irradiance);
+            renderer.set_reflection_probe(prepared.reflection);
+            renderer.set_spot_light({camera.position(), camera.forward(), {1, .94F, .84F}, 18, true});
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, 0);
+            renderer.prepare_resources(original);
+            renderer.prepare_resources(weapon);
+            CpuRgbaTextureData reference;
+            for (int phase = 0; phase < 3; ++phase)
+            {
+                const auto& items = phase == 1 ? filtered : original;
+                for (int frame = 0; frame < frames; ++frame)
+                {
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Culling gate CPU frame");
+                        renderer.prepare_frame(items, original, camera, w, h, weapon);
+                    }
+                    SDL_PumpEvents();
+                    RELAYCORE_PROFILE_FRAME();
+                    if (profile)
+                        SDL_Delay(4);
+                }
+                const auto image = renderer.capture_prepared_image();
+                if (!phase)
+                    reference = image;
+                else
+                    require(image.pixels == reference.pixels, "Frustum experiment changed visible scene pixels");
+                save(image, captures / (std::string{"culling-"} + view.name + "-" + std::to_string(phase) + ".bmp"));
+                const auto usage = renderer.draw_usage();
+                std::cout << "culling_gate view=" << view.name << " phase=" << phase << " submitted=" << items.size()
+                          << " removed=" << original.size() - items.size()
+                          << " removed_indices=" << (phase == 1 ? removed_indices : 0) << " draws=" << usage.draws
+                          << " instances=" << usage.instances
+                          << " visible_chunks=" << scene.diagnostics().visible_chunks
+                          << " culled_chunks=" << scene.diagnostics().culled_chunks << '\n';
+            }
+        }
+        std::cout << "scene_culling_gate=passed\n";
+    }
+
     void check_scene_submission(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -5249,6 +5377,8 @@ namespace
 int main(int argc, char** argv)
 {
     const bool submission_only = argc == 2 && std::string_view{argv[1]} == "--scene-submission";
+    const bool culling_only = argc == 2 && std::string_view{argv[1]} == "--scene-culling";
+    const bool culling_profile = argc == 2 && std::string_view{argv[1]} == "--scene-culling-profile";
     const bool submission_profile = argc == 2 && std::string_view{argv[1]} == "--scene-submission-profile";
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
     const bool light_selection_only = argc == 2 && std::string_view{argv[1]} == "--light-selection";
@@ -5288,7 +5418,7 @@ int main(int argc, char** argv)
         && !power_slice_only && !pistol_only && !shotgun_only && !descriptors_only && !depth_only && !inputs_only
         && !effects_only && !effects_profile && !effects_analytic && !advanced_only && !advanced_profile
         && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile
-        && !light_selection_only)
+        && !light_selection_only && !culling_profile && !culling_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -5309,7 +5439,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (submission_only || submission_profile)
+        if (culling_only || culling_profile)
+            profile_scene_culling(device, authoring, atlas, captures, culling_profile);
+        else if (submission_only || submission_profile)
             check_scene_submission(device, authoring, atlas, captures, submission_profile);
         else if (light_selection_only)
             check_light_selection(device, authoring, atlas, captures);
