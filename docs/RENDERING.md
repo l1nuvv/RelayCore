@@ -170,7 +170,23 @@ instead of producing cinematic foreground bokeh. Controls default off pending
 owner visual preference; [execution evidence](renderer/VK14-09.md) owns local
 budgets, checks, captures and limitations.
 
-<a id="scene-submission--vk14-10ab"></a>
+## Player graphics presets — VK14-14
+
+The player menu offers Low, Balanced, High and Custom. Low disables scene HDR and
+optional post effects. Balanced enables internal HDR, bloom, SSAO and TAA. High
+also enables SSR, volumetrics, SSGI quality 2 and reflection quality 2. Presets use
+native scene resolution and disable dynamic resolution, DoF and motion blur;
+individual controls remain available. They preserve volume, sensitivity, FOV,
+camera motion, VSync and authored MSAA/shadows. Optional GPU extension paths are
+independent of the quality selection.
+
+The existing prepared renderer reload applies the complete selection together.
+Only individual settings are saved; the menu derives the preset name from them,
+so manual changes show Custom and older settings files remain compatible. These
+are explicit user choices, not automatic hardware recommendations. Internal HDR
+still presents SDR; physical display HDR is a separate capability. Local evidence
+and external acceptance gates: [VK14-14](renderer/VK14-14.md).
+
 ## Descriptor indexing — VK14-11a
 
 `render.descriptor_indexing = true` selects the optional scene material table at
@@ -205,6 +221,7 @@ transparents, overlays and viewmodels retain their indexed passes. The indexed
 vertex/index data remains authoritative for picking and other existing consumers.
 [Product layout](MODEL_ASSETS.md#meshlets--rmdl-v6) · [Evidence and budgets](renderer/VK14-11.md).
 
+<a id="scene-submission--vk14-10ab"></a>
 ## Scene submission — VK14-10a/b/c
 
 The Vulkan backend batches adjacent opaque items sharing immutable CPU geometry,

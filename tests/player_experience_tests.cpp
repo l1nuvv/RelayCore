@@ -141,6 +141,49 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
 }
 
+TEST_CASE("graphics presets preserve player preferences and persist without a preset label")
+{
+    using namespace RelayGame;
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "settings.toml";
+    PlayerSettings settings{.volume = .35F, .sensitivity = .003F, .fov = 82, .camera_motion = 0, .vsync = false};
+    for (const auto preset :
+         {GraphicsPreset::High, GraphicsPreset::Low, GraphicsPreset::Balanced, GraphicsPreset::High})
+    {
+        settings.dof_quality = settings.motion_blur_quality = 2;
+        settings.render_scale = .67F;
+        settings.dynamic_resolution_enabled = true;
+        apply_graphics_preset(settings, preset);
+        save_player_settings(path, settings);
+        settings = load_player_settings(path, {});
+        CHECK(graphics_preset(settings) == preset);
+        CHECK(settings.volume == doctest::Approx(.35F));
+        CHECK(settings.sensitivity == doctest::Approx(.003F));
+        CHECK(settings.fov == 82);
+        CHECK(settings.camera_motion == 0);
+        CHECK_FALSE(settings.vsync);
+        CHECK(settings.render_scale == 1);
+        CHECK_FALSE(settings.dynamic_resolution_enabled);
+        CHECK(settings.dof_quality == 0);
+        CHECK(settings.motion_blur_quality == 0);
+        CHECK(settings.hdr_enabled == (preset != GraphicsPreset::Low));
+        CHECK(settings.ssr_enabled == (preset == GraphicsPreset::High));
+        CHECK(settings.reflection_quality == (preset == GraphicsPreset::High ? 2 : 0));
+    }
+    settings.ssao_enabled = false;
+    CHECK(graphics_preset(settings) == GraphicsPreset::Custom);
+    apply_graphics_preset(settings, GraphicsPreset::Custom);
+    CHECK_FALSE(settings.ssao_enabled);
+    CHECK_THROWS_WITH(apply_graphics_preset(settings, static_cast<GraphicsPreset>(42)), "Unknown graphics preset");
+    CHECK_FALSE(settings.ssao_enabled);
+    for (const auto preset : {GraphicsPreset::Low, GraphicsPreset::Balanced, GraphicsPreset::High})
+    {
+        apply_graphics_preset(settings, preset);
+        settings.render_scale = .75F;
+        CHECK(graphics_preset(settings) == GraphicsPreset::Custom);
+    }
+}
+
 TEST_CASE("player settings reject malformed advanced quality and missing lighting prerequisites")
 {
     RelayCore::test::ScopedTempDirectory directory;

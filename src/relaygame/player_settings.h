@@ -4,6 +4,13 @@
 
 namespace RelayGame
 {
+    enum class GraphicsPreset {
+        Custom,
+        Low,
+        Balanced,
+        High
+    };
+
     struct PlayerSettings {
         float volume = 1.0F;
         float sensitivity = 0.0022F;
@@ -23,6 +30,9 @@ namespace RelayGame
         float render_scale = 1.0F;
         bool dynamic_resolution_enabled = false;
     };
+
+    void apply_graphics_preset(PlayerSettings& settings, GraphicsPreset preset);
+    [[nodiscard]] auto graphics_preset(const PlayerSettings& settings) -> GraphicsPreset;
 
     [[nodiscard]] auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults)
         -> PlayerSettings;

@@ -180,6 +180,16 @@ scene HDR, изолированные Continue/бой/respawn/пауза/resize.
 не заменяют непрерывный grounded-проход. Evidence/рабочие бюджеты — VK14-00 в
 [renderer plan](renderer/VK14-00.md#vk14-00-execution--2026-10-11).
 
+The same executable accepts `--quality-preset low`, `balanced` or `high` to
+exercise the player presets on this workload. No argument retains the original
+internal-HDR baseline. Run each selection from a separate working directory to
+preserve its log and captures. Add `--motion-captures` after the preset argument
+to write numbered observation/workshop BMP frames at a target eight frames per
+second during seconds 1–3 of the first pass. Readback perturbs this capture run;
+use a separate run without that flag for performance measurements. These short
+camera-sweep/combat sequences do not constitute a continuous human playthrough.
+Commands, local budgets and hardware limits: [VK14-14](renderer/VK14-14.md).
+
 Для прежнего эпизода используйте
 `cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile`.
 Запустите `build/msvc-relwithdebinfo/tests/relaycore_episode_profile.exe` с абсолютным

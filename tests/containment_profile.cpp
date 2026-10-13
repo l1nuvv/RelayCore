@@ -35,7 +35,9 @@ namespace
 
     class ContainmentProfile final : public RelayCore::AppDelegate {
     public:
-        explicit ContainmentProfile(std::filesystem::path output) : output_(std::move(output)) {}
+        ContainmentProfile(std::filesystem::path output, RelayGame::GraphicsPreset preset, bool motion_captures) :
+            output_(std::move(output)), preset_(preset), motion_captures_(motion_captures)
+        {}
 
         void on_startup(RelayCore::EngineServices& services) override
         {
@@ -83,7 +85,12 @@ namespace
                 frames_.push_back(frame_ms);
             captured_previous_frame_ = false;
             if (pass_ == 0 && elapsed_ > 1 && !captured_)
-                capture(services);
+                capture(services, stages[stage_].name);
+            if (motion_captures_ && pass_ == 0 && stage_ < 2 && elapsed_ >= next_motion_ && elapsed_ < 3)
+            {
+                capture(services, std::string{"motion-"} + stages[stage_].name + "-" + std::to_string(motion_frame_++));
+                next_motion_ += .125;
+            }
             if (stage_ == 1 && elapsed_ >= next_shot_)
             {
                 SDL_Event event{};
@@ -133,7 +140,7 @@ namespace
         }
 
     private:
-        void capture(RelayCore::EngineServices& services)
+        void capture(RelayCore::EngineServices& services, const std::string& name)
         {
             RELAYCORE_PROFILE_ZONE_N("ContainmentProfile::capture");
             const auto pixels = services.renderer().capture_frame();
@@ -146,8 +153,7 @@ namespace
             );
             if (!surface)
                 throw std::runtime_error(SDL_GetError());
-            const bool saved =
-                SDL_SaveBMP(surface, (output_ / (std::string{stages[stage_].name} + ".bmp")).string().c_str());
+            const bool saved = SDL_SaveBMP(surface, (output_ / (name + ".bmp")).string().c_str());
             SDL_DestroySurface(surface);
             if (!saved)
                 throw std::runtime_error(SDL_GetError());
@@ -197,7 +203,9 @@ namespace
             }
             const auto directory = isolated_.path() / (std::to_string(pass_) + stages[stage_].name);
             RelayGame::write_saved_game(directory / "progress.toml", save);
-            RelayGame::save_player_settings(directory / "player_settings.toml", {.vsync = false, .hdr_enabled = true});
+            RelayGame::PlayerSettings settings{.vsync = false, .hdr_enabled = true};
+            RelayGame::apply_graphics_preset(settings, preset_);
+            RelayGame::save_player_settings(directory / "player_settings.toml", settings);
             game_ = std::make_unique<RelayGame::DemoGame>(directory);
             game_->on_startup(services);
             game_->begin_episode(true, services);
@@ -219,6 +227,8 @@ namespace
             captured_ = false;
             captured_previous_frame_ = false;
             resized_ = -1;
+            motion_frame_ = 0;
+            next_motion_ = 1;
             frames_.clear();
             frames_.reserve(8192);
             std::cout << "pass=" << pass_ << "; stage=" << stages[stage_].name
@@ -236,18 +246,39 @@ namespace
         }
         RelayCore::test::ScopedTempDirectory isolated_;
         std::filesystem::path output_;
+        RelayGame::GraphicsPreset preset_;
+        bool motion_captures_;
         std::unique_ptr<RelayGame::DemoGame> game_;
         std::vector<double> frames_;
         Clock::time_point stage_beginning_{}, previous_update_{};
         std::size_t stage_ = 0;
         int pass_ = 0, resized_ = -1;
         double elapsed_ = 0, next_shot_ = .8;
+        double next_motion_ = 1;
+        int motion_frame_ = 0;
         bool captured_ = false, captured_previous_frame_ = false;
     };
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    auto preset = RelayGame::GraphicsPreset::Custom;
+    std::string preset_name = "baseline";
+    const bool motion_captures = argc == 4 && std::string_view{argv[3]} == "--motion-captures";
+    if (argc != 1)
+    {
+        if ((argc != 3 && !motion_captures) || std::string_view{argv[1]} != "--quality-preset")
+            return 1;
+        preset_name = argv[2];
+        if (preset_name == "low")
+            preset = RelayGame::GraphicsPreset::Low;
+        else if (preset_name == "balanced")
+            preset = RelayGame::GraphicsPreset::Balanced;
+        else if (preset_name == "high")
+            preset = RelayGame::GraphicsPreset::High;
+        else
+            return 1;
+    }
     const auto output = std::filesystem::current_path() / "containment-profile";
     std::filesystem::create_directories(output);
     RelayCore::log::init({.logs_directory = (output / "logs").string(), .enable_timestamped_log = false});
@@ -267,10 +298,10 @@ int main()
             std::ofstream file{path};
             file << config;
         }
-        std::cout
-            << "containment_profile; resolution=1920x1080; vsync=off; audio=on; hdr=on; MSAA=4; camera_sweeps_only\n";
+        std::cout << "containment_profile; resolution=1920x1080; vsync=off; audio=on; quality=" << preset_name
+                  << "; MSAA=4; motion_captures=" << motion_captures << "; camera_sweeps_only\n";
         RelayCore::Application app{
-            std::make_unique<ContainmentProfile>(output),
+            std::make_unique<ContainmentProfile>(output, preset, motion_captures),
             path,
             RelayCore::render::ColorPipelineMode::hardware_srgb
         };

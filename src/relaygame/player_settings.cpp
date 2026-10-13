@@ -41,6 +41,44 @@ namespace RelayGame
         }
     } // namespace
 
+    void apply_graphics_preset(PlayerSettings& settings, GraphicsPreset preset)
+    {
+        if (preset == GraphicsPreset::Custom)
+            return;
+        if (preset != GraphicsPreset::Low && preset != GraphicsPreset::Balanced && preset != GraphicsPreset::High)
+            throw std::runtime_error("Unknown graphics preset");
+        const bool enhanced = preset != GraphicsPreset::Low;
+        const bool high = preset == GraphicsPreset::High;
+        settings.hdr_enabled = enhanced;
+        settings.bloom_enabled = settings.ssao_enabled = settings.taa_enabled = enhanced;
+        settings.ssr_enabled = settings.volumetrics_enabled = high;
+        settings.ssgi_quality = settings.reflection_quality = high ? 2 : 0;
+        settings.dof_quality = settings.motion_blur_quality = 0;
+        settings.render_scale = 1;
+        settings.dynamic_resolution_enabled = false;
+    }
+
+    auto graphics_preset(const PlayerSettings& settings) -> GraphicsPreset
+    {
+        if (settings.render_scale != 1 || settings.dynamic_resolution_enabled || settings.dof_quality
+            || settings.motion_blur_quality)
+            return GraphicsPreset::Custom;
+        if (!settings.hdr_enabled && !settings.bloom_enabled && !settings.ssao_enabled && !settings.taa_enabled
+            && !settings.ssr_enabled && !settings.volumetrics_enabled && !settings.ssgi_quality
+            && !settings.reflection_quality)
+            return GraphicsPreset::Low;
+        if (settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.taa_enabled)
+        {
+            if (!settings.ssr_enabled && !settings.volumetrics_enabled && !settings.ssgi_quality
+                && !settings.reflection_quality)
+                return GraphicsPreset::Balanced;
+            if (settings.ssr_enabled && settings.volumetrics_enabled && settings.ssgi_quality == 2
+                && settings.reflection_quality == 2)
+                return GraphicsPreset::High;
+        }
+        return GraphicsPreset::Custom;
+    }
+
     auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults) -> PlayerSettings
     {
         if (!std::filesystem::exists(path))

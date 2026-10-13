@@ -137,6 +137,16 @@ namespace
                 game.on_update({}, services);
                 (void) draw();
             };
+            const auto choose_preset = [&](const char* value) {
+                auto* control = dynamic_cast<Rml::ElementFormControl*>(
+                    Rml::GetContext("player")->GetDocument("menu")->GetElementById("graphics-preset")
+                );
+                require(control != nullptr, "RmlUi graphics preset selector was unavailable");
+                control->SetValue(value);
+                control->DispatchEvent("change", {});
+                game.on_update({}, services);
+                (void) draw();
+            };
             const auto key = [&](SDL_Scancode code) {
                 SDL_Event event{};
                 event.type = SDL_EVENT_KEY_DOWN;
@@ -211,6 +221,7 @@ namespace
                 std::filesystem::rename(compute_shader, compute_backup);
                 compute_moved = true;
                 choose_range("HDR");
+                choose_preset("3");
                 require(
                     !renderer.config().hdr_enabled && !config.renderer.hdr_enabled,
                     "Failed HDR switch changed the active configuration"
@@ -218,6 +229,11 @@ namespace
                 require(
                     renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
                     "Failed HDR switch changed the color pipeline"
+                );
+                require(
+                    !renderer.config().bloom_enabled && !renderer.config().taa_enabled
+                        && renderer.config().ssgi_quality == 0 && renderer.config().reflection_quality == 0,
+                    "Failed High preset changed the active effects"
                 );
             } catch (...)
             {
@@ -321,7 +337,12 @@ namespace
                 renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
                 "Editor did not restore the SDR color pipeline"
             );
-            choose_range("HDR");
+            choose_preset("3");
+            require(
+                renderer.config().ssgi_quality == 2 && renderer.config().reflection_quality == 2
+                    && renderer.config().taa_enabled,
+                "High preset did not apply while the editor was suspended"
+            );
             key(SDL_SCANCODE_ESCAPE);
             key(SDL_SCANCODE_ESCAPE);
             (void) draw();
@@ -333,6 +354,16 @@ namespace
                 !game.has_custom_ui() && renderer.config().hdr_enabled,
                 "HDR switch prevented restoring the suspended game"
             );
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_preset("1");
+            require(
+                !renderer.config().hdr_enabled && !renderer.config().taa_enabled && renderer.config().ssgi_quality == 0
+                    && renderer.config().reflection_quality == 0,
+                "Low preset retained advanced effects after the editor return"
+            );
+            choose_range("HDR");
             game.return_to_menu(services);
             game.on_shutdown(services);
 

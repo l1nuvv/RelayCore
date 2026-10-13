@@ -280,6 +280,8 @@ add_test(NAME graphics.depth_formats COMMAND relaycore_vulkan_mesh_tests --depth
 add_test(NAME graphics.power_restoration_slice COMMAND relaycore_vulkan_mesh_tests --power-restoration-slice)
 add_test(NAME graphics.game_hud COMMAND relaycore_vulkan_mesh_tests --ui-only)
 add_test(NAME graphics.player_ui COMMAND relaycore_player_ui_graphics)
+add_test(NAME graphics.quality_presets COMMAND relaycore_player_ui_graphics --quality-presets)
+add_test(NAME graphics.quality_presets_fallback COMMAND relaycore_player_ui_graphics --quality-presets)
 add_test(NAME graphics.containment_loop COMMAND relaycore_containment_loop_graphics)
 add_test(NAME graphics.containment_loop_hdr COMMAND relaycore_containment_loop_graphics --hdr)
 add_test(NAME graphics.containment_color COMMAND relaycore_containment_loop_graphics --color-audit)
@@ -291,7 +293,7 @@ set_tests_properties(graphics.containment_loop graphics.containment_loop_hdr gra
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_containment_loop_graphics>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
-set_tests_properties(graphics.player_ui PROPERTIES
+set_tests_properties(graphics.player_ui graphics.quality_presets graphics.quality_presets_fallback PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -299,6 +301,10 @@ set_tests_properties(graphics.player_ui PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_player_ui_graphics>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_property(TEST graphics.quality_presets graphics.quality_presets_fallback APPEND PROPERTY ENVIRONMENT
+    "RELAYCORE_VULKAN_SCENE_SUBMISSION=gpu_culled")
+set_property(TEST graphics.quality_presets_fallback APPEND PROPERTY ENVIRONMENT
+    "RELAYCORE_VULKAN_DISABLE_DESCRIPTOR_INDEXING=1;RELAYCORE_VULKAN_DISABLE_GPU_CULLING=1;RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING=1")
 add_test(NAME graphics.resource_preparation COMMAND relaycore_vulkan_mesh_tests --resource-preparation)
 add_test(NAME graphics.material_descriptors COMMAND relaycore_vulkan_mesh_tests --material-descriptors)
 add_test(NAME graphics.pistol_viewmodel COMMAND relaycore_vulkan_mesh_tests --pistol-viewmodel)

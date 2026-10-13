@@ -238,8 +238,10 @@ namespace RelayGame
                        || name == "vsync" || name == "hdr" || name == "bloom" || name == "ssao" || name == "ssr"
                        || name == "volumetrics" || name == "taa" || name == "render-scale"
                        || name == "dynamic-resolution" || name == "ssgi-quality" || name == "reflection-quality"
-                       || name == "dof-quality" || name == "motion-blur-quality")
+                       || name == "dof-quality" || name == "motion-blur-quality" || name == "graphics-preset")
             {
+                if (name == "graphics-preset")
+                    apply_graphics_preset(settings_, static_cast<GraphicsPreset>(std::stoi(action.value)));
                 if (name == "volume")
                     settings_.volume = std::stof(action.value);
                 if (name == "sensitivity")
@@ -463,6 +465,7 @@ namespace RelayGame
         ui.set_value("fov", std::to_string(settings_.fov));
         ui.set_value("camera-motion", std::to_string(settings_.camera_motion));
         ui.set_value("vsync", settings_.vsync ? "1" : "0");
+        ui.set_value("graphics-preset", std::to_string(static_cast<int>(graphics_preset(settings_))));
         ui.set_value("hdr", settings_.hdr_enabled ? "1" : "0");
         ui.set_value("bloom", settings_.bloom_enabled ? "1" : "0");
         ui.set_value("ssao", settings_.ssao_enabled ? "1" : "0");

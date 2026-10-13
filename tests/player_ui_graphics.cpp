@@ -41,8 +41,11 @@ namespace
         require(written, "Player UI capture failed");
     }
 } // namespace
-int main()
+int main(int argc, char** argv)
 {
+    const bool quality_integration = argc == 2 && std::string_view{argv[1]} == "--quality-presets";
+    if (argc != 1 && !quality_integration)
+        return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -52,6 +55,7 @@ int main()
     {
         auto config = RelayCore::core::load_default_engine_config();
         config.renderer.imgui.enabled = false;
+        config.renderer.descriptor_indexing = quality_integration;
         config.audio.enabled = false;
         config.window.width = 1280;
         config.window.height = 720;
@@ -248,6 +252,45 @@ int main()
         change("volume", "0.35");
         change("fov", "82");
         change("sensitivity", "2.5");
+        const auto camera_position = renderer.camera().position();
+        for (const char* value : {"3", "1", "2", "3"})
+        {
+            change("graphics-preset", value);
+            control("graphics-preset")->ScrollIntoView();
+            (void) draw(std::string{"preset-"} + value);
+            const auto& active = renderer.config();
+            const bool enhanced = std::string_view{value} != "1";
+            const bool high = std::string_view{value} == "3";
+            require(
+                active.hdr_enabled == enhanced && active.bloom_enabled == enhanced && active.ssao_enabled == enhanced
+                    && active.taa_enabled == enhanced && active.ssr_enabled == high
+                    && active.volumetrics_enabled == high && active.ssgi_quality == (high ? 2 : 0)
+                    && active.reflection_quality == (high ? 2 : 0) && active.dof_quality == 0
+                    && active.motion_blur_quality == 0 && active.render_scale == 1
+                    && !active.dynamic_resolution_enabled,
+                "Graphics preset did not apply the complete effect configuration"
+            );
+            require(
+                active.descriptor_indexing == quality_integration,
+                "Graphics preset discarded the requested optional binding path"
+            );
+            require(
+                game.has_custom_ui() && !window.relative_mouse_mode() && renderer.camera().position() == camera_position
+                    && renderer.player_diagnostics().position == initial.position,
+                "Graphics preset disturbed the paused player"
+            );
+            require(
+                dynamic_cast<Rml::ElementFormControl*>(control("graphics-preset"))->GetValue() == value,
+                "Graphics preset selector did not reflect the active configuration"
+            );
+            click("save-settings");
+            const auto saved = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
+            require(
+                static_cast<int>(RelayGame::graphics_preset(saved)) == std::stoi(value) && saved.fov == 82
+                    && std::abs(saved.volume - .35F) < .001F,
+                "Graphics preset did not persist or changed player preferences"
+            );
+        }
         change("bloom", "1");
         change("ssao", "1");
         change("ssr", "1");
@@ -269,6 +312,10 @@ int main()
             "RML effect controls did not apply to the renderer"
         );
         (void) draw("settings-adjusted");
+        require(
+            dynamic_cast<Rml::ElementFormControl*>(control("graphics-preset"))->GetValue() == "0",
+            "Manual graphics edits did not select Custom"
+        );
         control("menu-panel")->SetScrollTop(control("menu-panel")->GetScrollHeight());
         (void) draw("settings-effects");
         click("save-settings");

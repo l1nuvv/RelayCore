@@ -20,7 +20,8 @@
 <label>Движение камеры · <span id="camera-motion-label"></span><input id="camera-motion" type="range" min="0" max="1" step="0.01" data-action="camera-motion" data-event="change" /></label>
 <p class="secondary">Ноль отключает покачивание и проседание камеры при приземлении.</p>
 <label>Вертикальная синхронизация <select id="vsync" data-action="vsync" data-event="change"><option value="1">Включена</option><option value="0">Выключена</option></select></label>
-<label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR</option></select></label>
+<label>Качество графики <select id="graphics-preset" data-action="graphics-preset" data-event="change"><option value="0">Своё</option><option value="1">Низкое</option><option value="2">Сбалансированное</option><option value="3">Высокое</option></select></label>
+<label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR-сцена (вывод SDR)</option></select></label>
 <label>Свечение <select id="bloom" data-action="bloom" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Затенение углов <select id="ssao" data-action="ssao" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Отражения на экране <select id="ssr" data-action="ssr" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
