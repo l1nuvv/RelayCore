@@ -53,6 +53,7 @@ namespace RelayCore::render
         size_t draws = 0, instances = 0, indirect_draws = 0;
         size_t culling_draws = 0, culled_instances = 0;
         size_t material_binds = 0;
+        size_t mesh_draws = 0, mesh_workgroups = 0;
     };
 
     enum class PassInputView {
@@ -95,6 +96,7 @@ namespace RelayCore::render
         void prepare_resources(std::span<const RenderItem> items);
         // Includes retired materials until their final GPU use completes.
         [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
+        [[nodiscard]] auto uses_mesh_shaders() const noexcept -> bool;
         [[nodiscard]] auto uses_descriptor_indexing() const noexcept -> bool;
         [[nodiscard]] auto resource_usage() const noexcept -> VulkanResourceUsage;
         [[nodiscard]] auto resolution_status() const noexcept -> VulkanResolutionStatus;

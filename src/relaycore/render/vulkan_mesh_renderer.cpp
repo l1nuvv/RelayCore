@@ -894,6 +894,89 @@ namespace RelayCore::render
     } // namespace
 
     struct VulkanMeshRenderer::State {
+        struct MeshletGeometry {
+            const VulkanDevice& device;
+            VulkanBuffer clusters, vertices, triangles;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkDescriptorSet set = VK_NULL_HANDLE;
+            uint32_t count = 0;
+            explicit MeshletGeometry(const VulkanDevice& owner) : device(owner) {}
+            ~MeshletGeometry() noexcept
+            {
+                if (pool)
+                    vkDestroyDescriptorPool(device.handle(), pool, nullptr);
+            }
+            void initialize(
+                VulkanUploads& uploads,
+                VkDescriptorSetLayout layout,
+                const VulkanBuffer& vertex_buffer,
+                const MeshletData& data
+            )
+            {
+                count = uint32_t(data.clusters.size());
+                auto upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.clusters}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                clusters = std::move(upload.buffer);
+                upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.vertices}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                vertices = std::move(upload.buffer);
+                upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.triangles}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                triangles = std::move(upload.buffer);
+                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+                const VkDescriptorPoolCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 1,
+                    .poolSizeCount = 1,
+                    .pPoolSizes = &size
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device.handle(), &info, nullptr, &pool),
+                    "Meshlet descriptor pool"
+                );
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool,
+                    .descriptorSetCount = 1,
+                    .pSetLayouts = &layout
+                };
+                require_mesh_vk(vkAllocateDescriptorSets(device.handle(), &allocation, &set), "Meshlet descriptor set");
+                const std::array buffers{
+                    VkDescriptorBufferInfo{vertex_buffer.handle(), 0, vertex_buffer.size()},
+                    VkDescriptorBufferInfo{clusters.handle(), 0, clusters.size()},
+                    VkDescriptorBufferInfo{vertices.handle(), 0, vertices.size()},
+                    VkDescriptorBufferInfo{triangles.handle(), 0, triangles.size()}
+                };
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+                std::array<VkWriteDescriptorSet, 4> writes{};
+                for (uint32_t i = 0; i < writes.size(); ++i)
+                {
+                    if (buffers[i].range > properties.limits.maxStorageBufferRange)
+                        throw std::invalid_argument("Meshlet geometry exceeds the device storage buffer range");
+                    writes[i] = {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = set,
+                        .dstBinding = i,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .pBufferInfo = &buffers[i]
+                    };
+                }
+                vkUpdateDescriptorSets(device.handle(), uint32_t(writes.size()), writes.data(), 0, nullptr);
+            }
+        };
+        struct RetiredMeshlet {
+            uint64_t completion, upload;
+            std::unique_ptr<MeshletGeometry> geometry;
+        };
+
         struct Mesh {
             std::weak_ptr<const CpuColorMeshData> source;
             VulkanBuffer vertices, indices;
@@ -902,6 +985,7 @@ namespace RelayCore::render
             uint64_t upload_completion = 0;
             uint64_t recording = 0;
             glm::vec3 mins{}, maxs{};
+            std::unique_ptr<MeshletGeometry> meshlets;
         };
         struct MaterialKey {
             const CpuRgbaTextureData* color;
@@ -1095,6 +1179,12 @@ namespace RelayCore::render
         std::unordered_map<MaterialKey, std::unique_ptr<Material>, MaterialKeyHash> materials;
         std::unique_ptr<VulkanMaterialTable> material_table;
         Material* global_material = nullptr;
+        bool mesh_shaders = false, mesh_pipeline_bound = false;
+        VkPipeline meshlet_pipeline = VK_NULL_HANDLE;
+        VkDescriptorSetLayout meshlet_layout = VK_NULL_HANDLE, empty_table_layout = VK_NULL_HANDLE;
+        PFN_vkCmdDrawMeshTasksEXT cmd_mesh_tasks = nullptr;
+        VkShaderStageFlags draw_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        std::vector<RetiredMeshlet> retired_meshlets;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout instance_layout = VK_NULL_HANDLE;
@@ -1222,6 +1312,13 @@ namespace RelayCore::render
                     ImGui_ImplVulkan_RemoveTexture(preview);
             materials.clear();
             retired_materials.clear();
+            retired_meshlets.clear();
+            if (meshlet_pipeline)
+                vkDestroyPipeline(device.handle(), meshlet_pipeline, nullptr);
+            if (meshlet_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), meshlet_layout, nullptr);
+            if (empty_table_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), empty_table_layout, nullptr);
             for (const auto pipeline : pipelines)
                 if (pipeline)
                     vkDestroyPipeline(device.handle(), pipeline, nullptr);
@@ -1305,6 +1402,42 @@ namespace RelayCore::render
                 material_table->initialize(device.capabilities().indexed_material_capacity);
             }
             log::info("Vulkan scene materials: {}", material_table ? "descriptor indexing" : "pooled descriptor sets");
+            mesh_shaders = config.mesh_shaders && device.capabilities().mesh_dispatch_total != 0;
+            if (mesh_shaders)
+            {
+                draw_stages |= VK_SHADER_STAGE_MESH_BIT_EXT;
+                cmd_mesh_tasks = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
+                    vkGetDeviceProcAddr(device.handle(), "vkCmdDrawMeshTasksEXT")
+                );
+                if (!cmd_mesh_tasks)
+                    throw std::runtime_error("Enabled VK_EXT_mesh_shader has no vkCmdDrawMeshTasksEXT dispatch");
+                std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+                for (uint32_t i = 0; i < bindings.size(); ++i)
+                    bindings[i] = {i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_MESH_BIT_EXT, nullptr};
+                const VkDescriptorSetLayoutCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = uint32_t(bindings.size()),
+                    .pBindings = bindings.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorSetLayout(device.handle(), &info, nullptr, &meshlet_layout),
+                    "Meshlet descriptor layout"
+                );
+                if (!material_table)
+                {
+                    const VkDescriptorSetLayoutCreateInfo empty{
+                        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+                    };
+                    require_mesh_vk(
+                        vkCreateDescriptorSetLayout(device.handle(), &empty, nullptr, &empty_table_layout),
+                        "Empty material table layout"
+                    );
+                }
+            }
+            log::info(
+                "Vulkan world geometry: {}",
+                mesh_shaders ? "EXT meshlets (opaque camera/source passes)" : "indexed vertices"
+            );
             resolution.reset(config.render_scale);
             color_pipeline = pipeline;
             if (config.dynamic_resolution_enabled)
@@ -1607,8 +1740,13 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &input_info, nullptr, &input_layout),
                 "Pass input descriptor layout"
             );
-            const VkDescriptorSetLayoutBinding
-                instance_binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+            const VkDescriptorSetLayoutBinding instance_binding{
+                0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1,
+                VkShaderStageFlags{VK_SHADER_STAGE_VERTEX_BIT} | (mesh_shaders ? VK_SHADER_STAGE_MESH_BIT_EXT : 0U),
+                nullptr
+            };
             const VkDescriptorSetLayoutCreateInfo instance_info{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 .bindingCount = 1,
@@ -1643,11 +1781,11 @@ namespace RelayCore::render
             std::vector set_layouts{descriptor_layout, input_layout, instance_layout};
             if (material_table)
                 set_layouts.push_back(material_table->layout());
-            const VkPushConstantRange push{
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(DrawPush)
-            };
+            else if (mesh_shaders)
+                set_layouts.push_back(empty_table_layout);
+            if (mesh_shaders)
+                set_layouts.push_back(meshlet_layout);
+            const VkPushConstantRange push{draw_stages, 0, sizeof(DrawPush)};
             const VkPipelineLayoutCreateInfo layout_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .setLayoutCount = static_cast<uint32_t>(set_layouts.size()),
@@ -1707,9 +1845,12 @@ namespace RelayCore::render
             }
         }
 
-        auto
-        create_pipeline(const std::filesystem::path& directory, const RenderPass pass, const int shadow_kind = -1) const
-            -> VkPipeline
+        auto create_pipeline(
+            const std::filesystem::path& directory,
+            const RenderPass pass,
+            const int shadow_kind = -1,
+            const bool mesh_shader = false
+        ) const -> VkPipeline
         {
             MeshShaders shaders{device.handle()};
             const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, temporal = shadow_kind == -5;
@@ -1722,7 +1863,8 @@ namespace RelayCore::render
                                 : shadow_kind < 0        ? "mesh"
                                 : shadow_kind == 2       ? "point_shadow"
                                                          : "shadow";
-            const auto vertex_entry = advanced       ? "advanced_vertex"
+            const auto vertex_entry = mesh_shader    ? "meshlet_main"
+                                      : advanced     ? "advanced_vertex"
                                       : temporal     ? "temporal_vertex"
                                       : inputs       ? "input_vertex"
                                       : ao           ? "ao_vertex"
@@ -1736,12 +1878,13 @@ namespace RelayCore::render
                                         : debug_inputs ? "debug_fragment"
                                                        : "fragment_main";
             shaders.vertex = shaders.load(
-                directory
-                    / (std::string(prefix) + "."
-                       + (advanced                 ? "vert"
-                          : inputs || debug_inputs ? vertex_entry
-                                                   : "vert")
-                       + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
+                mesh_shader ? directory / (material_table ? "meshlets.mesh.indexed.spv" : "meshlets.mesh.spv")
+                            : directory
+                                  / (std::string(prefix) + "."
+                                     + (advanced                 ? "vert"
+                                        : inputs || debug_inputs ? vertex_entry
+                                                                 : "vert")
+                                     + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
                 vertex_entry
             );
             shaders.fragment = shaders.load(
@@ -1767,7 +1910,7 @@ namespace RelayCore::render
             const std::array stages{
                 VkPipelineShaderStageCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .stage = mesh_shader ? VK_SHADER_STAGE_MESH_BIT_EXT : VK_SHADER_STAGE_VERTEX_BIT,
                     .module = shaders.vertex,
                     .pName = vertex_entry
                 },
@@ -1876,8 +2019,8 @@ namespace RelayCore::render
                 .pNext = &rendering,
                 .stageCount = static_cast<uint32_t>(stages.size()),
                 .pStages = stages.data(),
-                .pVertexInputState = &vertex_info,
-                .pInputAssemblyState = &assembly,
+                .pVertexInputState = mesh_shader ? nullptr : &vertex_info,
+                .pInputAssemblyState = mesh_shader ? nullptr : &assembly,
                 .pViewportState = &viewport,
                 .pRasterizationState = &raster,
                 .pMultisampleState = &multisample,
@@ -1917,7 +2060,9 @@ namespace RelayCore::render
             {
                 auto vertices = uploads.upload_mesh_buffer(
                     std::as_bytes(std::span{cpu->vertices}),
-                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                    mesh_shaders
+                        ? VkBufferUsageFlags{VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT}
+                        : VkBufferUsageFlags{VK_BUFFER_USAGE_VERTEX_BUFFER_BIT}
                 );
                 result.vertices = std::move(vertices.buffer);
                 auto indices = uploads.upload_mesh_buffer(
@@ -1925,7 +2070,16 @@ namespace RelayCore::render
                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT
                 );
                 result.indices = std::move(indices.buffer);
-                result.upload_completion = indices.completion;
+                if (mesh_shaders)
+                {
+                    std::optional<MeshletData> generated;
+                    if (cpu->meshlets.clusters.empty())
+                        generated = build_meshlets(*cpu);
+                    result.meshlets = std::make_unique<MeshletGeometry>(device);
+                    result.meshlets
+                        ->initialize(uploads, meshlet_layout, result.vertices, generated ? *generated : cpu->meshlets);
+                }
+                result.upload_completion = uploads.dependency().value;
                 return result;
             } catch (...)
             {
@@ -2396,6 +2550,9 @@ namespace RelayCore::render
                 std::erase_if(material_pools, [first = material_pools.front().get()](const auto& pool) {
                     return pool.get() != first && pool->materials == 0;
                 });
+            std::erase_if(retired_meshlets, [completed, uploaded](const auto& geometry) {
+                return geometry.completion <= completed && geometry.upload <= uploaded;
+            });
             submissions.collect();
         }
 
@@ -2427,6 +2584,8 @@ namespace RelayCore::render
                     uploads.retire(std::move(mesh.vertices), mesh.upload_completion);
                     uploads.retire(std::move(mesh.indices), mesh.upload_completion);
                 }
+                if (mesh.meshlets)
+                    retired_meshlets.push_back({mesh.last_use.value, mesh.upload_completion, std::move(mesh.meshlets)});
                 it = meshes.erase(it);
             }
             for (auto it = materials.begin(); it != materials.end();)
@@ -2753,13 +2912,68 @@ namespace RelayCore::render
                 vkCmdDrawIndexed(slot.commands, geometry.index_count, batch.count, 0, 0, first_instance);
         }
 
+        void emit_meshlet_batch(const DrawBatch& batch, DrawPush push)
+        {
+            auto& slot = frame();
+            auto& geometry = *batch.key.geometry;
+            use(geometry);
+            const auto& meshlets = *geometry.meshlets;
+            vkCmdBindDescriptorSets(
+                slot.commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                4,
+                1,
+                &meshlets.set,
+                0,
+                nullptr
+            );
+            const auto& caps = device.capabilities();
+            const uint32_t x_limit = std::min(caps.mesh_dispatch_limit[0], caps.mesh_dispatch_total);
+            const uint32_t x_count = std::min(meshlets.count, x_limit);
+            const uint32_t y_limit = meshlets.count > x_limit
+                                         ? 1
+                                         : std::min(caps.mesh_dispatch_limit[1], caps.mesh_dispatch_total / x_count);
+            slot.draw_usage.instances += batch.count;
+            // Split large meshes one instance at a time to retain instance/triangle rasterization order.
+            for (uint32_t instance = 0; instance < batch.count;)
+            {
+                const uint32_t instances = std::min(batch.count - instance, y_limit);
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance + instance);
+                for (uint32_t first = 0; first < meshlets.count;)
+                {
+                    const uint32_t groups = std::min(meshlets.count - first, x_limit);
+                    push.model_rows[0].y = glm::uintBitsToFloat(first);
+                    vkCmdPushConstants(slot.commands, layout, draw_stages, 0, sizeof(push), &push);
+                    cmd_mesh_tasks(slot.commands, groups, instances, 1);
+                    ++slot.draw_usage.draws;
+                    ++slot.draw_usage.mesh_draws;
+                    slot.draw_usage.mesh_workgroups += size_t(groups) * instances;
+                    first += groups;
+                }
+                instance += instances;
+            }
+        }
+
         void emit_scene_batch(
             const DrawBatch& batch,
             const DrawInstance& instance,
             const PerspectiveCamera& camera,
-            const bool inputs
+            const bool inputs,
+            const bool mesh_requested = false
         )
         {
+            const bool mesh_pass = mesh_requested && batch.key.geometry->meshlets->count > 1;
+            if (mesh_requested && mesh_pipeline_bound != mesh_pass)
+            {
+                vkCmdBindPipeline(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    mesh_pass ? meshlet_pipeline : pipelines[0]
+                );
+                mesh_pipeline_bound = mesh_pass;
+            }
+
             const auto position = camera.position();
             use(*batch.key.surface);
             if (!material_table)
@@ -2777,7 +2991,8 @@ namespace RelayCore::render
                 );
                 ++frame().draw_usage.material_binds;
             }
-            const bool instance_storage = batch.count > 1 || scene_submission == VulkanSceneSubmission::gpu_culled
+            const bool instance_storage = mesh_pass || batch.count > 1
+                                          || scene_submission == VulkanSceneSubmission::gpu_culled
                                           || (inputs && scene_submission == VulkanSceneSubmission::indirect);
             DrawPush push{
                 instance.mvp,
@@ -2788,14 +3003,12 @@ namespace RelayCore::render
             };
             if (instance_storage)
                 push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
-            vkCmdPushConstants(
-                frame().commands,
-                layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(push),
-                &push
-            );
+            if (mesh_pass)
+            {
+                emit_meshlet_batch(batch, push);
+                return;
+            }
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
             draw_batch(
                 batch,
                 inputs && !instance_storage ? instance.correspondence.x : 0,
@@ -2828,11 +3041,14 @@ namespace RelayCore::render
         )
         {
             RELAYCORE_PROFILE_ZONE_N("Vulkan scene draw recording");
+            const bool mesh_pass = mesh_shaders && !inputs && !viewmodel && pass == RenderPass::Opaque
+                                   && scene_submission != VulkanSceneSubmission::gpu_culled;
             vkCmdBindPipeline(
                 frame().commands,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
             );
+            mesh_pipeline_bound = false;
             if (material_table)
             {
                 use(*global_material);
@@ -2860,7 +3076,7 @@ namespace RelayCore::render
                 );
                 ++frame().draw_usage.material_binds;
             }
-            const bool batching = scene_submission == VulkanSceneSubmission::gpu_culled
+            const bool batching = mesh_pass || scene_submission == VulkanSceneSubmission::gpu_culled
                                   || scene_submission == VulkanSceneSubmission::indirect
                                   || (scene_submission == VulkanSceneSubmission::instanced && !viewmodel
                                       && pass == RenderPass::Opaque && has_adjacent_geometry(items, pass));
@@ -2917,7 +3133,7 @@ namespace RelayCore::render
                     );
             }
             for (const auto& batch : frame().batches)
-                emit_scene_batch(batch, frame().instance_records[batch.first_instance], camera, inputs);
+                emit_scene_batch(batch, frame().instance_records[batch.first_instance], camera, inputs, mesh_pass);
         }
 
         void shadow_barrier(
@@ -2960,14 +3176,7 @@ namespace RelayCore::render
                 push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
                 push.light_position_radius.w = light ? -light->radius : -1.0F;
             }
-            vkCmdPushConstants(
-                frame().commands,
-                layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(push),
-                &push
-            );
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
             draw_batch(batch, 0, true);
         }
 
@@ -3154,6 +3363,8 @@ namespace RelayCore::render
 
         void set_config(const RendererConfig& config)
         {
+            if (config.mesh_shaders != renderer_config.mesh_shaders)
+                throw std::invalid_argument("Changing mesh shaders requires a prepared renderer reload");
             if (config.descriptor_indexing != renderer_config.descriptor_indexing)
                 throw std::invalid_argument("Changing descriptor indexing requires a prepared renderer reload");
             if (config.dynamic_resolution_enabled != renderer_config.dynamic_resolution_enabled)
@@ -3688,14 +3899,7 @@ namespace RelayCore::render
                      float(frame().target->extent.width),
                      float(frame().target->extent.height)}
             };
-            vkCmdPushConstants(
-                frame().commands,
-                layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(push),
-                &push
-            );
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
             vkCmdDraw(frame().commands, 3, 1, 0, 0);
             vkCmdEndRendering(frame().commands);
         }
@@ -3878,14 +4082,7 @@ namespace RelayCore::render
                 .camera_position = {frame_history_valid ? 1.0F : 0.0F, float(extent.width), float(extent.height)}
             };
             push.model_rows[0] = {previous_jitter_uv - jitter_uv, 0, 0};
-            vkCmdPushConstants(
-                frame().commands,
-                layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(push),
-                &push
-            );
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
             vkCmdDraw(frame().commands, 3, 1, 0, 0);
             vkCmdEndRendering(frame().commands);
             if (!lens)
@@ -3952,14 +4149,7 @@ namespace RelayCore::render
                      previous_jitter_uv.x - jitter_uv.x,
                      previous_jitter_uv.y - jitter_uv.y}
             };
-            vkCmdPushConstants(
-                frame().commands,
-                layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(push),
-                &push
-            );
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
             vkCmdDraw(frame().commands, 3, 1, 0, 0);
             vkCmdEndRendering(frame().commands);
             input_barrier(
@@ -4859,6 +5049,11 @@ namespace RelayCore::render
         return usage;
     }
 
+    auto VulkanMeshRenderer::uses_mesh_shaders() const noexcept -> bool
+    {
+        return state_->mesh_shaders;
+    }
+
     auto VulkanMeshRenderer::uses_descriptor_indexing() const noexcept -> bool
     {
         return state_->material_table != nullptr;
@@ -5047,7 +5242,7 @@ namespace RelayCore::render
     {
         state_->wait();
         auto staged_directory = directory;
-        std::array<VkPipeline, 17> replacement{};
+        std::array<VkPipeline, 18> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -5074,6 +5269,8 @@ namespace RelayCore::render
                     replacement[7 + static_cast<size_t>(pass)] = state_->create_pipeline(directory, pass, -2);
                 replacement[10] = state_->create_pipeline(directory, RenderPass::Opaque, -3);
             }
+            if (state_->mesh_shaders)
+                replacement[17] = state_->create_pipeline(directory, RenderPass::Opaque, -1, true);
             if (state_->culling)
                 replacement[16] = state_->culling->create_pipeline(directory);
         } catch (...)
@@ -5124,6 +5321,9 @@ namespace RelayCore::render
                 vkDestroyPipeline(state_->device.handle(), state_->culling->pipeline, nullptr);
             state_->culling->pipeline = replacement[16];
         }
+        if (state_->meshlet_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->meshlet_pipeline, nullptr);
+        state_->meshlet_pipeline = replacement[17];
         state_->shader_directory = std::move(staged_directory);
         reset_history();
     }

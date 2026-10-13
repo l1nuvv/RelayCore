@@ -187,6 +187,24 @@ Transparent/overlay/viewmodel, temporal and shadow rules retain their existing
 owners. No update-after-bind or asset-format change is required. Changing the
 setting requires prepared renderer reload. [Evidence and budgets](renderer/VK14-11.md).
 
+## Mesh shaders — VK14-11b
+
+`render.mesh_shaders = true` requests EXT mesh shading for opaque camera and
+reflection-source geometry at prepared-renderer creation. Availability includes
+the extension, enabled mesh-shader feature, output/storage/workgroup limits and
+five descriptor sets. Unsupported devices, single-cluster meshes and the existing
+`gpu_culled` command path use indexed geometry. Default is off; toggling requires
+prepared renderer reload. Logs and `VulkanDrawUsage::mesh_draws/mesh_workgroups`
+identify the actual path.
+
+RMDL v6 contains ordered meshlets; procedural and legacy meshes generate them once
+at GPU preparation. Conservative local bounds are transformed by each instance's
+actual MVP for clip-plane rejection. No occlusion or LOD selection is introduced.
+Normals/materials use the existing math, while shadows, temporal inputs,
+transparents, overlays and viewmodels retain their indexed passes. The indexed
+vertex/index data remains authoritative for picking and other existing consumers.
+[Product layout](MODEL_ASSETS.md#meshlets--rmdl-v6) · [Evidence and budgets](renderer/VK14-11.md).
+
 ## Scene submission — VK14-10a/b/c
 
 The Vulkan backend batches adjacent opaque items sharing immutable CPU geometry,

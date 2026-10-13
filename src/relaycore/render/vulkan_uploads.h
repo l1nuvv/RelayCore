@@ -31,7 +31,7 @@ namespace RelayCore::render
         VulkanUploads(const VulkanUploads&) = delete;
         auto operator=(const VulkanUploads&) -> VulkanUploads& = delete;
 
-        [[nodiscard]] auto upload_mesh_buffer(std::span<const std::byte> bytes, VkBufferUsageFlagBits kind)
+        [[nodiscard]] auto upload_mesh_buffer(std::span<const std::byte> bytes, VkBufferUsageFlags kind)
             -> VulkanBufferUpload;
         [[nodiscard]] auto upload_rgba(const CpuRgbaTextureData& data, TextureEncoding encoding) -> VulkanTextureUpload;
         [[nodiscard]] auto upload_reflection(const ReflectionProbe& probe) -> VulkanTextureUpload;

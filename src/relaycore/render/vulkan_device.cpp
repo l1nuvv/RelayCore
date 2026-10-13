@@ -231,6 +231,33 @@ namespace RelayCore::render
         const uint32_t capacity = descriptor_limit > 32 ? std::min(512U, (descriptor_limit - 32) / 5) : 0;
         const bool indexed = capacity >= 128 && !std::getenv("RELAYCORE_VULKAN_DISABLE_DESCRIPTOR_INDEXING")
                              && physical.enable_extension_features_if_present(indexing);
+        VkPhysicalDeviceMeshShaderPropertiesEXT mesh_properties{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT
+        };
+        VkPhysicalDeviceProperties2 properties{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &mesh_properties
+        };
+        const auto available_extensions = physical.get_available_extensions();
+        const bool mesh_extension =
+            std::find(available_extensions.begin(), available_extensions.end(), VK_EXT_MESH_SHADER_EXTENSION_NAME)
+            != available_extensions.end();
+        if (mesh_extension)
+            vkGetPhysicalDeviceProperties2(physical.physical_device, &properties);
+        const VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+            .meshShader = VK_TRUE
+        };
+        const bool mesh =
+            mesh_extension && !std::getenv("RELAYCORE_VULKAN_DISABLE_MESH_SHADERS")
+            && limits.maxBoundDescriptorSets >= 5 && mesh_properties.maxMeshWorkGroupInvocations >= 32
+            && mesh_properties.maxMeshWorkGroupSize[0] >= 32 && mesh_properties.maxMeshSharedMemorySize >= 4
+            && mesh_properties.maxMeshOutputVertices >= 64 && mesh_properties.maxMeshOutputPrimitives >= 124
+            && mesh_properties.maxMeshOutputComponents >= 28 && mesh_properties.maxMeshOutputMemorySize >= 12288
+            && mesh_properties.maxMeshWorkGroupTotalCount > 0 && mesh_properties.maxMeshWorkGroupCount[0] > 0
+            && mesh_properties.maxMeshWorkGroupCount[1] > 0
+            && physical.enable_extension_features_if_present(mesh_features)
+            && physical.enable_extension_if_present(VK_EXT_MESH_SHADER_EXTENSION_NAME);
         state_->device = require_bootstrap(vkb::DeviceBuilder{physical}.build(), "Failed to create Vulkan device");
         const auto graphics = require_bootstrap(
             state_->device.get_queue_and_index(vkb::QueueType::graphics),
@@ -286,6 +313,8 @@ namespace RelayCore::render
             .validation_enabled = state_->instance.debug_messenger != VK_NULL_HANDLE,
             .memory_budget_enabled = memory_budget,
             .indexed_material_capacity = indexed ? capacity : 0,
+            .mesh_dispatch_limit = mesh ? std::array{mesh_properties.maxMeshWorkGroupCount[0], mesh_properties.maxMeshWorkGroupCount[1], mesh_properties.maxMeshWorkGroupCount[2]} : std::array<uint32_t, 3>{},
+            .mesh_dispatch_total = mesh ? mesh_properties.maxMeshWorkGroupTotalCount : 0,
             .max_texture_anisotropy =
                 anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
@@ -317,6 +346,14 @@ namespace RelayCore::render
             "Vulkan descriptor indexing: {} material slots (runtime arrays, nonuniform sampled images; scene-slot "
             "updates)",
             state_->capabilities.indexed_material_capacity
+        );
+        log::info(
+            "Vulkan mesh shaders: {}; dispatch {}x{}x{}, total {} (EXT, 64 vertices/124 triangles, indexed fallback)",
+            mesh,
+            state_->capabilities.mesh_dispatch_limit[0],
+            state_->capabilities.mesh_dispatch_limit[1],
+            state_->capabilities.mesh_dispatch_limit[2],
+            state_->capabilities.mesh_dispatch_total
         );
         for (const auto& extension : physical.get_extensions())
             log::info("Vulkan enabled device extension: {}", extension);

@@ -187,7 +187,7 @@ product; воспроизводимый export и editable source хранятс
 playtest ZIP; Blender/GLB для запуска не требуются. Fixture выбирается отдельно
 от кампании и не заменяет её стартовую главу.
 
-Compiler пишет product v5. Loader читает v1–v5; v1 остаётся base-color-only,
+Compiler пишет product v6. Loader читает v1–v6; v1 остаётся base-color-only,
 v2 — base-color/normal, оба используют прежнее освещение. Старые runtimes не читают
 новые версии products: для обновлённого runtime
 products пересобираются обычной сборкой, receipts/staging учитывают изменение importer.
@@ -219,3 +219,21 @@ ctest --preset graphics-debug -R '^graphics\.(vulkan_mesh|vulkan_color_baseline|
 # Только analytical BRDF/material checks в обоих color modes:
 ./relaycore_vulkan_mesh_tests.exe --metallic-roughness
 ```
+
+### Meshlets — RMDL v6
+
+V6 retains the original geometry/material/part payload and appends one meshlet
+section per mesh after all parts. Each section starts with three uint32 counts
+(clusters, vertex references, packed triangles), followed by 48-byte records:
+uint32 vertex offset, triangle offset, vertex count, triangle count, then two
+float4 local AABB corners (padding W = 0). Global uint32 vertex references follow;
+each triangle packs three local 8-bit vertex indices into a uint32 with high byte
+zero. Clusters contain at most 64 vertices and 124 triangles.
+
+The compiler preserves original triangle order/winding and computes exact finite
+bounds. The reader validates payload sizes before allocation, contiguous ranges,
+references, bounds and complete ordered coverage of the original index stream.
+Invalid metadata fails with the product path. V1–v5 products remain readable and
+retain indexed geometry; optional mesh rendering generates their clusters once
+at GPU preparation. No Blender reauthoring or new dependency is required.
+[Runtime selection and verification](renderer/VK14-11.md#11b-meshlets-and-mesh-shaders--2026-10-14).

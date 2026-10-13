@@ -5348,12 +5348,13 @@ namespace
             profile_gpu_culling_stress(device, authoring, atlas, captures);
     }
 
-    void check_indexed_world_views(
+    void check_optional_gpu_world_views(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
         const CpuRgbaTextureData& atlas,
         const std::filesystem::path& captures,
-        bool profile
+        bool profile,
+        bool mesh_check = false
     )
     {
         struct View {
@@ -5385,7 +5386,8 @@ namespace
             for (int phase = 0; phase < 3; ++phase)
             {
                 RendererConfig config;
-                config.descriptor_indexing = phase == 1;
+                config.descriptor_indexing = !mesh_check && phase == 1;
+                config.mesh_shaders = mesh_check && phase == 1;
                 config.hdr_enabled = true;
                 config.msaa_samples = 4;
                 config.postfx_grain_strength = config.postfx_scanline_strength = 0;
@@ -5415,17 +5417,21 @@ namespace
                     if (profile)
                         SDL_Delay(4);
                 }
+                uint64_t allocation = 0;
+                for (const auto& heap : device.memory_usage().heaps)
+                    allocation += heap.allocation_bytes;
+                std::cout << "world_vma_allocation_bytes=" << allocation << '\n';
                 auto image = renderer.capture_prepared_image();
                 if (phase == 0)
                     reference = image;
                 else
                     require(
                         image.pixels == reference.pixels,
-                        "Indexed world view changed native models, probes, shadows, or weapon"
+                        "Optional GPU world view changed native models, probes, shadows, or weapon"
                     );
                 const auto usage = renderer.draw_usage();
                 std::cout << "indexed_world=" << view.name << " phase=" << phase << " draws=" << usage.draws
-                          << " material_binds=" << usage.material_binds << '\n';
+                          << " material_binds=" << usage.material_binds << " mesh_draws=" << usage.mesh_draws << '\n';
                 save(
                     image,
                     captures / ("indexed-world-" + std::string{view.name} + "-" + std::to_string(phase) + ".bmp")
@@ -5434,12 +5440,13 @@ namespace
         }
     }
 
-    void check_descriptor_indexing(
+    void check_optional_gpu(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
         const CpuRgbaTextureData& atlas,
         const std::filesystem::path& captures,
-        bool profile
+        bool profile,
+        bool mesh_check = false
     )
     {
         StaticColorMesh box;
@@ -5450,6 +5457,41 @@ namespace
             vertex.material_kind = 0;
             const auto axis = std::abs(vertex.normal.y) < .9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0};
             vertex.tangent = {glm::normalize(glm::cross(axis, vertex.normal)), 1};
+        }
+        if (mesh_check && !profile)
+        {
+            const auto original = data;
+            for (uint32_t copy = 1; copy < 16; ++copy)
+            {
+                for (auto vertex : original.vertices)
+                {
+                    vertex.position += glm::vec3{float(copy % 4) * .22F, 0, float(copy / 4) * .22F};
+                    data.vertices.push_back(vertex);
+                }
+                for (auto index : original.indices)
+                    data.indices.push_back(index + copy * uint32_t(original.vertices.size()));
+            }
+        }
+        if (mesh_check && profile)
+        {
+            data = {};
+            constexpr uint32_t cells = 256;
+            for (uint32_t z = 0; z <= cells; ++z)
+                for (uint32_t x = 0; x <= cells; ++x)
+                    data.vertices.push_back(
+                        {{(float(x) - cells / 2) * .5F, 0, (float(z) - cells / 2) * .5F},
+                         {1, 1, 1},
+                         {0, 1, 0},
+                         0,
+                         {float(x) / 16, float(z) / 16},
+                         {1, 0, 0, -1}}
+                    );
+            for (uint32_t z = 0; z < cells; ++z)
+                for (uint32_t x = 0; x < cells; ++x)
+                {
+                    const auto a = z * (cells + 1) + x, b = a + 1, d = a + cells + 1, c = d + 1;
+                    data.indices.insert(data.indices.end(), {a, c, b, a, d, c});
+                }
         }
         box.initialize(data);
         std::vector<Texture2D> textures(profile ? 256 : 40);
@@ -5494,6 +5536,20 @@ namespace
                 }
                 items.push_back(item);
             }
+        if (mesh_check && profile)
+        {
+            items.clear();
+            for (int plane = 0; plane < 8; ++plane)
+            {
+                const auto model = glm::translate(glm::mat4{1}, glm::vec3{0, -.15F * plane, 0});
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = model,
+                     .diffuse_texture = &textures[plane],
+                     .previous_model_matrix = model}
+                );
+            }
+        }
         if (!profile)
         {
             items.push_back(
@@ -5528,7 +5584,10 @@ namespace
             for (int mode = 0; mode < 3; ++mode)
             {
                 RendererConfig config;
-                config.descriptor_indexing = mode == 1;
+                config.descriptor_indexing = !mesh_check && mode == 1;
+                config.mesh_shaders = mesh_check && mode == 1;
+                if (mesh_check && hdr)
+                    config.descriptor_indexing = true;
                 config.hdr_enabled = hdr;
                 config.taa_enabled = hdr;
                 config.msaa_samples = hdr ? 4 : 1;
@@ -5545,7 +5604,9 @@ namespace
                     config,
                     ColorPipelineMode::hardware_srgb
                 };
-                const bool indexed = mode == 1 && device.capabilities().indexed_material_capacity != 0;
+                const bool indexed = config.descriptor_indexing && device.capabilities().indexed_material_capacity != 0;
+                const bool meshed = config.mesh_shaders && device.capabilities().mesh_dispatch_total != 0;
+                require(renderer.uses_mesh_shaders() == meshed, "Mesh shader selection/fallback failed");
                 require(
                     renderer.uses_descriptor_indexing() == indexed,
                     "Descriptor indexing selection/fallback failed"
@@ -5554,6 +5615,8 @@ namespace
                     renderer.set_pass_input_view(PassInputView::scene);
                 renderer.prepare_resources(items);
                 std::vector<double> timings;
+                camera = PerspectiveCamera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+                camera.set_viewport(640, 360);
                 auto moving = items;
                 for (int frame = 0; frame < (profile ? 280 : 3); ++frame)
                 {
@@ -5563,6 +5626,12 @@ namespace
                             item.previous_model_matrix = item.model_matrix;
                             item.model_matrix[3].x += .03F;
                         }
+                    if (mesh_check && !profile && frame == 2)
+                    {
+                        camera = PerspectiveCamera{{.position = {0, 1.2F, .3F}, .target = {0, 1.2F, -1}}};
+                        camera.set_viewport(640, 360);
+                        renderer.reset_history();
+                    }
                     const auto start = std::chrono::steady_clock::now();
                     {
                         RELAYCORE_PROFILE_ZONE_N("Descriptor indexing CPU frame");
@@ -5591,8 +5660,13 @@ namespace
                         SDL_Delay(4);
                     }
                 }
+                uint64_t allocation = 0;
+                for (const auto& heap : device.memory_usage().heaps)
+                    allocation += heap.allocation_bytes;
+                std::cout << "stress_vma_allocation_bytes=" << allocation << '\n';
                 auto usage = renderer.material_descriptor_usage();
                 auto draws = renderer.draw_usage();
+                require((draws.mesh_draws > 0) == meshed, "Selected geometry path was not exercised");
                 if (indexed && !profile)
                     require(
                         usage.pools == 1 && usage.materials > 1 && draws.material_binds < draws.draws,
@@ -5600,7 +5674,8 @@ namespace
                     );
                 std::cout << "descriptor_mode=" << mode << " hdr=" << hdr << " capacity=" << usage.indexed_capacity
                           << " materials=" << usage.materials << " pools=" << usage.pools
-                          << " binds=" << draws.material_binds << " draws=" << draws.draws;
+                          << " binds=" << draws.material_binds << " draws=" << draws.draws
+                          << " mesh_draws=" << draws.mesh_draws << " mesh_groups=" << draws.mesh_workgroups;
                 if (profile)
                 {
                     std::sort(timings.begin(), timings.end());
@@ -5611,7 +5686,10 @@ namespace
                 {
                     shadows[mode] = renderer.capture_shadow_depth(0);
                     auto changed = config;
-                    changed.descriptor_indexing = !changed.descriptor_indexing;
+                    if (mesh_check)
+                        changed.mesh_shaders = !changed.mesh_shaders;
+                    else
+                        changed.descriptor_indexing = !changed.descriptor_indexing;
                     expect_failure(
                         [&] {
                             renderer.set_config(changed);
@@ -5619,6 +5697,11 @@ namespace
                         "prepared renderer reload"
                     );
                     renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    if (mesh_check)
+                    {
+                        box.initialize(data);
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    }
                     renderer.prepare_frame({}, {}, camera, 641, 361);
                     renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
                     RelayCore::test::ScopedTempDirectory broken;
@@ -5626,7 +5709,9 @@ namespace
                         if (entry.path().extension() == ".spv")
                             std::filesystem::copy_file(entry.path(), broken.path() / entry.path().filename());
                     std::ofstream{
-                        broken.path() / (indexed ? "mesh.frag.indexed.spv" : "mesh.frag.spv"),
+                        broken.path()
+                            / (meshed ? (indexed ? "meshlets.mesh.indexed.spv" : "meshlets.mesh.spv")
+                                      : (indexed ? "mesh.frag.indexed.spv" : "mesh.frag.spv")),
                         std::ios::binary
                     } << "bad";
                     expect_failure(
@@ -5638,7 +5723,20 @@ namespace
                     textures[0].initialize_rgba(1, 1, std::array<uint8_t, 4>{40, 210, 70, 255}, TextureEncoding::srgb);
                     renderer.prepare_frame(items, items, camera, 640, 360, weapon);
                     static_cast<void>(renderer.capture_prepared_image());
-                    if (indexed)
+                    if (mesh_check && !hdr)
+                    {
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                        const auto raster = renderer.capture_prepared_image();
+                        renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                        require(
+                            renderer.capture_prepared_image().pixels == raster.pixels,
+                            "GPU-culling indexed fallback changed the mesh-shader image"
+                        );
+                        require(renderer.draw_usage().mesh_draws == 0, "Mesh shaders bypassed GPU-culling ownership");
+                        renderer.set_scene_submission(VulkanSceneSubmission::instanced);
+                    }
+                    if (indexed && !mesh_check)
                     {
                         std::vector<Texture2D> excess(usage.indexed_capacity);
                         std::vector<RenderItem> overflow;
@@ -5692,8 +5790,8 @@ namespace
                     require(shadows[mode] == shadows[0], "Descriptor indexing changed shadow depth");
             }
         }
-        check_indexed_world_views(device, authoring, atlas, captures, profile);
-        std::cout << "descriptor_indexing=passed\n";
+        check_optional_gpu_world_views(device, authoring, atlas, captures, profile, mesh_check);
+        std::cout << (mesh_check ? "mesh_shaders=passed\n" : "descriptor_indexing=passed\n");
     }
 
     void check_scene_submission(
@@ -5954,6 +6052,8 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const bool meshlets_only = argc == 2 && std::string_view{argv[1]} == "--mesh-shaders";
+    const bool meshlets_profile = argc == 2 && std::string_view{argv[1]} == "--mesh-shaders-profile";
     const bool indexing_only = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing";
     const bool indexing_profile = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing-profile";
     const bool submission_only = argc == 2 && std::string_view{argv[1]} == "--scene-submission";
@@ -5992,13 +6092,14 @@ int main(int argc, char** argv)
     const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
     const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
-    if (argc > 1 && !indexing_only && !indexing_profile && !submission_only && !submission_profile && !shadows_only
-        && !color_baseline && !profiling && !native_view && !mr_only && !emission_only && !hdr_only && !msaa_only
-        && !native_hdr && !probes_only && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only
-        && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only && !descriptors_only && !depth_only
-        && !inputs_only && !effects_only && !effects_profile && !effects_analytic && !advanced_only && !advanced_profile
-        && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile
-        && !light_selection_only && !culling_profile && !culling_only)
+    if (argc > 1 && !meshlets_only && !meshlets_profile && !indexing_only && !indexing_profile && !submission_only
+        && !submission_profile && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only
+        && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only
+        && !resources_only && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only
+        && !shotgun_only && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile
+        && !effects_analytic && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile
+        && !temporal_scene && !temporal_dynamic && !settings_profile && !light_selection_only && !culling_profile
+        && !culling_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -6019,8 +6120,10 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (indexing_only || indexing_profile)
-            check_descriptor_indexing(device, authoring, atlas, captures, indexing_profile);
+        if (meshlets_only || meshlets_profile)
+            check_optional_gpu(device, authoring, atlas, captures, meshlets_profile, true);
+        else if (indexing_only || indexing_profile)
+            check_optional_gpu(device, authoring, atlas, captures, indexing_profile);
         else if (culling_only || culling_profile)
             profile_scene_culling(device, authoring, atlas, captures, culling_profile);
         else if (submission_only || submission_profile)

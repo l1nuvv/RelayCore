@@ -127,6 +127,8 @@ namespace RelayCore::render
             if (index >= mesh_data.vertices.size())
                 throw std::invalid_argument("StaticColorMesh index is outside its vertex buffer");
 
+        if (!mesh_data.meshlets.clusters.empty())
+            validate_meshlets(mesh_data, mesh_data.meshlets);
         reset();
         cpu_data_ = std::make_shared<CpuColorMeshData>(mesh_data);
         index_count_ = static_cast<std::int32_t>(mesh_data.indices.size());

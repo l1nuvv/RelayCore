@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -30,6 +31,8 @@ namespace RelayCore::render
         bool validation_enabled = false;
         bool memory_budget_enabled = false;
         uint32_t indexed_material_capacity = 0;
+        std::array<uint32_t, 3> mesh_dispatch_limit{};
+        uint32_t mesh_dispatch_total = 0;
         float max_texture_anisotropy = 1.0F;
     };
 

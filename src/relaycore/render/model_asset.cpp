@@ -13,7 +13,7 @@ namespace RelayCore::render
     namespace
     {
         constexpr std::uint32_t kMagic = 0x4c444d52; // RMDL, little endian.
-        constexpr std::uint32_t kVersion = 5;
+        constexpr std::uint32_t kVersion = 6;
         constexpr std::size_t kMaxBytes = 256 * 1024 * 1024;
 
         void require(const bool condition, const char* message)
@@ -312,6 +312,27 @@ namespace RelayCore::render
                 for (int row = 0; row < 4; ++row)
                     append_float(bytes, part.transform[column][row]);
         }
+        for (const auto& mesh : model.meshes)
+        {
+            const auto data = build_meshlets(mesh.geometry);
+            append(bytes, uint32_t(data.clusters.size()));
+            append(bytes, uint32_t(data.vertices.size()));
+            append(bytes, uint32_t(data.triangles.size()));
+            for (const auto& cluster : data.clusters)
+            {
+                for (uint32_t i = 0; i < 4; ++i)
+                    append(bytes, cluster.range[i]);
+                for (uint32_t i = 0; i < 4; ++i)
+                    append_float(bytes, cluster.mins[i]);
+                for (uint32_t i = 0; i < 4; ++i)
+                    append_float(bytes, cluster.maxs[i]);
+            }
+            for (auto index : data.vertices)
+                append(bytes, index);
+            for (auto triangle : data.triangles)
+                append(bytes, triangle);
+        }
+        require(bytes.size() <= kMaxBytes, "model product exceeds 256 MiB including meshlets");
         auto temporary = path;
         temporary += ".tmp";
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -340,7 +361,7 @@ namespace RelayCore::render
             ProductReader reader{bytes};
             require(reader.integer() == kMagic, "invalid model product magic");
             const auto version = reader.integer();
-            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1..5)");
+            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1..6)");
             const auto meshes = reader.integer(), materials = reader.integer(), parts = reader.integer();
             require(
                 meshes > 0 && meshes <= 4096 && materials > 0 && materials <= 4096 && parts > 0 && parts <= 65536,
@@ -475,6 +496,35 @@ namespace RelayCore::render
                         part.transform[column][row] = reader.number();
                 result.parts.push_back(part);
             }
+            if (version >= 6)
+                for (auto& mesh : result.meshes)
+                {
+                    auto& data = mesh.geometry.meshlets;
+                    const auto clusters = reader.integer(), vertices = reader.integer(), triangles = reader.integer();
+                    require(
+                        clusters > 0 && clusters <= mesh.geometry.indices.size() / 3 && vertices > 0
+                            && vertices <= mesh.geometry.indices.size()
+                            && triangles == mesh.geometry.indices.size() / 3,
+                        "invalid meshlet product counts"
+                    );
+                    auto payload = reader.take(size_t(clusters) * 48 + size_t(vertices) * 4 + size_t(triangles) * 4);
+                    ProductReader packed{payload};
+                    data.clusters.resize(clusters);
+                    for (auto& cluster : data.clusters)
+                    {
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.range[i] = packed.integer();
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.mins[i] = packed.number();
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.maxs[i] = packed.number();
+                    }
+                    for (uint32_t i = 0; i < vertices; ++i)
+                        data.vertices.push_back(packed.integer());
+                    for (uint32_t i = 0; i < triangles; ++i)
+                        data.triangles.push_back(packed.integer());
+                    validate_meshlets(mesh.geometry, data);
+                }
             require(reader.empty(), "unexpected bytes after model product");
             validate_model_asset(result);
             return result;

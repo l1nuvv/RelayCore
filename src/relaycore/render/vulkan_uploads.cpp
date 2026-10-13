@@ -293,14 +293,18 @@ namespace RelayCore::render
     }
     VulkanUploads::~VulkanUploads() noexcept = default;
 
-    auto VulkanUploads::upload_mesh_buffer(const std::span<const std::byte> bytes, const VkBufferUsageFlagBits kind)
+    auto VulkanUploads::upload_mesh_buffer(const std::span<const std::byte> bytes, const VkBufferUsageFlags kind)
         -> VulkanBufferUpload
     {
         RELAYCORE_PROFILE_ZONE_N("Vulkan mesh upload");
         if (bytes.empty())
             throw std::invalid_argument("Vulkan mesh upload requires nonempty data");
-        if (kind != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT && kind != VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
-            throw std::invalid_argument("Vulkan mesh upload requires vertex or index buffer usage");
+        if (kind != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT && kind != VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+            && kind != VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+            && kind != (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+            throw std::invalid_argument(
+                "Vulkan mesh upload requires vertex, index, storage, or vertex/storage buffer usage"
+            );
         VulkanBuffer destination{
             state_->device,
             bytes.size_bytes(),
@@ -322,10 +326,12 @@ namespace RelayCore::render
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
             .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
-                                                                      : VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-            .dstAccessMask = kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT
-                                                                       : VK_ACCESS_2_INDEX_READ_BIT,
+            .dstStageMask = (kind & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+                            : kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
+                                                                        : VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+            .dstAccessMask = (kind & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) ? VK_ACCESS_2_MEMORY_READ_BIT
+                             : kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT
+                                                                         : VK_ACCESS_2_INDEX_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = destination.handle(),

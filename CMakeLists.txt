@@ -307,6 +307,24 @@ foreach(variant IN ITEMS mesh mesh_effects mesh_volume pass_inputs mesh_vertex p
         VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(indexed IN ITEMS 0 1)
+    set(suffix "")
+    if(indexed)
+        set(suffix ".indexed")
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/meshlets.mesh${suffix}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/meshlets.slang"
+            -DDESCRIPTOR_INDEXING=${indexed} -entry meshlet_main -stage mesh -target spirv -profile spirv_1_5
+            -capability spvMeshShadingEXT -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/meshlets.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
 add_custom_target(relaycore_vulkan_shaders ALL
     DEPENDS "${RELAYCORE_SPIRV_DIRECTORY}/toolchain_check.vert.spv" ${RELAYCORE_MESH_SPIRV})
 set(runtime_shader_names)

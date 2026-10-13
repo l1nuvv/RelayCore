@@ -1,5 +1,7 @@
 #pragma once
 
+#include "relaycore/render/meshlets.h"
+
 #include <cstdint>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -22,6 +24,7 @@ namespace RelayCore::render
     struct CpuColorMeshData {
         std::vector<ColorVertex> vertices;
         std::vector<std::uint32_t> indices;
+        MeshletData meshlets;
     };
 
     [[nodiscard]] auto make_color_box_mesh_data() -> CpuColorMeshData;

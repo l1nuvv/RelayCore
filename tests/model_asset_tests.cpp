@@ -80,7 +80,7 @@ TEST_CASE("native model product is deterministic and preserves geometry/material
         );
     }
     auto changed = first;
-    changed[4] = 6;
+    changed[4] = 7;
     std::ofstream(path, std::ios::binary).write(changed.data(), static_cast<std::streamsize>(changed.size()));
     CHECK_THROWS_WITH_AS(static_cast<void>(read_model_asset(path)), doctest::Contains("version"), std::runtime_error);
     std::ofstream(path, std::ios::binary).write((first + "x").data(), static_cast<std::streamsize>(first.size() + 1));
@@ -225,6 +225,7 @@ TEST_CASE("native v3 product keeps scalar lighting without material maps")
     source.materials[0].metallic_roughness = MetallicRoughness{.3F, .8F};
     write_model_asset(path, source);
     auto bytes = read_bytes(path);
+    bytes.resize(bytes.size() - 76); // v6 meshlet footer for one three-vertex triangle.
     bytes[4] = 3;
     // One material, no maps: v4 and v5 each add twenty bytes before the part.
     bytes.erase(bytes.size() - 72 - 40, 40);
@@ -246,6 +247,7 @@ TEST_CASE("native v4 product defaults to non-emissive materials")
     source.materials[0].occlusion = CpuRgbaTextureData{1, 1, {70, 0, 0, 255}};
     write_model_asset(path, source);
     auto bytes = read_bytes(path);
+    bytes.resize(bytes.size() - 76);
     bytes[4] = 4;
     bytes.erase(bytes.size() - 72 - 20, 20);
     std::ofstream(path, std::ios::binary | std::ios::trunc)
@@ -338,4 +340,29 @@ TEST_CASE("native v2 normal product keeps its original lighting contract")
     CHECK(model.materials[0].normal_scale == .4F);
     write_model_asset(path, model);
     CHECK_FALSE(read_model_asset(path).materials[0].metallic_roughness);
+}
+
+TEST_CASE("native v6 meshlets round trip and retain v5 indexed products")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    const auto path = temp.path() / "meshlets.rcmodel";
+    auto source = triangle_model();
+    write_model_asset(path, source);
+    const auto current = read_model_asset(path);
+    REQUIRE(current.meshes[0].geometry.meshlets.clusters.size() == 1);
+    CHECK_NOTHROW(validate_meshlets(current.meshes[0].geometry, current.meshes[0].geometry.meshlets));
+    auto bytes = read_bytes(path);
+    auto broken = bytes;
+    broken[broken.size() - 1] = char(-1);
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        .write(broken.data(), static_cast<std::streamsize>(broken.size()));
+    CHECK_THROWS_WITH_AS(static_cast<void>(read_model_asset(path)), doctest::Contains("meshlet"), std::runtime_error);
+    bytes.resize(bytes.size() - 76);
+    bytes[4] = 5;
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    const auto legacy = read_model_asset(path);
+    CHECK(legacy.meshes[0].geometry.meshlets.clusters.empty());
+    CHECK(legacy.meshes[0].geometry.indices == source.meshes[0].geometry.indices);
+    CHECK_NOTHROW(validate_meshlets(legacy.meshes[0].geometry, build_meshlets(legacy.meshes[0].geometry)));
 }

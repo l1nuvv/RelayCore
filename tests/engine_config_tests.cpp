@@ -380,11 +380,13 @@ TEST_CASE("engine config validates semantic constraints")
     }
 }
 
-TEST_CASE("engine config validates descriptor indexing opt-in")
+TEST_CASE("engine config validates optional GPU opt-ins")
 {
     RelayCore::test::ScopedTempDirectory temp;
     RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
-    const auto path = write_engine_config(temp.path(), "[render]\ndescriptor_indexing = true\n");
+    const auto path = write_engine_config(temp.path(), "[render]\ndescriptor_indexing = true\nmesh_shaders = true\n");
     CHECK(RelayCore::core::load_engine_config(path).renderer.descriptor_indexing);
+    CHECK(RelayCore::core::load_engine_config(path).renderer.mesh_shaders);
     check_invalid_config(temp.path(), "[render]\ndescriptor_indexing = 1\n", "render.descriptor_indexing");
+    check_invalid_config(temp.path(), "[render]\nmesh_shaders = 1\n", "render.mesh_shaders");
 }

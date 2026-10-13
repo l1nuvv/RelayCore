@@ -260,6 +260,7 @@ namespace RelayCore::core
             if (config.renderer.reflection_quality && !config.renderer.ssr_enabled)
                 invalid_config_value(config_path, "render.reflection_quality", "requires SSR enabled");
             RELAYCORE_ASSIGN_RENDER("descriptor_indexing", descriptor_indexing);
+            RELAYCORE_ASSIGN_RENDER("mesh_shaders", mesh_shaders);
             RELAYCORE_ASSIGN_RENDER("taa_enabled", taa_enabled);
             RELAYCORE_ASSIGN_RENDER("render_scale", render_scale);
             RELAYCORE_ASSIGN_RENDER("dynamic_resolution_enabled", dynamic_resolution_enabled);

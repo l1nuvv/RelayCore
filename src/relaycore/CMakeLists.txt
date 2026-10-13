@@ -46,6 +46,7 @@ set(RELAYCORE_ENGINE_SOURCES
     render/vulkan_material_table.cpp
     render/vma_impl.cpp
     render/mesh.cpp
+    render/meshlets.cpp
     render/static_model.cpp
     render/model_asset.cpp
     render/reflection_probe.cpp
