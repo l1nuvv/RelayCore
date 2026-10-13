@@ -209,7 +209,8 @@ setting requires prepared renderer reload. [Evidence and budgets](renderer/VK14-
 reflection-source geometry at prepared-renderer creation. Availability includes
 the extension, enabled mesh-shader feature, output/storage/workgroup limits and
 five descriptor sets. Unsupported devices, single-cluster meshes and the existing
-`gpu_culled` command path use indexed geometry. Default is off; toggling requires
+`gpu_culled` command path use indexed geometry. The shipped engine config enables
+mesh shaders; omitted settings default off. Toggling requires
 prepared renderer reload. Logs and `VulkanDrawUsage::mesh_draws/mesh_workgroups`
 identify the actual path.
 
