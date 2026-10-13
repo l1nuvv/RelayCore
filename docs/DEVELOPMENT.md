@@ -234,6 +234,11 @@ The spatial effects also expose `ao`, `reflection_confidence` and
 first; invalid combinations fail explicitly. Controls, composition and measured
 local limits: [VK14-07](renderer/VK14-07.md).
 
+`ssgi` displays raw GI radiance times screen coverage and requires nonzero
+`ssgi_quality`. Advanced lighting/lens controls and composition live in
+[RENDERING](RENDERING.md#advanced-lighting-and-lens-effects--vk14-09); moving
+fixtures and timing evidence live in [VK14-09](renderer/VK14-09.md).
+
 В Advanced Diagnostics окно `Vulkan memory` обновляется кнопкой `Refresh GPU memory`.
 Оно показывает heap usage/budget, VMA allocations/blocks, retained upload staging,
 pending retirements и material descriptor pools. Снимок сохраняется до следующего

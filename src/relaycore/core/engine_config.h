@@ -54,6 +54,11 @@ namespace RelayCore::render
         bool ssr_enabled = false;
         bool volumetrics_enabled = false;
         float volumetric_density = 0.025F;
+        int ssgi_quality = 0;
+        int reflection_quality = 0;
+        int dof_quality = 0;
+        int motion_blur_quality = 0;
+        float dof_focus_distance = 8.0F;
         bool taa_enabled = false;
         float render_scale = 1.0F;
         bool dynamic_resolution_enabled = false;

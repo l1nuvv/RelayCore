@@ -70,9 +70,9 @@ namespace RelayCore::render
         struct FrameParameters {
             glm::vec4 viewport_time_debug;
             glm::mat4 view_projection, inverse_view_projection, view_matrix;
-            glm::vec4 camera_position, effects;
+            glm::vec4 camera_position, effects, lighting;
         };
-        static_assert(sizeof(FrameParameters) == 240);
+        static_assert(sizeof(FrameParameters) == 256);
 
         struct LightParameters {
             std::array<glm::vec4, 8> position_radius;
@@ -313,7 +313,8 @@ namespace RelayCore::render
 
         struct InputTarget {
             MeshImage normal_depth, velocity, depth, color_history;
-            std::unique_ptr<MeshImage> ao, temporal;
+            std::unique_ptr<MeshImage> ao, temporal, gi, lens;
+            VkExtent2D gi_extent{};
             VulkanBuffer readback;
             InputTarget(
                 const VulkanDevice& device,
@@ -321,9 +322,23 @@ namespace RelayCore::render
                 const VkFormat depth_format,
                 const VkFormat color_format,
                 const bool ssao,
-                const bool taa
+                const bool taa,
+                const bool ssgi,
+                const bool lenses
             ) : normal_depth(device), velocity(device), depth(device), color_history(device), readback()
             {
+                gi_extent = {std::max(1u, (size.width + 1) / 2), std::max(1u, (size.height + 1) / 2)};
+                for (auto* target : {ssgi ? &gi : nullptr, lenses ? &lens : nullptr})
+                    if (target)
+                    {
+                        *target = std::make_unique<MeshImage>(device);
+                        (*target)->initialize(
+                            target == &gi ? gi_extent : size,
+                            color_format,
+                            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT
+                        );
+                    }
                 if (taa)
                 {
                     temporal = std::make_unique<MeshImage>(device);
@@ -968,6 +983,7 @@ namespace RelayCore::render
         std::array<VkDescriptorSet, 2> input_sets{};
         std::array<VkPipeline, 4> input_pipelines{};
         VkPipeline ao_pipeline = VK_NULL_HANDLE, temporal_pipeline = VK_NULL_HANDLE;
+        VkPipeline gi_pipeline = VK_NULL_HANDLE, lens_pipeline = VK_NULL_HANDLE;
         std::filesystem::path shader_directory;
         glm::mat4 previous_projection{1};
         glm::mat4 current_view_projection{1};
@@ -1082,6 +1098,10 @@ namespace RelayCore::render
             if (descriptor_layout)
                 vkDestroyDescriptorSetLayout(device.handle(), descriptor_layout, nullptr);
             tone_mapping.reset();
+            if (gi_pipeline)
+                vkDestroyPipeline(device.handle(), gi_pipeline, nullptr);
+            if (lens_pipeline)
+                vkDestroyPipeline(device.handle(), lens_pipeline, nullptr);
             if (temporal_pipeline)
                 vkDestroyPipeline(device.handle(), temporal_pipeline, nullptr);
             if (ao_pipeline)
@@ -1106,14 +1126,23 @@ namespace RelayCore::render
         auto needs_inputs() const noexcept -> bool
         {
             return (input_view != PassInputView::off && input_view != PassInputView::volume_transmittance)
-                   || renderer_config.ssao_enabled || renderer_config.ssr_enabled || renderer_config.taa_enabled;
+                   || renderer_config.ssao_enabled || renderer_config.ssr_enabled || renderer_config.taa_enabled
+                   || renderer_config.ssgi_quality || renderer_config.dof_quality
+                   || renderer_config.motion_blur_quality;
         }
 
-        auto tone_source() -> MeshImage&
+        auto resolved_source() -> MeshImage&
         {
             return renderer_config.taa_enabled && input_view != PassInputView::temporal_source
                        ? *frame().inputs->temporal
                        : *frame().target->hdr_scene;
+        }
+
+        auto tone_source() -> MeshImage&
+        {
+            if (renderer_config.dof_quality || renderer_config.motion_blur_quality)
+                return *frame().inputs->lens;
+            return resolved_source();
         }
 
         auto scene_format() const noexcept -> VkFormat
@@ -1398,7 +1427,7 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &descriptor_info, nullptr, &descriptor_layout),
                 "Failed to create Vulkan mesh descriptor layout"
             );
-            std::array<VkDescriptorSetLayoutBinding, 10> input_bindings{};
+            std::array<VkDescriptorSetLayoutBinding, 13> input_bindings{};
             input_bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
             for (uint32_t i = 1; i < input_bindings.size(); ++i)
                 input_bindings[i] =
@@ -1477,37 +1506,55 @@ namespace RelayCore::render
         {
             MeshShaders shaders{device.handle()};
             const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, temporal = shadow_kind == -5;
-            const bool debug_inputs = shadow_kind == -3 || ao || temporal;
-            const auto prefix = temporal                 ? "temporal"
+            const bool gi = shadow_kind == -6, lens = shadow_kind == -7;
+            const bool advanced = gi || lens;
+            const bool debug_inputs = shadow_kind == -3 || ao || temporal || advanced;
+            const auto prefix = advanced                 ? "advanced"
+                                : temporal               ? "temporal"
                                 : inputs || debug_inputs ? "pass_inputs"
                                 : shadow_kind < 0        ? "mesh"
                                 : shadow_kind == 2       ? "point_shadow"
                                                          : "shadow";
-            const auto vertex_entry = temporal       ? "temporal_vertex"
+            const auto vertex_entry = advanced       ? "advanced_vertex"
+                                      : temporal     ? "temporal_vertex"
                                       : inputs       ? "input_vertex"
                                       : ao           ? "ao_vertex"
                                       : debug_inputs ? "debug_vertex"
                                                      : "vertex_main";
-            const auto fragment_entry = temporal       ? "temporal_fragment"
+            const auto fragment_entry = gi             ? "gi_fragment"
+                                        : lens         ? "lens_fragment"
+                                        : temporal     ? "temporal_fragment"
                                         : inputs       ? "input_fragment"
                                         : ao           ? "ao_fragment"
                                         : debug_inputs ? "debug_fragment"
                                                        : "fragment_main";
             shaders.vertex = shaders.load(
-                directory / (std::string(prefix) + "." + (inputs || debug_inputs ? vertex_entry : "vert") + ".spv"),
+                directory
+                    / (std::string(prefix) + "."
+                       + (advanced                 ? "vert"
+                          : inputs || debug_inputs ? vertex_entry
+                                                   : "vert")
+                       + ".spv"),
                 vertex_entry
             );
             shaders.fragment = shaders.load(
                 directory
                     / (std::string(
-                           shadow_kind == -1
+                           advanced ? (gi ? "advanced_gi" : "advanced_lens")
+                           : shadow_kind == -1
                                    && (renderer_config.ssao_enabled || renderer_config.ssr_enabled
-                                       || renderer_config.volumetrics_enabled)
-                               ? (renderer_config.ssao_enabled || renderer_config.ssr_enabled ? "mesh_effects"
-                                                                                              : "mesh_volume")
+                                       || renderer_config.ssgi_quality || renderer_config.volumetrics_enabled)
+                               ? (renderer_config.ssao_enabled || renderer_config.ssr_enabled
+                                          || renderer_config.ssgi_quality
+                                      ? "mesh_effects"
+                                      : "mesh_volume")
                                : prefix
                        )
-                       + "." + (inputs || debug_inputs ? fragment_entry : "frag") + ".spv"),
+                       + "."
+                       + (advanced                 ? "frag"
+                          : inputs || debug_inputs ? fragment_entry
+                                                   : "frag")
+                       + ".spv"),
                 fragment_entry
             );
             const std::array stages{
@@ -1601,10 +1648,10 @@ namespace RelayCore::render
                 .pDynamicStates = dynamics.data(),
             };
             const std::array colors{
-                inputs                      ? VK_FORMAT_R32G32B32A32_SFLOAT
-                : ao                        ? VK_FORMAT_R32G32B32A32_SFLOAT
-                : debug_inputs && !temporal ? VK_FORMAT_R8G8B8A8_UNORM
-                                            : scene_format(),
+                inputs                                   ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : ao                                     ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : debug_inputs && !temporal && !advanced ? VK_FORMAT_R8G8B8A8_UNORM
+                                                         : scene_format(),
                 VK_FORMAT_R32G32B32A32_SFLOAT
             };
             const VkPipelineRenderingCreateInfo rendering{
@@ -2259,6 +2306,7 @@ namespace RelayCore::render
                         | (!inputs && !reflection_source && input_view == PassInputView::ao ? 128U : 0U)
                         | (!inputs && !reflection_source && input_view == PassInputView::reflection_confidence ? 256U
                                                                                                                : 0U)
+                        | (!inputs && !reflection_source && input_view == PassInputView::ssgi ? 1024U : 0U)
                         | (!inputs && !reflection_source && input_view == PassInputView::volume_transmittance ? 512U
                                                                                                               : 0U),
                     {position.x, position.y, position.z}
@@ -2513,6 +2561,24 @@ namespace RelayCore::render
             if (!std::isfinite(config.dynamic_resolution_target_ms) || config.dynamic_resolution_target_ms < 4
                 || config.dynamic_resolution_target_ms > 50)
                 throw std::invalid_argument("Dynamic resolution target must be finite and in [4, 50] ms");
+            for (auto quality :
+                 {config.ssgi_quality, config.reflection_quality, config.dof_quality, config.motion_blur_quality})
+                if (quality < 0 || quality > 2)
+                    throw std::invalid_argument("SSGI/reflection/lens quality must be 0, 1 or 2");
+            if (!std::isfinite(config.dof_focus_distance) || config.dof_focus_distance < .25F
+                || config.dof_focus_distance > 100)
+                throw std::invalid_argument("DoF focus distance must be finite and in [0.25, 100]");
+            if ((config.ssgi_quality || config.dof_quality || config.motion_blur_quality) && !config.hdr_enabled)
+                throw std::invalid_argument("SSGI and lens effects require HDR enabled");
+            if (config.reflection_quality && !config.ssr_enabled)
+                throw std::invalid_argument("Improved reflections require SSR enabled");
+            if (config.ssgi_quality != renderer_config.ssgi_quality
+                || config.reflection_quality != renderer_config.reflection_quality
+                || config.dof_quality != renderer_config.dof_quality
+                || config.motion_blur_quality != renderer_config.motion_blur_quality)
+                throw std::invalid_argument("Changing advanced effects requires a prepared renderer reload");
+            if (config.dof_focus_distance != renderer_config.dof_focus_distance)
+                history_valid = false;
             if (config.taa_enabled != renderer_config.taa_enabled)
                 throw std::invalid_argument("Changing TAA requires a prepared renderer reload");
             if (!std::isfinite(config.render_scale) || config.render_scale < .5F || config.render_scale > 1)
@@ -2644,8 +2710,10 @@ namespace RelayCore::render
 
         void set_input_view(const PassInputView view)
         {
-            if (view < PassInputView::off || view > PassInputView::temporal_source)
+            if (view < PassInputView::off || view > PassInputView::ssgi)
                 throw std::invalid_argument("Invalid pass input view");
+            if (view == PassInputView::ssgi && !renderer_config.ssgi_quality)
+                throw std::invalid_argument("SSGI diagnostic requires SSGI enabled");
             if (view == PassInputView::temporal_source && !renderer_config.taa_enabled)
                 throw std::invalid_argument("Temporal source diagnostic requires TAA enabled");
             if ((view == PassInputView::ao && !renderer_config.ssao_enabled)
@@ -2690,7 +2758,7 @@ namespace RelayCore::render
             {
                 const std::array sizes{
                     VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 18}
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 24}
                 };
                 const VkDescriptorPoolCreateInfo pool{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -2764,7 +2832,9 @@ namespace RelayCore::render
                     depth_formats.scene,
                     scene_format(),
                     renderer_config.ssao_enabled,
-                    renderer_config.taa_enabled
+                    renderer_config.taa_enabled,
+                    renderer_config.ssgi_quality != 0,
+                    renderer_config.dof_quality || renderer_config.motion_blur_quality
                 );
             const size_t count = std::max(size_t{1}, items.size() + viewmodel.size());
             VkPhysicalDeviceProperties properties{};
@@ -2817,7 +2887,8 @@ namespace RelayCore::render
                 },
                 VkDescriptorImageInfo{
                     input_sampler,
-                    renderer_config.ssr_enabled ? current.color_history.view : current.normal_depth.view,
+                    (renderer_config.ssr_enabled || renderer_config.ssgi_quality) ? current.color_history.view
+                                                                                  : current.normal_depth.view,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 },
                 VkDescriptorImageInfo{
@@ -2829,10 +2900,25 @@ namespace RelayCore::render
                     input_sampler,
                     renderer_config.taa_enabled && frame_history_valid ? old.temporal->view : current.normal_depth.view,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.gi ? current.gi->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.gi && frame_history_valid ? old.gi->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.lens ? resolved_source().view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 }
             };
             const VkDescriptorBufferInfo buffer{frame().previous_draws.handle(), 0, bytes.size()};
-            std::array<VkWriteDescriptorSet, 10> writes{};
+            std::array<VkWriteDescriptorSet, 13> writes{};
             writes[0] = {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = input_sets[frame_index],
@@ -3133,6 +3219,80 @@ namespace RelayCore::render
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
             );
             input_barrier(source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        }
+
+        void record_advanced(MeshImage& target, const VkPipeline pipeline, const bool lens)
+        {
+            if (lens)
+                input_barrier(
+                    resolved_source(),
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            input_barrier(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const auto extent = lens ? frame().target->render_extent : frame().inputs->gi_extent;
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            auto& surface = *materials.begin()->second;
+            use(surface);
+            const std::array sets{surface.sets[frame_index], input_sets[frame_index]};
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                0,
+                2,
+                sets.data(),
+                0,
+                nullptr
+            );
+            DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {},
+                .flags = 0,
+                .camera_position = {frame_history_valid ? 1.0F : 0.0F, float(extent.width), float(extent.height)}
+            };
+            push.model_rows[0] = {previous_jitter_uv - jitter_uv, 0, 0};
+            vkCmdPushConstants(
+                frame().commands,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+            if (!lens)
+                input_barrier(
+                    target,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            else if (!renderer_config.taa_enabled)
+                input_barrier(
+                    resolved_source(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                );
         }
 
         void record_temporal()
@@ -3623,12 +3783,18 @@ namespace RelayCore::render
                 {renderer_config.ssao_enabled ? 1.0F : 0.0F,
                  renderer_config.ssr_enabled ? 1.0F : 0.0F,
                  renderer_config.volumetrics_enabled ? renderer_config.volumetric_density : 0.0F,
-                 0}
+                 float(renderer_config.reflection_quality)},
+                {float(renderer_config.ssgi_quality),
+                 float(renderer_config.dof_quality),
+                 float(renderer_config.motion_blur_quality),
+                 renderer_config.dof_focus_distance}
             };
             frame().frame_data.write(std::as_bytes(std::span{&frame_parameters, 1}));
             collect_expired_resources();
             prepare(items);
-            if (renderer_config.ssao_enabled && materials.empty())
+            if ((renderer_config.ssao_enabled || renderer_config.ssgi_quality || renderer_config.dof_quality
+                 || renderer_config.motion_blur_quality)
+                && materials.empty())
                 static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
             // Opaque shadow pipelines consume geometry only.
             for (const auto& caster : shadow_casters)
@@ -3781,7 +3947,7 @@ namespace RelayCore::render
                     record_inputs(items, viewmodel, camera);
                 if (renderer_config.ssao_enabled)
                     record_ao();
-                if (renderer_config.ssr_enabled)
+                if (renderer_config.ssr_enabled || renderer_config.ssgi_quality)
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "SSR source");
                     auto& history = frame().inputs->color_history;
@@ -3801,6 +3967,12 @@ namespace RelayCore::render
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                     );
+                    if (frame().inputs->gi)
+                        input_barrier(
+                            *frame().inputs->gi,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        );
                     vkCmdBeginRendering(frame().commands, &rendering);
                     draw(items, camera, RenderPass::Opaque, false, false, 0, true);
                     vkCmdEndRendering(frame().commands);
@@ -3817,6 +3989,13 @@ namespace RelayCore::render
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                         );
+                }
+                if (renderer_config.ssgi_quality)
+                {
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "SSGI");
+                    record_advanced(*frame().inputs->gi, gi_pipeline, false);
+                    vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+                    vkCmdSetScissor(frame().commands, 0, 1, &scissor);
                 }
                 vkCmdBeginRendering(frame().commands, &rendering);
                 {
@@ -3853,6 +4032,11 @@ namespace RelayCore::render
                     record_color_history();
                 if (renderer_config.taa_enabled)
                     record_temporal();
+                if (renderer_config.dof_quality || renderer_config.motion_blur_quality)
+                {
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Lens effects");
+                    record_advanced(*frame().inputs->lens, lens_pipeline, true);
+                }
                 if (renderer_config.bloom_enabled)
                     record_bloom();
                 if (tone_mapping)
@@ -3928,7 +4112,8 @@ namespace RelayCore::render
     {
         state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
         reload_shaders(shader_directory);
-        if (config.ssao_enabled || config.ssr_enabled || config.taa_enabled)
+        if (config.ssao_enabled || config.ssr_enabled || config.taa_enabled || config.ssgi_quality || config.dof_quality
+            || config.motion_blur_quality)
         {
             state_->set_input_view(PassInputView::scene);
             state_->input_view = PassInputView::off;
@@ -3946,13 +4131,14 @@ namespace RelayCore::render
                 "ao",
                 "reflection_confidence",
                 "volume_transmittance",
-                "temporal_source"
+                "temporal_source",
+                "ssgi"
             };
             const auto found = std::find(names.begin(), names.end(), std::string_view{value});
             if (found == names.end())
                 throw std::invalid_argument("RELAYCORE_VULKAN_PASS_INPUT_VIEW must be off, scene, depth, normals, "
                                             "velocity, history, previous_color, ao, reflection_confidence, "
-                                            "volume_transmittance or temporal_source");
+                                            "volume_transmittance, temporal_source or ssgi");
             set_pass_input_view(static_cast<PassInputView>(found - names.begin()));
         }
     }
@@ -4171,7 +4357,7 @@ namespace RelayCore::render
     {
         state_->wait();
         auto staged_directory = directory;
-        std::array<VkPipeline, 14> replacement{};
+        std::array<VkPipeline, 16> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -4184,6 +4370,10 @@ namespace RelayCore::render
                 if (state_->renderer_config.bloom_enabled)
                     replacement[11] = state_->tone_mapping->create_pipeline(directory, true);
             }
+            if (state_->renderer_config.ssgi_quality)
+                replacement[14] = state_->create_pipeline(directory, RenderPass::Opaque, -6);
+            if (state_->renderer_config.dof_quality || state_->renderer_config.motion_blur_quality)
+                replacement[15] = state_->create_pipeline(directory, RenderPass::Opaque, -7);
             if (state_->renderer_config.taa_enabled)
                 replacement[13] = state_->create_pipeline(directory, RenderPass::Opaque, -5);
             if (state_->renderer_config.ssao_enabled)
@@ -4230,6 +4420,12 @@ namespace RelayCore::render
         if (state_->temporal_pipeline)
             vkDestroyPipeline(state_->device.handle(), state_->temporal_pipeline, nullptr);
         state_->temporal_pipeline = replacement[13];
+        if (state_->gi_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->gi_pipeline, nullptr);
+        state_->gi_pipeline = replacement[14];
+        if (state_->lens_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->lens_pipeline, nullptr);
+        state_->lens_pipeline = replacement[15];
         state_->shader_directory = std::move(staged_directory);
         reset_history();
     }

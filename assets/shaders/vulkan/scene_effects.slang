@@ -1,7 +1,9 @@
 #ifndef VOLUME_ONLY
 [[vk::binding(1, 1)]] Sampler2D effectNormalDepth;
 [[vk::binding(6, 1)]] Sampler2D effectAO;
+[[vk::binding(2, 1)]] Sampler2D effectVelocity;
 [[vk::binding(7, 1)]] Sampler2D reflectionSource;
+[[vk::binding(10, 1)]] Sampler2D diffuseGI;
 
 float3 effect_world(float2 uv, float depth)
 {
@@ -30,7 +32,7 @@ float screen_ao(float2 pixel, float3 normal, float depth)
     return total > 0 ? result / total : 1;
 }
 
-float4 screen_reflection(float3 position, float3 normal, float3 direction, float roughness)
+float4 legacy_screen_reflection(float3 position, float3 normal, float3 direction, float roughness)
 {
     if (frame.effects.y == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0 || roughness >= .65) return 0;
     float3 origin = position + normal * .04;
@@ -69,6 +71,105 @@ float4 screen_reflection(float3 position, float3 normal, float3 direction, float
         previousDistance = distance;
     }
     return 0;
+}
+
+float4 trace_screen(float3 position, float3 normal, float3 direction, float thickness, int steps, float range, bool requireEligible = false)
+{
+
+    float3 origin = position + normal * .04;
+    float previousDelta = -1;
+    float previousDistance = 0;
+    for (int step = 1; step <= steps; ++step)
+    {
+        float distance = .06 * step + .004 * step * step;
+        if (distance > range) break;
+        float4 clip = mul(frame.viewProjection, float4(origin + direction * distance, 1));
+        float2 uv = effect_uv(clip);
+        if (clip.w <= .05 || any(uv <= 0) || any(uv >= 1)) return 0;
+        float4 nd = effectNormalDepth.SampleLevel(uv, 0);
+        if (nd.w <= 0) { previousDelta = -1; previousDistance = distance; continue; }
+        float delta = clip.w - nd.w;
+        if (previousDelta < 0 && delta >= 0 && delta < thickness && distance > .15)
+        {
+            float low = previousDistance, high = distance;
+            for (int refine = 0; refine < 5; ++refine)
+            {
+                float mid = (low + high) * .5;
+                clip = mul(frame.viewProjection, float4(origin + direction * mid, 1));
+                uv = effect_uv(clip);
+                nd = effectNormalDepth.SampleLevel(uv, 0);
+                if (nd.w > 0 && clip.w >= nd.w) high = mid; else low = mid;
+            }
+            clip = mul(frame.viewProjection, float4(origin + direction * high, 1));
+            uv = effect_uv(clip);
+            nd = effectNormalDepth.SampleLevel(uv, 0);
+            float2 edge = min(uv, 1 - uv);
+            float confidence = saturate(min(edge.x, edge.y) * 12)
+                             * saturate(-dot(nd.xyz, direction) * 3) * (1 - smoothstep(range * .55, range, high));
+            if (nd.w <= 0 || abs(clip.w - nd.w) > .08
+                || (requireEligible && effectVelocity.SampleLevel(uv,0).w <= 0)) return 0;
+            return float4(reflectionSource.SampleLevel(uv, 0).rgb, confidence);
+        }
+        previousDelta = delta;
+        previousDistance = distance;
+    }
+    return 0;
+}
+
+float4 screen_reflection(float3 position, float3 normal, float3 direction, float roughness)
+{
+    if (frame.effects.y == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0) return 0;
+    if (frame.effects.w == 0) return legacy_screen_reflection(position, normal, direction, roughness);
+    if (roughness >= .85) return 0;
+    float3 tangent = normalize(cross(direction, abs(direction.y) < .9 ? float3(0,1,0) : float3(1,0,0)));
+    float3 bitangent = cross(direction, tangent);
+    int rays = frame.effects.w > 1 ? 4 : 2;
+    float3 radiance = 0;
+    float confidence = 0;
+    for (int ray = 0; ray < rays; ++ray)
+    {
+        float angle = ray * 2.399963;
+        float cone = roughness * roughness * .35 * sqrt((ray + .5) / rays);
+        float3 d = normalize(direction + cone * (tangent * cos(angle) + bitangent * sin(angle)));
+        if (dot(d, normal) <= 0) continue;
+        float4 hit = trace_screen(position, normal, d, .12, frame.effects.w > 1 ? 56 : 40, 9);
+        radiance += hit.rgb * hit.a;
+        confidence += hit.a;
+    }
+    return float4(confidence > 0 ? radiance / confidence : float3(0),
+                  confidence / rays * (1 - smoothstep(.45, .85, roughness)));
+}
+
+float3 screen_diffuse(float3 fallback, float3 base, float3 position, float3 normal)
+{
+    if (frame.lighting.x == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0) return fallback;
+    float4 clip = mul(frame.viewProjection, float4(position,1));
+    float2 uv = effect_uv(clip);
+    float4 nd = effectNormalDepth.SampleLevel(uv,0);
+    if (nd.w <= 0 || abs(nd.w-clip.w) > max(.03, clip.w*.005) || dot(nd.xyz,normal) < .9) return fallback;
+    uint width, height;
+    diffuseGI.GetDimensions(width,height);
+    int2 size = int2(width,height), center = int2(uv * float2(size));
+    float3 radiance = 0;
+    float coverage = 0, total = 0;
+    // Bilateral reconstruction rejects the opposite side of depth/normal edges.
+    // Accumulate premultiplied radiance so misses retain fallback energy.
+    for (int y=-1; y<=1; ++y)
+        for (int x=-1; x<=1; ++x)
+        {
+            int2 q = center + int2(x,y);
+            if (any(q < 0) || any(q >= size)) continue;
+            float2 sampleUV = (float2(q)+.5)/float2(size);
+            float4 other = effectNormalDepth.SampleLevel(sampleUV,0);
+            if (other.w <= 0 || abs(other.w-nd.w) > max(.05,nd.w*.01) || dot(other.xyz,normal) < .9) continue;
+            float weight = 1.0 / (1 + x*x + y*y);
+            float4 gi = diffuseGI.Load(int3(q,0));
+            radiance += gi.rgb * gi.a * weight;
+            coverage += gi.a * weight;
+            total += weight;
+        }
+    if (total <= 0) return fallback;
+    return fallback * (1 - coverage/total) + base * radiance/total;
 }
 
 #endif

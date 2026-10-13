@@ -144,6 +144,38 @@ TEST_CASE("engine config validates temporal and resolution controls")
         check_invalid_config(temp.path(), std::string{"[render]\nrender_scale = "} + value, "render.render_scale");
 }
 
+TEST_CASE("engine config validates advanced lighting and lens quality")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto config = RelayCore::core::load_engine_config(write_engine_config(
+        temp.path(),
+        "[render]\nhdr_enabled = true\nssr_enabled = true\nssgi_quality = 2\n"
+        "reflection_quality = 1\ndof_quality = 2\nmotion_blur_quality = 1\ndof_focus_distance = 3.5\n"
+    ));
+    CHECK(config.renderer.ssgi_quality == 2);
+    CHECK(config.renderer.reflection_quality == 1);
+    CHECK(config.renderer.dof_quality == 2);
+    CHECK(config.renderer.motion_blur_quality == 1);
+    CHECK(config.renderer.dof_focus_distance == doctest::Approx(3.5F));
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+        for (const auto value : {"-1", "3", "1.5", "true", "'high'"})
+            check_invalid_config(
+                temp.path(),
+                std::string{"[render]\n"} + key + " = " + value,
+                std::string{"render."} + key
+            );
+    for (const auto key : {"ssgi_quality", "dof_quality", "motion_blur_quality"})
+        check_invalid_config(temp.path(), std::string{"[render]\n"} + key + " = 1", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\nreflection_quality = 1", "render.reflection_quality");
+    for (const auto value : {"nan", "inf", "0.24", "100.1"})
+        check_invalid_config(
+            temp.path(),
+            std::string{"[render]\ndof_focus_distance = "} + value,
+            "render.dof_focus_distance"
+        );
+}
+
 TEST_CASE("render resolution filters GPU pressure and rejects stale-scale feedback")
 {
     RelayCore::render::RenderResolution controller;

@@ -78,7 +78,7 @@ struct FrameData
 {
     float4 viewportTimeDebug;
     column_major float4x4 viewProjection, inverseViewProjection, viewMatrix;
-    float4 cameraPosition, effects;
+    float4 cameraPosition, effects, lighting;
 };
 [[vk::binding(8, 0)]] ConstantBuffer<FrameData> frame;
 
@@ -291,6 +291,10 @@ float soft_panel_volume(float2 uv, float scale)
 }
 #include "scene_materials.slang"
 
+#if defined(SCREEN_EFFECTS) && !defined(VOLUME_ONLY)
+float3 screen_diffuse(float3 fallback, float3 base, float3 position, float3 normal);
+#endif
+
 float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 receiverPlaneNormal, float2 uv, float3 position, uint id, bool clothing, bool model, float fogDistance, float ao)
 {
     float skyAmbient = saturate(normal.y * 0.5 + 0.5);
@@ -313,6 +317,9 @@ float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 rec
     if (surfaceData.parameters.w == 0)
         indirect = select(indirect <= 0.0031308, indirect * 12.92, 1.055 * pow(indirect, 1.0/2.4) - .055);
     result += color * indirect;
+#if defined(SCREEN_EFFECTS) && !defined(VOLUME_ONLY)
+    result = screen_diffuse(result, color, position, normal);
+#endif
     result *= ao;
     float directional = saturate(dot(normal, normalize(-materials.direction.xyz)));
     float visibility=directional_visibility(geometricNormal,position,fogDistance);
@@ -374,6 +381,9 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
     float ambient = lerp(materials.ambient.x,materials.ambient.y,saturate(normal.y*.5+.5));
     float3 result = base * (1-metallic) * 0.96 * ambient;
     result += base * (1-metallic) * .96 * probe_indirect(position,normal);
+#if defined(SCREEN_EFFECTS) && !defined(VOLUME_ONLY)
+    result = screen_diffuse(result, base * (1-metallic) * .96, position, normal);
+#endif
     float3 reflected = reflect(-view, normal);
     float reflectedAmbient = lerp(materials.ambient.x,materials.ambient.y,saturate(reflected.y*.5+.5));
     float3 environment = float3(reflectedAmbient) + probe_indirect(position,reflected,roughness);
@@ -491,6 +501,11 @@ float4 fragment_main(Varying input) : SV_Target
     if ((draw.flags & (2 | 4 | 32)) == 0)
     {
 #ifndef VOLUME_ONLY
+        if ((draw.flags & 1024) != 0)
+        {
+            float4 gi = diffuseGI.SampleLevel(input.position.xy / frame.viewportTimeDebug.xy,0);
+            return float4(gi.rgb * gi.a,1);
+        }
         if ((draw.flags & 128) != 0) return float4(ao.xxx, 1);
         if ((draw.flags & 256) != 0)
         {

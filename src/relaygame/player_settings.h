@@ -15,6 +15,10 @@ namespace RelayGame
         bool ssao_enabled = false;
         bool ssr_enabled = false;
         bool volumetrics_enabled = false;
+        int ssgi_quality = 0;
+        int reflection_quality = 0;
+        int dof_quality = 0;
+        int motion_blur_quality = 0;
         bool taa_enabled = false;
         float render_scale = 1.0F;
         bool dynamic_resolution_enabled = false;

@@ -239,6 +239,26 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("ssr_enabled", ssr_enabled);
             RELAYCORE_ASSIGN_RENDER("volumetrics_enabled", volumetrics_enabled);
             RELAYCORE_ASSIGN_RENDER("volumetric_density", volumetric_density);
+            RELAYCORE_ASSIGN_RENDER("ssgi_quality", ssgi_quality);
+            if (config.renderer.ssgi_quality < 0 || config.renderer.ssgi_quality > 2)
+                invalid_config_value(config_path, "render.ssgi_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("reflection_quality", reflection_quality);
+            if (config.renderer.reflection_quality < 0 || config.renderer.reflection_quality > 2)
+                invalid_config_value(config_path, "render.reflection_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("dof_quality", dof_quality);
+            if (config.renderer.dof_quality < 0 || config.renderer.dof_quality > 2)
+                invalid_config_value(config_path, "render.dof_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("motion_blur_quality", motion_blur_quality);
+            if (config.renderer.motion_blur_quality < 0 || config.renderer.motion_blur_quality > 2)
+                invalid_config_value(config_path, "render.motion_blur_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("dof_focus_distance", dof_focus_distance);
+            if (config.renderer.dof_focus_distance < .25F || config.renderer.dof_focus_distance > 100)
+                invalid_config_value(config_path, "render.dof_focus_distance", "must be in [0.25, 100]");
+            if ((config.renderer.ssgi_quality || config.renderer.dof_quality || config.renderer.motion_blur_quality)
+                && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "SSGI and lens effects require HDR enabled");
+            if (config.renderer.reflection_quality && !config.renderer.ssr_enabled)
+                invalid_config_value(config_path, "render.reflection_quality", "requires SSR enabled");
             RELAYCORE_ASSIGN_RENDER("taa_enabled", taa_enabled);
             RELAYCORE_ASSIGN_RENDER("render_scale", render_scale);
             RELAYCORE_ASSIGN_RENDER("dynamic_resolution_enabled", dynamic_resolution_enabled);

@@ -25,6 +25,10 @@
 <label>Затенение углов <select id="ssao" data-action="ssao" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Отражения на экране <select id="ssr" data-action="ssr" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Объёмный свет <select id="volumetrics" data-action="volumetrics" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Непрямое освещение SSGI <select id="ssgi-quality" data-action="ssgi-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Качество отражений <select id="reflection-quality" data-action="reflection-quality" data-event="change"><option value="0">Исходное</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Глубина резкости <select id="dof-quality" data-action="dof-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Размытие движения <select id="motion-blur-quality" data-action="motion-blur-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
 <label>Сглаживание TAA <select id="taa" data-action="taa" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <label>Разрешение сцены · <span id="render-scale-label"></span><input id="render-scale" type="range" min="0.5" max="1" step="0.01" data-action="render-scale" data-event="change" /></label>
 <label>Динамическое разрешение <select id="dynamic-resolution" data-action="dynamic-resolution" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>

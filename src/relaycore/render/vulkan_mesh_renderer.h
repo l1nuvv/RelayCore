@@ -52,7 +52,8 @@ namespace RelayCore::render
         ao,
         reflection_confidence,
         volume_transmittance,
-        temporal_source
+        temporal_source,
+        ssgi
     };
 
     struct VulkanPassInputCapture {

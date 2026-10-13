@@ -76,6 +76,7 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.volume = 0.25F;
     settings.vsync = false;
     settings.hdr_enabled = true;
+    settings.ssgi_quality = settings.reflection_quality = settings.dof_quality = settings.motion_blur_quality = 2;
     settings.taa_enabled = true;
     settings.dynamic_resolution_enabled = true;
     settings.render_scale = .67F;
@@ -91,6 +92,10 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     CHECK(loaded.ssao_enabled);
     CHECK(loaded.ssr_enabled);
     CHECK(loaded.volumetrics_enabled);
+    CHECK(loaded.ssgi_quality == 2);
+    CHECK(loaded.reflection_quality == 2);
+    CHECK(loaded.dof_quality == 2);
+    CHECK(loaded.motion_blur_quality == 2);
     CHECK(loaded.taa_enabled);
     CHECK(loaded.dynamic_resolution_enabled);
     CHECK(loaded.render_scale == doctest::Approx(.67F));
@@ -98,6 +103,7 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.hdr_enabled = false;
     CHECK_THROWS(RelayGame::save_player_settings(path, settings));
     settings.bloom_enabled = settings.ssr_enabled = false;
+    settings.ssgi_quality = settings.reflection_quality = settings.dof_quality = settings.motion_blur_quality = 0;
     settings.taa_enabled = false;
     settings.dynamic_resolution_enabled = false;
     settings.render_scale = 1;
@@ -133,6 +139,29 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.volume = 0.25F;
     CHECK(RelayGame::load_player_settings(path, settings).hdr_enabled);
     CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
+}
+
+TEST_CASE("player settings reject malformed advanced quality and missing lighting prerequisites")
+{
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "settings.toml";
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+        for (const auto value : {"true", "1.5", "-1", "3"})
+        {
+            {
+                std::ofstream output{path};
+                output << key << " = " << value << '\n';
+            }
+            CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+        }
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+    {
+        {
+            std::ofstream output{path};
+            output << key << " = 1\n";
+        }
+        CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+    }
 }
 
 TEST_CASE("interaction respects occlusion while allowing a panel on a wall face")

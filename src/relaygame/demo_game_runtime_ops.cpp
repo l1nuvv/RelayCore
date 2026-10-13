@@ -73,6 +73,10 @@ namespace RelayGame::detail
             reloaded_config.renderer.ssao_enabled = services.renderer().config().ssao_enabled;
             reloaded_config.renderer.ssr_enabled = services.renderer().config().ssr_enabled;
             reloaded_config.renderer.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            reloaded_config.renderer.ssgi_quality = services.renderer().config().ssgi_quality;
+            reloaded_config.renderer.reflection_quality = services.renderer().config().reflection_quality;
+            reloaded_config.renderer.dof_quality = services.renderer().config().dof_quality;
+            reloaded_config.renderer.motion_blur_quality = services.renderer().config().motion_blur_quality;
             reloaded_config.renderer.taa_enabled = services.renderer().config().taa_enabled;
             reloaded_config.renderer.render_scale = services.renderer().config().render_scale;
             reloaded_config.renderer.dynamic_resolution_enabled =

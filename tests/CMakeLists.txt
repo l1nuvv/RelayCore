@@ -299,6 +299,8 @@ add_test(NAME graphics.hdr_pipeline COMMAND relaycore_vulkan_mesh_tests --hdr)
 add_test(NAME graphics.msaa COMMAND relaycore_vulkan_mesh_tests --msaa)
 add_test(NAME graphics.visual_effects COMMAND relaycore_vulkan_mesh_tests --visual-effects)
 add_test(NAME graphics.visual_effects_raster COMMAND relaycore_vulkan_mesh_tests --visual-effects)
+add_test(NAME graphics.advanced_effects COMMAND relaycore_vulkan_mesh_tests --advanced-effects)
+add_test(NAME graphics.advanced_effects_raster COMMAND relaycore_vulkan_mesh_tests --advanced-effects)
 add_test(NAME graphics.temporal_scene COMMAND relaycore_vulkan_mesh_tests --temporal-scene)
 add_test(NAME graphics.dynamic_resolution COMMAND relaycore_vulkan_mesh_tests --temporal-dynamic)
 add_test(NAME graphics.temporal COMMAND relaycore_vulkan_mesh_tests --temporal)
@@ -308,7 +310,7 @@ add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --i
 add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
 add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.advanced_effects graphics.advanced_effects_raster graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -316,6 +318,8 @@ set_tests_properties(graphics.dynamic_resolution graphics.temporal_scene graphic
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_vulkan_mesh_tests>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
+set_property(TEST graphics.advanced_effects_raster APPEND PROPERTY ENVIRONMENT
+    "RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING=1")
 set_property(TEST graphics.temporal_raster APPEND PROPERTY ENVIRONMENT
     "RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING=1")
 set_property(TEST graphics.visual_effects_raster APPEND PROPERTY ENVIRONMENT

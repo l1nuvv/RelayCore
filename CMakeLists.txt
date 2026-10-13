@@ -170,6 +170,27 @@ foreach(stage IN ITEMS vertex fragment)
         COMMENT "Compiling temporal.slang (${stage}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+foreach(entry IN ITEMS advanced_vertex gi_fragment lens_fragment)
+    if(entry MATCHES "vertex$")
+        set(shader_stage vertex)
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/advanced.vert.spv")
+    else()
+        set(shader_stage fragment)
+        string(REPLACE "_fragment" "" advanced_kind "${entry}")
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/advanced_${advanced_kind}.frag.spv")
+    endif()
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/advanced.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/advanced.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling advanced.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
 foreach(effect IN ITEMS effects volume)
     set(effect_defines -DSCREEN_EFFECTS=1)
     if(effect STREQUAL "volume")

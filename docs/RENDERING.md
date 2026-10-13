@@ -132,6 +132,37 @@ opaque distance fog. Player/developer UI is composed after the effects.
 The authored controls, resource/pass contract, diagnostic views, captures,
 budgets and limitations belong to [VK14-07](renderer/VK14-07.md).
 
+## Advanced lighting and lens effects — VK14-09
+
+Optional `[render]` controls `ssgi_quality`, `reflection_quality`, `dof_quality`
+and `motion_blur_quality` accept integer 0/1/2. All default to 0. For reflections,
+0 retains the existing SSR technique; 1/2 select roughness cone sampling and
+require `ssr_enabled`. SSGI and lens effects require internal HDR/hardware sRGB.
+Player settings persist these qualities and the menu applies them through a
+prepared renderer reload. Selecting SDR disables them; disabling SSR resets its
+quality. `dof_focus_distance` is authored in world units, default 8, range
+[0.25,100]; quality changes require reload, focus changes reset history.
+
+SSGI replaces the covered fraction of ambient/SH diffuse using four/six
+cosine-weighted rays up to three world units, a half-resolution history and
+bilateral reconstruction. The source contains current opaque radiance without
+SSGI/SSR feedback or volumetrics. Misses retain ambient/probes; material and
+screen AO are combined by minimum and applied once to indirect illumination.
+Geometry/eligibility rejection, current radiance/coverage clipping and the
+existing history-reset contract bound temporal reuse. It cannot recover hidden
+or off-screen light and does not replace baked irradiance.
+
+Reflections retain probes for missing/unreliable hits; low/high use two/four
+deterministic cone rays. Existing optional TAA filters their final composition.
+DoF and motion blur run after TAA, before bloom/tone mapping, with four/eight
+depth/normal/motion-compatible taps. DoF radius is capped at three/six internal
+pixels; half-frame shutter motion at six/twelve. Invalid history/unknown motion,
+transparent/overlay/weapon pixels retain the sharp source. UI is appended at
+native resolution afterwards. Small kernels deliberately preserve depth edges
+instead of producing cinematic foreground bokeh. Controls default off pending
+owner visual preference; [execution evidence](renderer/VK14-09.md) owns local
+budgets, checks, captures and limitations.
+
 ## Static reflection probes (IMG-02)
 
 The engine accepts one `reflection_probe` per level. Its `origin` is the capture

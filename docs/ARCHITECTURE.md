@@ -141,8 +141,12 @@ reject history. Two scene slots retain pre-UI color and geometry for GPU
 reprojection/acceptance views. Resize/projection/exposure, scene activation,
 restore/respawn/camera cuts and successful reload invalidate history. The full
 [input/history contract and evidence](renderer/VK14-06.md#06bc-contract--2026-10-12)
-define encodings, resets and limitations; temporal filtering belongs to a later
-consumer.
+define encodings, resets and limitations. [VK14-08](renderer/VK14-08.md) consumes
+them for HDR TAA and resolution scaling; [VK14-09](renderer/VK14-09.md) adds a
+renderer-owned half-resolution diffuse GI history and bounded lens output.
+Prepared reload owns quality changes. Current source radiance excludes screen
+lighting feedback; GI replaces covered diffuse, while SSR retains probe fallback.
+Lens output follows TAA and precedes bloom/tone mapping; UI remains outside it.
 
 Memory statistics and retention counters are explicit diagnostic snapshots, with
 no heap queries in the normal frame loop. [Development](DEVELOPMENT.md#vulkan-capture-и-validation)

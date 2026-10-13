@@ -29,6 +29,10 @@ namespace RelayGame
         settings_.ssao_enabled = services.renderer().config().ssao_enabled;
         settings_.ssr_enabled = services.renderer().config().ssr_enabled;
         settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+        settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+        settings_.reflection_quality = services.renderer().config().reflection_quality;
+        settings_.dof_quality = services.renderer().config().dof_quality;
+        settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
         settings_.taa_enabled = services.renderer().config().taa_enabled;
         settings_.render_scale = services.renderer().config().render_scale;
         settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
@@ -72,6 +76,10 @@ namespace RelayGame
             settings_.ssao_enabled = services.renderer().config().ssao_enabled;
             settings_.ssr_enabled = services.renderer().config().ssr_enabled;
             settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+            settings_.reflection_quality = services.renderer().config().reflection_quality;
+            settings_.dof_quality = services.renderer().config().dof_quality;
+            settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
             settings_.taa_enabled = services.renderer().config().taa_enabled;
             settings_.render_scale = services.renderer().config().render_scale;
             settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
@@ -88,6 +96,10 @@ namespace RelayGame
             || settings_.ssao_enabled != renderer.config().ssao_enabled
             || settings_.ssr_enabled != renderer.config().ssr_enabled
             || settings_.volumetrics_enabled != renderer.config().volumetrics_enabled
+            || settings_.ssgi_quality != renderer.config().ssgi_quality
+            || settings_.reflection_quality != renderer.config().reflection_quality
+            || settings_.dof_quality != renderer.config().dof_quality
+            || settings_.motion_blur_quality != renderer.config().motion_blur_quality
             || settings_.taa_enabled != renderer.config().taa_enabled
             || settings_.render_scale != renderer.config().render_scale
             || settings_.dynamic_resolution_enabled != renderer.config().dynamic_resolution_enabled)
@@ -99,6 +111,10 @@ namespace RelayGame
             config.renderer.ssao_enabled = settings_.ssao_enabled;
             config.renderer.ssr_enabled = settings_.ssr_enabled;
             config.renderer.volumetrics_enabled = settings_.volumetrics_enabled;
+            config.renderer.ssgi_quality = settings_.ssgi_quality;
+            config.renderer.reflection_quality = settings_.reflection_quality;
+            config.renderer.dof_quality = settings_.dof_quality;
+            config.renderer.motion_blur_quality = settings_.motion_blur_quality;
             config.renderer.taa_enabled = settings_.taa_enabled;
             config.renderer.render_scale = settings_.render_scale;
             config.renderer.dynamic_resolution_enabled = settings_.dynamic_resolution_enabled;
@@ -221,7 +237,8 @@ namespace RelayGame
             } else if (name == "volume" || name == "sensitivity" || name == "fov" || name == "camera-motion"
                        || name == "vsync" || name == "hdr" || name == "bloom" || name == "ssao" || name == "ssr"
                        || name == "volumetrics" || name == "taa" || name == "render-scale"
-                       || name == "dynamic-resolution")
+                       || name == "dynamic-resolution" || name == "ssgi-quality" || name == "reflection-quality"
+                       || name == "dof-quality" || name == "motion-blur-quality")
             {
                 if (name == "volume")
                     settings_.volume = std::stof(action.value);
@@ -239,6 +256,10 @@ namespace RelayGame
                     if (!settings_.hdr_enabled)
                     {
                         settings_.bloom_enabled = settings_.ssr_enabled = settings_.taa_enabled = false;
+                        settings_.ssgi_quality = 0;
+                        settings_.reflection_quality = 0;
+                        settings_.dof_quality = 0;
+                        settings_.motion_blur_quality = 0;
                         settings_.render_scale = 1;
                         settings_.dynamic_resolution_enabled = false;
                     }
@@ -251,6 +272,18 @@ namespace RelayGame
                     settings_.ssr_enabled = action.value == "1";
                 if (name == "volumetrics")
                     settings_.volumetrics_enabled = action.value == "1";
+                if (name == "ssgi-quality")
+                    settings_.ssgi_quality = std::stoi(action.value);
+                if (name == "reflection-quality")
+                    settings_.reflection_quality = std::stoi(action.value);
+                if (name == "dof-quality")
+                    settings_.dof_quality = std::stoi(action.value);
+                if (name == "motion-blur-quality")
+                    settings_.motion_blur_quality = std::stoi(action.value);
+                if (!settings_.ssr_enabled && name == "ssr")
+                    settings_.reflection_quality = 0;
+                if (settings_.reflection_quality)
+                    settings_.ssr_enabled = true;
                 if (name == "taa")
                     settings_.taa_enabled = action.value == "1";
                 if (name == "render-scale")
@@ -258,7 +291,8 @@ namespace RelayGame
                 if (name == "dynamic-resolution")
                     settings_.dynamic_resolution_enabled = action.value == "1";
                 if (settings_.bloom_enabled || settings_.ssr_enabled || settings_.taa_enabled
-                    || settings_.render_scale != 1 || settings_.dynamic_resolution_enabled)
+                    || settings_.render_scale != 1 || settings_.dynamic_resolution_enabled || settings_.ssgi_quality
+                    || settings_.dof_quality || settings_.motion_blur_quality)
                     settings_.hdr_enabled = true;
                 settings_dirty_ = true;
                 try
@@ -272,6 +306,10 @@ namespace RelayGame
                     settings_.ssao_enabled = services.renderer().config().ssao_enabled;
                     settings_.ssr_enabled = services.renderer().config().ssr_enabled;
                     settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+                    settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+                    settings_.reflection_quality = services.renderer().config().reflection_quality;
+                    settings_.dof_quality = services.renderer().config().dof_quality;
+                    settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
                     settings_.taa_enabled = services.renderer().config().taa_enabled;
                     settings_.render_scale = services.renderer().config().render_scale;
                     settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
@@ -430,6 +468,10 @@ namespace RelayGame
         ui.set_value("ssao", settings_.ssao_enabled ? "1" : "0");
         ui.set_value("ssr", settings_.ssr_enabled ? "1" : "0");
         ui.set_value("volumetrics", settings_.volumetrics_enabled ? "1" : "0");
+        ui.set_value("ssgi-quality", std::to_string(settings_.ssgi_quality));
+        ui.set_value("reflection-quality", std::to_string(settings_.reflection_quality));
+        ui.set_value("dof-quality", std::to_string(settings_.dof_quality));
+        ui.set_value("motion-blur-quality", std::to_string(settings_.motion_blur_quality));
         ui.set_value("taa", settings_.taa_enabled ? "1" : "0");
         ui.set_value("dynamic-resolution", settings_.dynamic_resolution_enabled ? "1" : "0");
         ui.set_value("render-scale", std::to_string(settings_.render_scale));

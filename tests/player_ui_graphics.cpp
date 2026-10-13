@@ -252,6 +252,10 @@ int main()
         change("ssao", "1");
         change("ssr", "1");
         change("volumetrics", "1");
+        change("ssgi-quality", "2");
+        change("reflection-quality", "1");
+        change("dof-quality", "1");
+        change("motion-blur-quality", "2");
         change("taa", "1");
         change("render-scale", "0.67");
         change("dynamic-resolution", "1");
@@ -259,7 +263,9 @@ int main()
             renderer.config().hdr_enabled && renderer.config().bloom_enabled && renderer.config().ssao_enabled
                 && renderer.config().ssr_enabled && renderer.config().volumetrics_enabled
                 && renderer.config().taa_enabled && renderer.config().render_scale == .67F
-                && renderer.config().dynamic_resolution_enabled,
+                && renderer.config().dynamic_resolution_enabled && renderer.config().ssgi_quality == 2
+                && renderer.config().reflection_quality == 1 && renderer.config().dof_quality == 1
+                && renderer.config().motion_blur_quality == 2,
             "RML effect controls did not apply to the renderer"
         );
         (void) draw("settings-adjusted");
@@ -270,14 +276,17 @@ int main()
         require(
             settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.ssr_enabled
                 && settings.volumetrics_enabled && settings.taa_enabled && settings.render_scale == .67F
-                && settings.dynamic_resolution_enabled,
+                && settings.dynamic_resolution_enabled && settings.ssgi_quality == 2 && settings.reflection_quality == 1
+                && settings.dof_quality == 1 && settings.motion_blur_quality == 2,
             "RML effect settings were not persisted"
         );
         change("hdr", "0");
         require(
             !renderer.config().hdr_enabled && !renderer.config().bloom_enabled && !renderer.config().ssr_enabled
                 && !renderer.config().taa_enabled && renderer.config().render_scale == 1
-                && !renderer.config().dynamic_resolution_enabled,
+                && !renderer.config().dynamic_resolution_enabled && renderer.config().ssgi_quality == 0
+                && renderer.config().reflection_quality == 0 && renderer.config().dof_quality == 0
+                && renderer.config().motion_blur_quality == 0,
             "Selecting SDR retained HDR-only effects"
         );
         std::cout << "Saved settings: volume=" << settings.volume << " fov=" << settings.fov

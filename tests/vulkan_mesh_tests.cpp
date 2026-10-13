@@ -3420,6 +3420,395 @@ namespace
 
 namespace
 {
+    void check_advanced_effects(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        const int w = profile ? 1920 : 320, h = profile ? 1080 : 180;
+        PerspectiveCamera camera{{.position = {0, 1.2F, 3}, .target = {0, .1F, 0}}};
+        camera.set_viewport(w, h);
+        const CpuColorMeshData quad{
+            {{{-1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}},
+             {{1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}},
+             {{1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}},
+             {{-1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}}},
+            {0, 1, 2, 0, 2, 3}
+        };
+        StaticColorMesh plane, box;
+        plane.initialize(quad);
+        box.initialize(make_color_box_mesh_data());
+        std::vector<uint8_t> pixels(32 * 32 * 4);
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+            {
+                const auto i = (y * 32 + x) * 4;
+                pixels[i] = pixels[i + 1] = pixels[i + 2] = ((x / 2 + y / 2) % 2) ? 220 : 60;
+                pixels[i + 3] = 255;
+            }
+        Texture2D checker, black;
+        checker.initialize_rgba(32, 32, pixels, TextureEncoding::srgb);
+        black.initialize_rgba(1, 1, std::array<uint8_t, 4>{0, 0, 0, 255}, TextureEncoding::linear);
+        std::vector<RenderItem> items{
+            {.mesh = &plane,
+             .model_matrix = glm::scale(glm::mat4{1}, {3, 3, 1}),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.8F, 0}},
+            {.mesh = &plane,
+             .model_matrix = glm::scale(
+                 glm::rotate(glm::translate(glm::mat4{1}, {0, -.5F, 1}), -glm::half_pi<float>(), glm::vec3{1, 0, 0}),
+                 {3, 3, 1}
+             ),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.4F, .7F}},
+            {.mesh = &box,
+             .model_matrix = glm::scale(glm::translate(glm::mat4{1}, {-.65F, -.15F, .5F}), glm::vec3{.4F}),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.5F, 0},
+             .emissive_factor = {1, .1F, .05F}}
+        };
+        for (auto& item : items)
+            item.previous_model_matrix = item.model_matrix;
+        RendererConfig base;
+        base.hdr_enabled = true;
+        base.shadow_enabled = base.fog_enabled = false;
+        base.shadow_light_intensity = .8F;
+        base.postfx_vignette_strength = base.postfx_grain_strength = base.postfx_scanline_strength = 0;
+        base.postfx_contrast = base.postfx_saturation = 1;
+        const auto make = [&](const RendererConfig& config) {
+            return std::make_unique<VulkanMeshRenderer>(
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            );
+        };
+        auto reference = make(base);
+        const auto baseline = reference->render_image(items, camera, w, h);
+        save(baseline, captures / "advanced-off.bmp");
+        if (!profile)
+        {
+            const auto boxModel = items[2].model_matrix;
+            std::array<bool, 4> visible{};
+            for (int effect = 0; effect < 5; ++effect)
+                for (int quality = 1; quality <= 2; ++quality)
+                {
+                    auto config = base;
+                    config.ssgi_quality = effect == 0 || effect == 4 ? quality : 0;
+                    config.ssr_enabled = effect == 1 || effect == 4;
+                    config.reflection_quality = config.ssr_enabled ? quality : 0;
+                    config.dof_quality = effect == 2 || effect == 4 ? quality : 0;
+                    config.motion_blur_quality = effect == 3 || effect == 4 ? quality : 0;
+                    config.dof_focus_distance = 1;
+                    config.ssao_enabled = effect == 4;
+                    items[2].model_matrix = boxModel;
+                    items[2].previous_model_matrix = boxModel;
+                    items[2].emissive_factor = {1, .1F, .05F};
+                    auto renderer = make(config);
+                    const auto first = renderer->render_image(items, camera, w, h);
+                    if (effect == 2 || effect == 3)
+                        require(
+                            first.pixels == baseline.pixels,
+                            "Lens effects reused invalid first-frame motion/history"
+                        );
+                    for (int frame = 0; frame < 12; ++frame)
+                    {
+                        items[2].previous_model_matrix = items[2].model_matrix;
+                        items[2].model_matrix =
+                            glm::translate(glm::mat4{1}, {.2F * std::sin(frame * .5F), 0, 0}) * boxModel;
+                        items[2].emissive_factor = frame >= 8 ? glm::vec3{0} : glm::vec3{1, .1F, .05F};
+                        if (frame == 10)
+                            items[2].previous_model_matrix.reset();
+                        camera.set_position({.04F * frame, 1.2F, 3});
+                        const auto image = renderer->render_image(items, camera, w, h);
+                        auto control = reference->render_image(items, camera, w, h);
+                        if (effect == 0 && quality == 1 && frame == 11)
+                            save(control, captures / "advanced-control.bmp");
+                        if (effect < 4)
+                            visible[effect] = visible[effect] || image.pixels != control.pixels;
+                        if (effect == 0 && frame >= 8)
+                        {
+                            auto fresh = make(config);
+                            const auto current = fresh->render_image(items, camera, w, h);
+                            int maximum = 0;
+                            for (size_t pixel = 0; pixel < image.pixels.size(); ++pixel)
+                                maximum =
+                                    std::max(maximum, std::abs(int(image.pixels[pixel]) - int(current.pixels[pixel])));
+                            std::cout << "advanced_gi_lighting_change_quality=" << quality << " frame=" << frame
+                                      << " history_max_delta=" << maximum << '\n';
+                            require(maximum <= 4, "SSGI retained a bright trail after the emitter switched off");
+                            save(
+                                current,
+                                captures
+                                    / ("advanced-gi-fresh-" + std::to_string(quality) + "-" + std::to_string(frame)
+                                       + ".bmp")
+                            );
+                        }
+                        save(
+                            image,
+                            captures
+                                / ("advanced-" + std::to_string(effect) + "-" + std::to_string(quality) + "-"
+                                   + std::to_string(frame) + ".bmp")
+                        );
+                    }
+                    if (effect == 2 || effect == 3)
+                    {
+                        items[2].previous_model_matrix.reset();
+                        const auto image = renderer->render_image(items, camera, w, h);
+                        const auto control = reference->render_image(items, camera, w, h);
+                        const auto inputs = renderer->capture_pass_inputs();
+                        size_t excluded = 0;
+                        for (size_t pixel = 0; pixel < inputs.velocity.size(); ++pixel)
+                            if (inputs.velocity[pixel].w == 0)
+                            {
+                                ++excluded;
+                                for (int channel = 0; channel < 4; ++channel)
+                                    require(
+                                        image.pixels[pixel * 4 + channel] == control.pixels[pixel * 4 + channel],
+                                        "Lens effects blurred an ineligible/background pixel"
+                                    );
+                            }
+                        require(excluded > 0, "Lens fixture had no rejected pixels");
+                        items[2].previous_model_matrix = items[2].model_matrix;
+                    }
+                    bool reload_failed = false;
+                    try
+                    {
+                        renderer->reload_shaders(captures / "missing-shaders");
+                    } catch (const std::runtime_error&)
+                    {
+                        reload_failed = true;
+                    }
+                    require(reload_failed, "Missing shader reload succeeded");
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(
+                        renderer->capture_pass_inputs().history_valid,
+                        "Failed advanced reload discarded working history"
+                    );
+                    renderer->reset_history();
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(
+                        !renderer->capture_pass_inputs().history_valid,
+                        "Advanced effect camera cut retained history"
+                    );
+                    renderer->reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(!renderer->capture_pass_inputs().history_valid, "Advanced shader reload retained history");
+                    auto scaled = config;
+                    scaled.render_scale = .67F;
+                    renderer->set_config(scaled);
+                    static_cast<void>(renderer->render_image(items, camera, w + 1, h + 1));
+                    require(!renderer->capture_pass_inputs().history_valid, "Advanced resize/scale retained history");
+                    scaled.exposure_ev = 1;
+                    renderer->set_config(scaled);
+                    static_cast<void>(renderer->render_image(items, camera, w + 1, h + 1));
+                    require(
+                        !renderer->capture_pass_inputs().history_valid,
+                        "Advanced exposure change retained history"
+                    );
+                    camera.set_position({0, 1.2F, 3});
+                }
+            items[2].model_matrix = boxModel;
+            items[2].previous_model_matrix = boxModel;
+            items[2].emissive_factor = {1, .1F, .05F};
+            for (int effect = 0; effect < 4; ++effect)
+            {
+                std::cout << "advanced_effect=" << effect << " visible=" << visible[effect] << '\n';
+                require(visible[effect], "An advanced effect had no visible contribution in its analytic fixture");
+            }
+            // A screen-space miss must retain the full authored/probe diffuse.
+            auto giConfig = base;
+            giConfig.ssgi_quality = 2;
+            auto gi = make(giConfig);
+            gi->set_pass_input_view(PassInputView::ssgi);
+            save(gi->render_image(items, camera, w, h), captures / "advanced-gi-debug.bmp");
+            gi->set_pass_input_view(PassInputView::off);
+            const auto single = std::span{items}.first(1);
+            const auto miss = gi->render_image(single, camera, w, h);
+            const auto missReference = reference->render_image(single, camera, w, h);
+            save(miss, captures / "advanced-gi-miss.bmp");
+            save(missReference, captures / "advanced-gi-miss-reference.bmp");
+            int missMaximum = 0;
+            for (size_t pixel = 0; pixel < miss.pixels.size(); ++pixel)
+                missMaximum =
+                    std::max(missMaximum, std::abs(int(miss.pixels[pixel]) - int(missReference.pixels[pixel])));
+            std::cout << "advanced_gi_miss_max_delta=" << missMaximum << '\n';
+            require(missMaximum <= 1, "SSGI miss changed authored diffuse fallback");
+            auto probe = std::make_shared<ReflectionProbe>();
+            probe->settings = {{0, 0, 0}, {-4, -4, -4}, {4, 4, 4}, 8, 32};
+            for (int size = 8; size >= 1; size /= 2)
+                probe->mips.emplace_back(6 * size * size, glm::vec4{.05F, .2F, .6F, 1});
+            reference->set_reflection_probe(probe);
+            const auto probeReference = reference->render_image(single, camera, w, h);
+            for (int quality = 1; quality <= 2; ++quality)
+            {
+                auto config = base;
+                config.ssr_enabled = true;
+                config.reflection_quality = quality;
+                auto reflection = make(config);
+                reflection->set_reflection_probe(probe);
+                const auto reflectionMiss = reflection->render_image(single, camera, w, h);
+                int maximum = 0;
+                for (size_t pixel = 0; pixel < reflectionMiss.pixels.size(); ++pixel)
+                    maximum = std::max(
+                        maximum,
+                        std::abs(int(reflectionMiss.pixels[pixel]) - int(probeReference.pixels[pixel]))
+                    );
+                std::cout << "advanced_reflection_miss_quality=" << quality << " max_delta=" << maximum << '\n';
+                require(maximum <= 1, "Improved SSR miss replaced the reflection probe");
+                save(reflectionMiss, captures / ("advanced-reflection-miss-" + std::to_string(quality) + ".bmp"));
+            }
+            reference->set_reflection_probe({});
+            for (auto& item : items)
+                item.occlusion_texture = &black;
+            require(
+                gi->render_image(items, camera, w, h).pixels == reference->render_image(items, camera, w, h).pixels,
+                "SSGI bypassed zero material AO or occluded direct/emissive light"
+            );
+        }
+        reference.reset();
+        StaticModelCache models;
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/containment_loop.toml"));
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(prepared, models);
+        for (int mode = 0; mode < (profile ? 11 : 3); ++mode)
+        {
+            auto config =
+                RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+            config.hdr_enabled = true;
+            config.bloom_enabled = config.ssao_enabled = config.ssr_enabled = config.volumetrics_enabled = true;
+            config.taa_enabled = true;
+            const int quality = mode == 0 ? 0 : (mode % 2 == 1 ? 1 : 2);
+            const int effect = profile ? (mode - 1) / 2 : 4;
+            config.ssgi_quality = effect == 0 || effect == 4 ? quality : 0;
+            config.reflection_quality = effect == 1 || effect == 4 ? quality : 0;
+            config.dof_quality = effect == 2 || effect == 4 ? quality : 0;
+            config.motion_blur_quality = effect == 3 || effect == 4 ? quality : 0;
+            const auto construction_start = std::chrono::steady_clock::now();
+            auto renderer = make(config);
+            if (profile)
+                std::cout << "advanced_mode=" << mode << " renderer_construction_ms="
+                          << std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - construction_start
+                             )
+                                 .count()
+                          << '\n';
+            renderer->set_irradiance_probes(scene.irradiance());
+            renderer->set_reflection_probe(prepared.reflection);
+            camera.set_position({-21, 1.65F, 19});
+            camera.set_target({-21, .6F, 23});
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            renderer->set_local_lights(scene.local_lights());
+            renderer->prepare_resources(scene.render_items());
+            const auto measure = [&] {
+                for (int frame = 0; frame < (profile ? 240 : 24); ++frame)
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced real CPU frame");
+                    camera.set_position({-21 + .3F * std::sin(frame * .03F), 1.65F, 19 + .2F * std::sin(frame * .025F)}
+                    );
+                    scene.prepare_render_queue(camera, frame / 60.0F, {}, {}, {}, -1, {}, false);
+                    const auto weapon = scene.prepare_shotgun_viewmodel(camera, frame / 60.0F);
+                    renderer->prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                    if (!profile)
+                        save(
+                            renderer->capture_prepared_image(),
+                            captures / ("advanced-g019-" + std::to_string(mode) + "-" + std::to_string(frame) + ".bmp")
+                        );
+                    SDL_PumpEvents();
+                    RELAYCORE_PROFILE_FRAME();
+                }
+            };
+            // Distinct fixed zones give comparable per-feature Tracy distributions.
+            switch (mode)
+            {
+                case 0:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced off");
+                    measure();
+                    break;
+                }
+                case 1:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced GI low");
+                    measure();
+                    break;
+                }
+                case 2:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced GI high");
+                    measure();
+                    break;
+                }
+                case 3:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced reflections low");
+                    measure();
+                    break;
+                }
+                case 4:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced reflections high");
+                    measure();
+                    break;
+                }
+                case 5:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced DoF low");
+                    measure();
+                    break;
+                }
+                case 6:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced DoF high");
+                    measure();
+                    break;
+                }
+                case 7:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced blur low");
+                    measure();
+                    break;
+                }
+                case 8:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced blur high");
+                    measure();
+                    break;
+                }
+                case 9:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced combined low");
+                    measure();
+                    break;
+                }
+                case 10:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced combined high");
+                    measure();
+                    break;
+                }
+            }
+            uint64_t allocation = 0;
+            for (const auto& heap : device.memory_usage().heaps)
+                allocation += heap.allocation_bytes;
+            std::cout << "advanced_mode=" << mode << " profile_vma_allocation_bytes=" << allocation << '\n';
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, .4F);
+            save(
+                renderer->render_image(scene.render_items(), camera, w, h, weapon),
+                captures / ("advanced-profile-" + std::to_string(mode) + ".bmp")
+            );
+        }
+    }
+
     void check_visual_effects(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -4583,6 +4972,8 @@ int main(int argc, char** argv)
     const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
     const bool emission_only = argc == 2 && std::string_view{argv[1]} == "--emission";
     const bool msaa_only = argc == 2 && std::string_view{argv[1]} == "--msaa";
+    const bool advanced_only = argc == 2 && std::string_view{argv[1]} == "--advanced-effects";
+    const bool advanced_profile = argc == 2 && std::string_view{argv[1]} == "--advanced-effects-profile";
     const bool effects_only = argc == 2 && std::string_view{argv[1]} == "--visual-effects";
     const bool effects_profile = argc == 2 && std::string_view{argv[1]} == "--visual-effects-profile";
     const bool settings_profile = argc == 2 && std::string_view{argv[1]} == "--graphics-settings-profile";
@@ -4608,7 +4999,8 @@ int main(int argc, char** argv)
         && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
         && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile && !effects_analytic
-        && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile)
+        && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile && !temporal_scene
+        && !temporal_dynamic && !settings_profile)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -4629,7 +5021,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (settings_profile)
+        if (advanced_only || advanced_profile)
+            check_advanced_effects(device, authoring, atlas, captures, advanced_profile);
+        else if (settings_profile)
             profile_graphics_settings(device, authoring, atlas, captures);
         else if (temporal_profile || temporal_scene || temporal_dynamic)
             profile_temporal(
