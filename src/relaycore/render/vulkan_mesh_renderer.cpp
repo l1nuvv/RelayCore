@@ -58,6 +58,14 @@ namespace RelayCore::render
         static_assert(offsetof(DrawInstance, correspondence) == 112);
         static_assert(sizeof(DrawInstance) == 128);
 
+        struct CullBatch {
+            glm::uvec4 range;
+            glm::vec4 mins, maxs;
+        };
+        static_assert(offsetof(CullBatch, mins) == 16);
+        static_assert(sizeof(CullBatch) == 48);
+        static_assert(sizeof(VkDrawIndexedIndirectCommand) == 20);
+
         struct PreviousDraw {
             glm::mat4 mvp;
             glm::vec4 valid;
@@ -490,6 +498,92 @@ namespace RelayCore::render
                 return module;
             }
         };
+        struct SceneCulling {
+            VkDevice device;
+            VkPipelineCache cache;
+            VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
+            VkPipelineLayout layout = VK_NULL_HANDLE;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            std::array<VkDescriptorSet, 2> sets{};
+            uint32_t max_dispatch_x;
+
+            SceneCulling(const VulkanDevice& owner, const uint32_t dispatch_limit) :
+                device(owner.handle()), cache(owner.pipeline_cache()), max_dispatch_x(dispatch_limit)
+            {}
+            ~SceneCulling() noexcept
+            {
+                if (pipeline)
+                    vkDestroyPipeline(device, pipeline, nullptr);
+                if (pool)
+                    vkDestroyDescriptorPool(device, pool, nullptr);
+                if (layout)
+                    vkDestroyPipelineLayout(device, layout, nullptr);
+                if (descriptor_layout)
+                    vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+            }
+            void initialize()
+            {
+                std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+                for (uint32_t i = 0; i < bindings.size(); ++i)
+                    bindings[i] = {i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+                const VkDescriptorSetLayoutCreateInfo descriptor_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = static_cast<uint32_t>(bindings.size()),
+                    .pBindings = bindings.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorSetLayout(device, &descriptor_info, nullptr, &descriptor_layout),
+                    "Scene culling descriptor layout"
+                );
+                const VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t)};
+                const VkPipelineLayoutCreateInfo layout_info{
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptor_layout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push
+                };
+                require_mesh_vk(vkCreatePipelineLayout(device, &layout_info, nullptr, &layout), "Scene culling layout");
+                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
+                const VkDescriptorPoolCreateInfo pool_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 2,
+                    .poolSizeCount = 1,
+                    .pPoolSizes = &size
+                };
+                require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "Scene culling pool");
+                const std::array layouts{descriptor_layout, descriptor_layout};
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool,
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data()
+                };
+                require_mesh_vk(vkAllocateDescriptorSets(device, &allocation, sets.data()), "Scene culling sets");
+            }
+            auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
+            {
+                MeshShaders shader{device};
+                shader.vertex = shader.load(directory / "scene_culling.comp.spv", "compute_main");
+                const VkComputePipelineCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                    .stage =
+                        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                         .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                         .module = shader.vertex,
+                         .pName = "compute_main"},
+                    .layout = layout
+                };
+                VkPipeline result = VK_NULL_HANDLE;
+                require_mesh_vk(
+                    vkCreateComputePipelines(device, cache, 1, &info, nullptr, &result),
+                    "Scene culling pipeline"
+                );
+                return result;
+            }
+        };
+
         struct ToneMappingPush {
             glm::vec4 postfx, viewport_time_exposure, grading;
         };
@@ -806,6 +900,7 @@ namespace RelayCore::render
             VulkanSceneCompletion last_use{};
             uint64_t upload_completion = 0;
             uint64_t recording = 0;
+            glm::vec3 mins{}, maxs{};
         };
         struct MaterialKey {
             const CpuRgbaTextureData* color;
@@ -913,6 +1008,8 @@ namespace RelayCore::render
             VkCommandPool pool = VK_NULL_HANDLE;
             std::array<VkCommandBuffer, 3> buffers{};
             VkCommandBuffer commands = VK_NULL_HANDLE;
+            VkCommandBuffer culling_commands = VK_NULL_HANDLE;
+            bool culling_pending = false;
             size_t command_index = 0;
             VulkanSceneCompletion pending{};
             VkQueryPool resolution_queries = VK_NULL_HANDLE;
@@ -921,6 +1018,8 @@ namespace RelayCore::render
             std::unique_ptr<MeshTarget> target;
             std::unique_ptr<InputTarget> inputs;
             VulkanBuffer instances, indirect_commands;
+            VulkanBuffer visible_instances, culling_batches, gpu_commands;
+            std::vector<CullBatch> cull_records;
             std::vector<DrawInstance> instance_records;
             std::vector<VkDrawIndexedIndirectCommand> draw_commands;
             std::vector<DrawBatch> batches;
@@ -999,6 +1098,7 @@ namespace RelayCore::render
         std::array<VkDescriptorSet, 2> instance_sets{};
         VulkanSceneSubmission scene_submission = VulkanSceneSubmission::instanced;
         uint32_t max_instance_records = 0, instance_storage_limit = 0;
+        std::unique_ptr<SceneCulling> culling;
         std::array<VkPipeline, 3> pipelines{};
         uint64_t recording = 0;
         std::vector<Mesh*> used_meshes;
@@ -1100,6 +1200,7 @@ namespace RelayCore::render
             wait_frame(slot);
             require_mesh_vk(vkResetCommandPool(device.handle(), slot.pool, 0), "Failed to reset scene slot");
             slot.command_index = 0;
+            slot.culling_pending = false;
         }
         ~State() noexcept
         {
@@ -1259,6 +1360,26 @@ namespace RelayCore::render
             max_target_width = std::min(properties.limits.maxFramebufferWidth, properties.limits.maxImageDimension2D);
             max_target_height = std::min(properties.limits.maxFramebufferHeight, properties.limits.maxImageDimension2D);
             instance_storage_limit = properties.limits.maxStorageBufferRange / sizeof(DrawInstance);
+            bool culling_available = device.capabilities().graphics_compute
+                                     && properties.limits.maxComputeWorkGroupInvocations >= 64
+                                     && properties.limits.maxComputeWorkGroupSize[0] >= 64
+                                     && properties.limits.maxPerStageDescriptorStorageBuffers >= 4;
+            if (const auto* override = std::getenv("RELAYCORE_VULKAN_DISABLE_GPU_CULLING"))
+            {
+                const std::string_view value{override};
+                if (value != "0" && value != "1")
+                    throw std::invalid_argument("RELAYCORE_VULKAN_DISABLE_GPU_CULLING must be 0 or 1");
+                culling_available = culling_available && value != "1";
+            }
+            if (culling_available)
+            {
+                culling = std::make_unique<SceneCulling>(device, properties.limits.maxComputeWorkGroupCount[0]);
+                culling->initialize();
+            }
+            log::info(
+                "Vulkan scene GPU culling: {}",
+                culling ? "available (graphics queue, stable compaction)" : "unavailable; CPU indirect fallback"
+            );
             VkFormatProperties color_properties{};
             vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &color_properties);
             constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
@@ -1546,6 +1667,12 @@ namespace RelayCore::render
                     vkAllocateCommandBuffers(device.handle(), &allocation, slot.buffers.data()),
                     "Failed to allocate scene slot commands"
                 );
+                auto culling_allocation = allocation;
+                culling_allocation.commandBufferCount = 1;
+                require_mesh_vk(
+                    vkAllocateCommandBuffers(device.handle(), &culling_allocation, &slot.culling_commands),
+                    "Failed to allocate scene culling commands"
+                );
             }
             if (config.bloom_enabled)
             {
@@ -1772,6 +1899,8 @@ namespace RelayCore::render
                 return found->second;
             auto entry = meshes.emplace(cpu.get(), Mesh{cpu, {}, {}, static_cast<uint32_t>(cpu->indices.size())}).first;
             auto& result = entry->second;
+            result.mins = resource.bounds_min();
+            result.maxs = resource.bounds_max();
             try
             {
                 auto vertices = uploads.upload_mesh_buffer(
@@ -2324,6 +2453,7 @@ namespace RelayCore::render
             auto& slot = frame();
             slot.instance_records.clear();
             slot.draw_commands.clear();
+            slot.cull_records.clear();
             slot.draw_usage = {};
             const VkDeviceSize bytes = count * sizeof(DrawInstance);
             const bool replace_instances = slot.instances.size() < bytes;
@@ -2338,7 +2468,53 @@ namespace RelayCore::render
                     VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
                     VulkanBufferMemory::upload
                 );
-            const VkDescriptorBufferInfo buffer{slot.instances.handle(), 0, slot.instances.size()};
+            const bool gpu = scene_submission == VulkanSceneSubmission::gpu_culled;
+            if (gpu)
+            {
+                if (slot.visible_instances.size() < bytes)
+                    slot.visible_instances =
+                        VulkanBuffer(device, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::device);
+                if (slot.culling_batches.size() < count * sizeof(CullBatch))
+                    slot.culling_batches = VulkanBuffer(
+                        device,
+                        count * sizeof(CullBatch),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                        VulkanBufferMemory::upload
+                    );
+                if (slot.gpu_commands.size() < count * sizeof(VkDrawIndexedIndirectCommand))
+                    slot.gpu_commands = VulkanBuffer(
+                        device,
+                        count * sizeof(VkDrawIndexedIndirectCommand),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+                            | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        VulkanBufferMemory::device
+                    );
+                const std::array buffers{
+                    VkDescriptorBufferInfo{slot.instances.handle(), 0, slot.instances.size()},
+                    VkDescriptorBufferInfo{slot.visible_instances.handle(), 0, slot.visible_instances.size()},
+                    VkDescriptorBufferInfo{slot.culling_batches.handle(), 0, slot.culling_batches.size()},
+                    VkDescriptorBufferInfo{slot.gpu_commands.handle(), 0, slot.gpu_commands.size()}
+                };
+                std::array<VkWriteDescriptorSet, 4> writes{};
+                for (uint32_t i = 0; i < writes.size(); ++i)
+                    writes[i] = {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = culling->sets[frame_index],
+                        .dstBinding = i,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .pBufferInfo = &buffers[i]
+                    };
+                vkUpdateDescriptorSets(
+                    device.handle(),
+                    static_cast<uint32_t>(writes.size()),
+                    writes.data(),
+                    0,
+                    nullptr
+                );
+            }
+            const auto& vertex_instances = gpu ? slot.visible_instances : slot.instances;
+            const VkDescriptorBufferInfo buffer{vertex_instances.handle(), 0, vertex_instances.size()};
             const VkWriteDescriptorSet write{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = instance_sets[frame_index],
@@ -2347,8 +2523,78 @@ namespace RelayCore::render
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .pBufferInfo = &buffer
             };
-            if (replace_instances)
-                vkUpdateDescriptorSets(device.handle(), 1, &write, 0, nullptr);
+            vkUpdateDescriptorSets(device.handle(), 1, &write, 0, nullptr);
+        }
+
+        void record_culling()
+        {
+            auto& slot = frame();
+            if (!slot.cull_records.empty())
+                slot.culling_batches.write(std::as_bytes(std::span{slot.cull_records}));
+            const VkCommandBufferBeginInfo begin{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            };
+            require_mesh_vk(vkBeginCommandBuffer(slot.culling_commands, &begin), "Begin scene culling commands");
+            if (slot.resolution_queries)
+            {
+                vkCmdResetQueryPool(slot.culling_commands, slot.resolution_queries, 0, 2);
+                vkCmdWriteTimestamp2(
+                    slot.culling_commands,
+                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                    slot.resolution_queries,
+                    0
+                );
+            }
+            {
+                RELAYCORE_PROFILE_VK_ZONE(slot.profiler, slot.culling_commands, "Scene GPU culling");
+                if (!slot.cull_records.empty())
+                {
+                    vkCmdBindPipeline(slot.culling_commands, VK_PIPELINE_BIND_POINT_COMPUTE, culling->pipeline);
+                    vkCmdBindDescriptorSets(
+                        slot.culling_commands,
+                        VK_PIPELINE_BIND_POINT_COMPUTE,
+                        culling->layout,
+                        0,
+                        1,
+                        &culling->sets[frame_index],
+                        0,
+                        nullptr
+                    );
+                    const auto count = static_cast<uint32_t>(slot.cull_records.size());
+                    for (uint32_t first = 0; first < count;)
+                    {
+                        const auto groups = std::min(count - first, culling->max_dispatch_x);
+                        vkCmdPushConstants(
+                            slot.culling_commands,
+                            culling->layout,
+                            VK_SHADER_STAGE_COMPUTE_BIT,
+                            0,
+                            sizeof(first),
+                            &first
+                        );
+                        vkCmdDispatch(slot.culling_commands, groups, 1, 1);
+                        first += groups;
+                    }
+                    const VkMemoryBarrier2 barrier{
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                                        | VK_PIPELINE_STAGE_2_COPY_BIT,
+                        .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT
+                                         | VK_ACCESS_2_TRANSFER_READ_BIT
+                    };
+                    const VkDependencyInfo dependency{
+                        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                        .memoryBarrierCount = 1,
+                        .pMemoryBarriers = &barrier
+                    };
+                    vkCmdPipelineBarrier2(slot.culling_commands, &dependency);
+                }
+            }
+            require_mesh_vk(vkEndCommandBuffer(slot.culling_commands), "End scene culling commands");
+            slot.culling_pending = true;
         }
 
         void begin_batches()
@@ -2405,7 +2651,7 @@ namespace RelayCore::render
             );
         }
 
-        void draw_batch(const DrawBatch& batch, const uint32_t first_instance = 0)
+        void draw_batch(const DrawBatch& batch, const uint32_t first_instance = 0, const bool cull = false)
         {
             auto& slot = frame();
             auto& geometry = *batch.key.geometry;
@@ -2417,7 +2663,26 @@ namespace RelayCore::render
             ++slot.draw_usage.draws;
             slot.draw_usage.instances += batch.count;
             // Base instance is supplied in push constants, keeping optional indirect-first-instance disabled.
-            if (scene_submission == VulkanSceneSubmission::indirect)
+            if (scene_submission == VulkanSceneSubmission::gpu_culled)
+            {
+                if (slot.cull_records.size() >= max_instance_records)
+                    throw std::logic_error("Scene GPU commands exceeded their reserved count");
+                const auto command_offset = slot.cull_records.size() * sizeof(VkDrawIndexedIndirectCommand);
+                slot.cull_records.push_back(
+                    {{batch.first_instance, batch.count, geometry.index_count, cull ? 1U : 0U},
+                     {geometry.mins, 0},
+                     {geometry.maxs, 0}}
+                );
+                slot.draw_usage.culling_draws += cull ? 1 : 0;
+                vkCmdDrawIndexedIndirect(
+                    slot.commands,
+                    slot.gpu_commands.handle(),
+                    command_offset,
+                    1,
+                    sizeof(VkDrawIndexedIndirectCommand)
+                );
+                ++slot.draw_usage.indirect_draws;
+            } else if (scene_submission == VulkanSceneSubmission::indirect)
             {
                 if (slot.draw_commands.size() >= max_instance_records)
                     throw std::logic_error("Scene indirect commands exceeded their reserved count");
@@ -2446,8 +2711,8 @@ namespace RelayCore::render
             use(*batch.key.surface);
             const auto set = batch.key.surface->sets[frame_index];
             vkCmdBindDescriptorSets(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
-            const bool instance_storage =
-                batch.count > 1 || (inputs && scene_submission == VulkanSceneSubmission::indirect);
+            const bool instance_storage = batch.count > 1 || scene_submission == VulkanSceneSubmission::gpu_culled
+                                          || (inputs && scene_submission == VulkanSceneSubmission::indirect);
             DrawPush push{
                 instance.mvp,
                 instance.model_rows,
@@ -2464,7 +2729,11 @@ namespace RelayCore::render
                 sizeof(push),
                 &push
             );
-            draw_batch(batch, inputs && !instance_storage ? instance.correspondence.x : 0);
+            draw_batch(
+                batch,
+                inputs && !instance_storage ? instance.correspondence.x : 0,
+                (batch.key.flags & (2U | 4U | 32U)) == 0
+            );
         }
 
         bool has_adjacent_geometry(const std::span<const RenderItem> items, const RenderPass pass) const
@@ -2497,7 +2766,8 @@ namespace RelayCore::render
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
             );
-            const bool batching = scene_submission == VulkanSceneSubmission::indirect
+            const bool batching = scene_submission == VulkanSceneSubmission::gpu_culled
+                                  || scene_submission == VulkanSceneSubmission::indirect
                                   || (scene_submission == VulkanSceneSubmission::instanced && !viewmodel
                                       && pass == RenderPass::Opaque && has_adjacent_geometry(items, pass));
             begin_batches();
@@ -2591,7 +2861,7 @@ namespace RelayCore::render
             ShadowPush push{.mvp = instance.mvp, .model_rows = instance.model_rows};
             if (light)
                 push.light_position_radius = {light->position, light->radius};
-            if (batch.count > 1)
+            if (batch.count > 1 || scene_submission == VulkanSceneSubmission::gpu_culled)
             {
                 push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
                 push.light_position_radius.w = light ? -light->radius : -1.0F;
@@ -2604,7 +2874,7 @@ namespace RelayCore::render
                 sizeof(push),
                 &push
             );
-            draw_batch(batch);
+            draw_batch(batch, 0, true);
         }
 
         void draw_shadow(
@@ -2640,7 +2910,8 @@ namespace RelayCore::render
             vkCmdBeginRendering(frame().commands, &info);
             const auto planes = shadow_frustum_planes(view_projection);
             RELAYCORE_PROFILE_ZONE_N("Vulkan shadow draw recording");
-            const bool batching = scene_submission == VulkanSceneSubmission::indirect
+            const bool batching = scene_submission == VulkanSceneSubmission::gpu_culled
+                                  || scene_submission == VulkanSceneSubmission::indirect
                                   || (scene_submission == VulkanSceneSubmission::instanced
                                       && has_adjacent_geometry(items, RenderPass::Opaque));
             begin_batches();
@@ -2899,7 +3170,14 @@ namespace RelayCore::render
         void submit_and_wait(const bool synchronous = true, const bool resolution_sample = false)
         {
             require_mesh_vk(vkEndCommandBuffer(frame().commands), "Failed to end mesh frame");
-            frame().pending = submissions.submit(frame().commands, uploads.dependency());
+            frame().pending = submissions.submit(
+                frame().commands,
+                uploads.dependency(),
+                {},
+                VK_NULL_HANDLE,
+                frame().culling_pending ? frame().culling_commands : VK_NULL_HANDLE
+            );
+            frame().culling_pending = false;
             frame().resolution_sample_pending = frame().resolution_sample_pending || resolution_sample;
             // Publish use only after successful submission; failed recording/prepare owns no GPU references.
             for (auto* mesh : used_meshes)
@@ -4080,7 +4358,7 @@ namespace RelayCore::render
             begin_commands();
             {
                 RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Scene frame");
-                if (frame().resolution_queries)
+                if (frame().resolution_queries && scene_submission != VulkanSceneSubmission::gpu_culled)
                 {
                     vkCmdResetQueryPool(frame().commands, frame().resolution_queries, 0, 2);
                     vkCmdWriteTimestamp2(
@@ -4319,6 +4597,8 @@ namespace RelayCore::render
                 frame().instances.write(std::as_bytes(std::span{frame().instance_records}));
             if (!frame().draw_commands.empty())
                 frame().indirect_commands.write(std::as_bytes(std::span{frame().draw_commands}));
+            if (scene_submission == VulkanSceneSubmission::gpu_culled)
+                record_culling();
             submit_and_wait(capture || ui, frame().resolution_queries != VK_NULL_HANDLE);
             if (needs_inputs())
             {
@@ -4358,11 +4638,13 @@ namespace RelayCore::render
         }
         if (const auto* value = std::getenv("RELAYCORE_VULKAN_SCENE_SUBMISSION"))
         {
-            const std::array names{"direct", "instanced", "indirect"};
+            const std::array names{"direct", "instanced", "indirect", "gpu_culled"};
             const auto found = std::find(names.begin(), names.end(), std::string_view{value});
             if (found == names.end())
-                throw std::invalid_argument("RELAYCORE_VULKAN_SCENE_SUBMISSION must be direct, instanced or indirect");
-            state_->scene_submission = static_cast<VulkanSceneSubmission>(found - names.begin());
+                throw std::invalid_argument(
+                    "RELAYCORE_VULKAN_SCENE_SUBMISSION must be direct, instanced, indirect or gpu_culled"
+                );
+            set_scene_submission(static_cast<VulkanSceneSubmission>(found - names.begin()));
         }
         if (const auto* value = std::getenv("RELAYCORE_VULKAN_PASS_INPUT_VIEW"))
         {
@@ -4402,12 +4684,56 @@ namespace RelayCore::render
     }
     void VulkanMeshRenderer::set_scene_submission(const VulkanSceneSubmission mode) noexcept
     {
-        state_->scene_submission = mode;
+        state_->scene_submission =
+            mode == VulkanSceneSubmission::gpu_culled && !state_->culling ? VulkanSceneSubmission::indirect : mode;
+    }
+
+    auto VulkanMeshRenderer::supports_gpu_culling() const noexcept -> bool
+    {
+        return state_->culling != nullptr;
+    }
+
+    auto VulkanMeshRenderer::scene_submission() const noexcept -> VulkanSceneSubmission
+    {
+        return state_->scene_submission;
     }
 
     auto VulkanMeshRenderer::draw_usage() const noexcept -> VulkanDrawUsage
     {
         return state_->frame().draw_usage;
+    }
+
+    auto VulkanMeshRenderer::capture_draw_usage() -> VulkanDrawUsage
+    {
+        auto& slot = state_->frame();
+        auto usage = slot.draw_usage;
+        if (slot.cull_records.empty())
+            return usage;
+        state_->wait_frame(slot);
+        std::vector<VkDrawIndexedIndirectCommand> commands(slot.cull_records.size());
+        VulkanBuffer readback{
+            state_->device,
+            commands.size() * sizeof(commands.front()),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VulkanBufferMemory::readback
+        };
+        state_->begin_commands();
+        const VkBufferCopy copy{0, 0, readback.size()};
+        vkCmdCopyBuffer(slot.commands, slot.gpu_commands.handle(), readback.handle(), 1, &copy);
+        state_->submit_and_wait();
+        readback.read(std::as_writable_bytes(std::span{commands}));
+        usage.instances = 0;
+        for (size_t i = 0; i < commands.size(); ++i)
+        {
+            const auto& command = commands[i];
+            const auto& batch = slot.cull_records[i].range;
+            if (command.indexCount != batch.z || command.instanceCount > batch.y || command.firstIndex
+                || command.vertexOffset || command.firstInstance)
+                throw std::runtime_error("GPU scene culling produced an invalid indirect command");
+            usage.instances += command.instanceCount;
+        }
+        usage.culled_instances = slot.draw_usage.instances - usage.instances;
+        return usage;
     }
 
     auto VulkanMeshRenderer::resolution_status() const noexcept -> VulkanResolutionStatus
@@ -4613,7 +4939,7 @@ namespace RelayCore::render
     {
         state_->wait();
         auto staged_directory = directory;
-        std::array<VkPipeline, 16> replacement{};
+        std::array<VkPipeline, 17> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -4640,6 +4966,8 @@ namespace RelayCore::render
                     replacement[7 + static_cast<size_t>(pass)] = state_->create_pipeline(directory, pass, -2);
                 replacement[10] = state_->create_pipeline(directory, RenderPass::Opaque, -3);
             }
+            if (state_->culling)
+                replacement[16] = state_->culling->create_pipeline(directory);
         } catch (...)
         {
             for (const auto pipeline : replacement)
@@ -4682,6 +5010,12 @@ namespace RelayCore::render
         if (state_->lens_pipeline)
             vkDestroyPipeline(state_->device.handle(), state_->lens_pipeline, nullptr);
         state_->lens_pipeline = replacement[15];
+        if (state_->culling)
+        {
+            if (state_->culling->pipeline)
+                vkDestroyPipeline(state_->device.handle(), state_->culling->pipeline, nullptr);
+            state_->culling->pipeline = replacement[16];
+        }
         state_->shader_directory = std::move(staged_directory);
         reset_history();
     }

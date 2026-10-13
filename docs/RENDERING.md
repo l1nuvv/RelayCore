@@ -170,7 +170,8 @@ instead of producing cinematic foreground bokeh. Controls default off pending
 owner visual preference; [execution evidence](renderer/VK14-09.md) owns local
 budgets, checks, captures and limitations.
 
-## Scene submission — VK14-10a/b
+<a id="scene-submission--vk14-10ab"></a>
+## Scene submission — VK14-10a/b/c
 
 The Vulkan backend batches adjacent opaque items sharing immutable CPU geometry,
 material descriptors and draw flags. It keeps submitted order, including
@@ -181,18 +182,46 @@ existing caster/range/frustum filters. Each GPU instance retains its own current
 transform and original temporal-record index. CPU scene culling and inspector
 picking retain their existing owners.
 
-`RELAYCORE_VULKAN_SCENE_SUBMISSION=direct|instanced|indirect` selects a diagnostic
+`RELAYCORE_VULKAN_SCENE_SUBMISSION=direct|instanced|indirect|gpu_culled` selects a diagnostic
 path when the renderer is created; unknown values fail explicitly. `instanced`
 is the default. `direct` issues one indexed draw per item. `indirect` consumes
 CPU-authored `VkDrawIndexedIndirectCommand` records, one command per compatible
 batch. It uses zero first-instance with a push-constant record offset, requiring
 no additional optional device feature. It does not add multi-draw geometry
-packing or GPU culling. The two scene slots own mapped instance/command buffers,
+packing. The two scene slots own mapped instance/command buffers,
 flush writes before submission and wait for their final GPU use before reuse or
 growth. Storage limits and command-buffer bounds fail explicitly.
 
+`gpu_culled` uses graphics-queue compute to classify transformed opaque mesh AABB
+corners against the current pass frustum, compact visible instances in their
+original order and generate one indexed indirect command per batch. Shadow
+passes retain the existing caster/range filters and also test their own frusta.
+Transparent, overlay and viewmodel records are copied without culling or
+reordering. Temporal correspondence remains the original submitted record index;
+there is no delayed visibility history. Mirroring, nonuniform scale and shear
+are included in the actual MVP bound test, with a conservative floating-point
+margin at clip planes.
+
+Each slot retains mapped input/metadata and device instance/command output
+buffers. A compute command buffer precedes raster in the same timeline
+submission; a storage-write barrier makes the outputs visible to vertex and
+indirect-command reads. Slot completion protects reuse, growth and reload.
+Commands use zero first-instance and the existing push-constant record offset;
+no multi-draw, indirect-first-instance or bindless feature is required. Dispatch
+sizes and storage/command capacities are checked. CPU grouping and bindings
+remain; this path adds neither occlusion nor LOD selection.
+
+The path requires graphics-queue compute, 64-thread groups and four compute
+storage bindings. Unavailable support selects the CPU `indirect` path, reported
+by the startup capability log and `scene_submission()`. The verification
+override `RELAYCORE_VULKAN_DISABLE_GPU_CULLING=1` exercises that fallback;
+unknown override/submission values fail explicitly. `draw_usage()` reports
+candidate counts without waiting; `capture_draw_usage()` waits and validates
+GPU commands to report actual surviving/culled instances.
+
 The renderer fixture offers `--scene-submission` and
-`--scene-submission-profile`; [VK14-10 evidence](renderer/VK14-10.md) owns parity,
+`--scene-submission-profile`, `--scene-culling` and `--scene-culling-profile`;
+[VK14-10 evidence](renderer/VK14-10.md#vk14-10c-implementation--2026-10-13) owns parity,
 performance and the historical map-baseline exceptions.
 
 ## Static reflection probes (IMG-02)

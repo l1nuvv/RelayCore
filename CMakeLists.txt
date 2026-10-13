@@ -109,6 +109,16 @@ foreach(stage IN ITEMS vert frag)
         COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
+set(output "${RELAYCORE_SPIRV_DIRECTORY}/scene_culling.comp.spv")
+add_custom_command(OUTPUT "${output}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+    COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_culling.slang"
+        -entry compute_main -stage compute -target spirv -profile spirv_1_5
+        -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_culling.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang" "${SLANGC_EXECUTABLE}"
+    COMMENT "Compiling scene culling to SPIR-V" VERBATIM)
+list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 foreach(stage IN ITEMS vert frag comp bloom)
     if(stage STREQUAL "comp")
         set(entry compute_main)

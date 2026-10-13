@@ -77,7 +77,8 @@ namespace RelayCore::render
         const VkCommandBuffer commands,
         const VkSemaphoreSubmitInfo dependency,
         const VkSemaphoreSubmitInfo extra_signal,
-        const VkFence fence
+        const VkFence fence,
+        const VkCommandBuffer before
     ) -> VulkanSceneCompletion
     {
         if (!commands)
@@ -85,9 +86,9 @@ namespace RelayCore::render
         if (state_->submitted == std::numeric_limits<uint64_t>::max())
             throw std::overflow_error("Vulkan scene timeline exhausted");
         const VulkanSceneCompletion next{state_->timeline, state_->submitted + 1};
-        const VkCommandBufferSubmitInfo command{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = commands
+        const std::array command_buffers{
+            VkCommandBufferSubmitInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = before},
+            VkCommandBufferSubmitInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = commands}
         };
         const VkSemaphoreSubmitInfo signal{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -109,8 +110,8 @@ namespace RelayCore::render
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
             .waitSemaphoreInfoCount = count,
             .pWaitSemaphoreInfos = waits.data() + first,
-            .commandBufferInfoCount = 1,
-            .pCommandBufferInfos = &command,
+            .commandBufferInfoCount = before ? 2U : 1U,
+            .pCommandBufferInfos = command_buffers.data() + (before ? 0 : 1),
             .signalSemaphoreInfoCount = extra_signal.semaphore ? 2U : 1U,
             .pSignalSemaphoreInfos = signals.data()
         };

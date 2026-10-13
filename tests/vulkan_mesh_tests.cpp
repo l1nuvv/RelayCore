@@ -23,6 +23,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -4991,6 +4992,218 @@ namespace
                 );
             }
     }
+    void check_gpu_culling_edges(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas
+    )
+    {
+        StaticColorMesh box;
+        box.initialize(make_color_box_mesh_data());
+        RendererConfig config;
+        config.shadow_enabled = false;
+        config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        PerspectiveCamera camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+        camera.set_viewport(160, 90);
+        for (const int count : {0, 1, 63, 64, 65, 129, 4097})
+            for (int visibility = 0; visibility < 3; ++visibility)
+            {
+                std::vector<RenderItem> items;
+                size_t visible = 0;
+                for (int i = 0; i < count; ++i)
+                {
+                    const bool inside = visibility == 0 || (visibility == 1 && i % 3 == 0);
+                    visible += inside ? 1 : 0;
+                    const glm::vec3 position =
+                        inside ? glm::vec3{0, 0, -4} : (i % 2 ? glm::vec3{20, 0, -4} : glm::vec3{0, 0, 4});
+                    items.push_back(
+                        {.mesh = &box,
+                         .model_matrix = glm::translate(glm::mat4{1}, position)
+                                         * glm::scale(glm::mat4{1}, glm::vec3{i % 2 ? -.2F : .2F, .3F, .2F})}
+                    );
+                }
+                renderer.set_scene_submission(VulkanSceneSubmission::direct);
+                const auto reference = renderer.render_image(items, camera, 160, 90);
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                renderer.prepare_frame(items, {}, camera, 160, 90);
+                require(
+                    renderer.capture_prepared_image().pixels == reference.pixels,
+                    "GPU compaction changed empty/visible/culled batch pixels"
+                );
+                const auto usage = renderer.capture_draw_usage();
+                require(
+                    usage.instances == (renderer.supports_gpu_culling() ? visible : items.size()),
+                    "GPU compaction lost, duplicated or retained an invisible instance"
+                );
+                require(
+                    usage.culled_instances == (renderer.supports_gpu_culling() ? items.size() - visible : 0),
+                    "GPU culling command count disagrees with known visibility"
+                );
+                require(
+                    renderer.scene_submission()
+                        == (renderer.supports_gpu_culling() ? VulkanSceneSubmission::gpu_culled
+                                                            : VulkanSceneSubmission::indirect),
+                    "Unavailable GPU culling did not select CPU indirect fallback"
+                );
+            }
+        const auto projection = camera.projection_matrix();
+        const float far_distance = projection[3][2] / (projection[2][2] + 1);
+        const std::array boundary_positions{
+            glm::vec3{4 / projection[0][0], 0, -4},
+            glm::vec3{0, 4 / projection[1][1], -4},
+            glm::vec3{0, 0, -.01F},
+            glm::vec3{0, 0, -far_distance}
+        };
+        for (const auto& position : boundary_positions)
+        {
+            RenderItem item{.mesh = &box, .model_matrix = glm::translate(glm::mat4{1}, position)};
+            item.model_matrix[0][0] = -1;
+            item.model_matrix[1][0] = .35F;
+            const std::array items{item};
+            renderer.set_scene_submission(VulkanSceneSubmission::direct);
+            const auto reference = renderer.render_image(items, camera, 160, 90);
+            renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+            renderer.prepare_frame(items, {}, camera, 160, 90);
+            require(
+                renderer.capture_prepared_image().pixels == reference.pixels,
+                "GPU culling rejected a mirrored/sheared bound crossing a clip plane"
+            );
+            require(renderer.capture_draw_usage().instances == 1, "GPU culling falsely rejected a frustum boundary");
+        }
+        // Camera cuts and fast object motion use current bounds, without waiting for a visibility history.
+        std::vector<RenderItem> moving(65, RenderItem{.mesh = &box});
+        for (int frame = 0; frame < 4; ++frame)
+        {
+            camera.set_target(frame % 2 ? glm::vec3{0, 0, 1} : glm::vec3{0, 0, -1});
+            for (size_t i = 0; i < moving.size(); ++i)
+                moving[i].model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, (i + frame) % 2 ? 4 : -4});
+            renderer.set_scene_submission(VulkanSceneSubmission::direct);
+            renderer.reset_history();
+            const auto reference = renderer.render_image(moving, camera, 160, 90);
+            renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+            renderer.reset_history();
+            renderer.prepare_frame(moving, {}, camera, 160, 90);
+            require(
+                renderer.capture_prepared_image().pixels == reference.pixels,
+                "Camera cut/fast motion left stale GPU visibility"
+            );
+            const auto usage = renderer.capture_draw_usage();
+            if (renderer.supports_gpu_culling())
+                require(usage.instances == 33, "Camera cut culled a newly visible object");
+        }
+        // Failed compute reload is transactional while a slot has outstanding work.
+        RelayCore::test::ScopedTempDirectory broken;
+        for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+            if (file.is_regular_file())
+                std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
+        std::ofstream{broken.path() / "scene_culling.comp.spv", std::ios::binary} << "bad";
+        renderer.prepare_frame(moving, {}, camera, 160, 90);
+        if (renderer.supports_gpu_culling())
+            expect_failure(
+                [&] {
+                    renderer.reload_shaders(broken.path());
+                },
+                "scene_culling.comp.spv"
+            );
+        renderer.prepare_frame(moving, {}, camera, 161, 91);
+        static_cast<void>(renderer.capture_prepared_image());
+        renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+        std::cout << "gpu_culling_edges=passed supported=" << renderer.supports_gpu_culling() << '\n';
+    }
+
+    void profile_gpu_culling_stress(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        CpuColorMeshData data;
+        constexpr int side = 32;
+        for (int y = 0; y <= side; ++y)
+            for (int x = 0; x <= side; ++x)
+                data.vertices.push_back(
+                    {.position = {x / float(side) - .5F, y / float(side) - .5F, 0},
+                     .color = {1, 1, 1},
+                     .normal = {0, 0, 1},
+                     .tangent = {1, 0, 0, 1}}
+                );
+        for (uint32_t y = 0; y < side; ++y)
+            for (uint32_t x = 0; x < side; ++x)
+            {
+                const auto a = y * (side + 1) + x, b = a + 1, c = a + side + 1, d = c + 1;
+                data.indices.insert(data.indices.end(), {a, b, d, a, d, c});
+            }
+        StaticColorMesh mesh;
+        mesh.initialize(data);
+        std::vector<RenderItem> items;
+        for (int i = 0; i < 4096; ++i)
+        {
+            const glm::vec3 position = i < 256 ? glm::vec3{(i % 16 - 7.5F) * .11F, (i / 16 - 7.5F) * .11F, -4}
+                                               : glm::vec3{500 + i % 64, 0, -4};
+            items.push_back(
+                {.mesh = &mesh,
+                 .model_matrix = glm::translate(glm::mat4{1}, position) * glm::scale(glm::mat4{1}, glm::vec3{.1F})}
+            );
+        }
+        RendererConfig config;
+        config.shadow_enabled = false;
+        config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        require(renderer.supports_gpu_culling(), "GPU culling stress requires graphics-queue compute");
+        PerspectiveCamera camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+        camera.set_viewport(640, 360);
+        renderer.prepare_resources(items);
+        CpuRgbaTextureData reference;
+        const std::array modes{
+            VulkanSceneSubmission::instanced,
+            VulkanSceneSubmission::indirect,
+            VulkanSceneSubmission::gpu_culled
+        };
+        for (size_t mode = 0; mode < modes.size(); ++mode)
+        {
+            renderer.set_scene_submission(modes[mode]);
+            for (int frame = 0; frame < 240; ++frame)
+            {
+                {
+                    RELAYCORE_PROFILE_ZONE_N("GPU culling stress CPU frame");
+                    renderer.prepare_frame(items, {}, camera, 640, 360);
+                }
+                SDL_PumpEvents();
+                RELAYCORE_PROFILE_FRAME();
+                SDL_Delay(8);
+            }
+            const auto image = renderer.capture_prepared_image();
+            if (!mode)
+                reference = image;
+            else
+                require(image.pixels == reference.pixels, "GPU culling stress changed visible geometry");
+            const auto usage = renderer.capture_draw_usage();
+            require(usage.instances == (mode == 2 ? 256 : 4096), "GPU culling stress command count mismatch");
+            save(image, captures / ("culling-stress-" + std::to_string(mode) + ".bmp"));
+            std::cout << "gpu_culling_stress mode=" << mode << " candidates=4096 visible=" << usage.instances
+                      << " culled=" << usage.culled_instances << " triangles_per_mesh=" << data.indices.size() / 3
+                      << '\n';
+        }
+    }
+
     void profile_scene_culling(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -4999,6 +5212,13 @@ namespace
         const bool profile
     )
     {
+        if (!profile)
+        {
+            check_gpu_culling_edges(device, authoring, atlas);
+            if (const auto* disable = std::getenv("RELAYCORE_VULKAN_DISABLE_GPU_CULLING");
+                disable && std::string_view{disable} == "1")
+                return;
+        }
         struct View {
             const char* name;
             const char* level;
@@ -5087,8 +5307,11 @@ namespace
             renderer.prepare_resources(original);
             renderer.prepare_resources(weapon);
             CpuRgbaTextureData reference;
-            for (int phase = 0; phase < 3; ++phase)
+            for (int phase = 0; phase < 4; ++phase)
             {
+                renderer.set_scene_submission(
+                    phase == 3 ? VulkanSceneSubmission::gpu_culled : VulkanSceneSubmission::instanced
+                );
                 const auto& items = phase == 1 ? filtered : original;
                 for (int frame = 0; frame < frames; ++frame)
                 {
@@ -5107,16 +5330,22 @@ namespace
                 else
                     require(image.pixels == reference.pixels, "Frustum experiment changed visible scene pixels");
                 save(image, captures / (std::string{"culling-"} + view.name + "-" + std::to_string(phase) + ".bmp"));
-                const auto usage = renderer.draw_usage();
+                const auto usage = renderer.capture_draw_usage();
                 std::cout << "culling_gate view=" << view.name << " phase=" << phase << " submitted=" << items.size()
                           << " removed=" << original.size() - items.size()
                           << " removed_indices=" << (phase == 1 ? removed_indices : 0) << " draws=" << usage.draws
                           << " instances=" << usage.instances
                           << " visible_chunks=" << scene.diagnostics().visible_chunks
                           << " culled_chunks=" << scene.diagnostics().culled_chunks << '\n';
+                if (phase == 3)
+                    std::cout << "gpu_culling view=" << view.name << " supported=" << renderer.supports_gpu_culling()
+                              << " culled_instances=" << usage.culled_instances
+                              << " culling_draws=" << usage.culling_draws << '\n';
             }
         }
         std::cout << "scene_culling_gate=passed\n";
+        if (profile)
+            profile_gpu_culling_stress(device, authoring, atlas, captures);
     }
 
     void check_scene_submission(
@@ -5206,7 +5435,8 @@ namespace
         const std::array modes{
             VulkanSceneSubmission::direct,
             VulkanSceneSubmission::instanced,
-            VulkanSceneSubmission::indirect
+            VulkanSceneSubmission::indirect,
+            VulkanSceneSubmission::gpu_culled
         };
         for (const bool hdr : {false, true})
             for (const int samples : {1, 4})
@@ -5240,10 +5470,10 @@ namespace
                     };
                     renderer.set_local_lights(lights);
                 }
-                std::array<std::vector<CpuRgbaTextureData>, 3> images;
-                std::array<std::vector<VulkanPassInputCapture>, 3> inputs;
-                std::array<std::array<std::vector<float>, 2>, 3> shadows;
-                std::array<VulkanDrawUsage, 3> usage;
+                std::array<std::vector<CpuRgbaTextureData>, modes.size()> images;
+                std::array<std::vector<VulkanPassInputCapture>, modes.size()> inputs;
+                std::array<std::array<std::vector<float>, 2>, modes.size()> shadows;
+                std::array<VulkanDrawUsage, modes.size()> usage;
                 for (size_t mode = 0; mode < modes.size(); ++mode)
                 {
                     renderer.set_scene_submission(modes[mode]);
@@ -5354,13 +5584,13 @@ namespace
                         require(shadows[mode][cascade] == shadows[0][cascade], "Batched shadow depth changed");
                 }
                 // Both slots can remain submitted across switches, growth, mesh replacement and reload.
-                renderer.set_scene_submission(VulkanSceneSubmission::indirect);
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
                 auto large = items;
                 large.insert(large.end(), items.begin(), items.end());
                 renderer.prepare_frame(large, large, camera, w, h, weapon);
                 renderer.set_scene_submission(VulkanSceneSubmission::direct);
                 renderer.prepare_frame({}, {}, camera, w + 1, h + 1);
-                renderer.set_scene_submission(VulkanSceneSubmission::instanced);
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
                 box.initialize(data);
                 renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
                 renderer.prepare_frame(items, items, camera, w, h, weapon);
