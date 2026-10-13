@@ -7,8 +7,12 @@ description: Build or substantially refine reproducible Blender models through P
 
 For this repository, read [RelayCore integration](../relaycore-blender/SKILL.md) once per task. It defines project constraints, standalone execution and the installed specialist set.
 
-Read [the shared execution guidance](references/astra-workflow.md) once per task
-for autonomous decisions, evidence cadence, and long-task continuity.
+Load only needed sections of [the shared execution guidance](references/astra-workflow.md):
+`Gather references that answer modeling questions` for new subjects or substantial
+shape repairs, `Preserve continuity during long work` for long/interrupted tasks,
+and other sections only for a concrete workflow question. Copies across installed
+specialists are identical; reuse already-read sections once per task. Routine edits
+do not require the full guide; model/benchmark guidance is only for requested comparisons.
 
 Create the asset as source-controlled Python plus generated `.blend` and `.glb` outputs. Treat the script as the durable source and Blender as the execution runtime.
 
@@ -32,7 +36,7 @@ before the first modeling operation. Keep capture disabled for ordinary jobs.
 
 1. Resolve the exact Blender executable and record `blender --version`.
 2. Resolve routine visual and technical choices from context and state useful
-   defaults. Use `$blender-agent-studio:blender-art-direction-intake` when an
+   defaults. Use [relaycore-art-direction](../relaycore-art-direction/SKILL.md) when
    competing interpretations change identity, style or deliverables and context
    does not resolve them, or when the user explicitly requests a brief/concept.
 3. Convert the request into a short modeling contract before editing:
@@ -96,8 +100,8 @@ synonyms for visibly low-poly.
 - A triangle ceiling is a limit, not a target. Do not celebrate being far under
   budget when the result still reads as a blockout.
 
-For characters, also use `$blender-agent-studio:blender-character-workflow`
-and its form/fit review. Low-poly style is not an exception to plausible torso
+For characters, use an additional character specialist only if actually installed.
+Low-poly style is not an exception to plausible torso
 and shoe proportions, connected garment surfaces, or fitted accessories. A
 beveled box and detailed texture do not by themselves resolve a blocky form.
 
@@ -189,7 +193,8 @@ standardized evidence. A cosmetic iteration does not require the entire export
 pipeline unless it changes the exported appearance. Refine durable source and
 regenerate; do not patch generated outputs manually.
 
-For animated or articulated assets, also use `$blender-agent-studio:blender-animation-workflow`.
+For animated or articulated work, use an additional animation specialist only if
+actually installed. RelayCore's static native export still rejects animation.
 
 ## Completion gate
 
