@@ -50,6 +50,14 @@ namespace RelayCore::render
         static_assert(offsetof(DrawPush, camera_position) == 116);
         static_assert(sizeof(DrawPush) == 128);
 
+        struct DrawInstance {
+            glm::mat4 mvp;
+            std::array<glm::vec4, 3> model_rows;
+            glm::uvec4 correspondence;
+        };
+        static_assert(offsetof(DrawInstance, correspondence) == 112);
+        static_assert(sizeof(DrawInstance) == 128);
+
         struct PreviousDraw {
             glm::mat4 mvp;
             glm::vec4 valid;
@@ -103,6 +111,7 @@ namespace RelayCore::render
         struct ShadowPush {
             glm::mat4 mvp;
             std::array<glm::vec4, 3> model_rows;
+            // A negative range selects instance storage; its magnitude remains the point-light radius.
             glm::vec4 light_position_radius;
         };
         static_assert(sizeof(ShadowPush) == 128);
@@ -886,6 +895,17 @@ namespace RelayCore::render
             }
         };
 
+        struct BatchKey {
+            Mesh* geometry;
+            Material* surface;
+            uint32_t flags;
+            auto operator==(const BatchKey&) const -> bool = default;
+        };
+        struct DrawBatch {
+            BatchKey key;
+            uint32_t first_instance, count = 1;
+        };
+
         struct Frame {
             const VulkanDevice& device;
             VulkanGpuProfiler profiler;
@@ -900,6 +920,11 @@ namespace RelayCore::render
             float rendered_scale = 1;
             std::unique_ptr<MeshTarget> target;
             std::unique_ptr<InputTarget> inputs;
+            VulkanBuffer instances, indirect_commands;
+            std::vector<DrawInstance> instance_records;
+            std::vector<VkDrawIndexedIndirectCommand> draw_commands;
+            std::vector<DrawBatch> batches;
+            VulkanDrawUsage draw_usage;
             VulkanBuffer previous_draws;
             std::vector<PreviousDraw> previous_records;
             std::vector<std::shared_ptr<const void>> ui_resources;
@@ -969,6 +994,11 @@ namespace RelayCore::render
         std::unordered_map<MaterialKey, std::unique_ptr<Material>, MaterialKeyHash> materials;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout instance_layout = VK_NULL_HANDLE;
+        VkDescriptorPool instance_pool = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, 2> instance_sets{};
+        VulkanSceneSubmission scene_submission = VulkanSceneSubmission::instanced;
+        uint32_t max_instance_records = 0, instance_storage_limit = 0;
         std::array<VkPipeline, 3> pipelines{};
         uint64_t recording = 0;
         std::vector<Mesh*> used_meshes;
@@ -1109,6 +1139,10 @@ namespace RelayCore::render
             for (auto pipeline : input_pipelines)
                 if (pipeline)
                     vkDestroyPipeline(device.handle(), pipeline, nullptr);
+            if (instance_pool)
+                vkDestroyDescriptorPool(device.handle(), instance_pool, nullptr);
+            if (instance_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), instance_layout, nullptr);
             if (input_pool)
                 vkDestroyDescriptorPool(device.handle(), input_pool, nullptr);
             if (input_sampler)
@@ -1224,6 +1258,7 @@ namespace RelayCore::render
             vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
             max_target_width = std::min(properties.limits.maxFramebufferWidth, properties.limits.maxImageDimension2D);
             max_target_height = std::min(properties.limits.maxFramebufferHeight, properties.limits.maxImageDimension2D);
+            instance_storage_limit = properties.limits.maxStorageBufferRange / sizeof(DrawInstance);
             VkFormatProperties color_properties{};
             vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &color_properties);
             constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
@@ -1441,7 +1476,40 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &input_info, nullptr, &input_layout),
                 "Pass input descriptor layout"
             );
-            const std::array set_layouts{descriptor_layout, input_layout};
+            const VkDescriptorSetLayoutBinding
+                instance_binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+            const VkDescriptorSetLayoutCreateInfo instance_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = &instance_binding
+            };
+            require_mesh_vk(
+                vkCreateDescriptorSetLayout(device.handle(), &instance_info, nullptr, &instance_layout),
+                "Scene instance descriptor layout"
+            );
+            const VkDescriptorPoolSize instance_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2};
+            const VkDescriptorPoolCreateInfo instance_pool_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .maxSets = 2,
+                .poolSizeCount = 1,
+                .pPoolSizes = &instance_size
+            };
+            require_mesh_vk(
+                vkCreateDescriptorPool(device.handle(), &instance_pool_info, nullptr, &instance_pool),
+                "Scene instance descriptor pool"
+            );
+            const std::array instance_layouts{instance_layout, instance_layout};
+            const VkDescriptorSetAllocateInfo instance_allocation{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = instance_pool,
+                .descriptorSetCount = 2,
+                .pSetLayouts = instance_layouts.data()
+            };
+            require_mesh_vk(
+                vkAllocateDescriptorSets(device.handle(), &instance_allocation, instance_sets.data()),
+                "Scene instance descriptor sets"
+            );
+            const std::array set_layouts{descriptor_layout, input_layout, instance_layout};
             const VkPushConstantRange push{
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
@@ -2242,6 +2310,177 @@ namespace RelayCore::render
                     ));
                 }
         }
+        void prepare_draw_storage(const size_t scene_count, const size_t shadow_count)
+        {
+            // Color, pass inputs and reflection source; two directional + spot + all point faces.
+            const uint64_t shadow_passes =
+                (spot.enabled ? 1 : 0)
+                + (renderer_config.shadow_enabled ? 2 + 6 * std::min(lights.count.x, int(kMaxPointShadowLights)) : 0);
+            const uint64_t count =
+                std::max(uint64_t{1}, uint64_t(scene_count) * 3 + uint64_t(shadow_count) * shadow_passes);
+            if (count > UINT32_MAX || count > instance_storage_limit)
+                throw std::invalid_argument("Scene instance records exceed the device storage buffer limit");
+            max_instance_records = static_cast<uint32_t>(count);
+            auto& slot = frame();
+            slot.instance_records.clear();
+            slot.draw_commands.clear();
+            slot.draw_usage = {};
+            const VkDeviceSize bytes = count * sizeof(DrawInstance);
+            const bool replace_instances = slot.instances.size() < bytes;
+            if (replace_instances)
+                slot.instances =
+                    VulkanBuffer(device, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::upload);
+            if (scene_submission == VulkanSceneSubmission::indirect
+                && slot.indirect_commands.size() < count * sizeof(VkDrawIndexedIndirectCommand))
+                slot.indirect_commands = VulkanBuffer(
+                    device,
+                    count * sizeof(VkDrawIndexedIndirectCommand),
+                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                );
+            const VkDescriptorBufferInfo buffer{slot.instances.handle(), 0, slot.instances.size()};
+            const VkWriteDescriptorSet write{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance_sets[frame_index],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &buffer
+            };
+            if (replace_instances)
+                vkUpdateDescriptorSets(device.handle(), 1, &write, 0, nullptr);
+        }
+
+        void begin_batches()
+        {
+            frame().batches.clear();
+        }
+
+        static auto draw_instance(const RenderItem& item, const glm::mat4& mvp, const uint32_t correspondence)
+            -> DrawInstance
+        {
+            DrawInstance instance{.mvp = mvp, .correspondence = {correspondence, 0, 0, 0}};
+            for (int row = 0; row < 3; ++row)
+                for (int col = 0; col < 4; ++col)
+                    instance.model_rows[row][col] = item.model_matrix[col][row];
+            return instance;
+        }
+
+        void add_instance(
+            const RenderItem& item,
+            Mesh& geometry,
+            Material* surface,
+            const uint32_t flags,
+            const glm::mat4& mvp,
+            const uint32_t correspondence,
+            const bool group
+        )
+        {
+            auto& slot = frame();
+            if (slot.instance_records.size() >= max_instance_records)
+                throw std::logic_error("Scene instance recording exceeded its reserved pass count");
+            const auto first = static_cast<uint32_t>(slot.instance_records.size());
+            const auto instance = draw_instance(item, mvp, correspondence);
+            slot.instance_records.push_back(instance);
+            const BatchKey key{&geometry, surface, flags};
+            // Preserve submission order even for equal-depth opaque surfaces; merge only adjacent compatible draws.
+            if (group && scene_submission != VulkanSceneSubmission::direct && !slot.batches.empty()
+                && slot.batches.back().key == key)
+                ++slot.batches.back().count;
+            else
+                slot.batches.push_back({key, first});
+        }
+
+        void finish_batches()
+        {
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                2,
+                1,
+                &instance_sets[frame_index],
+                0,
+                nullptr
+            );
+        }
+
+        void draw_batch(const DrawBatch& batch, const uint32_t first_instance = 0)
+        {
+            auto& slot = frame();
+            auto& geometry = *batch.key.geometry;
+            use(geometry);
+            const auto vertex = geometry.vertices.handle();
+            constexpr VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(slot.commands, 0, 1, &vertex, &offset);
+            vkCmdBindIndexBuffer(slot.commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
+            ++slot.draw_usage.draws;
+            slot.draw_usage.instances += batch.count;
+            // Base instance is supplied in push constants, keeping optional indirect-first-instance disabled.
+            if (scene_submission == VulkanSceneSubmission::indirect)
+            {
+                if (slot.draw_commands.size() >= max_instance_records)
+                    throw std::logic_error("Scene indirect commands exceeded their reserved count");
+                const auto command_offset = slot.draw_commands.size() * sizeof(VkDrawIndexedIndirectCommand);
+                slot.draw_commands.push_back({geometry.index_count, batch.count, 0, 0, 0});
+                vkCmdDrawIndexedIndirect(
+                    slot.commands,
+                    slot.indirect_commands.handle(),
+                    command_offset,
+                    1,
+                    sizeof(VkDrawIndexedIndirectCommand)
+                );
+                ++slot.draw_usage.indirect_draws;
+            } else
+                vkCmdDrawIndexed(slot.commands, geometry.index_count, batch.count, 0, 0, first_instance);
+        }
+
+        void emit_scene_batch(
+            const DrawBatch& batch,
+            const DrawInstance& instance,
+            const PerspectiveCamera& camera,
+            const bool inputs
+        )
+        {
+            const auto position = camera.position();
+            use(*batch.key.surface);
+            const auto set = batch.key.surface->sets[frame_index];
+            vkCmdBindDescriptorSets(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+            const bool instance_storage =
+                batch.count > 1 || (inputs && scene_submission == VulkanSceneSubmission::indirect);
+            DrawPush push{
+                instance.mvp,
+                instance.model_rows,
+                batch.key.flags | (instance_storage ? 2048U : 0U),
+                {position.x, position.y, position.z}
+            };
+            if (instance_storage)
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
+            vkCmdPushConstants(
+                frame().commands,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            draw_batch(batch, inputs && !instance_storage ? instance.correspondence.x : 0);
+        }
+
+        bool has_adjacent_geometry(const std::span<const RenderItem> items, const RenderPass pass) const
+        {
+            const CpuColorMeshData* previous = nullptr;
+            for (const auto& item : items)
+                if (item.mesh && item.pass == pass)
+                {
+                    const auto* geometry = item.mesh->cpu_data().get();
+                    if (geometry == previous)
+                        return true;
+                    previous = geometry;
+                }
+            return false;
+        }
+
         void draw(
             const std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
@@ -2252,18 +2491,23 @@ namespace RelayCore::render
             const bool reflection_source = false
         )
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan scene draw recording");
             vkCmdBindPipeline(
                 frame().commands,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
             );
+            const bool batching = scene_submission == VulkanSceneSubmission::indirect
+                                  || (scene_submission == VulkanSceneSubmission::instanced && !viewmodel
+                                      && pass == RenderPass::Opaque && has_adjacent_geometry(items, pass));
+            begin_batches();
+            finish_batches();
             for (size_t index = 0; index < items.size(); ++index)
             {
                 const auto& item = items[index];
                 if ((!viewmodel && item.pass != pass) || !item.mesh)
                     continue;
                 auto& geometry = meshes.at(item.mesh->cpu_data().get());
-                use(geometry);
                 const auto& texture = item.diffuse_texture ? *item.diffuse_texture : atlas_source;
                 auto& surface = *materials.at(material_key(
                     texture,
@@ -2276,61 +2520,40 @@ namespace RelayCore::render
                     item.emissive_texture,
                     item.emissive_factor
                 ));
-                use(surface);
-                const auto set = surface.sets[frame_index];
-                const auto vertex = geometry.vertices.handle();
-                const VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(frame().commands, 0, 1, &vertex, &offset);
-                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdBindDescriptorSets(
-                    frame().commands,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    layout,
-                    0,
-                    1,
-                    &set,
-                    0,
-                    nullptr
-                );
-                const auto position = camera.position();
-                DrawPush push{
-                    ((renderer_config.taa_enabled && !viewmodel && pass == RenderPass::Opaque
-                      && item.previous_model_matrix)
-                         ? current_view_projection
-                         : camera.view_projection_matrix())
-                        * item.model_matrix,
-                    {},
+                const uint32_t flags =
                     (item.diffuse_texture ? 1U : 0U) | (pass == RenderPass::Transparent ? 2U : 0U)
-                        | (pass == RenderPass::Overlay ? 4U : 0U) | (item.normal_texture ? 8U : 0U)
-                        | (item.metallic_roughness ? 16U : 0U) | (viewmodel ? 32U : 0U) | (reflection_source ? 64U : 0U)
-                        | (!inputs && !reflection_source && input_view == PassInputView::ao ? 128U : 0U)
-                        | (!inputs && !reflection_source && input_view == PassInputView::reflection_confidence ? 256U
-                                                                                                               : 0U)
-                        | (!inputs && !reflection_source && input_view == PassInputView::ssgi ? 1024U : 0U)
-                        | (!inputs && !reflection_source && input_view == PassInputView::volume_transmittance ? 512U
-                                                                                                              : 0U),
-                    {position.x, position.y, position.z}
-                };
-                for (int row = 0; row < 3; ++row)
-                    for (int col = 0; col < 4; ++col)
-                        push.model_rows[row][col] = item.model_matrix[col][row];
-                vkCmdPushConstants(
-                    frame().commands,
-                    layout,
-                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,
-                    sizeof(push),
-                    &push
-                );
-                vkCmdDrawIndexed(
-                    frame().commands,
-                    geometry.index_count,
-                    1,
-                    0,
-                    0,
-                    inputs ? first_draw + static_cast<uint32_t>(index) : 0u
-                );
+                    | (pass == RenderPass::Overlay ? 4U : 0U) | (item.normal_texture ? 8U : 0U)
+                    | (item.metallic_roughness ? 16U : 0U) | (viewmodel ? 32U : 0U) | (reflection_source ? 64U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::ao ? 128U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::reflection_confidence ? 256U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::ssgi ? 1024U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::volume_transmittance ? 512U : 0U);
+                const auto mvp = ((renderer_config.taa_enabled && !viewmodel && pass == RenderPass::Opaque
+                                   && item.previous_model_matrix)
+                                      ? current_view_projection
+                                      : camera.view_projection_matrix())
+                                 * item.model_matrix;
+                const auto correspondence = first_draw + static_cast<uint32_t>(index);
+                if (batching)
+                    add_instance(
+                        item,
+                        geometry,
+                        &surface,
+                        flags,
+                        mvp,
+                        correspondence,
+                        !viewmodel && pass == RenderPass::Opaque
+                    );
+                else
+                    emit_scene_batch(
+                        {{&geometry, &surface, flags}, 0},
+                        draw_instance(item, mvp, correspondence),
+                        camera,
+                        inputs
+                    );
             }
+            for (const auto& batch : frame().batches)
+                emit_scene_batch(batch, frame().instance_records[batch.first_instance], camera, inputs);
         }
 
         void shadow_barrier(
@@ -2363,6 +2586,27 @@ namespace RelayCore::render
             };
             vkCmdPipelineBarrier2(frame().commands, &info);
         }
+        void emit_shadow_batch(const DrawBatch& batch, const DrawInstance& instance, const LocalLight* light)
+        {
+            ShadowPush push{.mvp = instance.mvp, .model_rows = instance.model_rows};
+            if (light)
+                push.light_position_radius = {light->position, light->radius};
+            if (batch.count > 1)
+            {
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
+                push.light_position_radius.w = light ? -light->radius : -1.0F;
+            }
+            vkCmdPushConstants(
+                frame().commands,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(push),
+                &push
+            );
+            draw_batch(batch);
+        }
+
         void draw_shadow(
             const std::span<const RenderItem> items,
             ShadowImage& map,
@@ -2395,6 +2639,12 @@ namespace RelayCore::render
             vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipelines[kind]);
             vkCmdBeginRendering(frame().commands, &info);
             const auto planes = shadow_frustum_planes(view_projection);
+            RELAYCORE_PROFILE_ZONE_N("Vulkan shadow draw recording");
+            const bool batching = scene_submission == VulkanSceneSubmission::indirect
+                                  || (scene_submission == VulkanSceneSubmission::instanced
+                                      && has_adjacent_geometry(items, RenderPass::Opaque));
+            begin_batches();
+            finish_batches();
             for (const auto& item : items)
             {
                 if (!item.mesh || item.pass != RenderPass::Opaque || !item.casts_shadow
@@ -2409,32 +2659,15 @@ namespace RelayCore::render
                         || !sphere_intersects_shadow_frustum(planes, glm::vec3(sphere), sphere.w))
                         continue;
                 }
-                auto& geometry = mesh(*item.mesh);
-                use(geometry);
-                ShadowPush push{.mvp = view_projection * item.model_matrix};
-                for (int row = 0; row < 3; ++row)
-                    push.model_rows[row] = {
-                        item.model_matrix[0][row],
-                        item.model_matrix[1][row],
-                        item.model_matrix[2][row],
-                        item.model_matrix[3][row]
-                    };
-                if (light)
-                    push.light_position_radius = {light->position, light->radius};
-                vkCmdPushConstants(
-                    frame().commands,
-                    layout,
-                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,
-                    sizeof(push),
-                    &push
-                );
-                const auto buffer = geometry.vertices.handle();
-                constexpr VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(frame().commands, 0, 1, &buffer, &offset);
-                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
+                auto& geometry = meshes.at(item.mesh->cpu_data().get());
+                const auto mvp = view_projection * item.model_matrix;
+                if (batching)
+                    add_instance(item, geometry, nullptr, 0, mvp, 0, true);
+                else
+                    emit_shadow_batch({{&geometry, nullptr, 0}, 0}, draw_instance(item, mvp, 0), light);
             }
+            for (const auto& batch : frame().batches)
+                emit_shadow_batch(batch, frame().instance_records[batch.first_instance], light);
             vkCmdEndRendering(frame().commands);
         }
         void render_shadows(const std::span<const RenderItem> items, const PerspectiveCamera& camera)
@@ -3843,6 +4076,7 @@ namespace RelayCore::render
             if (capture)
                 output.pixels.resize(size_t(width) * height * 4);
             auto& scene_image = frame().target->hdr_scene ? *frame().target->hdr_scene : frame().target->color;
+            prepare_draw_storage(items.size() + viewmodel.size(), shadow_casters.size());
             begin_commands();
             {
                 RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Scene frame");
@@ -4081,6 +4315,10 @@ namespace RelayCore::render
                 if (capture)
                     record_readback();
             }
+            if (!frame().instance_records.empty())
+                frame().instances.write(std::as_bytes(std::span{frame().instance_records}));
+            if (!frame().draw_commands.empty())
+                frame().indirect_commands.write(std::as_bytes(std::span{frame().draw_commands}));
             submit_and_wait(capture || ui, frame().resolution_queries != VK_NULL_HANDLE);
             if (needs_inputs())
             {
@@ -4118,6 +4356,14 @@ namespace RelayCore::render
             state_->set_input_view(PassInputView::scene);
             state_->input_view = PassInputView::off;
         }
+        if (const auto* value = std::getenv("RELAYCORE_VULKAN_SCENE_SUBMISSION"))
+        {
+            const std::array names{"direct", "instanced", "indirect"};
+            const auto found = std::find(names.begin(), names.end(), std::string_view{value});
+            if (found == names.end())
+                throw std::invalid_argument("RELAYCORE_VULKAN_SCENE_SUBMISSION must be direct, instanced or indirect");
+            state_->scene_submission = static_cast<VulkanSceneSubmission>(found - names.begin());
+        }
         if (const auto* value = std::getenv("RELAYCORE_VULKAN_PASS_INPUT_VIEW"))
         {
             const std::array names{
@@ -4154,6 +4400,16 @@ namespace RelayCore::render
             .material_retirements = state_->retired_materials.size()
         };
     }
+    void VulkanMeshRenderer::set_scene_submission(const VulkanSceneSubmission mode) noexcept
+    {
+        state_->scene_submission = mode;
+    }
+
+    auto VulkanMeshRenderer::draw_usage() const noexcept -> VulkanDrawUsage
+    {
+        return state_->frame().draw_usage;
+    }
+
     auto VulkanMeshRenderer::resolution_status() const noexcept -> VulkanResolutionStatus
     {
         const auto& slot = state_->frame();

@@ -41,6 +41,16 @@ namespace RelayCore::render
         float scale = 1, gpu_scene_ms = 0;
     };
 
+    enum class VulkanSceneSubmission {
+        direct,
+        instanced,
+        indirect
+    };
+
+    struct VulkanDrawUsage {
+        size_t draws = 0, instances = 0, indirect_draws = 0;
+    };
+
     enum class PassInputView {
         off,
         scene,
@@ -83,6 +93,8 @@ namespace RelayCore::render
         [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
         [[nodiscard]] auto resource_usage() const noexcept -> VulkanResourceUsage;
         [[nodiscard]] auto resolution_status() const noexcept -> VulkanResolutionStatus;
+        void set_scene_submission(VulkanSceneSubmission mode) noexcept;
+        [[nodiscard]] auto draw_usage() const noexcept -> VulkanDrawUsage;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 

@@ -11,6 +11,7 @@ struct DrawData
     float cameraZ;
 };
 [[vk::push_constant]] ConstantBuffer<DrawData> draw;
+#include "scene_instances.slang"
 
 struct MaterialData
 {
@@ -118,19 +119,33 @@ struct Varying
     float fogDistance;
 };
 
+SceneInstance scene_transform(uint instance)
+{
+    if ((draw.flags & 2048) != 0)
+        return sceneInstances[asuint(draw.modelRow0.x) + instance];
+    SceneInstance transform;
+    transform.mvp = draw.mvp;
+    transform.modelRow0 = draw.modelRow0;
+    transform.modelRow1 = draw.modelRow1;
+    transform.modelRow2 = draw.modelRow2;
+    transform.correspondence = uint4(instance, 0, 0, 0);
+    return transform;
+}
+
 [shader("vertex")]
-Varying vertex_main(Vertex input)
+Varying vertex_main(Vertex input, uint instance : SV_VulkanInstanceID)
 {
     Varying output;
     float4 p = float4(input.position, 1);
-    output.position = mul(draw.mvp, p);
+    SceneInstance transform = scene_transform(instance);
+    output.position = mul(transform.mvp, p);
     // Preserve the CPU camera's OpenGL clip convention for culling; convert only at the GPU boundary.
     output.position.z = (output.position.z + output.position.w) * 0.5;
     output.color = input.color;
-    output.worldPosition = float3(dot(draw.modelRow0, p), dot(draw.modelRow1, p), dot(draw.modelRow2, p));
-    float3 a = float3(draw.modelRow0.x, draw.modelRow1.x, draw.modelRow2.x);
-    float3 b = float3(draw.modelRow0.y, draw.modelRow1.y, draw.modelRow2.y);
-    float3 c = float3(draw.modelRow0.z, draw.modelRow1.z, draw.modelRow2.z);
+    output.worldPosition = float3(dot(transform.modelRow0, p), dot(transform.modelRow1, p), dot(transform.modelRow2, p));
+    float3 a = float3(transform.modelRow0.x, transform.modelRow1.x, transform.modelRow2.x);
+    float3 b = float3(transform.modelRow0.y, transform.modelRow1.y, transform.modelRow2.y);
+    float3 c = float3(transform.modelRow0.z, transform.modelRow1.z, transform.modelRow2.z);
     float determinant = dot(a, cross(b, c));
     output.worldNormal = normalize((cross(b, c) * input.normal.x + cross(c, a) * input.normal.y
                                   + cross(a, b) * input.normal.z) / determinant);

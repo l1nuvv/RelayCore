@@ -170,6 +170,31 @@ instead of producing cinematic foreground bokeh. Controls default off pending
 owner visual preference; [execution evidence](renderer/VK14-09.md) owns local
 budgets, checks, captures and limitations.
 
+## Scene submission — VK14-10a/b
+
+The Vulkan backend batches adjacent opaque items sharing immutable CPU geometry,
+material descriptors and draw flags. It keeps submitted order, including
+coplanar opaque surfaces; overlays, transparents and viewmodels remain individual
+ordered draws. Single-object batches keep the existing push-constant vertex
+transform path. Shadow passes batch adjacent compatible geometry after their
+existing caster/range/frustum filters. Each GPU instance retains its own current
+transform and original temporal-record index. CPU scene culling and inspector
+picking retain their existing owners.
+
+`RELAYCORE_VULKAN_SCENE_SUBMISSION=direct|instanced|indirect` selects a diagnostic
+path when the renderer is created; unknown values fail explicitly. `instanced`
+is the default. `direct` issues one indexed draw per item. `indirect` consumes
+CPU-authored `VkDrawIndexedIndirectCommand` records, one command per compatible
+batch. It uses zero first-instance with a push-constant record offset, requiring
+no additional optional device feature. It does not add multi-draw geometry
+packing or GPU culling. The two scene slots own mapped instance/command buffers,
+flush writes before submission and wait for their final GPU use before reuse or
+growth. Storage limits and command-buffer bounds fail explicitly.
+
+The renderer fixture offers `--scene-submission` and
+`--scene-submission-profile`; [VK14-10 evidence](renderer/VK14-10.md) owns parity,
+performance and the historical map-baseline exceptions.
+
 ## Static reflection probes (IMG-02)
 
 The engine accepts one `reflection_probe` per level. Its `origin` is the capture

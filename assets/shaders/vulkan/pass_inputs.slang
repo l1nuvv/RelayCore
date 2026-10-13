@@ -24,15 +24,17 @@ struct InputVarying
 InputVarying input_vertex(Vertex input, uint instance : SV_VulkanInstanceID)
 {
     InputVarying output;
-    Varying surface = vertex_main(input);
+    SceneInstance transform = scene_transform(instance);
+    uint correspondence = transform.correspondence.x;
+    Varying surface = vertex_main(input, instance);
     output.position = surface.position;
     output.worldNormal = surface.worldNormal;
     output.worldTangent = surface.worldTangent;
     output.uv = surface.uv;
-    output.currentClip = mul(draw.mvp, float4(input.position, 1));
-    output.previousClip = mul(previousDraws[instance].mvp, float4(input.position, 1));
-    output.valid = previousDraws[instance].valid.x;
-    output.jitter = previousDraws[instance].valid.yz;
+    output.currentClip = mul(transform.mvp, float4(input.position, 1));
+    output.previousClip = mul(previousDraws[correspondence].mvp, float4(input.position, 1));
+    output.valid = previousDraws[correspondence].valid.x;
+    output.jitter = previousDraws[correspondence].valid.yz;
     return output;
 }
 

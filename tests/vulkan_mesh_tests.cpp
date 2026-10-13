@@ -4991,10 +4991,265 @@ namespace
                 );
             }
     }
+    void check_scene_submission(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        constexpr int w = 640, h = 360;
+        StaticColorMesh box, plane;
+        auto data = make_color_box_mesh_data();
+        for (auto& vertex : data.vertices)
+        {
+            vertex.color = {1, 1, 1};
+            vertex.material_kind = 0;
+            const auto axis = std::abs(vertex.normal.y) < .9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0};
+            vertex.tangent = {glm::normalize(glm::cross(axis, vertex.normal)), 1};
+        }
+        box.initialize(data);
+        plane.initialize(make_color_double_sided_quad_mesh_data());
+        Texture2D red, green, normal;
+        red.initialize_rgba(1, 1, std::array<uint8_t, 4>{210, 65, 40, 255}, TextureEncoding::srgb);
+        green.initialize_rgba(1, 1, std::array<uint8_t, 4>{40, 180, 100, 255}, TextureEncoding::srgb);
+        normal.initialize_rgba(1, 1, std::array<uint8_t, 4>{175, 145, 238, 255}, TextureEncoding::linear);
+        PerspectiveCamera camera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+        camera.set_viewport(w, h);
+        std::vector<RenderItem> items;
+        const int side = profile ? 64 : 6;
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x)
+            {
+                const float step = profile ? .18F : 1.6F;
+                const auto model =
+                    glm::translate(glm::mat4{1}, glm::vec3{(x - side / 2) * step, 0, (y - side / 2) * step})
+                    * glm::rotate(glm::mat4{1}, (x + y) * .17F, glm::vec3{0, 1, 0})
+                    * glm::scale(glm::mat4{1}, profile ? glm::vec3{.12F} : glm::vec3{x % 2 ? -.5F : .5F, .65F, .35F});
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = model,
+                     .diffuse_texture = &red,
+                     .normal_texture = profile ? nullptr : &normal,
+                     .previous_model_matrix = model}
+                );
+            }
+        std::vector<RenderItem> weapon;
+        if (!profile)
+        {
+            // Break material groups and temporal correspondence, retaining long shared-mesh runs.
+            for (size_t i = 12; i < 24; ++i)
+                items[i].diffuse_texture = &green;
+            items[7].previous_model_matrix.reset();
+            items[9].casts_shadow = false;
+            items[11].casts_directional_shadow = false;
+            items.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, -1, 0})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{12, .3F, 12}),
+                 .diffuse_texture = &green,
+                 .previous_model_matrix = glm::mat4{1}}
+            );
+            items.back().previous_model_matrix = items.back().model_matrix;
+            // Equal-depth opaque colors must retain their authored last-writer order.
+            for (int i = 0; i < 3; ++i)
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{2, 2, 3}),
+                     .diffuse_texture = i % 2 ? &green : &red}
+                );
+            for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+                for (int i = 0; i < 3; ++i)
+                    items.push_back(
+                        {.mesh = &plane,
+                         .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 1, 2 + .1F * i}),
+                         .pass = pass,
+                         .diffuse_texture = i % 2 ? &green : &red}
+                    );
+            weapon.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{7.8F, 5.8F, 12.5F})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{.25F}),
+                 .diffuse_texture = &red}
+            );
+            weapon.push_back(weapon.front());
+        }
+        const std::array modes{
+            VulkanSceneSubmission::direct,
+            VulkanSceneSubmission::instanced,
+            VulkanSceneSubmission::indirect
+        };
+        for (const bool hdr : {false, true})
+            for (const int samples : {1, 4})
+            {
+                if (profile && (hdr || samples != 1))
+                    continue;
+                RendererConfig config;
+                config.hdr_enabled = hdr;
+                config.taa_enabled = hdr;
+                config.msaa_samples = samples;
+                config.shadow_enabled = !profile;
+                config.shadow_map_resolution = 128;
+                config.fog_enabled = false;
+                config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                if (!profile)
+                {
+                    renderer.set_pass_input_view(PassInputView::scene);
+                    renderer.set_spot_light({.position = {0, 6, 3}, .direction = {0, -1, -.3F}, .enabled = true});
+                    const std::array lights{
+                        LocalLight{{0, 3, 0}, {1, .7F, .4F}, 10},
+                        LocalLight{{-4, 2, 3}, {.3F, .5F, 1}, 6}
+                    };
+                    renderer.set_local_lights(lights);
+                }
+                std::array<std::vector<CpuRgbaTextureData>, 3> images;
+                std::array<std::vector<VulkanPassInputCapture>, 3> inputs;
+                std::array<std::array<std::vector<float>, 2>, 3> shadows;
+                std::array<VulkanDrawUsage, 3> usage;
+                for (size_t mode = 0; mode < modes.size(); ++mode)
+                {
+                    renderer.set_scene_submission(modes[mode]);
+                    renderer.reset_history();
+                    auto moving = items;
+                    if (profile)
+                    {
+                        renderer.prepare_resources(moving);
+                        std::vector<double> timings;
+                        for (int frame = 0; frame < 280; ++frame)
+                        {
+                            const auto start = std::chrono::steady_clock::now();
+                            {
+                                RELAYCORE_PROFILE_ZONE_N("Submission stress CPU frame");
+                                renderer.prepare_frame(moving, {}, camera, w, h);
+                            }
+                            const double ms =
+                                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                                    .count();
+                            if (frame >= 40)
+                                timings.push_back(ms);
+                            SDL_PumpEvents();
+                            RELAYCORE_PROFILE_FRAME();
+                            SDL_Delay(8);
+                        }
+                        std::sort(timings.begin(), timings.end());
+                        usage[mode] = renderer.draw_usage();
+                        std::cout << "submission_stress mode=" << mode << " objects=" << moving.size()
+                                  << " draws=" << usage[mode].draws << " cpu_p50_ms=" << timings[120]
+                                  << " cpu_p95_ms=" << timings[228] << " cpu_p99_ms=" << timings[237] << '\n';
+                        save(
+                            renderer.capture_prepared_image(),
+                            captures / ("submission-stress-" + std::to_string(mode) + ".bmp")
+                        );
+                        continue;
+                    }
+                    for (int frame = 0; frame < 3; ++frame)
+                    {
+                        if (frame)
+                            for (size_t i = 0; i < 36; ++i)
+                            {
+                                moving[i].previous_model_matrix = moving[i].model_matrix;
+                                moving[i].model_matrix[3].x += (i % 2 ? .04F : -.06F);
+                            }
+                        moving[7].previous_model_matrix.reset();
+                        // A distinct shadow-caster span exercises correspondence ownership across passes.
+                        auto casters = moving;
+                        casters.push_back(
+                            {.mesh = &box, .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{6, 2, 1})}
+                        );
+                        renderer.prepare_frame(moving, casters, camera, w, h, weapon);
+                        images[mode].push_back(renderer.capture_prepared_image());
+                        inputs[mode].push_back(renderer.capture_pass_inputs());
+                    }
+                    usage[mode] = renderer.draw_usage();
+                    for (size_t cascade = 0; cascade < 2; ++cascade)
+                        shadows[mode][cascade] = renderer.capture_shadow_depth(cascade);
+                    save(
+                        images[mode].back(),
+                        captures
+                            / ("submission-" + std::to_string(hdr) + "-" + std::to_string(samples) + "-"
+                               + std::to_string(mode) + ".bmp")
+                    );
+                }
+                require(
+                    usage[1].draws < usage[0].draws && usage[2].draws == usage[1].draws,
+                    "Instancing did not reduce compatible draws"
+                );
+                require(
+                    usage[0].instances == usage[1].instances && usage[1].instances == usage[2].instances,
+                    "Submission dropped or duplicated instances"
+                );
+                require(
+                    usage[2].indirect_draws == usage[2].draws && !usage[1].indirect_draws,
+                    "Indirect mode bypassed its command buffer"
+                );
+                if (profile)
+                    continue;
+                for (size_t mode = 1; mode < modes.size(); ++mode)
+                {
+                    for (size_t frame = 0; frame < images[0].size(); ++frame)
+                    {
+                        require(
+                            images[mode][frame].pixels == images[0][frame].pixels,
+                            "Batched scene changed color/order/viewmodel parity"
+                        );
+                        for (size_t pixel = 0; pixel < inputs[0][frame].velocity.size(); ++pixel)
+                        {
+                            const auto difference =
+                                inputs[mode][frame].normal_depth[pixel] - inputs[0][frame].normal_depth[pixel];
+                            if (!(glm::length(difference) < .00001F))
+                                std::cout << "normal_depth_diff mode=" << mode << " frame=" << frame
+                                          << " pixel=" << pixel << " delta=" << difference.x << ',' << difference.y
+                                          << ',' << difference.z << ',' << difference.w
+                                          << " reference=" << inputs[0][frame].normal_depth[pixel].w << '\n';
+                            require(
+                                glm::length(difference) < .00001F,
+                                "Batched scene changed depth or transformed normals"
+                            );
+                            require(
+                                glm::length(inputs[mode][frame].velocity[pixel] - inputs[0][frame].velocity[pixel])
+                                    < .00001F,
+                                "Batched scene lost original temporal correspondence"
+                            );
+                        }
+                    }
+                    for (size_t cascade = 0; cascade < 2; ++cascade)
+                        require(shadows[mode][cascade] == shadows[0][cascade], "Batched shadow depth changed");
+                }
+                // Both slots can remain submitted across switches, growth, mesh replacement and reload.
+                renderer.set_scene_submission(VulkanSceneSubmission::indirect);
+                auto large = items;
+                large.insert(large.end(), items.begin(), items.end());
+                renderer.prepare_frame(large, large, camera, w, h, weapon);
+                renderer.set_scene_submission(VulkanSceneSubmission::direct);
+                renderer.prepare_frame({}, {}, camera, w + 1, h + 1);
+                renderer.set_scene_submission(VulkanSceneSubmission::instanced);
+                box.initialize(data);
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                renderer.prepare_frame(items, items, camera, w, h, weapon);
+                static_cast<void>(renderer.capture_prepared_image());
+                std::cout << "submission_parity hdr=" << hdr << " msaa=" << samples
+                          << " direct_draws=" << usage[0].draws << " instanced_draws=" << usage[1].draws
+                          << " instances=" << usage[0].instances << '\n';
+            }
+        std::cout << "scene_submission=passed\n";
+    }
+
 } // namespace
 
 int main(int argc, char** argv)
 {
+    const bool submission_only = argc == 2 && std::string_view{argv[1]} == "--scene-submission";
+    const bool submission_profile = argc == 2 && std::string_view{argv[1]} == "--scene-submission-profile";
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
     const bool light_selection_only = argc == 2 && std::string_view{argv[1]} == "--light-selection";
     const bool point_receiver_only = argc == 2 && std::string_view{argv[1]} == "--point-receiver-only";
@@ -5027,12 +5282,13 @@ int main(int argc, char** argv)
     const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
     const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
-    if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
-        && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
-        && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
-        && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile && !effects_analytic
-        && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile && !temporal_scene
-        && !temporal_dynamic && !settings_profile && !light_selection_only)
+    if (argc > 1 && !submission_only && !submission_profile && !shadows_only && !color_baseline && !profiling
+        && !native_view && !mr_only && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only
+        && !point_receiver_only && !resources_only && !pressure_slice_only && !ui_only && !pipeline_only
+        && !power_slice_only && !pistol_only && !shotgun_only && !descriptors_only && !depth_only && !inputs_only
+        && !effects_only && !effects_profile && !effects_analytic && !advanced_only && !advanced_profile
+        && !temporal_only && !temporal_profile && !temporal_scene && !temporal_dynamic && !settings_profile
+        && !light_selection_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -5053,7 +5309,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (light_selection_only)
+        if (submission_only || submission_profile)
+            check_scene_submission(device, authoring, atlas, captures, submission_profile);
+        else if (light_selection_only)
             check_light_selection(device, authoring, atlas, captures);
         else if (advanced_only || advanced_profile)
             check_advanced_effects(device, authoring, atlas, captures, advanced_profile);

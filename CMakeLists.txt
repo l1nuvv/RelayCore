@@ -103,6 +103,7 @@ foreach(stage IN ITEMS vert frag)
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang" "${SLANGC_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang"
         COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
@@ -153,6 +154,7 @@ foreach(entry IN ITEMS input_vertex input_fragment debug_vertex debug_fragment a
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
@@ -184,6 +186,7 @@ foreach(entry IN ITEMS advanced_vertex gi_fragment lens_fragment)
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/advanced.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
@@ -202,6 +205,7 @@ foreach(effect IN ITEMS effects volume)
             ${effect_defines} -entry fragment_main -stage fragment -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
             "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
             "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
             "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
@@ -228,7 +232,8 @@ foreach(shadow IN ITEMS shadow point_shadow)
             COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
                 -DPOINT_SHADOW=${point_shadow} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
                 -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
-            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang" "${SLANGC_EXECUTABLE}"
+            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
+                    "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang" "${SLANGC_EXECUTABLE}"
             COMMENT "Compiling shadow.slang (${shadow}, ${entry}) to SPIR-V" VERBATIM)
         list(APPEND RELAYCORE_MESH_SPIRV "${output}")
     endforeach()
