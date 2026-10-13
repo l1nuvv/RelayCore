@@ -4,6 +4,22 @@ This plan owns VK14 milestones, dependencies and acceptance gates. Execution rep
 
 VK14-00–05 have covered local technical evidence. Since the owner revision of 2026-10-12, loader/GPU Vulkan 1.4 is required; 1.3 fallback and forced-profile gates are retired. Other-GPU coverage, human/physical-HDR review and the historical unexplained presentation discrepancy remain separate limitations. Reports describe their dated builds, not a fresh verification of current HEAD.
 
+## Решение автора — 2026-10-14
+
+Автор сообщил, что VK14 выполнены, кроме ненужного RT, и плейтест прошёл успешно.
+Этап реализации Vulkan завершён по решению автора; VK14-12 исключён из текущего
+scope и не является зависимостью следующей работы. Это сообщение подтверждает
+авторскую приёмку, но не создаёт отсутствующие замеры или аппаратные проверки.
+Датированные отчёты ниже сохраняют фактически выполненные команды и ограничения.
+
+Автор отдельно сообщил о неудовлетворительной производительности. Следующий
+приоритет — [H-008: полный аудит производительности](tickets/H-008.md), включая
+renderer и интегрированный игровой кадр. Незакрытые performance gates VK14-11/14
+разбираются в этом аудите; готовность функций не означает подтверждённого ускорения.
+Другой физический GPU, HDR-монитор и GPU-assisted validation остаются отдельными
+проверками до появления соответствующего evidence. Новые renderer capabilities
+не входят в следующую итерацию без выявленной потребности.
+
 ## Execution reports
 
 [Baseline](renderer/VK14-00.md) · [API negotiation history](renderer/VK14-01.md) · [Color correctness](renderer/VK14-02.md) · [Resource lifetime](renderer/VK14-03.md) · [Scene scheduling](renderer/VK14-04.md) · [Material pooling](renderer/VK14-05a.md) · [Pipelines and portability](renderer/VK14-05.md) · [Compute/pass inputs](renderer/VK14-06.md) · [Spatial effects](renderer/VK14-07.md) · [Temporal/resolution](renderer/VK14-08.md) · [Required 1.4 revision](renderer/vulkan-1.4-contract-2026-10-12.md) · [Scene submission](renderer/VK14-10.md) · [Optional advanced GPU](renderer/VK14-11.md).
@@ -26,10 +42,10 @@ This is a **multi-session program**. A coding agent must take **one bounded mile
 | **VK14-08** | [08a–c implemented; local correctness/steady budgets pass](renderer/VK14-08.md); DRS allocation tails and human quality review remain explicit; FSR evaluated/deferred | Temporal and resolution | TAA, optional TAAU/spatial upscaler, dynamic resolution and evaluated FSR integration | Moving-enemy/viewmodel tests, camera cuts, ghosting/shimmer review, no UI blur, predictable quality/performance |
 | **VK14-09** | [09a–d implemented; local checks/budgets pass](renderer/VK14-09.md) (2026-10-13); human quality/playthrough and other-hardware review remain explicit | Visual quality II | SSGI, improved reflections, bounded DoF/motion blur | Temporal stability, no energy/AO double counting; use off/low/high comparison |
 | **VK14-10** | [10a/b/c implemented; local parity/stress/presentation checks pass](renderer/VK14-10.md#vk14-10c-implementation--2026-10-13); 10b/c opt-in; ordinary-map overhead and historical baseline exceptions remain explicit | Scalable scene submission | CPU instancing → indirect draws → optional GPU culling | Image parity, correct object picking/shadows/transparency, real CPU/GPU improvement under stress |
-| **VK14-11** | [11a local gates pass; 11b implemented, local correctness passes, performance gate open](renderer/VK14-11.md); 11c/d pending | Optional advanced GPU | Capability-gated bindless, mesh shaders/meshlets, VRS and async compute | Every feature passes supported+unsupported device paths and budget; indexed renderer remains usable |
-| **VK14-12** | `pending` | Optional hardware RT | BLAS/TLAS, one RT consumer, denoiser/composite, later RT extensions as warranted | RT-off parity, tested fallback, resource churn, performance/memory and moving-object correctness |
-| **VK14-13** | `pending` | Physical HDR presentation | HDR10/scRGB opt-in, OS/display detection, output transform/metadata where supported | Actual HDR monitor verification; SDR fallback across ordinary displays |
-| **VK14-14** | [14a/b implemented; 38 local graphics cases pass](renderer/VK14-14.md); tier profiling/GPU-assisted and hardware/human gates remain open | Cross-feature integration and release hardening | Presets, quality tiers, hardware matrix, end-to-end captures/performance, docs, user playtest | No GPU validation warnings/errors, stable feature toggles, no new save/editor/gameplay regressions |
+| **VK14-11** | Реализация завершена по сообщению автора 2026-10-14; [датированное evidence](renderer/VK14-11.md); performance acceptance проверяется в [H-008](tickets/H-008.md) | Optional advanced GPU | Capability-gated bindless, mesh shaders/meshlets, VRS and async compute | Every feature passes supported+unsupported device paths and budget; indexed renderer remains usable |
+| **VK14-12** | Исключён автором 2026-10-14; RT не требуется | Optional hardware RT | BLAS/TLAS, one RT consumer, denoiser/composite, later RT extensions as warranted | RT-off parity, tested fallback, resource churn, performance/memory and moving-object correctness |
+| **VK14-13** | Реализация завершена по сообщению автора 2026-10-14; физический HDR не подтверждён отдельным evidence | Physical HDR presentation | HDR10/scRGB opt-in, OS/display detection, output transform/metadata where supported | Actual HDR monitor verification; SDR fallback across ordinary displays |
+| **VK14-14** | Реализация и авторский плейтест приняты 2026-10-14; [локальные checks и ограничения](renderer/VK14-14.md); performance — [H-008](tickets/H-008.md), аппаратные/GPU-assisted проверки отдельно | Cross-feature integration and release hardening | Presets, quality tiers, hardware matrix, end-to-end captures/performance, docs, user playtest | No GPU validation warnings/errors, stable feature toggles, no new save/editor/gameplay regressions |
 
 **Dependencies:** `VK14-01` before any Vulkan 1.4-only path; `VK14-03` before removing host waits or implementing independent concurrent frames; `VK14-06` before temporal/screen-space effects; meshlets before mesh shaders; actual RT dependency/extension/geometry ownership before an RT effect; real HDR-capable output before claiming HDR10 support.
 
