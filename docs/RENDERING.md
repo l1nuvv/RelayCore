@@ -4,6 +4,13 @@
 
 ## Освещение материалов и сглаживание
 
+Local lighting retains up to 32 active sources, ordered by camera distance divided
+by radius. The nearest eight keep point shadow maps (six faces each); sources beyond
+the shadow budget still contribute direct and volumetric light. Maps exceeding 32
+sources emit the existing budget warning and select the nearest 32. This avoids
+dropping small visible lights in the current rooms merely because they leave the
+eight-source shadow budget. Emissive materials are independent of this selection.
+
 `render.msaa_samples` принимает `1`, `2`, `4`; все три игровые конфигурации
 (`engine`, `native_lab_hdr`, `occult_lab_b17`) используют `4`. Отсутствующий ключ
 сохраняет `1` для прежних конфигураций и изолированных fixtures. Неподдерживаемый

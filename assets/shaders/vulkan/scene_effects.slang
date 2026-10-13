@@ -198,6 +198,7 @@ float3 volumetric_color(float3 surface, float3 position, float3 normal, float fo
             float3 delta = lights.positionRadius[light].xyz - p;
             float d = length(delta);
             float attenuation = saturate(1 - d / max(lights.positionRadius[light].w, .001));
+            if (attenuation == 0) continue;
             float visibility = (shadows.flags.w & (1 << light)) == 0 || d <= .05 ? 1
                 : float((d - .025) / lights.positionRadius[light].w <= point_depth(-delta / d, light));
             incident += (linearColor ? mr_linear(lights.color[light].rgb) : lights.color[light].rgb) * attenuation * attenuation * visibility * .25;

@@ -3,6 +3,7 @@
 #include "relaycore/render/material.h"
 #include "relaycore/render/mesh.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <glm/mat4x4.hpp>
 #include <optional>
@@ -17,6 +18,9 @@ namespace RelayCore::render
         Overlay,
         Transparent,
     };
+
+    inline constexpr std::size_t kMaxLocalLights = 32;
+    inline constexpr std::size_t kMaxPointShadowLights = 8;
 
     struct LocalLight {
         glm::vec3 position{0.0F};

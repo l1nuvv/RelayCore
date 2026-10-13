@@ -1,5 +1,24 @@
 # Графические настройки — замер 1440p, 2026-10-13
 
+## Follow-up: distance lighting and reported spikes
+
+The owner's Play/max-settings screenshots showed the small red source disappearing.
+World selection capped all lighting at eight camera-ranked sources. Direct/volume
+lighting now retains 32 sources while the point-shadow budget remains eight; the
+contract is in [RENDERING](../RENDERING.md#освещение-материалов-и-сглаживание).
+`graphics.local_light_selection` passed in `msvc-dev`: a tenth GPU light contributes,
+target deactivation clears it, and the authored pentagram source contributes at both
+camera z=-1 and z=4. `graphics.point_shadow_receiver` passed; validation was false.
+`cmake --build --preset demo-dev` and `git diff --check` passed.
+
+A fresh before-patch `--graphics-settings-profile` retained 200 warm samples per
+mode/view at 2560x1440. Entrance combined GPU p50/p95 was 11.141/11.767 ms;
+maintenance 15.183/16.018 ms; corridor 13.696/14.549 ms. Evidence:
+`build/light-distance-2026-10-13/before/{workload.log,summary.json,vulkan-mesh-captures/graphics-settings-profile.csv}`.
+This fixture excludes gameplay/presentation and the newer advanced quality controls.
+After the owner requested a quicker handoff, no after-patch timing or long live-game
+capture was run. The isolated FPS spikes remain unexplained; no speedup is claimed.
+
 По запросу владельца после падения с запомнившихся ~400 FPS до 48 FPS
 при включении новых эффектов. Измерения подтверждают большую стоимость
 SSR и объёмного света на GPU. Полное время игрового кадра 18–21 мс

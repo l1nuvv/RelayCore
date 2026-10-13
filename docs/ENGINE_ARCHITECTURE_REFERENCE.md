@@ -122,7 +122,7 @@ This table records the supplied 2026-09-30 `1.3.4` snapshot before cutover. It i
 | Models | triangulated OBJ `v/vt/vn`, one BMP diffuse, shared immutable renderer cache | proof of sharing; not production model/material pipeline |
 | Texture | 2D RGBA8/sRGB8A8, generated mips, fixed repeat/filter | preserve semantics during parity; general formats/HDR/cubes/arrays later |
 | Color | explicit `legacy_gamma` and opt-in verified `hardware_srgb` | Vulkan parity must preserve explicit color-space behavior before HDR redesign |
-| Lights | local lights; nearest 8 active per frame | port current behavior before scalable lighting work |
+| Lights | up to 32 local lights; nearest 8 have point shadows; [current contract](RENDERING.md#освещение-материалов-и-сглаживание) | scalable assignment remains a future capability |
 | Shadows | directional cascades, spot path, point cube-array resources | parity target, not a mandate to preserve internal GL organization |
 | Physics | player/world collision uses AABB world queries | independent of Vulkan; arbitrary maps still need triangle/convex collision |
 | Asset deployment | CMake copies `assets/`; runtime consumes authored files | no general source→product compiler/catalog/dependency cache yet |

@@ -72,7 +72,7 @@ float3 probe_indirect(float3 position, float3 normal, float reflectionRoughness 
     }
     return max(result, 0);
 }
-struct LightData { float4 positionRadius[8]; float4 color[8]; int4 count; };
+struct LightData { float4 positionRadius[32]; float4 color[32]; int4 count; };
 [[vk::binding(2, 0)]] ConstantBuffer<LightData> lights;
 struct FrameData
 {
@@ -331,6 +331,7 @@ float3 lit_color(float3 color, float3 normal, float3 geometricNormal, float3 rec
         float distanceToLight = length(delta);
         float3 direction = distanceToLight > 0.0001 ? delta / distanceToLight : float3(0, 1, 0);
         float attenuation = saturate(1 - distanceToLight / max(lights.positionRadius[i].w, 0.001));
+        if (attenuation == 0) continue;
         attenuation = attenuation * attenuation * (3 - 2 * attenuation);
         float wrapped = saturate(dot(normal, direction) * materials.local.x + materials.local.y);
         result += color * lights.color[i].rgb * attenuation * wrapped * materials.local.z * local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,receiverPlaneNormal,direction,attenuation);
@@ -414,6 +415,7 @@ float3 metallic_roughness_color(float3 color, float3 normal, float3 geometricNor
         float distanceToLight = length(delta);
         float3 lightDirection = distanceToLight > 0.0001 ? delta/distanceToLight : float3(0,1,0);
         float attenuation = saturate(1-distanceToLight/max(lights.positionRadius[i].w,0.001));
+        if (attenuation == 0) continue;
         attenuation = attenuation*attenuation*(3-2*attenuation);
         float visibility = local_visibility(i,delta,distanceToLight,max(lights.positionRadius[i].w,0.001),geometricNormal,receiverPlaneNormal,lightDirection,attenuation);
         result += metallic_roughness_brdf(base,normal,view,lightDirection,roughness,metallic) * mr_linear(lights.color[i].rgb)

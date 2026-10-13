@@ -28,7 +28,7 @@ namespace RelayGame
 {
     namespace
     {
-        constexpr std::size_t kMaxActiveLocalLights = 8;
+        constexpr std::size_t kMaxActiveLocalLights = RelayCore::render::kMaxLocalLights;
 
         [[nodiscard]] auto normalize_plane(const glm::vec4& plane) -> glm::vec4
         {

@@ -1454,18 +1454,25 @@ namespace
         const auto prepare = [&](const std::span<const std::string> targets = {},
                                  const std::span<const RelayGame::EnvironmentEffect> effects = {}) {
             scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false, targets, {}, effects);
-            require(scene.local_lights().size() == 8, "World selection did not retain its eight-light budget");
+            require(scene.local_lights().size() == (targets.empty() ? 10 : 11), "World dropped an authored light");
             renderer.set_local_lights(scene.local_lights());
         };
         const auto check = [&](const char* name) {
             auto image = renderer.render_image(scene.render_items(), camera, width, height);
-            compare(image, name, captures);
+            save(image, captures / (std::string{name} + "-vk.bmp"));
             return image;
         };
         prepare();
-        for (size_t i = 0; i < 8; ++i)
+        for (size_t i = 0; i < 10; ++i)
             require(scene.local_lights()[i].position.x == float(i) + 4, "Nearest-light selection order changed");
-        const auto initial = check("lighting-world-nearest-eight");
+        const auto initial = check("lighting-world-nearest-ten");
+        auto without_tenth = std::vector<LocalLight>{scene.local_lights().begin(), scene.local_lights().end()};
+        without_tenth.back().position = {4, 1.65F, 5};
+        renderer.set_local_lights(without_tenth);
+        const auto tenth = check("lighting-world-tenth-enabled");
+        without_tenth.back().color = {};
+        renderer.set_local_lights(without_tenth);
+        require(check("lighting-world-tenth-disabled").pixels != tenth.pixels, "GPU ignored lights beyond eight");
         const std::array targets{std::string{"lighting-test"}};
         prepare(targets);
         require(scene.local_lights()[0].radius == 9, "Target-gated source was not selected");
@@ -1495,6 +1502,30 @@ namespace
         prepare();
         require(scene.local_lights()[0].position.x == 13, "Camera movement did not update selected nearest lights");
         check("lighting-world-camera-switch");
+        scene.shutdown();
+
+        const auto power = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/power_restoration.toml"));
+        scene.initialize(
+            RelayGame::build_prepared_world_scene_data(power, authoring, ColorPipelineMode::legacy_gamma),
+            models
+        );
+        for (const float z : {-1.F, 4.F})
+        {
+            camera.set_position({-2, 1.65F, z});
+            camera.set_target({0, 1.85F, -4.58F});
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto lights = scene.local_lights();
+            const auto red = std::ranges::find(lights, glm::vec3{0, 1.85F, -4.58F}, &LocalLight::position);
+            require(red != lights.end(), "Distance dropped the pentagram light");
+            renderer.set_local_lights(lights);
+            const auto lit = renderer.render_image(scene.render_items(), camera, width, height);
+            auto disabled = std::vector<LocalLight>{lights.begin(), lights.end()};
+            disabled[static_cast<size_t>(red - lights.begin())].color = {};
+            renderer.set_local_lights(disabled);
+            const auto unlit = renderer.render_image(scene.render_items(), camera, width, height);
+            require(lit.pixels != unlit.pixels, "Pentagram light made no contribution at distance");
+            save(lit, captures / (z < 0 ? "lighting-pentagram-near.bmp" : "lighting-pentagram-far.bmp"));
+        }
         scene.shutdown();
         renderer.set_local_lights({});
     }
@@ -4965,6 +4996,7 @@ namespace
 int main(int argc, char** argv)
 {
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
+    const bool light_selection_only = argc == 2 && std::string_view{argv[1]} == "--light-selection";
     const bool point_receiver_only = argc == 2 && std::string_view{argv[1]} == "--point-receiver-only";
     const bool color_baseline = argc == 2 && std::string_view{argv[1]} == "--color-baseline";
     const bool profiling = argc == 2 && std::string_view{argv[1]} == "--profile-views";
@@ -5000,7 +5032,7 @@ int main(int argc, char** argv)
         && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only
         && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile && !effects_analytic
         && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile && !temporal_scene
-        && !temporal_dynamic && !settings_profile)
+        && !temporal_dynamic && !settings_profile && !light_selection_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -5021,7 +5053,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (advanced_only || advanced_profile)
+        if (light_selection_only)
+            check_light_selection(device, authoring, atlas, captures);
+        else if (advanced_only || advanced_profile)
             check_advanced_effects(device, authoring, atlas, captures, advanced_profile);
         else if (settings_profile)
             profile_graphics_settings(device, authoring, atlas, captures);

@@ -75,13 +75,13 @@ namespace RelayCore::render
         static_assert(sizeof(FrameParameters) == 256);
 
         struct LightParameters {
-            std::array<glm::vec4, 8> position_radius;
-            std::array<glm::vec4, 8> color;
+            std::array<glm::vec4, kMaxLocalLights> position_radius;
+            std::array<glm::vec4, kMaxLocalLights> color;
             glm::ivec4 count;
         };
-        static_assert(offsetof(LightParameters, color) == 128);
-        static_assert(offsetof(LightParameters, count) == 256);
-        static_assert(sizeof(LightParameters) == 272);
+        static_assert(offsetof(LightParameters, color) == 512);
+        static_assert(offsetof(LightParameters, count) == 1024);
+        static_assert(sizeof(LightParameters) == 1040);
 
         struct IrradianceParameters {
             glm::vec4 mins{}, maxs{};
@@ -2528,7 +2528,7 @@ namespace RelayCore::render
             if (config.shadow_enabled)
             {
                 const auto planes = shadow_frustum_planes(camera.view_projection_matrix());
-                for (int i = 0; i < lights.count.x; ++i)
+                for (int i = 0; i < std::min(lights.count.x, static_cast<int>(kMaxPointShadowLights)); ++i)
                 {
                     const LocalLight light{
                         glm::vec3(lights.position_radius[i]),
