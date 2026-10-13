@@ -1,5 +1,7 @@
 #include "relaygame/enemy_navigation.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
@@ -39,6 +41,7 @@ namespace RelayGame
             float target_eye_height
         )
         {
+            RELAYCORE_PROFILE_ZONE_N("Enemy navigation route plan");
             enemy.route_count = enemy.route_cursor = 0;
             enemy.route_goal = goal;
             enemy.route_replan_seconds = .5F;
