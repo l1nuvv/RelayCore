@@ -1,6 +1,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/static_model.h"
+#include "relaygame/enemy_navigation.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor_document.h"
@@ -41,6 +42,7 @@ TEST_CASE("routed rover reaches remembered player around cover that stops direct
         RelayCore::gameplay::PlayerCombatState player;
         std::vector<RelayCore::physics::WorldCollider> scratch;
         const RelayCore::test::WorldQueryFixture world{level};
+        RelayGame::prepare_enemy_navigation(world, enemies);
         for (int i = 0; i < 1200; ++i)
             RelayGame::update_enemies(
                 world,
@@ -74,6 +76,7 @@ TEST_CASE("routed enemies respect closed doors unreachable heights and reopen wi
     world.door_colliders.push_back(
         {.bounds = {{-10, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Door}}
     );
+    RelayGame::prepare_enemy_navigation(world, enemies);
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto tick = [&] {
@@ -103,6 +106,87 @@ TEST_CASE("routed enemies respect closed doors unreachable heights and reopen wi
     for (int i = 0; i < 600; ++i)
         tick();
     CHECK(enemies[0].state.position.z == doctest::Approx(3));
+}
+
+TEST_CASE("prepared route links match live planning after doors guardian endpoints and level changes")
+{
+    auto level = room();
+    level.solids.push_back({{-.8F, 0, 1.2F}, {.8F, 2, 2}, RelayCore::SurfaceMaterial::Metal});
+    auto enemies = RelayGame::build_enemies(level);
+    auto& enemy = enemies[0];
+    enemy.route_points = {{2, .01F, 3}, {2, .01F, .5F}};
+    RelayCore::test::WorldQueryFixture fixture{level};
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    const glm::vec3 goal{0, .01F, 0};
+    const auto compare = [&](RelayCore::physics::WorldQuery world, glm::vec3 target, bool reachable) {
+        auto live = enemy;
+        live.route_links_prepared = false;
+        live.route_replan_seconds = enemy.route_replan_seconds = 0;
+        CHECK(
+            RelayGame::enemy_route_velocity(world, enemy, target, 1.65F, 1.F / 120)
+            == RelayGame::enemy_route_velocity(world, live, target, 1.65F, 1.F / 120)
+        );
+        REQUIRE(enemy.route_count == live.route_count);
+        CHECK((enemy.route_count > 0) == reachable);
+        for (std::size_t i = 0; i < enemy.route_count; ++i)
+            CHECK(enemy.route[i] == live.route[i]);
+    };
+    compare(fixture, goal, true);
+    fixture.door_colliders.push_back(
+        {.bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Door}}
+    );
+    compare(fixture, goal, false);
+    fixture.door_colliders.clear();
+    compare(fixture, goal, true);
+    const std::array guardian{RelayCore::physics::WorldCollider{
+        .bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}},
+        .object = {RelayCore::physics::WorldObjectKind::Enemy}
+    }};
+    compare(RelayCore::physics::WorldQuery{fixture}.with_actors(guardian), goal, false);
+    compare(fixture, goal, true);
+    compare(fixture, {0, 4, 0}, false);
+    enemy.state.position = {2, .01F, .5F};
+    compare(fixture, goal, true);
+    fixture.colliders.push_back(
+        {.bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Solid}}
+    );
+    enemy.state.position = level.entities[0].origin;
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    compare(fixture, goal, false);
+}
+
+TEST_CASE("prepared route links revalidate ground supplied by a dynamic body")
+{
+    auto level = room();
+    level.solids = {
+        {{-10, -.2F, -10}, {10, 0, 1}, RelayCore::SurfaceMaterial::Tile},
+        {{-10, -.2F, 2.3F}, {10, 0, 10}, RelayCore::SurfaceMaterial::Tile}
+    };
+    auto enemies = RelayGame::build_enemies(level);
+    auto& enemy = enemies[0];
+    enemy.route_points = {{0, .01F, 3}, {0, .01F, .5F}};
+    const RelayCore::test::WorldQueryFixture fixture{level};
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    const std::array bridge{RelayCore::physics::WorldCollider{
+        .bounds = {{-10, -.2F, 1}, {10, 0, 2.3F}},
+        .object = {RelayCore::physics::WorldObjectKind::Enemy}
+    }};
+    for (const bool supported : {false, true, false})
+    {
+        CAPTURE(supported);
+        const auto world = RelayCore::physics::WorldQuery{fixture}.with_actors(
+            supported ? std::span<const RelayCore::physics::WorldCollider>{bridge}
+                      : std::span<const RelayCore::physics::WorldCollider>{}
+        );
+        auto live = enemy;
+        live.route_links_prepared = false;
+        live.route_replan_seconds = enemy.route_replan_seconds = 0;
+        CHECK(
+            RelayGame::enemy_route_velocity(world, enemy, {}, 1.65F, 1.F / 120)
+            == RelayGame::enemy_route_velocity(world, live, {}, 1.65F, 1.F / 120)
+        );
+        CHECK((enemy.route_count > 0) == supported);
+    }
 }
 
 TEST_CASE("mobile shooter locks warning aim and respects movement doors and intervening bodies")
@@ -175,6 +259,7 @@ TEST_CASE("mobile shooter searches remembered position without learning an unsee
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const RelayCore::test::WorldQueryFixture world{level};
+    RelayGame::prepare_enemy_navigation(world, enemies);
     for (int i = 0; i < 1200; ++i)
         RelayGame::update_enemies(
             world,
@@ -203,6 +288,7 @@ TEST_CASE("mobile shooter finds a reachable firing angle after player disappears
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const RelayCore::test::WorldQueryFixture world{level};
+    RelayGame::prepare_enemy_navigation(world, enemies);
     for (int i = 0; i < 600; ++i)
         RelayGame::update_enemies(
             world,
@@ -233,6 +319,7 @@ TEST_CASE("mobile shooter reaches firing range instead of stalling at a boundary
         RelayCore::gameplay::PlayerCombatState player;
         std::vector<RelayCore::physics::WorldCollider> scratch;
         const RelayCore::test::WorldQueryFixture world{level};
+        RelayGame::prepare_enemy_navigation(world, enemies);
         unsigned shots = 0;
         for (int i = 0; i < 480; ++i)
             shots += RelayGame::update_enemies(

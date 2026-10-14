@@ -10,6 +10,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/diagnostics_publication_policy.h"
+#include "relaygame/enemy_navigation.h"
 #include "relaygame/player_controller_config.h"
 #include "relaygame/usable_interaction.h"
 #include "relaygame/world_inspector.h"
@@ -75,6 +76,7 @@ namespace RelayGame
         authoring_warnings_ = std::move(session.authoring_warnings);
         containment_ = std::move(session.containment);
         enemies_ = std::move(session.enemies);
+        prepare_enemy_navigation(world_query(), enemies_);
         enemy_blockers_.reserve(enemies_.size() + 1);
         loaded_level_turrets_ = std::move(session.combat.turrets);
         loaded_level_hazards_ = std::move(session.combat.hazards);

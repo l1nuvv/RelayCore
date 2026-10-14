@@ -98,6 +98,25 @@ TEST_CASE("world queries refresh moved doors and preserve actor overlap movement
     CHECK(WorldQuery{{}, blockers}.raycast({0, 1, 0}, {0, 0, 1}, 3));
 }
 
+TEST_CASE("local static candidates preserve contact cascades outside the query bounds")
+{
+    const std::array solids{
+        WorldCollider{.bounds = {{-2, 0, -1}, {1, 2, 1}}},
+        WorldCollider{.bounds = {{-4, 0, -1}, {-2, 2, 1}}},
+    };
+    const WorldQuery world{solids};
+    std::vector<WorldCollider> candidates;
+    bool contained = true;
+    const auto local = world.local_static({{-.5F, -.2F, -.5F}, {.6F, 2, .5F}}, candidates, &contained);
+    const auto raw = world.move_axis({}, {}, 0, .1F);
+    CHECK(raw.position_axis < -4);
+    CHECK(local.move_axis({}, {}, 0, .1F).position_axis == raw.position_axis);
+    CHECK_FALSE(contained);
+    CHECK(
+        local.move_axis({-3, 0, 0}, {}, 0, .1F).position_axis == world.move_axis({-3, 0, 0}, {}, 0, .1F).position_axis
+    );
+}
+
 TEST_CASE("static world query identity distinguishes prop colliders from blockout solids")
 {
     BlockoutLevel level;

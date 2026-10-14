@@ -2,6 +2,7 @@
 
 #include "relaycore/core/paths.h"
 #include "relaycore/physics/player_motion.h"
+#include "relaygame/enemy_navigation.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/usable_interaction.h"
 
@@ -27,6 +28,7 @@ namespace RelayCore::test
 
         ContainmentLoopRoute()
         {
+            RelayGame::prepare_enemy_navigation(physics::WorldQuery{session.world_colliders}, session.enemies);
             config.max_speed = 3;
             mission.reset(session.mission_definition);
             gameplay::reset_player_combat_state(player);
