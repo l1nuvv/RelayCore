@@ -205,7 +205,7 @@ endforeach()
 
 if(WIN32)
     enable_language(RC)
-    configure_file(relaycore.rc.in generated/relaycore.rc @ONLY)
+    configure_file(${PROJECT_SOURCE_DIR}/content/graphics/branding/relaycore.rc.in generated/relaycore.rc @ONLY)
     set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc PROPERTIES
         OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/branding/relaycore.ico")
     target_sources(relaycore_demo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc)

@@ -1,5 +1,8 @@
 add_executable(relaycore_tests)
 if(WIN32)
+    configure_file(${PROJECT_SOURCE_DIR}/content/graphics/branding/relaycore.rc.in generated/relaycore.rc @ONLY)
+    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc PROPERTIES
+        OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/branding/relaycore.ico")
     file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs" updater_source)
     file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/updater_tests.cs" updater_test_source)
     file(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/relaycore_updater_tests.exe" updater_test_output)
@@ -233,6 +236,9 @@ foreach(test_target IN ITEMS
     relaycore_containment_loop_graphics
 )
     relaycore_apply_standard_target_settings(${test_target})
+    if(WIN32)
+        target_sources(${test_target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc)
+    endif()
 
     add_custom_command(
         TARGET ${test_target}
