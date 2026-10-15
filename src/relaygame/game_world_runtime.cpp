@@ -208,7 +208,9 @@ namespace RelayGame
         audio_state_.initialized = services.audio_system().is_initialized();
         audio_state_.master_volume = services.audio_system().config().master_volume;
         audio_state_.has_active_loop = services.audio_system().has_active_loop();
-        audio_state_.active_loop_path = services.audio_system().current_loop_path();
+        const auto& loop_path = services.audio_system().current_loop_path();
+        if (audio_state_.active_loop_path != loop_path)
+            audio_state_.active_loop_path = loop_path;
         audio_state_.active_loop_volume = services.audio_system().current_loop_volume();
     }
 
@@ -1025,7 +1027,7 @@ namespace RelayGame
             return;
         }
 
-        const RelayGame::MissionStatus mission_before = mission_runtime_.status();
+        const auto mission_before = mission_runtime_.snapshot();
         const bool mission_was_complete = mission_before.completed;
         RelayCore::gameplay::collect_blocking_doors(doors_, player_controller_.player_bounds(), dynamic_blockers_);
         for (const auto& enemy : enemies_)
@@ -1167,12 +1169,13 @@ namespace RelayGame
             activated_target_ids_,
             signaled_target_ids_
         );
-        const RelayGame::MissionStatus mission_after = mission_runtime_.status();
+        const auto mission_after = mission_runtime_.snapshot();
         if (!mission_was_complete && mission_after.completed)
         {
             play_gameplay_audio(services, audio_cues_.mission_complete);
+            const auto status = mission_runtime_.status();
             push_transient_hud_event(
-                mission_after.title.empty() ? std::string{"Задача выполнена"} : mission_after.title,
+                status.title.empty() ? std::string{"Задача выполнена"} : status.title,
                 RelayCore::render::HudEventStyle::Success,
                 2.6F
             );
@@ -1180,7 +1183,7 @@ namespace RelayGame
                    && (!mission_before.active || mission_after.current_step != mission_before.current_step))
         {
             RELAYCORE_PROFILE_FUNCTION();
-            push_mission_status_event(mission_after, RelayCore::render::HudEventStyle::Neutral, 2.4F);
+            push_mission_status_event(mission_runtime_.status(), RelayCore::render::HudEventStyle::Neutral, 2.4F);
         }
     }
 

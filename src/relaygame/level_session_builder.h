@@ -64,7 +64,7 @@ namespace RelayGame
         std::vector<RelayCore::gameplay::RuntimeTrigger> triggers{};
         std::vector<RelayCore::gameplay::RuntimeUsable> usables{};
         RelayCore::gameplay::InteractionSpatialIndex trigger_spatial_index{};
-        RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index{};
+        RelayCore::gameplay::UsableSpatialIndex usable_spatial_index{};
         RelayGame::RuntimeObjectRegistry runtime_registry{};
         std::vector<RelayCore::render::AuthoringWarningDiagnostics> authoring_warnings{};
         RelayCore::gameplay::CombatBuildResult combat{};

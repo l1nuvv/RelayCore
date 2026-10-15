@@ -436,7 +436,7 @@ namespace RelayGame
         std::vector<RelayCore::gameplay::RuntimeTrigger> triggers_{};
         std::vector<RelayCore::gameplay::RuntimeUsable> usables_{};
         RelayCore::gameplay::InteractionSpatialIndex trigger_spatial_index_{};
-        RelayCore::gameplay::InteractionSpatialIndex usable_spatial_index_{};
+        RelayCore::gameplay::UsableSpatialIndex usable_spatial_index_{};
         std::vector<std::uint32_t> trigger_candidates_{};
         std::vector<std::uint32_t> usable_candidates_{};
         std::vector<RelayCore::physics::WorldCollider> dynamic_blockers_{};

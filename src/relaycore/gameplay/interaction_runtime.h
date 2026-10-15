@@ -126,6 +126,20 @@ namespace RelayCore::gameplay
 
     using InteractionSpatialIndex = RelayCore::core::SpatialIndex2D<std::uint32_t>;
 
+    class UsableSpatialIndex {
+    public:
+        void rebuild(const std::vector<RuntimeUsable>& usables);
+        void query(const physics::Aabb& bounds, std::vector<std::uint32_t>& out_indices);
+
+    private:
+        struct Entry {
+            physics::Aabb bounds{};
+            bool enabled = false;
+        };
+        InteractionSpatialIndex cells_{};
+        std::vector<Entry> entries_{};
+    };
+
     class InteractionRuntimeFactory {
     public:
         static void build(
@@ -164,7 +178,7 @@ namespace RelayCore::gameplay
 
     void rebuild_trigger_spatial_index(const std::vector<RuntimeTrigger>& triggers, InteractionSpatialIndex& index);
 
-    void rebuild_usable_spatial_index(const std::vector<RuntimeUsable>& usables, InteractionSpatialIndex& index);
+    void rebuild_usable_spatial_index(const std::vector<RuntimeUsable>& usables, UsableSpatialIndex& index);
 
     void query_trigger_candidates(
         InteractionSpatialIndex& index,
@@ -173,7 +187,7 @@ namespace RelayCore::gameplay
     );
 
     void query_usable_candidates(
-        InteractionSpatialIndex& index,
+        UsableSpatialIndex& index,
         const glm::vec3& eye_position,
         float max_distance,
         std::vector<std::uint32_t>& out_indices

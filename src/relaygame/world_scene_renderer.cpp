@@ -1131,7 +1131,7 @@ namespace RelayGame
         active_local_lights_.clear();
         if (!local_lights_.empty())
         {
-            std::vector<RelayCore::render::LocalLight> sorted_lights{};
+            auto& sorted_lights = active_local_lights_;
             sorted_lights.reserve(local_lights_.size());
             for (const WorldLocalLight& entry : local_lights_)
             {
@@ -1158,11 +1158,7 @@ namespace RelayGame
             });
 
             const std::size_t active_count = std::min(sorted_lights.size(), kMaxActiveLocalLights);
-            active_local_lights_.reserve(active_count);
-            for (std::size_t index = 0; index < active_count; ++index)
-            {
-                active_local_lights_.push_back(sorted_lights[index]);
-            }
+            sorted_lights.resize(active_count);
         }
 
         diagnostics_.local_light_count = static_cast<std::uint32_t>(active_local_lights_.size());
