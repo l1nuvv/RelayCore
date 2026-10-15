@@ -315,6 +315,7 @@ namespace RelayCore::gameplay
 
         float best_hit_distance = blocker_distance;
         int best_turret_index = -1;
+        glm::vec3 hit_normal{};
         for (std::size_t turret_index = 0; turret_index < turrets.size(); ++turret_index)
         {
             const RuntimeTurret& turret = turrets[turret_index];
@@ -323,14 +324,14 @@ namespace RelayCore::gameplay
                 continue;
             }
 
-            const auto hit =
-                physics::ray_intersection_distance(origin, shot_direction, turret.bounds, best_hit_distance);
+            const auto hit = physics::ray_intersection(origin, shot_direction, turret.bounds, best_hit_distance);
             if (!hit.has_value())
             {
                 continue;
             }
 
-            best_hit_distance = *hit;
+            best_hit_distance = hit->distance;
+            hit_normal = hit->normal;
             best_turret_index = static_cast<int>(turret_index);
         }
 
@@ -347,7 +348,7 @@ namespace RelayCore::gameplay
         player.shot_trace.impact = physics::WorldQueryHit{
             .distance = best_hit_distance,
             .position = player.shot_trace.end,
-            .normal = -shot_direction,
+            .normal = hit_normal,
             .surface = SurfaceMaterial::Metal,
         };
         result.hit_turret = true;
@@ -355,7 +356,16 @@ namespace RelayCore::gameplay
         result.hit_distance = best_hit_distance;
         ++player.shots_hit;
         player.hit_confirmation_remaining_seconds = 0.16F;
-        player.damage_dealt += apply_turret_damage(turret, player.weapon_damage, result);
+        const float damage = apply_turret_damage(turret, player.weapon_damage, result);
+        player.damage_dealt += damage;
+        result.actor_contact = CombatActorContact{
+            .kind = CombatActorKind::Turret,
+            .index = best_turret_index,
+            .position = player.shot_trace.end,
+            .normal = hit_normal,
+            .direction = shot_direction,
+            .damage = damage,
+        };
         if (result.killed_turret)
         {
             ++player.kills;

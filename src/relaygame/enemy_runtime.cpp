@@ -285,15 +285,17 @@ namespace RelayGame
         if (const auto blocker = world.raycast(origin, ray, distance, RelayCore::physics::WorldQueryMask::All))
             distance = blocker->distance;
         int index = -1;
+        glm::vec3 hit_normal{};
         for (std::size_t i = 0; i < enemies.size(); ++i)
         {
             if (enemies[i].state.mode == EnemyMode::Dead)
                 continue;
             const auto hit =
-                RelayCore::physics::ray_intersection_distance(origin, ray, enemy_bounds(enemies[i].state), distance);
-            if (hit && !blocked(world, origin, origin + ray * *hit))
+                RelayCore::physics::ray_intersection(origin, ray, enemy_bounds(enemies[i].state), distance);
+            if (hit && !blocked(world, origin, origin + ray * hit->distance))
             {
-                distance = *hit;
+                distance = hit->distance;
+                hit_normal = hit->normal;
                 index = static_cast<int>(i);
             }
         }
@@ -304,13 +306,23 @@ namespace RelayGame
             player.shot_trace.impact = RelayCore::physics::WorldQueryHit{
                 .distance = distance,
                 .position = player.shot_trace.end,
-                .normal = -ray,
+                .normal = hit_normal,
                 .surface = RelayCore::SurfaceMaterial::Metal,
             };
             result.enemy_index = index;
             auto& enemy = enemies[static_cast<std::size_t>(index)];
             auto& state = enemy.state;
-            player.damage_dealt += std::min(state.health, player.weapon_damage);
+            const float damage = std::min(state.health, player.weapon_damage);
+            result.combat.hit_distance = distance;
+            result.combat.actor_contact = RelayCore::gameplay::CombatActorContact{
+                .kind = RelayCore::gameplay::CombatActorKind::Enemy,
+                .index = index,
+                .position = player.shot_trace.end,
+                .normal = hit_normal,
+                .direction = ray,
+                .damage = damage,
+            };
+            player.damage_dealt += damage;
             state.health = std::max(0.0F, state.health - player.weapon_damage);
             ++player.shots_hit;
             player.hit_confirmation_remaining_seconds = 0.16F;

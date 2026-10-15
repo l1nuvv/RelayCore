@@ -95,6 +95,21 @@ namespace RelayCore::gameplay
         std::vector<RuntimeHazardVolume> hazards{};
     };
 
+    enum class CombatActorKind : std::uint8_t {
+        Turret,
+        Enemy,
+    };
+
+    // Indices refer to the corresponding runtime span in the current level session.
+    struct CombatActorContact {
+        CombatActorKind kind = CombatActorKind::Turret;
+        int index = -1;
+        glm::vec3 position{};
+        glm::vec3 normal{};
+        glm::vec3 direction{};
+        float damage = 0;
+    };
+
     struct CombatFireResult {
         bool fired = false;
         bool hit_turret = false;
@@ -102,6 +117,7 @@ namespace RelayCore::gameplay
         int turret_index = -1;
         float hit_distance = 0.0F;
         std::optional<physics::WorldQueryHit> world_impact{};
+        std::optional<CombatActorContact> actor_contact{};
         CombatTargetEvent target_event{};
     };
 

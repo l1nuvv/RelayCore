@@ -2,6 +2,8 @@
 #include "relaycore/gameplay/interaction_runtime.h"
 #include "relaycore/world/blockout_level.h"
 
+#include <array>
+#include <cmath>
 #include <doctest/doctest.h>
 
 #include "world_query_fixture.h"
@@ -45,6 +47,35 @@ TEST_CASE("player bullets stop at actor geometry before a turret behind it")
     CHECK(result.world_impact->distance == doctest::Approx(4));
     CHECK_FALSE(result.hit_turret);
     CHECK(turret.health == 60);
+}
+
+TEST_CASE("turret actor contact preserves face normal direction and resolved damage")
+{
+    PlayerCombatState player;
+    std::array<RuntimeTurret, 2> turrets{};
+    turrets[0].bounds = {{-2, 0, 8}, {2, 3, 9}};
+    turrets[1].bounds = {{-2, 0, 4}, {2, 3, 5}};
+    turrets[1].health = 7;
+    const glm::vec3 origin{0, 1, 0};
+    const auto result = RelayCore::gameplay::apply_player_fire({}, origin, {.1F, 0, 1}, player, turrets);
+    REQUIRE(result.actor_contact);
+    const auto& contact = *result.actor_contact;
+    CHECK(contact.kind == RelayCore::gameplay::CombatActorKind::Turret);
+    CHECK(contact.index == 1);
+    CHECK(contact.position.x == doctest::Approx(.4F));
+    CHECK(contact.position.z == doctest::Approx(4));
+    CHECK(contact.normal == glm::vec3{0, 0, -1});
+    CHECK(contact.direction.x == doctest::Approx(.1F / std::sqrt(1.01F)));
+    CHECK(contact.direction.z == doctest::Approx(1 / std::sqrt(1.01F)));
+    CHECK(contact.damage == 7);
+    CHECK(player.damage_dealt == 7);
+    CHECK(result.killed_turret);
+    CHECK_FALSE(result.world_impact);
+    REQUIRE(player.shot_trace.impact);
+    CHECK(player.shot_trace.impact->normal == contact.normal);
+    CHECK_FALSE(RelayCore::gameplay::apply_player_fire({}, origin, {0, 0, 1}, player, turrets).actor_contact);
+    player.weapon_cooldown_remaining_seconds = 0;
+    CHECK_FALSE(RelayCore::gameplay::apply_player_fire({}, origin, {1, 0, 0}, player, turrets).actor_contact);
 }
 
 TEST_CASE("combat runtime builds authored turrets and hazard volumes")

@@ -591,6 +591,81 @@ TEST_CASE("destroying a lunge rover during windup or the dash cancels its strike
     }
 }
 
+TEST_CASE("mobile actor contact preserves nearest target face and resolved damage")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies.push_back(enemies[0]);
+    enemies[0].state.position.z = 6;
+    enemies[1].state.health = 9;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto attack = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .45F, 0},
+        {.1F, 0, 1},
+        player,
+        {},
+        enemies
+    );
+    REQUIRE(attack.ray_count == 1);
+    REQUIRE(attack.rays[0].actor_contact);
+    REQUIRE(attack.combat.actor_contact);
+    const auto& contact = *attack.rays[0].actor_contact;
+    CHECK(contact.kind == RelayCore::gameplay::CombatActorKind::Enemy);
+    CHECK(contact.index == 1);
+    CHECK(contact.position.z == doctest::Approx(2.58F));
+    CHECK(contact.position.x == doctest::Approx(.258F));
+    CHECK(contact.normal == glm::vec3{0, 0, -1});
+    CHECK(glm::length(contact.direction) == doctest::Approx(1));
+    CHECK(contact.direction.x / contact.direction.z == doctest::Approx(.1F));
+    CHECK(contact.damage == 9);
+    CHECK(player.damage_dealt == 9);
+    CHECK(attack.killed_enemy);
+    CHECK_FALSE(attack.rays[0].world_impact);
+    CHECK(attack.combat.actor_contact->position == contact.position);
+    CHECK(attack.combat.hit_distance == doctest::Approx(glm::length(contact.position - glm::vec3{0, .45F, 0})));
+    CHECK(enemies[0].state.health == 60);
+}
+
+TEST_CASE("shotgun actor contacts retain multiple targets and sum actual damage")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies.push_back(enemies[0]);
+    enemies[0].state.position = {-.48F, .01F, 3};
+    enemies[1].state.position = {.48F, .01F, 3};
+    enemies[0].state.health = 5;
+    enemies[1].state.health = 8;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto shot = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .45F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies,
+        RelayGame::PlayerWeapon::Shotgun
+    );
+    std::array<bool, 2> hit{};
+    float damage = 0;
+    for (std::size_t i = 0; i < shot.ray_count; ++i)
+        if (const auto& contact = shot.rays[i].actor_contact)
+        {
+            CHECK(contact->kind == RelayCore::gameplay::CombatActorKind::Enemy);
+            REQUIRE(contact->index >= 0);
+            REQUIRE(contact->index < 2);
+            hit[static_cast<std::size_t>(contact->index)] = true;
+            damage += contact->damage;
+            CHECK(contact->position == shot.pellet_traces[i].end);
+            CHECK_FALSE(shot.rays[i].world_impact);
+        }
+    CHECK(hit[0]);
+    CHECK(hit[1]);
+    CHECK(damage == 13);
+    CHECK(damage == player.damage_dealt);
+    CHECK(player.kills == 2);
+}
+
 TEST_CASE("shotgun has a close range advantage and counts one discharge")
 {
     for (float distance : {3.0F, 12.0F})
@@ -700,6 +775,8 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
     CHECK(player.shots_fired == 1);
     if (turrets.empty())
     {
+        for (std::size_t i = 0; i < shot.ray_count; ++i)
+            CHECK_FALSE(shot.rays[i].actor_contact);
         CHECK(enemies[0].state.health == 60);
         CHECK(player.shots_hit == 0);
         if (enemies[0].state.position.z < 14)
@@ -711,7 +788,14 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
         CHECK(turrets[0].health == turrets[0].max_health);
         CHECK(player.kills == 1);
         for (std::size_t i = 0; i < shot.ray_count; ++i)
+        {
             CHECK_FALSE(shot.rays[i].world_impact);
+            if (shot.rays[i].actor_contact)
+            {
+                CHECK(shot.rays[i].actor_contact->kind == RelayCore::gameplay::CombatActorKind::Enemy);
+                CHECK(shot.rays[i].actor_contact->index == 0);
+            }
+        }
     }
 }
 
@@ -796,6 +880,13 @@ TEST_CASE("shotgun can destroy multiple turrets with one event per target")
     {
         if (!result.rays[i].killed_turret)
             continue;
+        REQUIRE(result.rays[i].actor_contact);
+        const auto& contact = *result.rays[i].actor_contact;
+        CHECK(contact.kind == RelayCore::gameplay::CombatActorKind::Turret);
+        CHECK(contact.index == result.rays[i].turret_index);
+        CHECK(contact.damage == 14);
+        CHECK(contact.position == result.pellet_traces[i].end);
+        CHECK_FALSE(result.rays[i].world_impact);
         left += result.rays[i].target_event.target == "left";
         right += result.rays[i].target_event.target == "right";
     }

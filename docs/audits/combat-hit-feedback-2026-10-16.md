@@ -79,3 +79,17 @@ Stagger вводить отдельным изменением с условия
 Ручной sound-on прогон G-019 и имеющихся bench encounters: пистолет/дробовик, попадания и промахи, металл/бетон/робот, overlapping hits, дверь в движении, убийство, повтор встречи, низкая частота кадров. Оценить читаемость, шум, слышимость и комфорт камеры. После этого — сопоставимый CPU/GPU/frame-pacing замер с включёнными/выключенными новыми эффектами на одной revision/settings/route. Дополнительные ZIP/standalone packages для этой работы не нужны.
 
 Объём: actor-result + visual confirmation — средний локальный slice; audio variation — небольшой отдельный slice; stagger/knockback — средний gameplay slice с более высоким риском регрессии. Это оценка связности работ, не календарный срок. Реализация и runtime-приёмка остаются будущей работой.
+
+## Реализация actor contact по отдельному поручению автора
+
+2026-10-16 реализован только шаг сохранения actor contact. `CombatFireResult::actor_contact` — optional `CombatActorContact` с kind (`Turret`/`Enemy`), индексом в соответствующем runtime span текущей level session, position, normal, нормализованным direction и фактически снятым damage. Индексы не являются persistent ID и не предназначены для переноса между сессиями. Engine data не содержит game-specific types.
+
+`apply_player_fire` и `fire_player_ray` сохраняют нормаль из существующего AABB intersection вместо `-direction`, без дополнительного raycast; та же нормаль передаётся shot trace. Для mobile enemy также заполняется `hit_distance`. Каждый элемент `PlayerAttackResult::rays` сохраняет свой contact, включая разные цели одного выстрела дробовика; верхние aggregate fields оставлены для существующих consumers. Для всех попаданий дробовика authoritative список — `rays[0..ray_count)`, а не aggregate `combat`.
+
+Resolved actor hits не помещаются в `world_impact`. Существующий special collider path guardian и прочих query actors не изменён: он ещё может возвращать `world_impact` и не означает resolved damage по turret/mobile enemy. Новые эффекты, AI reactions, форматы save и tuning не добавлены.
+
+Проверка: Windows / VS 2026 x64 Developer PowerShell, существующее дерево `msvc-dev`, валидный `VCPKG_ROOT`. `cmake --build --preset tests-dev --target relaycore_tests -j 2` сначала остановился внутри sandbox с C1902 (PDB manager mismatch) до компиляции изменённых файлов; тот же build вне sandbox прошёл, включая итоговую пересборку после форматирования. Были предупреждения в незатронутых `demo_game_source_debug_commands.cpp`, `world_scene_renderer_props.cpp` и `pipeline_authoring_overlay_tests.cpp`.
+
+После discovery через `ctest --preset test-dev -N -R '^relaycore\.(.*actor contact.*|shotgun .*|combat runtime .*|player fire .*|player bullets .*|a missed shot .*|nonlethal hits .*|lunge rover cannot .*|weapon impacts .*)$'` выполнен тот же фильтр с `--output-on-failure --no-tests=error` вместо `-N`: **16/16 Passed, без Skipped**, 3,99 с. Три новых cases проверяют turret/mobile contact, face normal при косом попадании, lethal damage cap и разные mobile targets дробовика; существующие cases дополнены assertions actor contact для occlusion/range/early-kill и нескольких turret targets. Проверки formatting изменённых runtime-участков и `git diff --check` прошли. Ручной плейтест, graphics review и измерение производительности не выполнялись.
+
+Pre-commit потребовал исправить сортировку includes в `combat_runtime_tests.cpp`; после `clang-format -i tests/combat_runtime_tests.cpp`, повторной узкой сборки и того же CTest-фильтра результат снова **16/16 Passed**, 4,01 с.
