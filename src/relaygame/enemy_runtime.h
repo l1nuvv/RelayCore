@@ -48,6 +48,7 @@ namespace RelayGame
         float route_replan_seconds = 0;
         bool seeking_last_seen = false;
         RelayCore::gameplay::CombatShotTrace shot_trace;
+        RelayCore::gameplay::CombatHitFeedback hit_feedback{};
     };
 
     [[nodiscard]] auto build_enemies(const RelayCore::BlockoutLevel& level) -> std::vector<RuntimeEnemy>;

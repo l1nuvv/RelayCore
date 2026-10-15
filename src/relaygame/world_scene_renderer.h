@@ -163,6 +163,7 @@ namespace RelayGame
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
 
     private:
+        static constexpr glm::vec3 actor_hit_emission{.65F, .35F, .12F};
         void initialize_prop_meshes(RelayCore::render::ColorPipelineMode pipeline);
         void initialize_environment_meshes(RelayCore::render::ColorPipelineMode pipeline);
         void render_environment(
@@ -231,7 +232,8 @@ namespace RelayGame
             const RelayCore::render::ModelAsset& asset,
             const glm::mat4& model,
             bool visible,
-            bool emissive_enabled = true
+            bool emissive_enabled = true,
+            bool hit = false
         );
 
         struct RenderChunk {

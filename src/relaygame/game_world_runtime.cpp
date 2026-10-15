@@ -841,6 +841,10 @@ namespace RelayGame
         );
         if (result.restored)
         {
+            for (auto& turret : combat_state_.turrets)
+                turret.hit_feedback = {};
+            for (auto& enemy : enemies_)
+                enemy.hit_feedback = {};
             if (containment_)
                 containment_->state = *snapshot.containment;
             selected_weapon_ = snapshot.selected_weapon;
@@ -1153,6 +1157,10 @@ namespace RelayGame
 
         if (!combat_state_.player.alive)
         {
+            for (auto& turret : combat_state_.turrets)
+                turret.hit_feedback = {};
+            for (auto& enemy : enemies_)
+                enemy.hit_feedback = {};
             services.audio_system().stop_one_shots();
             play_gameplay_audio(services, audio_cues_.player_hurt);
             push_transient_hud_event(

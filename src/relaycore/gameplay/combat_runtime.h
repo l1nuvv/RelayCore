@@ -35,6 +35,14 @@ namespace RelayCore::gameplay
         std::optional<physics::WorldQueryHit> impact{};
     };
 
+    inline constexpr float actor_hit_seconds = .07F;
+
+    struct CombatHitFeedback {
+        glm::vec3 position{};
+        glm::vec3 normal{};
+        float remaining_seconds = 0;
+    };
+
     struct RuntimeTurret {
         int authored_entity_index = -1;
         std::string name{};
@@ -54,6 +62,7 @@ namespace RelayCore::gameplay
         float hit_flash_remaining_seconds = 0.0F;
         float fire_flash_remaining_seconds = 0.0F;
         CombatShotTrace shot_trace{};
+        CombatHitFeedback hit_feedback{};
         float damage = 16.0F;
         bool enabled = true;
         bool destroyed = false;

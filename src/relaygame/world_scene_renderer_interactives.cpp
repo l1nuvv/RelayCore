@@ -393,7 +393,8 @@ namespace RelayGame
         const RelayCore::render::ModelAsset& asset,
         const glm::mat4& model,
         const bool visible,
-        const bool emissive_enabled
+        const bool emissive_enabled,
+        const bool hit
     )
     {
         for (const auto& part : asset.parts)
@@ -418,8 +419,8 @@ namespace RelayGame
                 surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
                 surface.occlusion.valid() ? &surface.occlusion : nullptr,
                 surface.occlusion_strength,
-                surface.emissive.valid() ? &surface.emissive : nullptr,
-                emissive_enabled ? surface.emissive_factor : glm::vec3{0}
+                !hit && surface.emissive.valid() ? &surface.emissive : nullptr,
+                hit ? actor_hit_emission : (emissive_enabled ? surface.emissive_factor : glm::vec3{0})
             );
         }
     }
@@ -682,7 +683,7 @@ namespace RelayGame
         }
     }
     void WorldSceneRenderer::render_turrets(
-        const RelayCore::render::PerspectiveCamera& camera,
+        const RelayCore::render::PerspectiveCamera&,
         const std::span<const RelayCore::gameplay::RuntimeTurret> turrets
     )
     {
@@ -706,6 +707,8 @@ namespace RelayGame
             );
             render_queue_
                 .push(turret_model->mesh, model, RelayCore::render::RenderPass::Opaque, &turret_model->texture);
+            if (!turret.destroyed && turret.hit_feedback.remaining_seconds > 0)
+                render_queue_.items().back().emissive_factor = actor_hit_emission;
             if (turret.enabled && !turret.destroyed && turret.warming_up
                 && std::sin(turret.warmup_remaining_seconds * 24.0F) >= 0.0F)
             {
@@ -722,12 +725,12 @@ namespace RelayGame
                 const glm::vec3 forward{std::sin(yaw), 0, std::cos(yaw)};
                 render_effect_streak(muzzle, muzzle + forward * .09F * fade, .025F * fade, player_shot_mesh_);
             }
-            if (!turret.destroyed && turret.hit_flash_remaining_seconds > 0)
+            if (!turret.destroyed && turret.hit_feedback.remaining_seconds > 0)
                 render_spark_burst(
-                    turret.origin,
-                    camera.position() - turret.origin,
-                    .18F - turret.hit_flash_remaining_seconds,
-                    .18F
+                    turret.hit_feedback.position,
+                    turret.hit_feedback.normal,
+                    RelayCore::gameplay::actor_hit_seconds - turret.hit_feedback.remaining_seconds,
+                    RelayCore::gameplay::actor_hit_seconds
                 );
             if (turret.destroyed && turret.hit_flash_remaining_seconds > 0.0F)
             {

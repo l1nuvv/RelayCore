@@ -121,6 +121,7 @@ namespace RelayCore::gameplay
             if (turret.health <= 0.0F)
             {
                 turret.destroyed = true;
+                turret.hit_feedback = {};
                 turret.enabled = false;
                 turret.cooldown_remaining_seconds = 0.0F;
                 turret.warmup_remaining_seconds = 0.0F;
@@ -277,6 +278,9 @@ namespace RelayCore::gameplay
             turret.cooldown_remaining_seconds = std::max(0.0F, turret.cooldown_remaining_seconds - step);
             turret.warmup_remaining_seconds = std::max(0.0F, turret.warmup_remaining_seconds - step);
             turret.hit_flash_remaining_seconds = std::max(0.0F, turret.hit_flash_remaining_seconds - step);
+            turret.hit_feedback.remaining_seconds = std::max(0.0F, turret.hit_feedback.remaining_seconds - step);
+            if (turret.hit_feedback.remaining_seconds == 0)
+                turret.hit_feedback = {};
             turret.fire_flash_remaining_seconds = std::max(0.0F, turret.fire_flash_remaining_seconds - step);
             turret.shot_trace.remaining_seconds = std::max(0.0F, turret.shot_trace.remaining_seconds - step);
 

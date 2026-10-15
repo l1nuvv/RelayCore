@@ -122,6 +122,9 @@ namespace RelayGame
                 break;
             auto& state = enemy.state;
             enemy.shot_trace.remaining_seconds = std::max(0.0F, enemy.shot_trace.remaining_seconds - dt);
+            enemy.hit_feedback.remaining_seconds = std::max(0.0F, enemy.hit_feedback.remaining_seconds - dt);
+            if (enemy.hit_feedback.remaining_seconds == 0 || state.mode == EnemyMode::Dead)
+                enemy.hit_feedback = {};
             if (state.mode == EnemyMode::Dead)
                 continue;
             blockers.resize(static_count);
@@ -361,6 +364,39 @@ namespace RelayGame
         PlayerWeapon weapon
     ) -> PlayerAttackResult
     {
+        const auto apply_feedback = [&](PlayerAttackResult& attack) {
+            for (std::size_t i = 0; i < attack.ray_count; ++i)
+            {
+                const auto& contact = attack.rays[i].actor_contact;
+                if (!contact)
+                    continue;
+                bool already_hit = false;
+                for (std::size_t j = 0; j < i; ++j)
+                    if (const auto& previous = attack.rays[j].actor_contact;
+                        previous && previous->kind == contact->kind && previous->index == contact->index)
+                        already_hit = true;
+                const bool mobile = contact->kind == RelayCore::gameplay::CombatActorKind::Enemy;
+                const bool dead =
+                    mobile ? enemies[contact->index].state.mode == EnemyMode::Dead : turrets[contact->index].destroyed;
+                // Live targets own their burst; keep one trace burst for a destroyed mobile actor.
+                if (!mobile || !dead || already_hit)
+                {
+                    if (weapon == PlayerWeapon::Shotgun)
+                        attack.pellet_traces[i].impact.reset();
+                    else
+                        player.shot_trace.impact.reset();
+                }
+                if (already_hit)
+                    continue;
+                auto& feedback = mobile ? enemies[contact->index].hit_feedback : turrets[contact->index].hit_feedback;
+                feedback = dead ? RelayCore::gameplay::CombatHitFeedback{}
+                                : RelayCore::gameplay::CombatHitFeedback{
+                                      contact->position,
+                                      contact->normal,
+                                      RelayCore::gameplay::actor_hit_seconds
+                                  };
+            }
+        };
         if (weapon == PlayerWeapon::Precise)
         {
             auto result = fire_player_ray(world, origin, direction, player, turrets, enemies);
@@ -369,6 +405,7 @@ namespace RelayGame
                 result.rays[0] = result.combat;
                 result.ray_count = 1;
             }
+            apply_feedback(result);
             return result;
         }
         if (weapon != PlayerWeapon::Shotgun)
@@ -428,6 +465,7 @@ namespace RelayGame
         shot.weapon_range = player.weapon_range;
         shot.weapon_refire_seconds = player.weapon_refire_seconds;
         player = std::move(shot);
+        apply_feedback(result);
         return result;
     }
 } // namespace RelayGame

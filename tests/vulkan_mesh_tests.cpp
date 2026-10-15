@@ -396,6 +396,9 @@ namespace
             require(renderer.capture_prepared_image().pixels == lazy.pixels, "Second scene slot changed pixels");
             const auto lazy_stats = statistics();
             renderer.prepare_resources(scene.resource_items());
+            // Measure resident resources after the preparation uploads have retired their staging buffers.
+            require(vkDeviceWaitIdle(device.handle()) == VK_SUCCESS, "Could not finish resource preparation uploads");
+            renderer.prepare_resources({});
             const auto prepared = statistics();
             std::cout << "pressure_resources: cycle=" << cycle << "; lazy_bytes=" << lazy_stats.allocationBytes
                       << "; prepared_bytes=" << prepared.allocationBytes << "; allocations=" << prepared.allocationCount
@@ -448,6 +451,64 @@ namespace
                 "Failed resource preparation changed the active scene"
             );
         }
+    }
+
+    void check_actor_hit_resources(
+        VulkanMeshRenderer& renderer,
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring
+    )
+    {
+        RelayCore::BlockoutLevel level;
+        for (const auto* kind : {"enemy_rover", "enemy_shooter"})
+        {
+            RelayCore::EntitySpawnData entity;
+            entity.classname = kind;
+            entity.origin = {0, .01F, 3};
+            if (entity.classname == "enemy_shooter")
+                entity.properties["route"] = "fixture";
+            level.entities.push_back(entity);
+        }
+        RelayCore::EntitySpawnData route;
+        route.classname = "enemy_route_point";
+        route.origin = {0, .01F, 3};
+        route.properties["route"] = "fixture";
+        level.entities.push_back(route);
+        StaticModelCache models;
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::legacy_gamma),
+            models
+        );
+        renderer.prepare_resources(scene.resource_items());
+        auto enemies = RelayGame::build_enemies(level);
+        std::array<RelayCore::gameplay::RuntimeTurret, 1> turrets;
+        turrets[0].origin = {0, .5F, 3};
+        turrets[0].bounds = {{-.5F, 0, 2.5F}, {.5F, 1, 3.5F}};
+        PerspectiveCamera camera{{.position = {0, 1.3F, 0}, .target = {0, .5F, 3}}};
+        camera.set_viewport(width, height);
+        const auto draw = [&] {
+            scene.prepare_render_queue(camera, 0, {}, turrets, {}, -1, {}, false, {}, {}, {}, enemies);
+            renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
+            (void) renderer.capture_prepared_image();
+        };
+        draw();
+        draw();
+        const auto materials = renderer.material_descriptor_usage().materials;
+        const auto allocations = allocation_count(device);
+        for (int i = 0; i < 12; ++i)
+        {
+            for (auto& enemy : enemies)
+                enemy.hit_feedback = {{0, .5F, 2.5F}, {0, 0, -1}, i % 2 == 0 ? .07F : 0};
+            turrets[0].hit_feedback = enemies[0].hit_feedback;
+            draw();
+            require(
+                renderer.material_descriptor_usage().materials == materials,
+                "Actor hits created unprepared material variants"
+            );
+            require(allocation_count(device) == allocations, "Actor hits allocated GPU resources after preparation");
+        }
+        std::cout << "actor_hit_resources: fixed materials=" << materials << "; allocations=" << allocations << '\n';
     }
 
     void check_material_descriptors(VulkanMeshRenderer& renderer, const VulkanDevice& device)
@@ -6414,7 +6475,10 @@ int main(int argc, char** argv)
             if (descriptors_only)
                 check_material_descriptors(renderer, device);
             else
+            {
                 check_resource_preparation(renderer, device, authoring);
+                check_actor_hit_resources(renderer, device, authoring);
+            }
         } else if (point_receiver_only)
             check_point_shadow_receiver(device, authoring, atlas, captures);
         else if (native_hdr)

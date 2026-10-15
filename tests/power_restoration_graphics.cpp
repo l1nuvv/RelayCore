@@ -218,6 +218,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+    const bool hit_feedback = argc > 1 && std::string_view{argv[1]}.starts_with("--hit-feedback");
     const bool effect_views = argc > 1 && std::string_view{argv[1]}.starts_with("--effect-views");
     const bool effect_sdr = effect_views && std::string_view{argv[1]} == "--effect-views-sdr";
     const bool body_views = argc > 1 && std::string_view{argv[1]}.starts_with("--body-views");
@@ -263,10 +264,11 @@ int main(int argc, char** argv)
     const bool no_shadows = std::ranges::any_of(arguments, [](const char* value) {
         return std::string_view{value} == "--no-shadows";
     });
-    const bool hdr =
-        (effect_views && !effect_sdr) || (body_views && std::string_view{argv[1]} != "--body-views-sdr")
-        || (art_review && !art_legacy && !lighting_sdr)
-        || (argc > 1 && (std::string_view{argv[1]} == "--hdr" || std::string_view{argv[1]} == "--impact-marks-hdr"));
+    const bool hdr = (effect_views && !effect_sdr) || (body_views && std::string_view{argv[1]} != "--body-views-sdr")
+                     || (art_review && !art_legacy && !lighting_sdr)
+                     || (argc > 1
+                         && (std::string_view{argv[1]} == "--hdr" || std::string_view{argv[1]} == "--impact-marks-hdr"
+                             || std::string_view{argv[1]} == "--hit-feedback-hdr"));
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         std::cerr << SDL_GetError() << '\n';
@@ -312,11 +314,90 @@ int main(int argc, char** argv)
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{
             config.renderer,
-            (hdr || lighting_sdr || effect_sdr) ? RelayCore::render::ColorPipelineMode::hardware_srgb
-                                                : RelayCore::render::ColorPipelineMode::legacy_gamma
+            (hdr || lighting_sdr || effect_sdr || hit_feedback) ? RelayCore::render::ColorPipelineMode::hardware_srgb
+                                                                : RelayCore::render::ColorPipelineMode::legacy_gamma
         };
         renderer.initialize(window);
         renderer.on_resize(width, height);
+        if (hit_feedback)
+        {
+            const auto directory = std::filesystem::path{"power-captures"} / (hdr ? "hit-hdr" : "hit-sdr");
+            std::filesystem::create_directories(directory);
+            RelayCore::BlockoutLevel level;
+            level.solids.push_back({{-5, -.2F, -5}, {5, 0, 8}, RelayCore::SurfaceMaterial::Tile});
+            for (const auto* kind : {"enemy_rover", "enemy_shooter"})
+            {
+                RelayCore::EntitySpawnData entity;
+                entity.classname = kind;
+                entity.origin = {0, .01F, 3};
+                if (entity.classname == "enemy_shooter")
+                    entity.properties["route"] = "fixture";
+                level.entities.push_back(entity);
+            }
+            RelayCore::EntitySpawnData route;
+            route.classname = "enemy_route_point";
+            route.origin = {0, .01F, 3};
+            route.properties["route"] = "fixture";
+            level.entities.push_back(route);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(
+                RelayGame::build_prepared_world_scene_data(
+                    level,
+                    renderer.authoring_config(),
+                    renderer.color_pipeline_mode()
+                ),
+                renderer.static_models()
+            );
+            renderer.prepare_resources(scene.resource_items());
+            renderer.camera().set_position({0, 1.3F, 0});
+            renderer.camera().set_target({0, .5F, 3});
+            auto enemies = RelayGame::build_enemies(level);
+            std::array<RelayCore::gameplay::RuntimeTurret, 1> turrets;
+            turrets[0].origin = {0, .5F, 3};
+            turrets[0].bounds = {{-.5F, 0, 2.5F}, {.5F, 1, 3.5F}};
+            for (int kind = 0; kind < 3; ++kind)
+            {
+                const auto mobile =
+                    kind < 2 ? std::span{enemies}.subspan(kind, 1) : std::span<RelayGame::RuntimeEnemy>{};
+                const auto stationary =
+                    kind == 2 ? std::span{turrets} : std::span<RelayCore::gameplay::RuntimeTurret>{};
+                const std::string name = kind == 0 ? "rover" : kind == 1 ? "shooter" : "turret";
+                const auto draw = [&](const char* state) {
+                    renderer.begin_frame();
+                    scene.render(renderer, renderer.camera(), 0, {}, stationary, {}, -1, {}, false, {}, {}, {}, mobile);
+                    return capture(renderer, directory / (name + "-" + state + ".bmp"));
+                };
+                (void) draw("normal");
+                const auto normal = draw("normal");
+                RelayCore::gameplay::PlayerCombatState player;
+                const RelayCore::test::WorldQueryFixture world{level, {}};
+                const auto shot =
+                    RelayGame::fire_player_weapon(world, {0, .5F, 0}, {0, 0, 1}, player, stationary, mobile);
+                if (!shot.rays[0].actor_contact)
+                    throw std::runtime_error("Hit feedback fixture missed actor");
+                if (draw("hit") <= normal)
+                    throw std::runtime_error("Hit feedback did not brighten actor");
+                std::vector<RelayCore::physics::WorldCollider> scratch;
+                RelayGame::update_enemies(
+                    world,
+                    {{-.3F, 0, 0}, {.3F, 1.8F, .6F}},
+                    {0, 1.3F, 0},
+                    player,
+                    mobile,
+                    .08F,
+                    scratch
+                );
+                RelayCore::gameplay::tick_combat_state(.08F, player, stationary);
+                // Keep transforms fixed so this comparison isolates the material reset.
+                if (!mobile.empty())
+                    mobile[0].state = RelayGame::build_enemies(level)[kind].state;
+                if (std::abs(draw("expired") - normal) > .02)
+                    throw std::runtime_error("Hit feedback did not restore normal appearance");
+            }
+            scene.shutdown();
+            std::cout << "actor_hit_feedback=passed\n";
+            return 0;
+        }
         if (impact_marks)
         {
             const auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(

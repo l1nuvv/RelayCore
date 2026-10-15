@@ -464,7 +464,9 @@ add_test(NAME graphics.player_body COMMAND relaycore_power_restoration_graphics 
 add_test(NAME graphics.player_body_sdr COMMAND relaycore_power_restoration_graphics --body-views-sdr)
 add_test(NAME graphics.world_effects COMMAND relaycore_power_restoration_graphics --effect-views)
 add_test(NAME graphics.world_effects_sdr COMMAND relaycore_power_restoration_graphics --effect-views-sdr)
-set_tests_properties(graphics.world_effects graphics.world_effects_sdr PROPERTIES
+add_test(NAME graphics.actor_hit_feedback COMMAND relaycore_power_restoration_graphics --hit-feedback)
+add_test(NAME graphics.actor_hit_feedback_hdr COMMAND relaycore_power_restoration_graphics --hit-feedback-hdr)
+set_tests_properties(graphics.world_effects graphics.world_effects_sdr graphics.actor_hit_feedback graphics.actor_hit_feedback_hdr PROPERTIES
     LABELS "integration;graphics" RUN_SERIAL TRUE SKIP_RETURN_CODE 77 TIMEOUT 180
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:relaycore_power_restoration_graphics>"
     ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets"

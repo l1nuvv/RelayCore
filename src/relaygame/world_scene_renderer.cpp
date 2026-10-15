@@ -434,7 +434,13 @@ namespace RelayGame
         for (const auto* model :
              {&enemy_model_, &destroyed_enemy_model_, &power_fuse_model_, &turret_model_, &destroyed_turret_model_})
             add_model(*model);
-        const auto add_asset = [&](const auto& asset) {
+        for (const auto* model : {&enemy_model_, &turret_model_})
+            if (*model)
+            {
+                add_model(*model);
+                resources.items().back().emissive_factor = actor_hit_emission;
+            }
+        const auto add_asset = [&](const auto& asset, const bool hit = false) {
             if (asset)
                 for (const auto& part : asset->parts)
                 {
@@ -451,8 +457,8 @@ namespace RelayGame
                         surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
                         surface.occlusion.valid() ? &surface.occlusion : nullptr,
                         surface.occlusion_strength,
-                        surface.emissive.valid() ? &surface.emissive : nullptr,
-                        surface.emissive_factor
+                        !hit && surface.emissive.valid() ? &surface.emissive : nullptr,
+                        hit ? actor_hit_emission : surface.emissive_factor
                     );
                 }
         };
@@ -470,6 +476,7 @@ namespace RelayGame
             add_asset(model);
         for (const auto& model : shooter_models_)
             add_asset(model);
+        add_asset(shooter_models_[0], true);
         for (const auto& prop : props_)
         {
             if (prop.asset)
@@ -1073,19 +1080,35 @@ namespace RelayGame
             for (const auto& enemy : enemies)
             {
                 const auto& state = enemy.state;
+                const bool hit = state.mode != EnemyMode::Dead && enemy.hit_feedback.remaining_seconds > 0;
                 auto transform = glm::translate(glm::mat4{1}, state.position);
                 transform = glm::rotate(transform, glm::radians(state.yaw), glm::vec3{0, 1, 0});
                 if (enemy.ranged_attack)
-                    queue_interactive_model(*shooter_models_[state.mode == EnemyMode::Dead ? 1 : 0], transform, true);
+                    queue_interactive_model(
+                        *shooter_models_[state.mode == EnemyMode::Dead ? 1 : 0],
+                        transform,
+                        true,
+                        true,
+                        hit
+                    );
                 else
                 {
                     const auto& model = state.mode == EnemyMode::Dead ? destroyed_enemy_model_ : enemy_model_;
                     render_queue_.push(model->mesh, transform, RelayCore::render::RenderPass::Opaque, &model->texture);
+                    if (hit)
+                        render_queue_.items().back().emissive_factor = actor_hit_emission;
                     record_render_draw(
                         RelayCore::render::RenderPass::Opaque,
                         static_cast<std::uint32_t>(model->mesh.index_count() / 3)
                     );
                 }
+                if (hit)
+                    render_spark_burst(
+                        enemy.hit_feedback.position,
+                        enemy.hit_feedback.normal,
+                        RelayCore::gameplay::actor_hit_seconds - enemy.hit_feedback.remaining_seconds,
+                        RelayCore::gameplay::actor_hit_seconds
+                    );
                 if (enemy.ranged_attack && state.mode != EnemyMode::Dead)
                 {
                     if (state.mode == EnemyMode::Windup)
