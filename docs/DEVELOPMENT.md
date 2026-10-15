@@ -170,8 +170,8 @@ cmake --build --preset demo-relwithdebinfo
 и настройки. First-use uploads сравнивайте с повторным проходом того же участка;
 существующие frame zones включают scene/UI fence waits и не измеряют их отдельно.
 Сравнивайте CPU/GPU зоны на одном разрешении, одном маршруте и одинаковых настройках;
-разделяйте CPU work, GPU и present/VSync wait. Выделения памяти сейчас отдельно не
-размечены; этот профиль не позволяет оценить их количество.
+разделяйте CPU work, GPU и present/VSync wait. Обычный профиль не считает
+выделения памяти; отдельный diagnostic workload описан ниже.
 
 Для повторяемого локального сравнения шести видов можно собрать
 `cmake --build --preset demo-relwithdebinfo --target relaycore_power_restoration_graphics`
@@ -213,6 +213,29 @@ second during seconds 1–3 of the first pass. Readback perturbs this capture ru
 use a separate run without that flag for performance measurements. These short
 camera-sweep/combat sequences do not constitute a continuous human playthrough.
 Commands, local budgets and hardware limits: [VK14-14](renderer/VK14-14.md).
+
+Для диагностики H-008-06 есть отдельный target
+`relaycore_containment_memory_profile`: тот же workload с подсчётом вызовов C++
+`new` и запрошенных bytes в executable. CSV `containment-profile/allocations.csv`
+содержит интервалы между началами update и вложенные delegate update/render/UI
+callbacks. Renderer finish/presentation и engine UI лежат вне delegate callbacks;
+их нельзя приписывать столбцу `ui_bytes`. C heaps, allocations внутри DLLs и
+освобождения через границы DLL не измеряются; CSV не является retained-memory
+или полным process-heap отчётом. Обычный `relaycore_containment_profile` и игра
+не содержат этих replacements. Проверка hooks — `relaycore.profile_allocations`.
+
+Оба workload принимают `--passes N` (по умолчанию 2) и `--stage-seconds N`
+(целое, минимум 4, по умолчанию 4). Отдельный `--no-captures --diagnostics`
+включает VMA/heap-budget snapshots на границах и заменяет resize-stage цепочкой:
+реальный window restore/resize, scale, DRS, Balanced/High, F9/F10, F7,
+editor/return, menu/Continue. Шаги выполняются последовательно, с секундой
+отрисовки между ними; snapshots переходов снимаются после полусекунды.
+Эти кадры не являются unchanged-quality timing samples. Budget queries
+не выполняются в обычном timing режиме. Tracy отдельно показывает RmlUi
+update/render, ImGui recording/pending texture updates, queue timeline/value,
+resource preparation, pipeline creation, native model read/decode, upload bytes
+и `Audio device mix` на настоящем audio thread. Границы и результаты измерений —
+[H-008-06](profiling/H-008-06-2026-10-15.md).
 
 Для прежнего эпизода используйте
 `cmake --build --preset demo-relwithdebinfo --target relaycore_episode_profile`.
