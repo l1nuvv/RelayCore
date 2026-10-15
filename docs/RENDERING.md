@@ -139,6 +139,13 @@ opaque distance fog. Player/developer UI is composed after the effects.
 The authored controls, resource/pass contract, diagnostic views, captures,
 budgets and limitations belong to [VK14-07](renderer/VK14-07.md).
 
+SSAO visibility uses an R32_SFLOAT attachment when the device supports sampled
+and color-attachment usage, with RGBA32F retained as the format fallback. Both
+store the same float32 red-channel value; consumers do not read the other
+components. The existing two scene slots retain the same AO extent and lifetime,
+and disabled SSAO allocates no AO target. Measurements and comparisons belong
+to [H-008-07f](profiling/H-008-07-2026-10-15.md#h-008-07f-outcome).
+
 ## Advanced lighting and lens effects — VK14-09
 
 Optional `[render]` controls `ssgi_quality`, `reflection_quality`, `dof_quality`

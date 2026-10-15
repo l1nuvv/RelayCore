@@ -340,6 +340,7 @@ namespace RelayCore::render
                 const VkFormat depth_format,
                 const VkFormat color_format,
                 const bool ssao,
+                const VkFormat ao_format,
                 const bool taa,
                 const bool ssgi,
                 const bool lenses
@@ -372,7 +373,7 @@ namespace RelayCore::render
                     ao = std::make_unique<MeshImage>(device);
                     ao->initialize(
                         size,
-                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        ao_format,
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                         VK_IMAGE_ASPECT_COLOR_BIT
                     );
@@ -1206,6 +1207,7 @@ namespace RelayCore::render
         std::vector<std::unique_ptr<Material>> retired_materials;
         uint32_t max_target_width = 0, max_target_height = 0;
         std::unique_ptr<ToneMapping> tone_mapping;
+        VkFormat ao_format = VK_FORMAT_R32G32B32A32_SFLOAT;
         PassInputView input_view = PassInputView::off;
         VkDescriptorSetLayout input_layout = VK_NULL_HANDLE;
         VkDescriptorPool input_pool = VK_NULL_HANDLE;
@@ -1506,6 +1508,23 @@ namespace RelayCore::render
                     throw std::runtime_error(
                         "GPU does not support render.msaa_samples for scene color/depth; use 1 or 2"
                     );
+            }
+            if (config.ssao_enabled)
+            {
+                VkImageFormatProperties support{};
+                const auto result = vkGetPhysicalDeviceImageFormatProperties(
+                    device.physical_device(),
+                    VK_FORMAT_R32_SFLOAT,
+                    VK_IMAGE_TYPE_2D,
+                    VK_IMAGE_TILING_OPTIMAL,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                    0,
+                    &support
+                );
+                if (result == VK_SUCCESS)
+                    ao_format = VK_FORMAT_R32_SFLOAT;
+                else if (result != VK_ERROR_FORMAT_NOT_SUPPORTED)
+                    require_mesh_vk(result, "SSAO scalar attachment format support");
             }
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
@@ -2009,7 +2028,7 @@ namespace RelayCore::render
             };
             const std::array colors{
                 inputs                                   ? VK_FORMAT_R32G32B32A32_SFLOAT
-                : ao                                     ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : ao                                     ? ao_format
                 : debug_inputs && !temporal && !advanced ? VK_FORMAT_R8G8B8A8_UNORM
                                                          : scene_format(),
                 VK_FORMAT_R32G32B32A32_SFLOAT
@@ -3660,6 +3679,7 @@ namespace RelayCore::render
                     depth_formats.scene,
                     scene_format(),
                     renderer_config.ssao_enabled,
+                    ao_format,
                     renderer_config.taa_enabled,
                     renderer_config.ssgi_quality != 0,
                     renderer_config.dof_quality || renderer_config.motion_blur_quality
