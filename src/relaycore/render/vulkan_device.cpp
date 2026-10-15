@@ -95,6 +95,16 @@ namespace RelayCore::render
         validation_callback(const VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data, void*) noexcept
             -> VkBool32
         {
+            // OBS advertises Vulkan 1.3 even when hooked into a Vulkan 1.4 application.
+            if (severity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT && data->pMessageIdName != nullptr
+                && std::strcmp(data->pMessageIdName, "Loader Message") == 0 && data->pMessage != nullptr
+                && std::strcmp(
+                       data->pMessage,
+                       "Layer VK_LAYER_OBS_HOOK uses API version 1.3 which is older than the application specified "
+                       "API version of 1.4. May cause issues."
+                   ) == 0)
+                return VK_FALSE;
+
             // Startup and teardown diagnostics must also work before/after the logger lifetime.
             std::fprintf(
                 stderr,
