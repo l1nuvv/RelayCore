@@ -1,11 +1,11 @@
 #include "relaycore/render/vulkan_uploads.h"
 
+#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <deque>
 #include <limits>
 #include <stdexcept>
@@ -183,7 +183,7 @@ namespace RelayCore::render
                 wait(last_submission);
             } catch (const std::exception& error)
             {
-                std::fprintf(stderr, "Vulkan upload shutdown failed: %s\n", error.what());
+                log::error_noexcept("[renderer] Vulkan upload shutdown failed", error.what());
             }
             batches.clear();
             buffers.clear();

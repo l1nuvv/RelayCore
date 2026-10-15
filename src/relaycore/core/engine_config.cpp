@@ -199,7 +199,7 @@ namespace RelayCore::core
 
         if (!std::filesystem::exists(config_path))
         {
-            log::warn("Config file not found: {}. Using defaults.", config_path.string());
+            log::warn("[config] Config file not found: {}. Using defaults.", config_path.string());
             return config;
         }
 
@@ -465,11 +465,11 @@ namespace RelayCore::core
                 );
             }
 
-            log::info("Loaded engine config: {}", config_path.string());
+            log::info("[config] Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)
         {
             log::error(
-                "Failed to parse config {} at line {}, column {}: {}",
+                "[config] Failed to parse config {} at line {}, column {}: {}",
                 config_path.string(),
                 error.source().begin.line,
                 error.source().begin.column,

@@ -20,10 +20,10 @@ namespace RelayCore
 
         if (!SDL_SetAppMetadata("RelayCore", "0.1.0", "com.example.RelayCore"))
         {
-            log::warn("Failed to set SDL app metadata: {}", SDL_GetError());
+            log::warn("[app] Failed to set SDL app metadata: {}", SDL_GetError());
         }
 
-        log::info("SDL initialized");
+        log::info("[app] SDL initialized");
     }
 
     SdlSystem::~SdlSystem() noexcept

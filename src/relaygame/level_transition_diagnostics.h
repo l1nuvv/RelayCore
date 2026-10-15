@@ -25,7 +25,7 @@ namespace RelayGame::detail
         {
             services.frame_diagnostics().mark_loading();
             RelayCore::log::info(
-                "Level transition begin: reason={} source='{}' destination='{}' entry='{}'",
+                "[gameplay] Level transition begin: reason={} source='{}' destination='{}' entry='{}'",
                 reason_,
                 source_,
                 destination_,
@@ -58,7 +58,8 @@ namespace RelayGame::detail
             finished_ = true;
             const auto duration = std::chrono::duration<double, std::milli>(Clock::now() - start_).count();
             const auto message = fmt::format(
-                "Level transition {}: reason={} source='{}' destination='{}' entry='{}' duration_ms={:.3f} active='{}' "
+                "[gameplay] Level transition {}: reason={} source='{}' destination='{}' entry='{}' duration_ms={:.3f} "
+                "active='{}' "
                 "error='{}'",
                 success ? "success" : "failed",
                 reason_,

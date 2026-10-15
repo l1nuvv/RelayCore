@@ -124,7 +124,8 @@ namespace RelayGame
         logged_settings_.reset();
         campaign_completion_logged_ = false;
         RelayCore::log::info(
-            "Session build: version={} compiled={} {} configuration={} timing_clock=steady_since_engine_services",
+            "[gameplay] Session build: version={} compiled={} {} configuration={} "
+            "timing_clock=steady_since_engine_services",
             RELAYCORE_GAME_VERSION,
             __DATE__,
             __TIME__,
@@ -141,7 +142,7 @@ namespace RelayGame
             if (!services.renderer().ui_available())
                 throw;
             progress_message_ = error.what();
-            RelayCore::log::error("Startup level failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Startup level failed: {}", error.what());
         }
         change_screen(services.renderer().ui_available() ? Screen::MainMenu : Screen::Playing, services);
         services.renderer().set_diagnostics_visible(false);
@@ -366,7 +367,7 @@ namespace RelayGame
         played_seconds_ = 0;
         scene_time_ = 0;
         flashlight_on_ = false;
-        RelayCore::log::info("DemoGame shutdown");
+        RelayCore::log::info("[gameplay] DemoGame shutdown");
     }
 
     auto make_demo_game() -> std::unique_ptr<RelayCore::AppDelegate>

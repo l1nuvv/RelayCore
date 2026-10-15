@@ -42,6 +42,10 @@ namespace RelayCore::log
 
     [[nodiscard]] auto logger() -> spdlog::logger&;
 
+    // Teardown diagnostics remain available before init and after shutdown.
+    void error_noexcept(const char* operation, const char* detail) noexcept;
+    void error_noexcept(const char* operation, int result) noexcept;
+
     void flush();
 
     void set_level(spdlog::level::level_enum level);

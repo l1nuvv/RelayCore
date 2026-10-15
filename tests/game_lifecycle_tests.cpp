@@ -146,7 +146,7 @@ namespace
         RelayGame::PlayerSettings settings;
         settings.vsync = true;
         RelayGame::save_player_settings(player / "player_settings.toml", settings);
-        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string()});
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .level = spdlog::level::info});
         const auto log_path = RelayCore::log::latest_log_path();
         std::string argument = "--config", path = config_path.string();
         char* arguments[]{executable, argument.data(), path.data()};
@@ -172,6 +172,31 @@ namespace
                   "Level transition failed:",
                   "DemoGame shutdown"})
                 require(log.find(needle) != std::string::npos, needle);
+            const auto loaded_config = log.find("[config] Loaded engine config:");
+            require(
+                loaded_config != std::string::npos
+                    && log.find(
+                           "Loaded engine config:",
+                           loaded_config + std::string_view{"[config] Loaded engine config:"}.size()
+                       ) == std::string::npos,
+                "Startup config load was logged more than once"
+            );
+            for (const auto needle :
+                 {"[renderer] Backend preparation begin: operation=initialize reason=startup",
+                  "[renderer] Backend prepared:",
+                  "[renderer] Presentation preparation begin: operation=recreate",
+                  "reason=pixel_extent",
+                  "[gameplay] Level transition",
+                  "duration_ms="})
+                require(log.find(needle) != std::string::npos, needle);
+            require(
+                log.find("Vulkan enabled device extension:") == std::string::npos,
+                "Info log contains debug extension details"
+            );
+            require(
+                log.find("Vulkan scene materials:") == std::string::npos,
+                "Info log contains debug material details"
+            );
             require(log.find("FPS:") == std::string::npos, "Legacy single-frame FPS stream remains");
             require(log.find("Campaign completed:") == std::string::npos, "Normal shutdown completed the campaign");
             std::size_t count = 0;

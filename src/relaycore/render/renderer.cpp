@@ -11,6 +11,7 @@
 #include "relaycore/render/vulkan_swapchain.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <glm/trigonometric.hpp>
 #include <imgui.h>
@@ -119,9 +120,19 @@ namespace RelayCore
         state_->backend.reset();
         player_ui_.reset();
         imgui_overlay_.shutdown();
-        if (state_->device && !state_->pipeline_cache_file.empty()
-            && !state_->device->save_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan")))
-            log::warn("Could not persist Vulkan pipeline cache: {}", state_->pipeline_cache_file.string());
+        try
+        {
+            if (state_->device && !state_->pipeline_cache_file.empty()
+                && !state_->device
+                        ->save_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan")))
+                log::error_noexcept(
+                    "[renderer] Could not persist Vulkan pipeline cache",
+                    state_->pipeline_cache_file.string().c_str()
+                );
+        } catch (const std::exception& error)
+        {
+            log::error_noexcept("[renderer] Could not persist Vulkan pipeline cache", error.what());
+        }
     }
 
     void Renderer::initialize(const Window& window)
@@ -134,15 +145,12 @@ namespace RelayCore
         {
             state_->pipeline_cache_file = std::filesystem::path{preferences} / "vulkan-pipelines.cache";
             SDL_free(preferences);
-            log::info(
-                "Vulkan pipeline cache: {}",
-                state_->device->load_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan"))
-                    ? "loaded"
-                    : "fresh (missing, incompatible or corrupt)"
-            );
-        }
+            (void) state_->device->load_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan"));
+        } else
+            log::warn("[renderer] Vulkan pipeline cache unavailable: SDL_GetPrefPath failed: {}", SDL_GetError());
         state_->swapchain = std::make_unique<render::VulkanSwapchain>(*state_->device, window, window.vsync_enabled());
-        commit_live_content_reload(prepare_live_content_reload(config_, render::load_default_render_authoring_config())
+        commit_live_content_reload(
+            prepare_live_content_reload(config_, render::load_default_render_authoring_config(), "startup")
         );
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window, *state_->device);
@@ -152,7 +160,7 @@ namespace RelayCore
         initialized_ = true;
         const auto& capabilities = state_->device->capabilities();
         log::info(
-            "Renderer initialized: Vulkan {}.{}, {}",
+            "[renderer] Renderer initialized: Vulkan {}.{}, {}",
             VK_API_VERSION_MAJOR(capabilities.effective_api_version),
             VK_API_VERSION_MINOR(capabilities.effective_api_version),
             capabilities.device_name
@@ -161,18 +169,26 @@ namespace RelayCore
 
     auto Renderer::prepare_live_content_reload(
         const render::RendererConfig& config,
-        const render::RenderAuthoringConfig& authoring_config
+        const render::RenderAuthoringConfig& authoring_config,
+        const std::string_view reason
     ) -> PreparedLiveContentReload
     {
-        return prepare_live_content_reload(config, authoring_config, color_pipeline_mode_);
+        return prepare_live_content_reload(config, authoring_config, color_pipeline_mode_, reason);
     }
 
     auto Renderer::prepare_live_content_reload(
         const render::RendererConfig& config,
         const render::RenderAuthoringConfig& authoring_config,
-        const render::ColorPipelineMode color_pipeline_mode
+        const render::ColorPipelineMode color_pipeline_mode,
+        const std::string_view reason
     ) -> PreparedLiveContentReload
     {
+        const auto started = std::chrono::steady_clock::now();
+        log::info(
+            "[renderer] Backend preparation begin: operation={} reason={}",
+            initialized_ ? "recreate" : "initialize",
+            reason
+        );
         PreparedLiveContentReload staged_reload{};
         staged_reload.config = config;
         staged_reload.authoring_config = authoring_config;
@@ -199,6 +215,14 @@ namespace RelayCore
             config,
             color_pipeline_mode
         );
+        log::info(
+            "[renderer] Backend prepared: operation={} reason={} duration_ms={:.3f} atlas='{}' "
+            "pipeline_cache=attached (pipeline hits not measured)",
+            initialized_ ? "recreate" : "initialize",
+            reason,
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+            staged_reload.atlas_source_label
+        );
         return staged_reload;
     }
 
@@ -222,6 +246,7 @@ namespace RelayCore
         static_assert(std::is_nothrow_move_assignable_v<render::RenderAuthoringConfig>);
         if (!staged_reload.backend)
             throw std::invalid_argument("Live content reload requires a prepared Vulkan backend");
+        log::info("[renderer] Backend commit: operation={}", initialized_ ? "replace" : "initialize");
         camera_.apply_projection_config(staged_reload.config.camera);
         state_->backend = std::move(staged_reload.backend);
         config_ = std::move(staged_reload.config);

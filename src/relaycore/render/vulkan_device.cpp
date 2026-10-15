@@ -9,6 +9,7 @@
 #include <VkBootstrap.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -111,7 +112,7 @@ namespace RelayCore::render
             {
                 log::logger().log(
                     error ? spdlog::level::err : spdlog::level::warn,
-                    "Vulkan validation {} [{}]: {}",
+                    "[renderer] Vulkan validation {} [{}]: {}",
                     error ? "error" : "warning",
                     id,
                     data->pMessage
@@ -121,7 +122,13 @@ namespace RelayCore::render
             {
                 // Vulkan callbacks must also report failures outside the logger lifetime.
             }
-            std::fprintf(stderr, "Vulkan validation %s [%s]: %s\n", error ? "error" : "warning", id, data->pMessage);
+            std::fprintf(
+                stderr,
+                "[renderer] Vulkan validation %s [%s]: %s\n",
+                error ? "error" : "warning",
+                id,
+                data->pMessage
+            );
             return VK_FALSE;
         }
 #endif
@@ -143,7 +150,7 @@ namespace RelayCore::render
             {
                 const auto result = vkDeviceWaitIdle(device.device);
                 if (result != VK_SUCCESS)
-                    std::fprintf(stderr, "Vulkan device shutdown failed: VkResult %d\n", static_cast<int>(result));
+                    log::error_noexcept("[renderer] Vulkan device shutdown failed", static_cast<int>(result));
             }
             if (allocator != nullptr)
                 vmaDestroyAllocator(allocator);
@@ -338,7 +345,7 @@ namespace RelayCore::render
                 anisotropy ? std::min(16.0F, physical.properties.limits.maxSamplerAnisotropy) : 1.0F,
         };
         log::info(
-            "Vulkan device created: {} | loader API {}.{}.{} | instance API {}.{} | GPU API {}.{}.{} "
+            "[renderer] Vulkan device created: {} | loader API {}.{}.{} | instance API {}.{} | GPU API {}.{}.{} "
             "| effective API {}.{} | required API 1.4 | driver={} | graphics family={} | present "
             "family={} "
             "| "
@@ -362,12 +369,14 @@ namespace RelayCore::render
             state_->capabilities.max_texture_anisotropy
         );
         log::info(
-            "Vulkan descriptor indexing: {} material slots (runtime arrays, nonuniform sampled images; scene-slot "
+            "[renderer] Vulkan descriptor indexing: {} material slots (runtime arrays, nonuniform sampled images; "
+            "scene-slot "
             "updates)",
             state_->capabilities.indexed_material_capacity
         );
         log::info(
-            "Vulkan mesh shaders: {}; dispatch {}x{}x{}, total {} (EXT, 64 vertices/124 triangles, indexed fallback)",
+            "[renderer] Vulkan mesh shaders: {}; dispatch {}x{}x{}, total {} (EXT, 64 vertices/124 triangles, indexed "
+            "fallback)",
             mesh,
             state_->capabilities.mesh_dispatch_limit[0],
             state_->capabilities.mesh_dispatch_limit[1],
@@ -375,9 +384,9 @@ namespace RelayCore::render
             state_->capabilities.mesh_dispatch_total
         );
         for (const auto& extension : physical.get_extensions())
-            log::info("Vulkan enabled device extension: {}", extension);
+            log::debug("[renderer] Vulkan enabled device extension: {}", extension);
         log::info(
-            "Vulkan optional memory budget: {}; preferred anisotropy: {}",
+            "[renderer] Vulkan optional memory budget: {}; preferred anisotropy: {}",
             memory_budget ? "VK_EXT_memory_budget enabled" : "VMA estimated heap budgets (extension unavailable)",
             anisotropy ? "enabled" : "1x fallback (samplerAnisotropy unavailable)"
         );
@@ -430,7 +439,7 @@ namespace RelayCore::render
                 + std::to_string(result) + "; restart the application to select a device"
             );
         log::info(
-            "Vulkan SDL surface recreated; present queue family {} remains compatible",
+            "[renderer] Vulkan SDL surface recreated; present queue family {} remains compatible",
             capabilities().present_queue_family
         );
     }
@@ -529,34 +538,67 @@ namespace RelayCore::render
     VulkanDevice::load_pipeline_cache(const std::filesystem::path& file, const std::filesystem::path& shaders) const
         -> bool
     {
+        const auto started = std::chrono::steady_clock::now();
+        size_t initial_bytes = 0;
+        const auto finish = [&](const char* outcome, const std::string_view reason, const VkResult result = VK_SUCCESS
+                            ) {
+            log::info(
+                "[renderer] Vulkan pipeline cache load: outcome={} reason='{}' duration_ms={:.3f} "
+                "initial_bytes={} vk_result={} file='{}'",
+                outcome,
+                reason,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+                initial_bytes,
+                static_cast<int>(result),
+                file.string()
+            );
+            return std::string_view{outcome} == "loaded";
+        };
         try
         {
             if (!std::filesystem::exists(file))
-                return false;
+                return finish("missing", "file_absent");
             const auto expected = cache_header(physical_device(), shaders);
             std::ifstream stream(file, std::ios::binary | std::ios::ate);
+            if (!stream)
+                return finish("io_error", "file_open_failed");
             const auto size = stream.tellg();
-            if (!stream || size < static_cast<std::streamoff>(sizeof(CacheHeader))
+            if (size < 0)
+                return finish("io_error", "file_size_query_failed");
+            if (size < static_cast<std::streamoff>(sizeof(CacheHeader))
                 || size > static_cast<std::streamoff>(max_cache_bytes))
-                return false;
+                return finish("corrupt", "file_size");
             CacheHeader header{};
             stream.seekg(0);
             stream.read(reinterpret_cast<char*>(&header), sizeof(header));
-            if (!stream || std::memcmp(&header, &expected, offsetof(CacheHeader, bytes)) != 0
-                || header.bytes != static_cast<size_t>(size) - sizeof(header)
+            if (!stream)
+                return finish("io_error", "header_read_failed");
+            if (header.schema != expected.schema)
+                return finish("incompatible", "schema");
+            if (header.vendor != expected.vendor || header.device != expected.device)
+                return finish("incompatible", "vendor_or_device");
+            if (header.driver != expected.driver)
+                return finish("incompatible", "driver");
+            if (std::memcmp(header.uuid, expected.uuid, VK_UUID_SIZE) != 0)
+                return finish("incompatible", "pipeline_cache_uuid");
+            if (header.shaders != expected.shaders)
+                return finish("incompatible", "shader_hash");
+            if (header.bytes != static_cast<size_t>(size) - sizeof(header)
                 || header.bytes < sizeof(VkPipelineCacheHeaderVersionOne))
-                return false;
+                return finish("corrupt", "payload_size");
             std::vector<char> bytes(static_cast<size_t>(header.bytes));
             stream.read(bytes.data(), bytes.size());
-            if (!stream || hash_bytes(bytes) != header.checksum)
-                return false;
+            if (!stream)
+                return finish("io_error", "payload_read_failed");
+            if (hash_bytes(bytes) != header.checksum)
+                return finish("corrupt", "checksum");
             VkPipelineCacheHeaderVersionOne vk_header{};
             std::memcpy(&vk_header, bytes.data(), sizeof(vk_header));
             if (vk_header.headerSize != sizeof(vk_header)
                 || vk_header.headerVersion != VK_PIPELINE_CACHE_HEADER_VERSION_ONE
                 || vk_header.vendorID != header.vendor || vk_header.deviceID != header.device
                 || std::memcmp(vk_header.pipelineCacheUUID, header.uuid, VK_UUID_SIZE) != 0)
-                return false;
+                return finish("corrupt", "vulkan_header");
             const VkPipelineCacheCreateInfo info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
                 .initialDataSize = bytes.size(),
@@ -565,16 +607,19 @@ namespace RelayCore::render
             VkPipelineCache loaded = VK_NULL_HANDLE;
             const auto result = vkCreatePipelineCache(handle(), &info, nullptr, &loaded);
             if (result != VK_SUCCESS)
-                return false;
+                return finish("vulkan_rejected", "create", result);
             const auto merged = vkMergePipelineCaches(handle(), pipeline_cache(), 1, &loaded);
             vkDestroyPipelineCache(handle(), loaded, nullptr);
-            return merged == VK_SUCCESS;
-        } catch (const std::filesystem::filesystem_error&)
+            if (merged != VK_SUCCESS)
+                return finish("vulkan_rejected", "merge", merged);
+            initial_bytes = bytes.size();
+            return finish("loaded", "merged_into_live_cache");
+        } catch (const std::filesystem::filesystem_error& error)
         {
-            return false;
-        } catch (const std::runtime_error&)
+            return finish("io_error", error.what());
+        } catch (const std::runtime_error& error)
         {
-            return false;
+            return finish("unavailable", error.what());
         }
     }
 

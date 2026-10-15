@@ -865,26 +865,57 @@ namespace
             output.close();
             require(!output.fail(), "Could not write pipeline cache fixture");
         };
+        const auto check_diagnostic = [](const std::string_view expected) {
+            RelayCore::log::flush();
+            std::ifstream log(RelayCore::log::latest_log_path());
+            const std::string text{std::istreambuf_iterator<char>{log}, {}};
+            const auto position = text.rfind("[renderer] Vulkan pipeline cache load:");
+            require(position != std::string::npos, "Cache load diagnostic missing");
+            const auto line = text.substr(position, text.find('\n', position) - position);
+            require(line.find(expected) != std::string::npos, "Incorrect cache rejection reason");
+            require(
+                line.find("duration_ms=") != std::string::npos && line.find("initial_bytes=") != std::string::npos,
+                "Cache load lost measured duration or accepted payload size"
+            );
+        };
         VulkanDevice warm{window};
         require(warm.load_pipeline_cache(file, shaders), "Compatible pipeline cache rejected");
+        check_diagnostic("outcome=loaded reason='merged_into_live_cache'");
         check_mesh_pipeline(warm, atlas, captures);
-        for (const size_t offset : {0u, 4u, 8u, 12u, 16u, 32u, 40u, 48u, 56u})
+        const std::array<std::pair<size_t, std::string_view>, 9> mutations{
+            {{0, "outcome=incompatible reason='schema'"},
+             {4, "outcome=incompatible reason='vendor_or_device'"},
+             {8, "outcome=incompatible reason='vendor_or_device'"},
+             {12, "outcome=incompatible reason='driver'"},
+             {16, "outcome=incompatible reason='pipeline_cache_uuid'"},
+             {32, "outcome=incompatible reason='shader_hash'"},
+             {40, "outcome=corrupt reason='payload_size'"},
+             {48, "outcome=corrupt reason='checksum'"},
+             {56, "outcome=corrupt reason='checksum'"}}
+        };
+        for (const auto& [offset, diagnostic] : mutations)
         {
             auto corrupted = original;
             corrupted[offset] ^= 1;
             write(corrupted);
             require(!warm.load_pipeline_cache(file, shaders), "Incompatible/corrupt pipeline cache accepted");
+            check_diagnostic(diagnostic);
         }
         write(std::vector<char>{original.begin(), original.begin() + 20});
         require(!warm.load_pipeline_cache(file, shaders), "Truncated pipeline cache accepted");
+        check_diagnostic("outcome=corrupt reason='file_size'");
         write(original);
         {
             std::ofstream changed(shaders / "mesh.vert.spv", std::ios::binary | std::ios::app);
             changed.put('x');
         }
         require(!warm.load_pipeline_cache(file, shaders), "Changed shader cache accepted");
+        check_diagnostic("outcome=incompatible reason='shader_hash'");
+        require(!warm.load_pipeline_cache(file, temp.path() / "absent-shaders"), "Missing shader directory accepted");
+        check_diagnostic("outcome=io_error");
         std::filesystem::remove(file);
         require(!warm.load_pipeline_cache(file, shaders), "Missing pipeline cache accepted");
+        check_diagnostic("outcome=missing reason='file_absent'");
         // Rejected data leaves the live cache and working pipeline path usable.
         check_mesh_pipeline(warm, atlas, captures);
         std::cout << "pipeline_cache=passed (warm restart, schema/vendor/device/driver/UUID/shaders/corruption)\n";

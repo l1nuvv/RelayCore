@@ -711,11 +711,11 @@ namespace RelayCore::render
             validate_lighting_contract(config.lighting);
             validate_render_light_contract(config.render_light);
 
-            log::info("Loaded render authoring config: {}", config_path.string());
+            log::info("[renderer] Loaded render authoring config: {}", config_path.string());
         } catch (const toml::parse_error& error)
         {
             log::error(
-                "Failed to parse render authoring config {} at line {}, column {}: {}",
+                "[renderer] Failed to parse render authoring config {} at line {}, column {}: {}",
                 config_path.string(),
                 error.source().begin.line,
                 error.source().begin.column,

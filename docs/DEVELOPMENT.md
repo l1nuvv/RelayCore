@@ -334,6 +334,23 @@ presentation/recreation checks нужен обычный Windows desktop без 
 и консоль; вне времени жизни логгера используется stderr. После диагностического
 прохода закройте игру и прочитайте или скопируйте latest до следующего запуска.
 
+Источники startup/runtime diagnostics отмечены в тексте: `[renderer]`, `[assets]`,
+`[gameplay]`, `[config]`, `[app]`, `[audio]`; sinks и файл общие. Info содержит
+сводки операций, debug — extensions, atlas/material/geometry/depth/culling details.
+`Backend preparation begin/prepared` различает initialize/recreate и причины
+startup, graphics_settings, live_content_reload; prepared ещё не означает commit.
+Presentation отдельно указывает resize/VSync/acquire/present/surface-loss причины.
+
+`Vulkan pipeline cache load` различает missing, incompatible, corrupt, io_error,
+unavailable (например, shader hash не удалось подготовить) и vulkan_rejected.
+`reason` указывает сработавшую проверку, `vk_result` — результат create/merge.
+`duration_ms` — steady-clock время всей попытки загрузки, включая shader hash,
+чтение/проверки и create/merge; `initial_bytes` — принятые после merge байты.
+Время backend/pipeline preparation включает работу и ожидания внутри операции;
+присоединённый cache и успешный merge не доказывают pipeline hits или ускорение.
+Ошибки Vulkan shutdown также используют общий файл при живом логгере и stderr
+вне его lifetime; noexcept-вывод не печатает вторую копию при успешной записи.
+
 ```powershell
 cmake --build --preset graphics-debug
 ctest --preset graphics-debug --output-on-failure

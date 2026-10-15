@@ -100,10 +100,9 @@ runtime ownership — [ARCHITECTURE](../ARCHITECTURE.md). Здесь храня�
 
 ## Изменения диагностики к выполнению
 
-Приоритет 1 реализован в первом заходе; результаты приведены в
-[evidence захода 1](#заход-1--реализация-и-проверки-2026-10-15).
-Приоритет 2 остаётся следующим заходом. Сохранены один перезаписываемый файл
-и текущая основа spdlog. Порядок внутри приоритета уточнять по прямым зависимостям.
+Оба приоритета реализованы: [evidence захода 1](#заход-1--реализация-и-проверки-2026-10-15)
+и [evidence захода 2](#заход-2--реализация-и-проверки-2026-10-15).
+Сохранены один перезаписываемый файл и текущая основа spdlog.
 
 | Приоритет | Изменение | Критерий проверки |
 | --- | --- | --- |
@@ -184,8 +183,8 @@ simulation delta. Выполнить узкие build/tests, diff check и от�
 Выполнены все пять пунктов приоритета 1. Исходная ревизия — `c17fee0`, рабочее
 дерево перед задачей было чистым. Изменения относятся только к диагностике;
 shader/assets, правила simulation, сохранений и активации карт не изменялись.
-Заход 2, исправление прежних Vulkan ошибок и ускорение G-009/G-019 остаются
-отдельными этапами; ускорение этим коммитом не заявляется.
+Этот заход не включал приоритет 2, исправление прежних Vulkan ошибок и ускорение
+G-009/G-019; ускорение этим коммитом не заявляется.
 
 - `FrameTimer` сохраняет необрезанный steady-clock интервал в `wall_delta_seconds`;
   прежний `delta_seconds` и его предел 100 мс сохранены, включая первый кадр.
@@ -255,6 +254,82 @@ C++ (`clang-format --dry-run --Werror`) и `git diff --check` прошли.
 ZIP, release, push и отдельные датированные копии логов не создавались.
 Времена этой верификации не являются новым performance baseline.
 
+## Заход 2 — реализация и проверки 2026-10-15
+
+Исходная ревизия — `0fad9be`, рабочее дерево было чистым. Выполнены пять пунктов
+приоритета 2; сохранены spdlog, общий latest-файл и строгие CTest regex для Vulkan
+validation и shutdown errors. Формат/cache schema, правила совместимости,
+порядок освобождения GPU ресурсов и gameplay не менялись.
+
+- `Vulkan pipeline cache load` сообщает конкретную ветку отказа: missing,
+  incompatible (schema/vendor/device/driver/UUID/shaders), corrupt
+  (размер/checksum/Vulkan header), отдельно I/O, подготовку hash и Vulkan
+  create/merge failure. Успех означает merge в живой cache, а не доказанные
+  pipeline hits. Записываются принятый размер и steady-clock длительность
+  полной попытки. Backend/pipeline preparation имеет собственные границы времени.
+- Подтверждён один вызов загрузчика config в startup и две записи о нём:
+  загрузчик и `Application`. Удалена только запись `Application`; реальный
+  live reload по-прежнему виден. Extensions и atlas/material/geometry/depth/culling
+  details доступны на debug; info сохраняет контекст устройства и сводки операций.
+- Основные startup/runtime сообщения получили источники renderer/assets/gameplay/
+  config/app/audio в тексте сообщения без новых loggers, sinks и файлов.
+- Backend preparation различает initialize/recreate и startup/graphics_settings/
+  live_content_reload; prepared отделён от commit. Presentation отмечает первый
+  запуск, pixel extent, VSync, acquire/present и surface loss. Shader pipeline
+  preparation отдельно отличает backend construction от shader reload. Повторы
+  не объявляются лишней работой.
+- Шесть прежних stderr-only веток device/material descriptors/mesh/scene/
+  presentation/upload используют `log::error_noexcept`. Живой logger получает
+  ошибку единожды; до init, после shutdown или при исключении используется
+  stderr. Числовой VkResult форматируется в стековый buffer. Снимок shared logger
+  берётся под его mutex; fallback не обращается к уничтоженному logger.
+  Также закрыт бросающий путь диагностики cache save из `Renderer::~Renderer`.
+
+Проверки выполнены в Visual Studio Developer PowerShell x64, вне sandbox:
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_tests relaycore_vulkan_device_tests relaycore_vulkan_mesh_tests relaycore_vulkan_presentation_tests relaycore_vulkan_upload_tests relaycore_game_lifecycle relaycore_window_lifetime_tests -j 2
+ctest --preset test-debug -R '^relaycore\.(logger |frame |fixed simulation)' --output-on-failure --no-tests=error
+ctest --preset graphics-debug -R '^graphics\.(vulkan_device|mesh_pipeline|vulkan_presentation|vulkan_recreation_failure|surface_loss|vulkan_upload|material_descriptors|scene_submission|diagnostics_smoke|hdr_settings|window_lifetime|game_lifecycle|campaign_route)$' --output-on-failure --no-tests=error --output-log build/diagnostics-pass2-graphics-2026-10-15.log
+cmake --build --preset demo-dev -j 2
+git diff --check
+```
+
+Unit: **9/9 passed** на окончательной сборке. Новый тест проверяет по одной записи
+шести типов teardown diagnostics в файл, отсутствие дублирования в stderr,
+VkResult, fallback до init/после shutdown и при исключении sink/error handler.
+Существующие проверки latest-only/truncate и frame diagnostics первого захода прошли.
+
+Graphics: **13/13 passed, 0 skips**, validation=true, RTX 4060 Ti,
+**193,22 с** суммарно. Сводка CTest — `build/diagnostics-pass2-graphics-2026-10-15.log`,
+подробный вывод — `build/msvc-debug/Testing/Temporary/LastTest.log` (он заменяется
+следующим CTest run). В выводе нет `Vulkan validation error/warning` и
+`Vulkan ... shutdown failed`. `mesh_pipeline` проверил успешный warm merge,
+отдельные причины schema/vendor/device/driver/UUID/shader incompatibility,
+checksum/size corruption, I/O и missing, сохранив рабочий pipeline после отказов.
+Device, upload, scene submission, descriptors и presentation выполнили штатное
+освобождение ресурсов; recreation failure и surface loss — восстановление после
+внедрённых отказов. Настоящая потеря GPU и ошибки Vulkan create/merge/shutdown
+не провоцировались: аварийный reporter проверен синтетически, call sites просмотрены.
+
+`diagnostics_smoke` прошёл настоящий `Application::run` на уровне info:
+menu → game → отсутствующая карта → pause → переходы → resize → menu → shutdown.
+Подтверждены единственная запись загрузки config, отсутствие debug extensions/
+material details в info, метки источников, initialize/startup и recreate/pixel_extent,
+сводки/события первого захода и один latest-файл. `hdr_settings` проверил применение
+и отказ настроек, `game_lifecycle` — commit/rollback и live reload, `campaign_route`
+— восемь глав и авторитетный финал. В полном выводе видны recreate с причинами
+live_content_reload и graphics_settings. Повторный полный ручной проход не нужен.
+
+Обычный **RelayCore — Play** (`demo-dev`) пересобран. Все task-owned C++ прошли
+`clang-format --dry-run --Werror`; `git diff --check` прошёл. Первый sandbox build
+остановился на MSVC C1902 (PDB manager); повтор вне sandbox прошёл. В сборке
+осталось прежнее C4100 в не менявшемся `demo_game_source_debug_commands.cpp`;
+новых предупреждений task-owned C++ не наблюдалось. Штатные asset dependencies
+перекомпилировали модели и переиспользовали существующие probe/reflection products.
+Время этой проверки не является baseline производительности; прежние VUID и
+ускорение G-009/G-019 остаются отдельными этапами общего плана.
+
 ## План выполнения
 
 1. **Согласовать и сохранить evidence.** Зафиксировать revision, рабочий diff,
@@ -294,10 +369,10 @@ ZIP, release, push и отдельные датированные копии л�
 
 ## Что делать пользователю сейчас
 
-Первый ручной проход и первый заход улучшений диагностики завершены;
-[проверки захода 1](#заход-1--реализация-и-проверки-2026-10-15) выполнены агентом.
-Сейчас дополнительных запусков пользователя не требуется. Следующий этап —
-заход 2 по отдельному запросу.
+Первый ручной проход и оба захода улучшений диагностики завершены;
+[проверки захода 2](#заход-2--реализация-и-проверки-2026-10-15) выполнены агентом.
+Дополнительных запусков пользователя сейчас не требуется. Исправление прежних
+Vulkan ошибок и измерение/ускорение G-009/G-019 требуют отдельного этапа.
 Для будущего прохода файл остаётся тем же: путь печатается строкой `Latest log`,
 стандартный каталог — `%APPDATA%\l1nuvv\RelayCore\logs`.
 После нового прохода нужно закрыть игру и сообщить агенту до следующего запуска,

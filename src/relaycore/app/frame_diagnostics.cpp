@@ -70,7 +70,7 @@ namespace RelayCore
             return samples_ms_[static_cast<std::size_t>(std::ceil(fraction * samples_ms_.size())) - 1];
         };
         log::info(
-            "Frame summary: mode={} map='{}' frames={} wall_interval=[{:.6f},{:.6f}]s "
+            "[app] Frame summary: mode={} map='{}' frames={} wall_interval=[{:.6f},{:.6f}]s "
             "mean_ms={:.3f} p95_ms={:.3f} p99_ms={:.3f} max_ms={:.3f} "
             "scope=events+update+render+present_or_suspended_update map_scope=loop_start percentile=nearest_rank",
             summary_context_.mode,

@@ -92,7 +92,7 @@ namespace RelayGame
         {
             progress_message_ = error.what();
             change_screen(screen_, services);
-            RelayCore::log::error("Editor: {}", error.what());
+            RelayCore::log::error("[gameplay] Editor: {}", error.what());
         }
     }
 
@@ -152,7 +152,7 @@ namespace RelayGame
             progress_message_ = error.what();
             transition.failed(error.what());
             editor_.report_error(progress_message_);
-            RelayCore::log::error("Return from editor: {}", error.what());
+            RelayCore::log::error("[gameplay] Return from editor: {}", error.what());
             return;
         }
         transition.succeeded();

@@ -64,7 +64,7 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             settings_message_ = error.what();
-            RelayCore::log::warn("Player settings: {}", error.what());
+            RelayCore::log::warn("[gameplay] Player settings: {}", error.what());
         }
         try
         {
@@ -84,7 +84,7 @@ namespace RelayGame
             settings_.render_scale = services.renderer().config().render_scale;
             settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
             settings_message_ = error.what();
-            RelayCore::log::warn("Player settings: {}", error.what());
+            RelayCore::log::warn("[gameplay] Player settings: {}", error.what());
         }
     }
 

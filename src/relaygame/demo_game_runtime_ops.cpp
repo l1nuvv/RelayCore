@@ -31,7 +31,8 @@ namespace RelayGame::detail
         )
         {
             RelayCore::log::info(
-                "DemoGame loaded level {}: {} solids, {} entities, {} render chunks, {} triangles, {} doors, {} "
+                "[gameplay] DemoGame loaded level {}: {} solids, {} entities, {} render chunks, {} triangles, {} "
+                "doors, {} "
                 "triggers, {} usables",
                 services.renderer().runtime_diagnostics().level_name.empty()
                     ? std::string{"<unknown>"}
@@ -164,7 +165,7 @@ namespace RelayGame::detail
             publish_iteration_diagnostics(state, services);
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Level loaded, but diagnostics publication failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Level loaded, but diagnostics publication failed: {}", error.what());
         }
     }
 
@@ -190,7 +191,7 @@ namespace RelayGame::detail
         LevelTransitionDiagnostics transition{services, state.runtime, "live_reload", state.runtime.level_path()};
         const std::string level_name = services.renderer().runtime_diagnostics().level_name;
         RelayCore::log::info(
-            "Reloading live content for {}",
+            "[gameplay] Reloading live content for {}",
             level_name.empty() ? std::string{"<unknown>"} : level_name
         );
 
@@ -219,7 +220,7 @@ namespace RelayGame::detail
             state.runtime.publish_diagnostics(services.renderer());
             publish_iteration_diagnostics(state, services);
             transition.failed(error.what());
-            RelayCore::log::error("Live content reload failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Live content reload failed: {}", error.what());
             return false;
         }
 
@@ -238,11 +239,14 @@ namespace RelayGame::detail
                 )
             );
             publish_iteration_diagnostics(state, services);
-            RelayCore::log::info("{}", state.iteration_diagnostics.last_reload_summary);
+            RelayCore::log::info("[gameplay] {}", state.iteration_diagnostics.last_reload_summary);
             log_level_loaded(services, state.runtime, state.world_scene);
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Live content reloaded, but diagnostics publication failed: {}", error.what());
+            RelayCore::log::error(
+                "[gameplay] Live content reloaded, but diagnostics publication failed: {}",
+                error.what()
+            );
         }
         return true;
     }

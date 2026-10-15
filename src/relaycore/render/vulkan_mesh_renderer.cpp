@@ -18,8 +18,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <imgui_impl_vulkan.h>
@@ -636,7 +636,10 @@ namespace RelayCore::render
                         throw std::invalid_argument("RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING must be 0 or 1");
                     compute = compute && value != "1";
                 }
-                log::info("Vulkan HDR tone mapping: {}", compute ? "compute (8x8, graphics queue)" : "raster");
+                log::debug(
+                    "[renderer] Vulkan HDR tone mapping: {}",
+                    compute ? "compute (8x8, graphics queue)" : "raster"
+                );
             }
             ~ToneMapping() noexcept
             {
@@ -1070,7 +1073,7 @@ namespace RelayCore::render
                 {
                     const auto result = vkFreeDescriptorSets(pool->device, pool->handle, 2, sets.data());
                     if (result != VK_SUCCESS)
-                        std::fprintf(stderr, "Vulkan material descriptor shutdown failed: VkResult %d\n", result);
+                        log::error_noexcept("[renderer] Vulkan material descriptor shutdown failed", result);
                     --pool->materials;
                 }
             }
@@ -1305,7 +1308,7 @@ namespace RelayCore::render
                 uploads.wait(uploads.dependency().value);
             } catch (const std::exception& error)
             {
-                std::fprintf(stderr, "Vulkan mesh shutdown failed: %s\n", error.what());
+                log::error_noexcept("[renderer] Vulkan mesh shutdown failed", error.what());
             }
             for (auto preview : shadow_previews)
                 if (preview)
@@ -1401,7 +1404,10 @@ namespace RelayCore::render
                 material_table = std::make_unique<VulkanMaterialTable>(device);
                 material_table->initialize(device.capabilities().indexed_material_capacity);
             }
-            log::info("Vulkan scene materials: {}", material_table ? "descriptor indexing" : "pooled descriptor sets");
+            log::debug(
+                "[renderer] Vulkan scene materials: {}",
+                material_table ? "descriptor indexing" : "pooled descriptor sets"
+            );
             mesh_shaders = config.mesh_shaders && device.capabilities().mesh_dispatch_total != 0;
             if (mesh_shaders)
             {
@@ -1434,8 +1440,8 @@ namespace RelayCore::render
                     );
                 }
             }
-            log::info(
-                "Vulkan world geometry: {}",
+            log::debug(
+                "[renderer] Vulkan world geometry: {}",
                 mesh_shaders ? "EXT meshlets (opaque camera/source passes)" : "indexed vertices"
             );
             resolution.reset(config.render_scale);
@@ -1470,8 +1476,8 @@ namespace RelayCore::render
             const auto samples = static_cast<VkSampleCountFlagBits>(config.msaa_samples);
             depth_formats.scene = device.select_depth_format(false, samples, preferred_depth.scene);
             depth_formats.shadow = device.select_depth_format(true, VK_SAMPLE_COUNT_1_BIT, preferred_depth.shadow);
-            log::info(
-                "Vulkan depth formats: scene={} shadow={} samples={}",
+            log::debug(
+                "[renderer] Vulkan depth formats: scene={} shadow={} samples={}",
                 static_cast<int>(depth_formats.scene),
                 static_cast<int>(depth_formats.shadow),
                 config.msaa_samples
@@ -1519,8 +1525,8 @@ namespace RelayCore::render
                 culling = std::make_unique<SceneCulling>(device, properties.limits.maxComputeWorkGroupCount[0]);
                 culling->initialize();
             }
-            log::info(
-                "Vulkan scene GPU culling: {}",
+            log::debug(
+                "[renderer] Vulkan scene GPU culling: {}",
                 culling ? "available (graphics queue, stable compaction)" : "unavailable; CPU indirect fallback"
             );
             VkFormatProperties color_properties{};
@@ -5240,6 +5246,12 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::reload_shaders(const std::filesystem::path& directory)
     {
+        const auto started = std::chrono::steady_clock::now();
+        log::debug(
+            "[renderer] Pipeline preparation begin: operation={} reason={}",
+            state_->pipelines[0] ? "recreate" : "initialize",
+            state_->pipelines[0] ? "shader_reload" : "backend_construction"
+        );
         state_->wait();
         auto staged_directory = directory;
         std::array<VkPipeline, 18> replacement{};
@@ -5324,6 +5336,10 @@ namespace RelayCore::render
         if (state_->meshlet_pipeline)
             vkDestroyPipeline(state_->device.handle(), state_->meshlet_pipeline, nullptr);
         state_->meshlet_pipeline = replacement[17];
+        log::debug(
+            "[renderer] Pipelines ready: duration_ms={:.3f} pipeline_cache=attached (hits not measured)",
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+        );
         state_->shader_directory = std::move(staged_directory);
         reset_history();
     }

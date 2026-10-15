@@ -84,7 +84,7 @@ namespace RelayGame
             if (!save_error.empty())
                 progress_message_ += "\n" + save_error;
             transition.failed(error.what());
-            RelayCore::log::error("{}", progress_message_);
+            RelayCore::log::error("[gameplay] {}", progress_message_);
             return;
         }
 
@@ -102,7 +102,7 @@ namespace RelayGame
             } catch (const std::exception& error)
             {
                 progress_message_ = std::string{"Уровень загружен, но прогресс не сохранён: "} + error.what();
-                RelayCore::log::error("{}", progress_message_);
+                RelayCore::log::error("[gameplay] {}", progress_message_);
             }
         }
         try
@@ -110,7 +110,7 @@ namespace RelayGame
             runtime_.publish_diagnostics(services.renderer());
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Level loaded, but diagnostics publication failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Level loaded, but diagnostics publication failed: {}", error.what());
         }
     }
 } // namespace RelayGame

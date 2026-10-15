@@ -1,11 +1,11 @@
 #include "relaycore/render/vulkan_scene_submissions.h"
 
+#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -66,7 +66,7 @@ namespace RelayCore::render
             wait(last_submission());
         } catch (const std::exception& error)
         {
-            std::fprintf(stderr, "Vulkan scene shutdown failed: %s\n", error.what());
+            log::error_noexcept("[renderer] Vulkan scene shutdown failed", error.what());
         }
         state_->buffers.clear();
         state_->textures.clear();

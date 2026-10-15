@@ -49,7 +49,8 @@ namespace RelayGame
                                   : preset == GraphicsPreset::High     ? "high"
                                                                        : "custom";
         RelayCore::log::info(
-            "Effective settings {}: pixels={}x{} vsync_requested={} present_mode={} preset={} hdr_scene={} output=SDR "
+            "[renderer] Effective settings {}: pixels={}x{} vsync_requested={} present_mode={} preset={} hdr_scene={} "
+            "output=SDR "
             "render_scale={:.3f} dynamic_resolution={} color_pipeline={} validation={} "
             "bloom={} ssao={} ssr={} volumetrics={} ssgi={} reflections={} dof={} motion_blur={} taa={}",
             logged_settings_ ? "changed" : "session",

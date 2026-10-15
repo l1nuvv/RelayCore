@@ -255,7 +255,7 @@ namespace RelayCore::detail
             }
 
             log::info(
-                "Loaded blockout level '{}' ({} solids, {} entities)",
+                "[assets] Loaded blockout level '{}' ({} solids, {} entities)",
                 path.string(),
                 level.solids.size(),
                 level.entities.size()

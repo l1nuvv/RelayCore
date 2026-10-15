@@ -65,7 +65,6 @@ namespace RelayCore
         config_.emplace(
             config_path.empty() ? core::load_default_engine_config() : core::load_engine_config(config_path)
         );
-        log::info("Loaded engine config: {}", config_->source_path.string());
         window_.emplace(config_->window);
         renderer_.emplace(config_->renderer, color_pipeline_mode);
         audio_system_.emplace(config_->audio);
@@ -81,7 +80,7 @@ namespace RelayCore
             audio_system_->play_one_shot(core::asset_path(config_->audio.startup_sound));
         }
 
-        log::info("Application initialized");
+        log::info("[app] Application initialized");
     }
 
     auto Application::run() -> int
@@ -203,7 +202,7 @@ namespace RelayCore
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 renderer_->on_resize(event.window.data1, event.window.data2);
-                RelayCore::log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
+                RelayCore::log::debug("[app] Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 
             case SDL_EVENT_KEY_DOWN:
@@ -211,7 +210,7 @@ namespace RelayCore
                 {
                     renderer_->toggle_diagnostics_visible();
                     RelayCore::log::info(
-                        "Diagnostics overlay {}",
+                        "[app] Diagnostics overlay {}",
                         renderer_->diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();
@@ -221,7 +220,7 @@ namespace RelayCore
                 {
                     renderer_->toggle_advanced_diagnostics_visible();
                     RelayCore::log::info(
-                        "Advanced diagnostics {}",
+                        "[app] Advanced diagnostics {}",
                         renderer_->advanced_diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();

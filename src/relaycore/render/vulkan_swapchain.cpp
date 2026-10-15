@@ -1,5 +1,6 @@
 #include "relaycore/render/vulkan_swapchain.h"
 
+#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/platform/window.h"
 #include "relaycore/render/vulkan_device.h"
@@ -7,7 +8,6 @@
 #include "relaycore/render/vulkan_mesh_renderer.h"
 
 #include <VkBootstrap.h>
-#include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -76,6 +76,8 @@ namespace RelayCore::render
         size_t frame_index = 0;
         PixelExtent requested_extent{};
         bool needs_recreation = true;
+        bool initialized = false;
+        const char* recreation_reason = "startup";
         bool stopped = false;
         bool reset_frames = false;
         bool surface_lost = false;
@@ -208,7 +210,7 @@ namespace RelayCore::render
                 drain();
             } catch (const std::exception& error)
             {
-                std::fprintf(stderr, "Vulkan presentation shutdown failed: %s\n", error.what());
+                log::error_noexcept("[renderer] Vulkan presentation shutdown failed", error.what());
             }
             active.reset();
             destroy_frames();
@@ -224,6 +226,13 @@ namespace RelayCore::render
                 needs_recreation = true;
                 return;
             }
+            if (surface_lost)
+                recreation_reason = "surface_lost";
+            log::info(
+                "[renderer] Presentation preparation begin: operation={} reason={}",
+                initialized ? "recreate" : "initialize",
+                recreation_reason
+            );
             stopped = true;
             drain();
             if (surface_lost)
@@ -302,6 +311,14 @@ namespace RelayCore::render
             requested_extent = pixels;
             needs_recreation = false;
             stopped = false;
+            initialized = true;
+            log::info(
+                "[renderer] Presentation ready: pixels={}x{} reason={}",
+                active->swapchain.extent.width,
+                active->swapchain.extent.height,
+                recreation_reason
+            );
+            recreation_reason = "explicit_request";
         }
 
         void record(
@@ -431,6 +448,8 @@ namespace RelayCore::render
             if (!can_present(window.presentation_state()))
                 return false;
             const auto pixels = window.pixel_extent();
+            if (initialized && (pixels.width != requested_extent.width || pixels.height != requested_extent.height))
+                recreation_reason = "pixel_extent";
             if (needs_recreation || pixels.width != requested_extent.width || pixels.height != requested_extent.height)
                 recreate();
             if (!active)
@@ -468,6 +487,7 @@ namespace RelayCore::render
             if (acquisition == VK_ERROR_OUT_OF_DATE_KHR || acquisition == VK_ERROR_SURFACE_LOST_KHR)
             {
                 surface_lost = acquisition == VK_ERROR_SURFACE_LOST_KHR;
+                recreation_reason = surface_lost ? "surface_lost" : "acquire_out_of_date";
                 needs_recreation = true;
                 return false;
             }
@@ -545,6 +565,8 @@ namespace RelayCore::render
                 require_result(presentation, "Failed to present Vulkan frame");
             surface_lost = presentation == VK_ERROR_SURFACE_LOST_KHR;
             needs_recreation = acquisition == VK_SUBOPTIMAL_KHR || presentation != VK_SUCCESS;
+            if (needs_recreation)
+                recreation_reason = surface_lost ? "surface_lost" : "acquire_or_present_result";
             // The scene timeline retains the source slot until this copy completes.
             frame_index = (frame_index + 1) % frames.size();
             return presentation != VK_ERROR_OUT_OF_DATE_KHR && presentation != VK_ERROR_SURFACE_LOST_KHR;
@@ -634,6 +656,7 @@ namespace RelayCore::render
         if (state_->vsync != enabled)
         {
             state_->vsync = enabled;
+            state_->recreation_reason = "vsync_changed";
             state_->needs_recreation = true;
         }
     }

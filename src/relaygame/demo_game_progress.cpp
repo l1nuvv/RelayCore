@@ -50,7 +50,7 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             progress_message_ = std::string{"Прогресс не сохранён: "} + error.what();
-            RelayCore::log::error("{}", progress_message_);
+            RelayCore::log::error("[gameplay] {}", progress_message_);
             return false;
         }
     }
@@ -93,7 +93,7 @@ namespace RelayGame
         {
             progress_message_ = error.what();
             transition.failed(error.what());
-            RelayCore::log::error("Begin episode: {}", error.what());
+            RelayCore::log::error("[gameplay] Begin episode: {}", error.what());
             return;
         }
 
@@ -119,7 +119,7 @@ namespace RelayGame
                 static_cast<void>(save_progress());
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Episode started, but presentation update failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Episode started, but presentation update failed: {}", error.what());
         }
     }
 
@@ -166,7 +166,7 @@ namespace RelayGame
                    == RelayCore::core::asset_path("levels/containment_loop.toml").lexically_normal())
         {
             RelayCore::log::info(
-                "Campaign {}: map='{}' played_seconds={:.3f}",
+                "[gameplay] Campaign {}: map='{}' played_seconds={:.3f}",
                 restored ? "completion restored" : "completed",
                 runtime_.level_path(),
                 played_seconds_

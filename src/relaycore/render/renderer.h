@@ -79,13 +79,15 @@ namespace RelayCore
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,
-            const render::RenderAuthoringConfig& authoring_config
+            const render::RenderAuthoringConfig& authoring_config,
+            std::string_view reason = "live_content_reload"
         ) -> PreparedLiveContentReload;
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,
             const render::RenderAuthoringConfig& authoring_config,
-            render::ColorPipelineMode color_pipeline_mode
+            render::ColorPipelineMode color_pipeline_mode,
+            std::string_view reason = "graphics_settings"
         ) -> PreparedLiveContentReload;
 
         [[nodiscard]] auto config() const noexcept -> const render::RendererConfig&
