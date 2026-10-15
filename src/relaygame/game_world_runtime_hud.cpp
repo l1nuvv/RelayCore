@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 namespace RelayGame
 {
     auto GameWorldRuntime::build_hud_presentation(const RelayCore::render::PerspectiveCamera* camera)
