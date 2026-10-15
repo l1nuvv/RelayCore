@@ -5,6 +5,7 @@
 #include <doctest/doctest.h>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@ TEST_CASE("logger truncates latest log and prunes old timestamped runs")
 
     RelayCore::log::Config config{};
     config.enable_console_sink = false;
+    config.enable_timestamped_log = true;
     config.logs_directory = logs_dir.string();
     config.max_timestamped_logs = 2;
     RelayCore::log::init(config);
@@ -105,4 +107,25 @@ TEST_CASE("logger truncates latest log and prunes old timestamped runs")
     CHECK(std::filesystem::exists(run_log_path));
     CHECK(!std::filesystem::exists(old_run_a));
     CHECK(!std::filesystem::exists(old_run_b));
+}
+
+TEST_CASE("logger keeps only the latest session file by default")
+{
+    RelayCore::log::shutdown();
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::log::Config config{};
+    config.enable_console_sink = false;
+    config.logs_directory = temp.path().string();
+
+    RelayCore::log::init(config);
+    RelayCore::log::info("previous session payload");
+    RelayCore::log::shutdown();
+    RelayCore::log::init(config);
+    RelayCore::log::info("current session payload");
+    RelayCore::log::shutdown();
+
+    const auto contents = read_text_file(temp.path() / "RelayCore_latest.log");
+    CHECK(contents.find("current session payload") != std::string::npos);
+    CHECK(contents.find("previous session payload") == std::string::npos);
+    CHECK(std::distance(std::filesystem::directory_iterator(temp.path()), std::filesystem::directory_iterator{}) == 1);
 }

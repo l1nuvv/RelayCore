@@ -105,14 +105,23 @@ namespace RelayCore::render
                    ) == 0)
                 return VK_FALSE;
 
-            // Startup and teardown diagnostics must also work before/after the logger lifetime.
-            std::fprintf(
-                stderr,
-                "Vulkan validation %s [%s]: %s\n",
-                severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "error" : "warning",
-                data->pMessageIdName != nullptr ? data->pMessageIdName : "unnamed",
-                data->pMessage
-            );
+            const auto* id = data->pMessageIdName != nullptr ? data->pMessageIdName : "unnamed";
+            const bool error = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
+            try
+            {
+                log::logger().log(
+                    error ? spdlog::level::err : spdlog::level::warn,
+                    "Vulkan validation {} [{}]: {}",
+                    error ? "error" : "warning",
+                    id,
+                    data->pMessage
+                );
+                return VK_FALSE;
+            } catch (...)
+            {
+                // Vulkan callbacks must also report failures outside the logger lifetime.
+            }
+            std::fprintf(stderr, "Vulkan validation %s [%s]: %s\n", error ? "error" : "warning", id, data->pMessage);
             return VK_FALSE;
         }
 #endif

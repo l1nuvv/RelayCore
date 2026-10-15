@@ -24,7 +24,7 @@ namespace RelayCore::log
         std::string logs_directory = "logs";
         std::string latest_filename = "RelayCore_latest.log";
         bool enable_console_sink = true;
-        bool enable_timestamped_log = true;
+        bool enable_timestamped_log = false;
         bool enable_latest_log = true;
         bool truncate_latest_log = true;
         std::size_t max_timestamped_logs = 12;

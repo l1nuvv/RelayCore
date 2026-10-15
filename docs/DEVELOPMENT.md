@@ -303,6 +303,13 @@ startup calibration Tracy использует queue waits.
 CTest checks отклоняют неожиданные validation warnings/errors. Для screen-pixel
 presentation/recreation checks нужен обычный Windows desktop без заставки.
 
+Обычный запуск пишет один `%APPDATA%\l1nuvv\RelayCore\logs\RelayCore_latest.log`,
+перезаписывая его при следующем запуске. Точный путь печатается как `Latest log`.
+Датированные сессии по умолчанию отключены; старые файлы автоматически не удаляются.
+Сообщения Vulkan validation при её включении проходят через тот же логгер в файл
+и консоль; вне времени жизни логгера используется stderr. После диагностического
+прохода закройте игру и прочитайте или скопируйте latest до следующего запуска.
+
 ```powershell
 cmake --build --preset graphics-debug
 ctest --preset graphics-debug --output-on-failure
