@@ -4409,6 +4409,8 @@ namespace
                 RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
             config.hdr_enabled = true;
             config.bloom_enabled = config.ssao_enabled = config.ssr_enabled = config.volumetrics_enabled = true;
+            if (!profile)
+                config.reflection_quality = config.ssgi_quality = 2;
             config.taa_enabled = stage != 0;
             config.render_scale = stage == 2 || stage == 4 ? .67F : 1;
             config.dynamic_resolution_enabled = stage == 5;
@@ -4426,6 +4428,9 @@ namespace
             scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
             renderer.set_local_lights(scene.local_lights());
             renderer.prepare_resources(scene.render_items());
+            auto moving_enemies = RelayGame::build_enemies(level);
+            require(!moving_enemies.empty(), "Temporal scene fixture has no enemy");
+            moving_enemies.resize(1);
             std::vector<VulkanResolutionStatus> resolution_samples;
             resolution_samples.reserve(240);
             const auto measure = [&] {
@@ -4435,7 +4440,21 @@ namespace
                     if (!profile)
                     {
                         camera.set_position({-21 + .008F * frame, 1.65F, 19 + .015F * frame});
-                        scene.prepare_render_queue(camera, frame / 60.0F, {}, {}, {}, -1, {}, false);
+                        moving_enemies[0].state.position = {-21 + .4F * std::sin(frame * .2F), 0, 21.5F};
+                        scene.prepare_render_queue(
+                            camera,
+                            frame / 60.0F,
+                            {},
+                            {},
+                            {},
+                            -1,
+                            {},
+                            false,
+                            {},
+                            {},
+                            {},
+                            moving_enemies
+                        );
                     }
                     const auto weapon = scene.prepare_shotgun_viewmodel(camera, frame / 60.0F);
                     renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
