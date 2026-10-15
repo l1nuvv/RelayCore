@@ -1,22 +1,27 @@
 #include "relaycore/render/vulkan_mesh_renderer.h"
 
 #include "relaycore/core/engine_config.h"
+#include "relaycore/core/log.h"
 #include "relaycore/render/authored_color.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/irradiance_probes.h"
+#include "relaycore/render/light_tiles.h"
 #include "relaycore/render/player_ui.h"
 #include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/render_authoring_config.h"
+#include "relaycore/render/render_resolution.h"
 #include "relaycore/render/shadow_math.h"
 #include "relaycore/render/vulkan_device.h"
 #include "relaycore/render/vulkan_gpu_profiler.h"
+#include "relaycore/render/vulkan_material_table.h"
 #include "relaycore/render/vulkan_scene_submissions.h"
 #include "relaycore/render/vulkan_uploads.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
-#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <imgui_impl_vulkan.h>
 #include <limits>
@@ -47,6 +52,28 @@ namespace RelayCore::render
         static_assert(offsetof(DrawPush, camera_position) == 116);
         static_assert(sizeof(DrawPush) == 128);
 
+        struct DrawInstance {
+            glm::mat4 mvp;
+            std::array<glm::vec4, 3> model_rows;
+            glm::uvec4 correspondence;
+        };
+        static_assert(offsetof(DrawInstance, correspondence) == 112);
+        static_assert(sizeof(DrawInstance) == 128);
+
+        struct CullBatch {
+            glm::uvec4 range;
+            glm::vec4 mins, maxs;
+        };
+        static_assert(offsetof(CullBatch, mins) == 16);
+        static_assert(sizeof(CullBatch) == 48);
+        static_assert(sizeof(VkDrawIndexedIndirectCommand) == 20);
+
+        struct PreviousDraw {
+            glm::mat4 mvp;
+            glm::vec4 valid;
+        };
+        static_assert(sizeof(PreviousDraw) == 80);
+
         struct MaterialParameters {
             std::array<glm::vec4, 32> atlas;
             glm::vec4 scene;
@@ -60,17 +87,22 @@ namespace RelayCore::render
         static_assert(sizeof(MaterialParameters) == 1280);
         struct FrameParameters {
             glm::vec4 viewport_time_debug;
+            glm::mat4 view_projection, inverse_view_projection, view_matrix;
+            glm::vec4 camera_position, effects, lighting;
+            std::array<glm::uvec4, 12> depth_hierarchy{};
         };
-        static_assert(sizeof(FrameParameters) == 16);
+        static_assert(sizeof(FrameParameters) == 448);
 
         struct LightParameters {
-            std::array<glm::vec4, 8> position_radius;
-            std::array<glm::vec4, 8> color;
+            std::array<glm::vec4, kMaxLocalLights> position_radius;
+            std::array<glm::vec4, kMaxLocalLights> color;
             glm::ivec4 count;
+            LightTileMasks tile_masks;
         };
-        static_assert(offsetof(LightParameters, color) == 128);
-        static_assert(offsetof(LightParameters, count) == 256);
-        static_assert(sizeof(LightParameters) == 272);
+        static_assert(offsetof(LightParameters, color) == 512);
+        static_assert(offsetof(LightParameters, count) == 1024);
+        static_assert(offsetof(LightParameters, tile_masks) == 1040);
+        static_assert(sizeof(LightParameters) == 10256);
 
         struct IrradianceParameters {
             glm::vec4 mins{}, maxs{};
@@ -92,10 +124,26 @@ namespace RelayCore::render
         struct ShadowPush {
             glm::mat4 mvp;
             std::array<glm::vec4, 3> model_rows;
+            // A negative range selects instance storage; its magnitude remains the point-light radius.
             glm::vec4 light_position_radius;
         };
         static_assert(sizeof(ShadowPush) == 128);
 
+        struct ShadowCaster {
+            std::weak_ptr<const CpuColorMeshData> source;
+            glm::mat4 model;
+            auto operator==(const ShadowCaster& other) const -> bool
+            {
+                return !source.expired() && !other.source.expired() && !source.owner_before(other.source)
+                       && !other.source.owner_before(source) && model == other.model;
+            }
+        };
+        struct ShadowLayer {
+            bool valid = false, active = false;
+            glm::mat4 projection{1};
+            glm::vec4 light{};
+            std::vector<ShadowCaster> casters;
+        };
         struct ShadowImage {
             const VulkanDevice& device;
             VkExtent2D extent;
@@ -105,8 +153,9 @@ namespace RelayCore::render
             VkImageView view = VK_NULL_HANDLE;
             VkSampler sampler = VK_NULL_HANDLE;
             std::vector<VkImageView> layer_views;
+            std::vector<ShadowLayer> cached_layers;
             ShadowImage(const VulkanDevice& owner, const VkExtent2D size, const uint32_t count) :
-                device(owner), extent(size), layers(count)
+                device(owner), extent(size), layers(count), cached_layers(count)
             {}
             ~ShadowImage() noexcept
             {
@@ -124,13 +173,31 @@ namespace RelayCore::render
             {
                 VkFormatProperties properties{};
                 vkGetPhysicalDeviceFormatProperties(device.physical_device(), format, &properties);
-                constexpr auto required =
-                    VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
-                    | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+                constexpr auto required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                          | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+                                          | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+                                          | VK_FORMAT_FEATURE_TRANSFER_DST_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
                 if ((properties.optimalTilingFeatures & required) != required)
                     throw std::runtime_error(
-                        "Vulkan shadows require sampled/linear-filtered D24_UNORM depth attachments"
+                        "Vulkan shadows require sampled/linear-filtered depth attachments with transfer support"
                     );
+                VkImageFormatProperties image_properties{};
+                require_mesh_vk(
+                    vkGetPhysicalDeviceImageFormatProperties(
+                        device.physical_device(),
+                        format,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        0,
+                        &image_properties
+                    ),
+                    "Shadow depth image format support"
+                );
+                if (extent.width > image_properties.maxExtent.width || extent.height > image_properties.maxExtent.height
+                    || layers > image_properties.maxArrayLayers)
+                    throw std::runtime_error("Shadow depth image exceeds the selected format extent/layer limits");
                 const VkImageCreateInfo info{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                     .imageType = VK_IMAGE_TYPE_2D,
@@ -259,12 +326,20 @@ namespace RelayCore::render
                     .format = attachment_format == VK_FORMAT_UNDEFINED ? format : attachment_format,
                     .subresourceRange = {aspect, 0, 1, 0, 1},
                 };
+                // The sRGB attachment view cannot inherit the UNORM storage usage.
+                const VkImageViewUsageCreateInfo view_usage{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+                    .usage = usage & ~VK_IMAGE_USAGE_STORAGE_BIT
+                };
+                if (srgb_view && (usage & VK_IMAGE_USAGE_STORAGE_BIT))
+                    view_info.pNext = &view_usage;
                 require_mesh_vk(
                     vkCreateImageView(device.handle(), &view_info, nullptr, &view),
                     "Failed to create Vulkan mesh target view"
                 );
                 if (srgb_view)
                 {
+                    view_info.pNext = nullptr;
                     view_info.format = format;
                     require_mesh_vk(
                         vkCreateImageView(device.handle(), &view_info, nullptr, &unorm_view),
@@ -274,8 +349,144 @@ namespace RelayCore::render
             }
         };
 
+        struct InputTarget {
+            MeshImage normal_depth, velocity, depth;
+            std::unique_ptr<MeshImage> color_history, radiance, black_source, trace_depth;
+            std::unique_ptr<MeshImage> ao, temporal, gi, lens, reconstructed_gi;
+            VulkanBuffer depth_bounds;
+            std::array<glm::uvec4, 12> hierarchy_levels{};
+            VkExtent2D gi_extent{};
+            VulkanBuffer readback;
+            InputTarget(
+                const VulkanDevice& device,
+                const VkExtent2D size,
+                const VkFormat depth_format,
+                const VkFormat color_format,
+                const bool ssao,
+                const VkFormat ao_format,
+                const bool taa,
+                const bool ssgi,
+                const bool lenses,
+                const bool tracing,
+                const bool diagnostic_history,
+                const bool hierarchy
+            ) : normal_depth(device), velocity(device), depth(device), readback()
+            {
+                gi_extent = {std::max(1u, (size.width + 1) / 2), std::max(1u, (size.height + 1) / 2)};
+                uint32_t offset = 0, scale = 8, width = (size.width + 7) / 8, height = (size.height + 7) / 8;
+                for (auto& level : hierarchy_levels)
+                {
+                    level = {offset, width, height, scale};
+                    offset += width * height;
+                    if (width == 1 && height == 1)
+                        break;
+                    width = (width + 1) / 2;
+                    height = (height + 1) / 2;
+                    scale *= 2;
+                }
+                depth_bounds = VulkanBuffer(
+                    device,
+                    hierarchy ? VkDeviceSize(offset) * sizeof(glm::vec2) : sizeof(glm::vec2),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VulkanBufferMemory::device
+                );
+                if (hierarchy)
+                {
+                    trace_depth = std::make_unique<MeshImage>(device);
+                    trace_depth->initialize(
+                        size,
+                        VK_FORMAT_R32_SFLOAT,
+                        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+                if (ssgi)
+                {
+                    reconstructed_gi = std::make_unique<MeshImage>(device);
+                    reconstructed_gi->initialize(
+                        size,
+                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+                for (auto* target : {ssgi ? &gi : nullptr, lenses ? &lens : nullptr})
+                    if (target)
+                    {
+                        *target = std::make_unique<MeshImage>(device);
+                        (*target)->initialize(
+                            target == &gi ? gi_extent : size,
+                            color_format,
+                            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT
+                        );
+                    }
+                if (taa)
+                {
+                    temporal = std::make_unique<MeshImage>(device);
+                    temporal->initialize(
+                        size,
+                        color_format,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+                if (ssao)
+                {
+                    ao = std::make_unique<MeshImage>(device);
+                    ao->initialize(
+                        size,
+                        ao_format,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+                for (auto* image : {&normal_depth, &velocity})
+                    image->initialize(
+                        size,
+                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                depth.initialize(
+                    size,
+                    depth_format,
+                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                    VK_IMAGE_ASPECT_DEPTH_BIT
+                );
+                if (diagnostic_history)
+                {
+                    color_history = std::make_unique<MeshImage>(device);
+                    color_history->initialize(
+                        size,
+                        color_format,
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+                if (tracing)
+                {
+                    radiance = std::make_unique<MeshImage>(device);
+                    radiance->initialize(
+                        size,
+                        color_format,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                    black_source = std::make_unique<MeshImage>(device);
+                    black_source->initialize(
+                        {1, 1},
+                        color_format,
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT
+                    );
+                }
+            }
+        };
+
         struct MeshTarget {
-            VkExtent2D extent;
+            VkExtent2D extent, render_extent;
             MeshImage color, depth;
             std::unique_ptr<MeshImage> hdr_scene;
             std::unique_ptr<MeshImage> multisample_scene;
@@ -283,21 +494,27 @@ namespace RelayCore::render
             MeshTarget(
                 const VulkanDevice& device,
                 const VkExtent2D size,
+                const VkExtent2D internal_size,
                 const VkFormat scene_format,
                 const VkFormat display_format,
-                const VkSampleCountFlagBits samples
+                const VkFormat depth_format,
+                const VkSampleCountFlagBits samples,
+                const bool compute_tone_mapping,
+                const bool input_history
             ) :
-                extent(size), color(device), depth(device), readback(
-                                                                device,
-                                                                VkDeviceSize(size.width) * size.height * 4,
-                                                                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                                                VulkanBufferMemory::readback
-                                                            )
+                extent(size), render_extent(internal_size), color(device), depth(device),
+                readback(
+                    device,
+                    VkDeviceSize(size.width) * size.height * 4,
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VulkanBufferMemory::readback
+                )
             {
                 color.initialize(
                     size,
                     VK_FORMAT_R8G8B8A8_UNORM,
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                        | (compute_tone_mapping ? VK_IMAGE_USAGE_STORAGE_BIT : 0u),
                     VK_IMAGE_ASPECT_COLOR_BIT,
                     display_format
                 );
@@ -305,9 +522,10 @@ namespace RelayCore::render
                 {
                     hdr_scene = std::make_unique<MeshImage>(device);
                     hdr_scene->initialize(
-                        size,
+                        internal_size,
                         scene_format,
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | (input_history ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0u),
                         VK_IMAGE_ASPECT_COLOR_BIT
                     );
                 }
@@ -315,7 +533,7 @@ namespace RelayCore::render
                 {
                     multisample_scene = std::make_unique<MeshImage>(device);
                     multisample_scene->initialize(
-                        size,
+                        internal_size,
                         scene_format,
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                         VK_IMAGE_ASPECT_COLOR_BIT,
@@ -324,8 +542,8 @@ namespace RelayCore::render
                     );
                 }
                 depth.initialize(
-                    size,
-                    VK_FORMAT_D32_SFLOAT,
+                    internal_size,
+                    depth_format,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                     VK_IMAGE_ASPECT_DEPTH_BIT,
                     VK_FORMAT_UNDEFINED,
@@ -347,6 +565,7 @@ namespace RelayCore::render
             }
             auto load(const std::filesystem::path& path, const char* entry) const -> VkShaderModule
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan shader file/module");
                 const auto diagnostic = path.string() + " (entry " + entry + ")";
                 std::ifstream stream(path, std::ios::binary | std::ios::ate);
                 const auto size = stream.tellg();
@@ -366,6 +585,204 @@ namespace RelayCore::render
                 return module;
             }
         };
+        struct SceneCulling {
+            VkDevice device;
+            VkPipelineCache cache;
+            VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
+            VkPipelineLayout layout = VK_NULL_HANDLE;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            std::array<VkDescriptorSet, 2> sets{};
+            uint32_t max_dispatch_x;
+
+            SceneCulling(const VulkanDevice& owner, const uint32_t dispatch_limit) :
+                device(owner.handle()), cache(owner.pipeline_cache()), max_dispatch_x(dispatch_limit)
+            {}
+            ~SceneCulling() noexcept
+            {
+                if (pipeline)
+                    vkDestroyPipeline(device, pipeline, nullptr);
+                if (pool)
+                    vkDestroyDescriptorPool(device, pool, nullptr);
+                if (layout)
+                    vkDestroyPipelineLayout(device, layout, nullptr);
+                if (descriptor_layout)
+                    vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+            }
+            void initialize()
+            {
+                std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+                for (uint32_t i = 0; i < bindings.size(); ++i)
+                    bindings[i] = {i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+                const VkDescriptorSetLayoutCreateInfo descriptor_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = static_cast<uint32_t>(bindings.size()),
+                    .pBindings = bindings.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorSetLayout(device, &descriptor_info, nullptr, &descriptor_layout),
+                    "Scene culling descriptor layout"
+                );
+                const VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t)};
+                const VkPipelineLayoutCreateInfo layout_info{
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptor_layout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push
+                };
+                require_mesh_vk(vkCreatePipelineLayout(device, &layout_info, nullptr, &layout), "Scene culling layout");
+                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
+                const VkDescriptorPoolCreateInfo pool_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 2,
+                    .poolSizeCount = 1,
+                    .pPoolSizes = &size
+                };
+                require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "Scene culling pool");
+                const std::array layouts{descriptor_layout, descriptor_layout};
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool,
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data()
+                };
+                require_mesh_vk(vkAllocateDescriptorSets(device, &allocation, sets.data()), "Scene culling sets");
+            }
+            auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan culling pipeline creation");
+                MeshShaders shader{device};
+                shader.vertex = shader.load(directory / "scene_culling.comp.spv", "compute_main");
+                const VkComputePipelineCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                    .stage =
+                        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                         .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                         .module = shader.vertex,
+                         .pName = "compute_main"},
+                    .layout = layout
+                };
+                VkPipeline result = VK_NULL_HANDLE;
+                require_mesh_vk(
+                    vkCreateComputePipelines(device, cache, 1, &info, nullptr, &result),
+                    "Scene culling pipeline"
+                );
+                return result;
+            }
+        };
+
+        struct DepthHierarchy {
+            VkDevice device;
+            VkPipelineCache cache;
+            VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
+            VkPipelineLayout layout = VK_NULL_HANDLE;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            std::array<VkDescriptorSet, 2> sets{};
+
+            DepthHierarchy(const VulkanDevice& owner) : device(owner.handle()), cache(owner.pipeline_cache()) {}
+            ~DepthHierarchy() noexcept
+            {
+                if (pipeline)
+                    vkDestroyPipeline(device, pipeline, nullptr);
+                if (pool)
+                    vkDestroyDescriptorPool(device, pool, nullptr);
+                if (layout)
+                    vkDestroyPipelineLayout(device, layout, nullptr);
+                if (descriptor_layout)
+                    vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+            }
+            void initialize()
+            {
+                const std::array bindings{
+                    VkDescriptorSetLayoutBinding{
+                        0,
+                        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        1,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        nullptr
+                    },
+                    VkDescriptorSetLayoutBinding{
+                        1,
+                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        1,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        nullptr
+                    },
+                    VkDescriptorSetLayoutBinding{
+                        2,
+                        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                        1,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        nullptr
+                    }
+                };
+                const VkDescriptorSetLayoutCreateInfo descriptor_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = static_cast<uint32_t>(bindings.size()),
+                    .pBindings = bindings.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorSetLayout(device, &descriptor_info, nullptr, &descriptor_layout),
+                    "Depth hierarchy descriptor layout"
+                );
+                const VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(glm::uvec4) * 2};
+                const VkPipelineLayoutCreateInfo layout_info{
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptor_layout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push
+                };
+                require_mesh_vk(
+                    vkCreatePipelineLayout(device, &layout_info, nullptr, &layout),
+                    "Depth hierarchy layout"
+                );
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}
+                };
+                const VkDescriptorPoolCreateInfo pool_info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 2,
+                    .poolSizeCount = uint32_t(sizes.size()),
+                    .pPoolSizes = sizes.data()
+                };
+                require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "Depth hierarchy pool");
+                const std::array layouts{descriptor_layout, descriptor_layout};
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool,
+                    .descriptorSetCount = 2,
+                    .pSetLayouts = layouts.data()
+                };
+                require_mesh_vk(vkAllocateDescriptorSets(device, &allocation, sets.data()), "Depth hierarchy sets");
+            }
+            auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan depth hierarchy pipeline creation");
+                MeshShaders shader{device};
+                shader.vertex = shader.load(directory / "depth_hierarchy.comp.spv", "compute_main");
+                const VkComputePipelineCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                    .stage =
+                        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                         .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                         .module = shader.vertex,
+                         .pName = "compute_main"},
+                    .layout = layout
+                };
+                VkPipeline result = VK_NULL_HANDLE;
+                require_mesh_vk(
+                    vkCreateComputePipelines(device, cache, 1, &info, nullptr, &result),
+                    "Depth hierarchy pipeline"
+                );
+                return result;
+            }
+        };
+
         struct ToneMappingPush {
             glm::vec4 postfx, viewport_time_exposure, grading;
         };
@@ -373,15 +790,61 @@ namespace RelayCore::render
 
         struct ToneMapping {
             VkDevice device;
+            VkPipelineCache cache;
             VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
             VkPipelineLayout layout = VK_NULL_HANDLE;
             VkDescriptorPool pool = VK_NULL_HANDLE;
             std::array<VkDescriptorSet, 2> sets{};
             VkSampler sampler = VK_NULL_HANDLE;
             VkPipeline pipeline = VK_NULL_HANDLE;
-            explicit ToneMapping(const VkDevice owner) : device(owner) {}
+            bool compute = false;
+            const VulkanDevice& owner;
+            VkPipeline bloom_pipeline = VK_NULL_HANDLE;
+            VkSampler bloom_sampler = VK_NULL_HANDLE;
+            std::array<std::vector<std::unique_ptr<MeshImage>>, 2> bloom;
+            std::array<VkExtent2D, 2> bloom_extent{};
+            explicit ToneMapping(const VulkanDevice& device_owner) :
+                device(device_owner.handle()), cache(device_owner.pipeline_cache()), owner(device_owner)
+            {
+                VkFormatProperties format{};
+                vkGetPhysicalDeviceFormatProperties(owner.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &format);
+                compute = owner.capabilities().graphics_compute
+                          && (format.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+                if (compute)
+                {
+                    VkImageFormatProperties support{};
+                    const auto result = vkGetPhysicalDeviceImageFormatProperties(
+                        owner.physical_device(),
+                        VK_FORMAT_R8G8B8A8_UNORM,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                            | VK_IMAGE_USAGE_STORAGE_BIT,
+                        VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
+                        &support
+                    );
+                    if (result != VK_SUCCESS && result != VK_ERROR_FORMAT_NOT_SUPPORTED)
+                        require_mesh_vk(result, "Compute tone mapping target format support");
+                    compute = result == VK_SUCCESS;
+                }
+                if (const auto* disable = std::getenv("RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING"))
+                {
+                    const std::string_view value{disable};
+                    if (value != "0" && value != "1")
+                        throw std::invalid_argument("RELAYCORE_VULKAN_DISABLE_COMPUTE_TONE_MAPPING must be 0 or 1");
+                    compute = compute && value != "1";
+                }
+                log::debug(
+                    "[renderer] Vulkan HDR tone mapping: {}",
+                    compute ? "compute (8x8, graphics queue)" : "raster"
+                );
+            }
             ~ToneMapping() noexcept
             {
+                if (bloom_pipeline)
+                    vkDestroyPipeline(device, bloom_pipeline, nullptr);
+                if (bloom_sampler)
+                    vkDestroySampler(device, bloom_sampler, nullptr);
                 if (pipeline)
                     vkDestroyPipeline(device, pipeline, nullptr);
                 if (pool)
@@ -395,18 +858,26 @@ namespace RelayCore::render
             }
             void initialize()
             {
-                const VkDescriptorSetLayoutBinding
-                    binding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+                const VkShaderStageFlags stage =
+                    VK_SHADER_STAGE_FRAGMENT_BIT | (compute ? VK_SHADER_STAGE_COMPUTE_BIT : 0u);
+                const std::array bindings{
+                    VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr},
+                    VkDescriptorSetLayoutBinding{5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stage, nullptr}
+                };
                 const VkDescriptorSetLayoutCreateInfo descriptor_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                    .bindingCount = 1,
-                    .pBindings = &binding
+                    .bindingCount = static_cast<uint32_t>(bindings.size()),
+                    .pBindings = bindings.data()
                 };
                 require_mesh_vk(
                     vkCreateDescriptorSetLayout(device, &descriptor_info, nullptr, &descriptor_layout),
                     "HDR descriptor layout"
                 );
-                const VkPushConstantRange push{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ToneMappingPush)};
+                const VkPushConstantRange push{stage, 0, sizeof(ToneMappingPush)};
                 const VkPipelineLayoutCreateInfo layout_info{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                     .setLayoutCount = 1,
@@ -425,12 +896,18 @@ namespace RelayCore::render
                     .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
                 };
                 require_mesh_vk(vkCreateSampler(device, &sampler_info, nullptr, &sampler), "HDR scene sampler");
-                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2};
+                auto linear = sampler_info;
+                linear.magFilter = linear.minFilter = VK_FILTER_LINEAR;
+                require_mesh_vk(vkCreateSampler(device, &linear, nullptr, &bloom_sampler), "Bloom sampler");
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}
+                };
                 const VkDescriptorPoolCreateInfo pool_info{
                     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                     .maxSets = 2,
-                    .poolSizeCount = 1,
-                    .pPoolSizes = &size
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data()
                 };
                 require_mesh_vk(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool), "HDR descriptor pool");
                 const std::array layouts{descriptor_layout, descriptor_layout};
@@ -442,7 +919,13 @@ namespace RelayCore::render
                 };
                 require_mesh_vk(vkAllocateDescriptorSets(device, &allocate, sets.data()), "HDR descriptor set");
             }
-            void bind(const VkImageView view, const size_t slot) const
+            void bind(
+                const VkImageView view,
+                const VkImageView output,
+                const size_t slot,
+                VkExtent2D extent,
+                const bool bloom_enabled
+            )
             {
                 const VkDescriptorImageInfo image{sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
                 const VkWriteDescriptorSet write{
@@ -454,12 +937,79 @@ namespace RelayCore::render
                     .pImageInfo = &image
                 };
                 vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+                if (bloom_enabled
+                    && (bloom[slot].empty() || bloom_extent[slot].width != extent.width
+                        || bloom_extent[slot].height != extent.height))
+                {
+                    bloom_extent[slot] = extent;
+                    bloom[slot].clear();
+                    for (int level = 0; level < 4; ++level)
+                    {
+                        extent = {std::max(1u, (extent.width + 1) / 2), std::max(1u, (extent.height + 1) / 2)};
+                        auto bloom_image = std::make_unique<MeshImage>(owner);
+                        bloom_image->initialize(
+                            extent,
+                            VK_FORMAT_R16G16B16A16_SFLOAT,
+                            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                                | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT
+                        );
+                        bloom[slot].push_back(std::move(bloom_image));
+                    }
+                }
+                for (uint32_t level = 0; level < 4; ++level)
+                {
+                    const VkDescriptorImageInfo info{
+                        bloom_enabled ? bloom_sampler : sampler,
+                        bloom_enabled ? bloom[slot][level]->view : view,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    };
+                    auto bloom_write = write;
+                    bloom_write.dstBinding = 2 + level;
+                    bloom_write.pImageInfo = &info;
+                    vkUpdateDescriptorSets(device, 1, &bloom_write, 0, nullptr);
+                }
+                if (compute)
+                {
+                    const VkDescriptorImageInfo storage{VK_NULL_HANDLE, output, VK_IMAGE_LAYOUT_GENERAL};
+                    auto storage_write = write;
+                    storage_write.dstBinding = 1;
+                    storage_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                    storage_write.pImageInfo = &storage;
+                    vkUpdateDescriptorSets(device, 1, &storage_write, 0, nullptr);
+                }
             }
-            auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
+            auto create_pipeline(const std::filesystem::path& directory, const bool bright = false) const -> VkPipeline
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan tone pipeline creation");
                 MeshShaders shaders{device};
+                if (compute && !bright)
+                {
+                    shaders.vertex = shaders.load(directory / "tone_mapping.comp.spv", "compute_main");
+                    const VkComputePipelineCreateInfo info{
+                        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                        .stage =
+                            {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                             .module = shaders.vertex,
+                             .pName = "compute_main"},
+                        .layout = layout
+                    };
+                    VkPipeline replacement = VK_NULL_HANDLE;
+                    const auto result = vkCreateComputePipelines(device, cache, 1, &info, nullptr, &replacement);
+                    if (result != VK_SUCCESS)
+                    {
+                        if (replacement)
+                            vkDestroyPipeline(device, replacement, nullptr);
+                        require_mesh_vk(result, "Compute tone mapping pipeline from " + directory.string());
+                    }
+                    return replacement;
+                }
                 shaders.vertex = shaders.load(directory / "tone_mapping.vert.spv", "vertex_main");
-                shaders.fragment = shaders.load(directory / "tone_mapping.frag.spv", "fragment_main");
+                shaders.fragment = shaders.load(
+                    directory / (bright ? "tone_mapping.bloom.spv" : "tone_mapping.frag.spv"),
+                    bright ? "bloom_fragment" : "fragment_main"
+                );
                 const std::array stages{
                     VkPipelineShaderStageCreateInfo{
                         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -471,7 +1021,7 @@ namespace RelayCore::render
                         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                         .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
                         .module = shaders.fragment,
-                        .pName = "fragment_main"
+                        .pName = bright ? "bloom_fragment" : "fragment_main"
                     }
                 };
                 const VkPipelineVertexInputStateCreateInfo vertices{
@@ -512,7 +1062,7 @@ namespace RelayCore::render
                     .dynamicStateCount = uint32_t(dynamics.size()),
                     .pDynamicStates = dynamics.data()
                 };
-                const VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+                const VkFormat format = bright ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R8G8B8A8_SRGB;
                 const VkPipelineRenderingCreateInfo rendering{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
                     .colorAttachmentCount = 1,
@@ -533,7 +1083,7 @@ namespace RelayCore::render
                     .layout = layout
                 };
                 VkPipeline replacement = VK_NULL_HANDLE;
-                const auto result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &replacement);
+                const auto result = vkCreateGraphicsPipelines(device, cache, 1, &info, nullptr, &replacement);
                 if (result != VK_SUCCESS)
                 {
                     if (replacement)
@@ -546,6 +1096,89 @@ namespace RelayCore::render
     } // namespace
 
     struct VulkanMeshRenderer::State {
+        struct MeshletGeometry {
+            const VulkanDevice& device;
+            VulkanBuffer clusters, vertices, triangles;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkDescriptorSet set = VK_NULL_HANDLE;
+            uint32_t count = 0;
+            explicit MeshletGeometry(const VulkanDevice& owner) : device(owner) {}
+            ~MeshletGeometry() noexcept
+            {
+                if (pool)
+                    vkDestroyDescriptorPool(device.handle(), pool, nullptr);
+            }
+            void initialize(
+                VulkanUploads& uploads,
+                VkDescriptorSetLayout layout,
+                const VulkanBuffer& vertex_buffer,
+                const MeshletData& data
+            )
+            {
+                count = uint32_t(data.clusters.size());
+                auto upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.clusters}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                clusters = std::move(upload.buffer);
+                upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.vertices}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                vertices = std::move(upload.buffer);
+                upload = uploads.upload_mesh_buffer(
+                    std::as_bytes(std::span{data.triangles}),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                );
+                triangles = std::move(upload.buffer);
+                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+                const VkDescriptorPoolCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 1,
+                    .poolSizeCount = 1,
+                    .pPoolSizes = &size
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device.handle(), &info, nullptr, &pool),
+                    "Meshlet descriptor pool"
+                );
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool,
+                    .descriptorSetCount = 1,
+                    .pSetLayouts = &layout
+                };
+                require_mesh_vk(vkAllocateDescriptorSets(device.handle(), &allocation, &set), "Meshlet descriptor set");
+                const std::array buffers{
+                    VkDescriptorBufferInfo{vertex_buffer.handle(), 0, vertex_buffer.size()},
+                    VkDescriptorBufferInfo{clusters.handle(), 0, clusters.size()},
+                    VkDescriptorBufferInfo{vertices.handle(), 0, vertices.size()},
+                    VkDescriptorBufferInfo{triangles.handle(), 0, triangles.size()}
+                };
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+                std::array<VkWriteDescriptorSet, 4> writes{};
+                for (uint32_t i = 0; i < writes.size(); ++i)
+                {
+                    if (buffers[i].range > properties.limits.maxStorageBufferRange)
+                        throw std::invalid_argument("Meshlet geometry exceeds the device storage buffer range");
+                    writes[i] = {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = set,
+                        .dstBinding = i,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .pBufferInfo = &buffers[i]
+                    };
+                }
+                vkUpdateDescriptorSets(device.handle(), uint32_t(writes.size()), writes.data(), 0, nullptr);
+            }
+        };
+        struct RetiredMeshlet {
+            uint64_t completion, upload;
+            std::unique_ptr<MeshletGeometry> geometry;
+        };
+
         struct Mesh {
             std::weak_ptr<const CpuColorMeshData> source;
             VulkanBuffer vertices, indices;
@@ -553,6 +1186,8 @@ namespace RelayCore::render
             VulkanSceneCompletion last_use{};
             uint64_t upload_completion = 0;
             uint64_t recording = 0;
+            glm::vec3 mins{}, maxs{};
+            std::unique_ptr<MeshletGeometry> meshlets;
         };
         struct MaterialKey {
             const CpuRgbaTextureData* color;
@@ -581,8 +1216,37 @@ namespace RelayCore::render
                        ^ (std::hash<float>{}(key.emissive_factor.z) << 2);
             }
         };
-        struct Material {
+        struct MaterialDescriptorPool {
+            static constexpr uint32_t capacity = 128;
             VkDevice device;
+            VkDescriptorPool handle = VK_NULL_HANDLE;
+            uint32_t materials = 0;
+
+            explicit MaterialDescriptorPool(const VkDevice owner) : device(owner)
+            {
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 14 * capacity},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 * capacity}
+                };
+                const VkDescriptorPoolCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+                    .maxSets = 2 * capacity,
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device, &info, nullptr, &handle),
+                    "Failed to create shared mesh material pool"
+                );
+            }
+            ~MaterialDescriptorPool() noexcept
+            {
+                vkDestroyDescriptorPool(device, handle, nullptr);
+            }
+        };
+
+        struct Material {
             VulkanSceneCompletion last_use{};
             uint64_t upload_completion = 0;
             uint64_t recording = 0;
@@ -591,21 +1255,38 @@ namespace RelayCore::render
             std::weak_ptr<const CpuRgbaTextureData> mr_source, occlusion_source, emissive_source;
             VulkanTexture texture, normal_texture, mr_texture, occlusion_texture, emissive_texture;
             VulkanBuffer surface_data;
-            VkDescriptorPool pool = VK_NULL_HANDLE;
+            std::optional<uint32_t> table_index;
+            MaterialDescriptorPool* pool = nullptr;
             std::array<VkDescriptorSet, 2> sets{};
             explicit Material(const VulkanDevice& owner) :
-                device(owner.handle()), surface_data(
-                                            owner,
-                                            sizeof(glm::vec4) * 3,
-                                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                            VulkanBufferMemory::upload
-                                        )
+                surface_data(
+                    owner,
+                    sizeof(glm::vec4) * 3,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                )
             {}
             ~Material() noexcept
             {
                 if (pool)
-                    vkDestroyDescriptorPool(device, pool, nullptr);
+                {
+                    const auto result = vkFreeDescriptorSets(pool->device, pool->handle, 2, sets.data());
+                    if (result != VK_SUCCESS)
+                        log::error_noexcept("[renderer] Vulkan material descriptor shutdown failed", result);
+                    --pool->materials;
+                }
             }
+        };
+
+        struct BatchKey {
+            Mesh* geometry;
+            Material* surface;
+            uint32_t flags;
+            auto operator==(const BatchKey&) const -> bool = default;
+        };
+        struct DrawBatch {
+            BatchKey key;
+            uint32_t first_instance, count = 1;
         };
 
         struct Frame {
@@ -615,9 +1296,26 @@ namespace RelayCore::render
             VkCommandPool pool = VK_NULL_HANDLE;
             std::array<VkCommandBuffer, 3> buffers{};
             VkCommandBuffer commands = VK_NULL_HANDLE;
+            VkCommandBuffer culling_commands = VK_NULL_HANDLE;
+            bool culling_pending = false;
             size_t command_index = 0;
             VulkanSceneCompletion pending{};
+            VkQueryPool resolution_queries = VK_NULL_HANDLE;
+            bool resolution_sample_pending = false;
+            float rendered_scale = 1;
             std::unique_ptr<MeshTarget> target;
+            std::unique_ptr<InputTarget> inputs;
+            VulkanBuffer instances, indirect_commands;
+            VulkanBuffer visible_instances, culling_batches, gpu_commands;
+            std::vector<CullBatch> cull_records;
+            std::vector<DrawInstance> instance_records;
+            std::vector<VkDrawIndexedIndirectCommand> draw_commands;
+            std::vector<DrawBatch> batches;
+            VulkanDrawUsage draw_usage;
+            VulkanBuffer previous_draws;
+            std::vector<PreviousDraw> previous_records;
+            std::vector<size_t> opaque_order;
+            std::vector<glm::vec2> opaque_depth_ranges;
             std::vector<std::shared_ptr<const void>> ui_resources;
             explicit Frame(const VulkanDevice& owner) :
                 device(owner), profiler(owner, "RelayCore Vulkan scene"), material_data(
@@ -653,6 +1351,8 @@ namespace RelayCore::render
             {}
             ~Frame() noexcept
             {
+                if (resolution_queries)
+                    vkDestroyQueryPool(device.handle(), resolution_queries, nullptr);
                 if (pool)
                     vkDestroyCommandPool(device.handle(), pool, nullptr);
             }
@@ -671,16 +1371,40 @@ namespace RelayCore::render
         MaterialParameters material_parameters{};
         std::array<VkDescriptorSet, 2> shadow_previews{};
         ColorPipelineMode color_pipeline = ColorPipelineMode::legacy_gamma;
+        VulkanDepthFormats depth_formats{};
         SpotLight spot{};
         ShadowParameters shadow_parameters{};
         std::array<std::unique_ptr<ShadowImage>, 3> shadow_maps;
         std::unique_ptr<ShadowImage> point_shadows;
         std::array<VkPipeline, 3> shadow_pipelines{};
+        struct PreparedShadowCaster {
+            const RenderItem* item;
+            glm::vec4 sphere;
+        };
+        std::vector<PreparedShadowCaster> shadow_bounds;
+        std::vector<const RenderItem*> shadow_caster_items;
+        std::vector<ShadowCaster> shadow_caster_keys;
         Texture2D atlas_source;
         std::unordered_map<const CpuColorMeshData*, Mesh> meshes;
+        std::vector<std::unique_ptr<MaterialDescriptorPool>> material_pools;
         std::unordered_map<MaterialKey, std::unique_ptr<Material>, MaterialKeyHash> materials;
+        std::unique_ptr<VulkanMaterialTable> material_table;
+        Material* global_material = nullptr;
+        bool mesh_shaders = false, mesh_pipeline_bound = false;
+        VkPipeline meshlet_pipeline = VK_NULL_HANDLE;
+        VkDescriptorSetLayout meshlet_layout = VK_NULL_HANDLE, empty_table_layout = VK_NULL_HANDLE;
+        PFN_vkCmdDrawMeshTasksEXT cmd_mesh_tasks = nullptr;
+        VkShaderStageFlags draw_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        std::vector<RetiredMeshlet> retired_meshlets;
         VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout instance_layout = VK_NULL_HANDLE;
+        VkDescriptorPool instance_pool = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, 2> instance_sets{};
+        VulkanSceneSubmission scene_submission = VulkanSceneSubmission::instanced;
+        uint32_t max_instance_records = 0, instance_storage_limit = 0;
+        std::unique_ptr<SceneCulling> culling;
+        std::unique_ptr<DepthHierarchy> depth_hierarchy;
         std::array<VkPipeline, 3> pipelines{};
         uint64_t recording = 0;
         std::vector<Mesh*> used_meshes;
@@ -688,6 +1412,28 @@ namespace RelayCore::render
         std::vector<std::unique_ptr<Material>> retired_materials;
         uint32_t max_target_width = 0, max_target_height = 0;
         std::unique_ptr<ToneMapping> tone_mapping;
+        VkFormat ao_format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        PassInputView input_view = PassInputView::off;
+        VkDescriptorSetLayout input_layout = VK_NULL_HANDLE;
+        VkDescriptorPool input_pool = VK_NULL_HANDLE;
+        VkSampler input_sampler = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, 4> input_sets{};
+        std::array<VkPipeline, 4> input_pipelines{};
+        VkPipeline ao_pipeline = VK_NULL_HANDLE, temporal_pipeline = VK_NULL_HANDLE;
+        VkPipeline gi_pipeline = VK_NULL_HANDLE, lens_pipeline = VK_NULL_HANDLE, reconstruct_pipeline = VK_NULL_HANDLE;
+        std::filesystem::path shader_directory;
+        glm::mat4 previous_projection{1};
+        glm::mat4 current_view_projection{1};
+        glm::vec2 jitter_uv{}, previous_jitter_uv{};
+        glm::mat4 previous_unjittered_view_projection{1};
+        uint32_t jitter_index = 0;
+        RenderResolution resolution;
+        float gpu_scene_ms = 0, timestamp_period = 0;
+        uint32_t timestamp_bits = 0;
+        VkExtent2D history_extent{};
+        float previous_exposure = 0;
+        bool history_valid = false, frame_history_valid = false;
+        size_t history_slot = 0;
 
         std::array<Frame, 2> frames;
         size_t frame_index = 0;
@@ -717,6 +1463,33 @@ namespace RelayCore::render
                 RELAYCORE_PROFILE_ZONE_N("Vulkan scene fence");
                 submissions.wait(slot.pending);
                 slot.pending = {};
+                if (slot.resolution_sample_pending)
+                {
+                    std::array<uint64_t, 2> times{};
+                    require_mesh_vk(
+                        vkGetQueryPoolResults(
+                            device.handle(),
+                            slot.resolution_queries,
+                            0,
+                            2,
+                            sizeof(times),
+                            times.data(),
+                            sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT
+                        ),
+                        "Completed scene resolution timestamps"
+                    );
+                    const auto mask = timestamp_bits == 64 ? std::numeric_limits<uint64_t>::max()
+                                                           : (uint64_t{1} << timestamp_bits) - 1;
+                    gpu_scene_ms = float((times[1] - times[0]) & mask) * timestamp_period / 1e6F;
+                    resolution.update(
+                        gpu_scene_ms,
+                        slot.rendered_scale,
+                        renderer_config.render_scale,
+                        renderer_config.dynamic_resolution_target_ms
+                    );
+                    slot.resolution_sample_pending = false;
+                }
                 slot.profiler.collect();
             }
             slot.ui_resources.clear();
@@ -734,6 +1507,7 @@ namespace RelayCore::render
             wait_frame(slot);
             require_mesh_vk(vkResetCommandPool(device.handle(), slot.pool, 0), "Failed to reset scene slot");
             slot.command_index = 0;
+            slot.culling_pending = false;
         }
         ~State() noexcept
         {
@@ -744,13 +1518,20 @@ namespace RelayCore::render
                 uploads.wait(uploads.dependency().value);
             } catch (const std::exception& error)
             {
-                std::fprintf(stderr, "Vulkan mesh shutdown failed: %s\n", error.what());
+                log::error_noexcept("[renderer] Vulkan mesh shutdown failed", error.what());
             }
             for (auto preview : shadow_previews)
                 if (preview)
                     ImGui_ImplVulkan_RemoveTexture(preview);
             materials.clear();
             retired_materials.clear();
+            retired_meshlets.clear();
+            if (meshlet_pipeline)
+                vkDestroyPipeline(device.handle(), meshlet_pipeline, nullptr);
+            if (meshlet_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), meshlet_layout, nullptr);
+            if (empty_table_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), empty_table_layout, nullptr);
             for (const auto pipeline : pipelines)
                 if (pipeline)
                     vkDestroyPipeline(device.handle(), pipeline, nullptr);
@@ -762,12 +1543,57 @@ namespace RelayCore::render
             if (descriptor_layout)
                 vkDestroyDescriptorSetLayout(device.handle(), descriptor_layout, nullptr);
             tone_mapping.reset();
+            if (reconstruct_pipeline)
+                vkDestroyPipeline(device.handle(), reconstruct_pipeline, nullptr);
+            if (gi_pipeline)
+                vkDestroyPipeline(device.handle(), gi_pipeline, nullptr);
+            if (lens_pipeline)
+                vkDestroyPipeline(device.handle(), lens_pipeline, nullptr);
+            if (temporal_pipeline)
+                vkDestroyPipeline(device.handle(), temporal_pipeline, nullptr);
+            if (ao_pipeline)
+                vkDestroyPipeline(device.handle(), ao_pipeline, nullptr);
+            for (auto pipeline : input_pipelines)
+                if (pipeline)
+                    vkDestroyPipeline(device.handle(), pipeline, nullptr);
+            if (instance_pool)
+                vkDestroyDescriptorPool(device.handle(), instance_pool, nullptr);
+            if (instance_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), instance_layout, nullptr);
+            if (input_pool)
+                vkDestroyDescriptorPool(device.handle(), input_pool, nullptr);
+            if (input_sampler)
+                vkDestroySampler(device.handle(), input_sampler, nullptr);
+            if (input_layout)
+                vkDestroyDescriptorSetLayout(device.handle(), input_layout, nullptr);
         }
 
         auto display_format() const noexcept -> VkFormat
         {
             return color_pipeline == ColorPipelineMode::hardware_srgb ? VK_FORMAT_R8G8B8A8_SRGB
                                                                       : VK_FORMAT_R8G8B8A8_UNORM;
+        }
+
+        auto needs_inputs() const noexcept -> bool
+        {
+            return (input_view != PassInputView::off && input_view != PassInputView::volume_transmittance)
+                   || renderer_config.ssao_enabled || renderer_config.ssr_enabled || renderer_config.taa_enabled
+                   || renderer_config.ssgi_quality || renderer_config.dof_quality
+                   || renderer_config.motion_blur_quality;
+        }
+
+        auto resolved_source() -> MeshImage&
+        {
+            return renderer_config.taa_enabled && input_view != PassInputView::temporal_source
+                       ? *frame().inputs->temporal
+                       : *frame().target->hdr_scene;
+        }
+
+        auto tone_source() -> MeshImage&
+        {
+            if (renderer_config.dof_quality || renderer_config.motion_blur_quality)
+                return *frame().inputs->lens;
+            return resolved_source();
         }
 
         auto scene_format() const noexcept -> VkFormat
@@ -780,19 +1606,99 @@ namespace RelayCore::render
             const CpuRgbaTextureData& atlas,
             const TextureEncoding encoding,
             const RendererConfig& config,
-            const ColorPipelineMode pipeline
+            const ColorPipelineMode pipeline,
+            const VulkanDepthFormats preferred_depth
         )
         {
             renderer_config = config;
+            if (config.descriptor_indexing && device.capabilities().indexed_material_capacity)
+            {
+                material_table = std::make_unique<VulkanMaterialTable>(device);
+                material_table->initialize(device.capabilities().indexed_material_capacity);
+            }
+            log::debug(
+                "[renderer] Vulkan scene materials: {}",
+                material_table ? "descriptor indexing" : "pooled descriptor sets"
+            );
+            mesh_shaders = config.mesh_shaders && device.capabilities().mesh_dispatch_total != 0;
+            if (mesh_shaders)
+            {
+                draw_stages |= VK_SHADER_STAGE_MESH_BIT_EXT;
+                cmd_mesh_tasks = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
+                    vkGetDeviceProcAddr(device.handle(), "vkCmdDrawMeshTasksEXT")
+                );
+                if (!cmd_mesh_tasks)
+                    throw std::runtime_error("Enabled VK_EXT_mesh_shader has no vkCmdDrawMeshTasksEXT dispatch");
+                std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+                for (uint32_t i = 0; i < bindings.size(); ++i)
+                    bindings[i] = {i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_MESH_BIT_EXT, nullptr};
+                const VkDescriptorSetLayoutCreateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = uint32_t(bindings.size()),
+                    .pBindings = bindings.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorSetLayout(device.handle(), &info, nullptr, &meshlet_layout),
+                    "Meshlet descriptor layout"
+                );
+                if (!material_table)
+                {
+                    const VkDescriptorSetLayoutCreateInfo empty{
+                        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+                    };
+                    require_mesh_vk(
+                        vkCreateDescriptorSetLayout(device.handle(), &empty, nullptr, &empty_table_layout),
+                        "Empty material table layout"
+                    );
+                }
+            }
+            log::debug(
+                "[renderer] Vulkan world geometry: {}",
+                mesh_shaders ? "EXT meshlets (opaque camera/source passes)" : "indexed vertices"
+            );
+            resolution.reset(config.render_scale);
             color_pipeline = pipeline;
+            if (config.dynamic_resolution_enabled)
+            {
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+                timestamp_period = properties.limits.timestampPeriod;
+                uint32_t count = 0;
+                vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device(), &count, nullptr);
+                std::vector<VkQueueFamilyProperties> families(count);
+                vkGetPhysicalDeviceQueueFamilyProperties(device.physical_device(), &count, families.data());
+                timestamp_bits = families[device.capabilities().graphics_queue_family].timestampValidBits;
+                if (!timestamp_bits)
+                    throw std::runtime_error(
+                        "Dynamic resolution requires graphics GPU timestamps; disable render.dynamic_resolution_enabled"
+                    );
+                const VkQueryPoolCreateInfo query_info{
+                    .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                    .queryType = VK_QUERY_TYPE_TIMESTAMP,
+                    .queryCount = 2
+                };
+                for (auto& slot : frames)
+                    require_mesh_vk(
+                        vkCreateQueryPool(device.handle(), &query_info, nullptr, &slot.resolution_queries),
+                        "Dynamic resolution timestamp pool"
+                    );
+            }
             if (config.msaa_samples != 1 && config.msaa_samples != 2 && config.msaa_samples != 4)
                 throw std::invalid_argument("Vulkan render.msaa_samples must be 1, 2 or 4");
             const auto samples = static_cast<VkSampleCountFlagBits>(config.msaa_samples);
-            for (const auto format : {scene_format(), VK_FORMAT_D32_SFLOAT})
+            depth_formats.scene = device.select_depth_format(false, samples, preferred_depth.scene);
+            depth_formats.shadow = device.select_depth_format(true, VK_SAMPLE_COUNT_1_BIT, preferred_depth.shadow);
+            log::debug(
+                "[renderer] Vulkan depth formats: scene={} shadow={} samples={}",
+                static_cast<int>(depth_formats.scene),
+                static_cast<int>(depth_formats.shadow),
+                config.msaa_samples
+            );
+            for (const auto format : {scene_format(), depth_formats.scene})
             {
                 VkImageFormatProperties support{};
-                const auto usage = format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-                                                                  : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                const auto usage = format == depth_formats.scene ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                                                 : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
                 require_mesh_vk(
                     vkGetPhysicalDeviceImageFormatProperties(
                         device.physical_device(),
@@ -810,14 +1716,48 @@ namespace RelayCore::render
                         "GPU does not support render.msaa_samples for scene color/depth; use 1 or 2"
                     );
             }
+            if (config.ssao_enabled)
+            {
+                VkImageFormatProperties support{};
+                const auto result = vkGetPhysicalDeviceImageFormatProperties(
+                    device.physical_device(),
+                    VK_FORMAT_R32_SFLOAT,
+                    VK_IMAGE_TYPE_2D,
+                    VK_IMAGE_TILING_OPTIMAL,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                    0,
+                    &support
+                );
+                if (result == VK_SUCCESS)
+                    ao_format = VK_FORMAT_R32_SFLOAT;
+                else if (result != VK_ERROR_FORMAT_NOT_SUPPORTED)
+                    require_mesh_vk(result, "SSAO scalar attachment format support");
+            }
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
             max_target_width = std::min(properties.limits.maxFramebufferWidth, properties.limits.maxImageDimension2D);
             max_target_height = std::min(properties.limits.maxFramebufferHeight, properties.limits.maxImageDimension2D);
-            VkFormatProperties depth_properties{};
-            vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_D32_SFLOAT, &depth_properties);
-            if (!(depth_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
-                throw std::runtime_error("Vulkan mesh renderer requires D32_SFLOAT depth attachments");
+            instance_storage_limit = properties.limits.maxStorageBufferRange / sizeof(DrawInstance);
+            bool culling_available = device.capabilities().graphics_compute
+                                     && properties.limits.maxComputeWorkGroupInvocations >= 64
+                                     && properties.limits.maxComputeWorkGroupSize[0] >= 64
+                                     && properties.limits.maxPerStageDescriptorStorageBuffers >= 4;
+            if (const auto* override = std::getenv("RELAYCORE_VULKAN_DISABLE_GPU_CULLING"))
+            {
+                const std::string_view value{override};
+                if (value != "0" && value != "1")
+                    throw std::invalid_argument("RELAYCORE_VULKAN_DISABLE_GPU_CULLING must be 0 or 1");
+                culling_available = culling_available && value != "1";
+            }
+            if (culling_available)
+            {
+                culling = std::make_unique<SceneCulling>(device, properties.limits.maxComputeWorkGroupCount[0]);
+                culling->initialize();
+            }
+            log::debug(
+                "[renderer] Vulkan scene GPU culling: {}",
+                culling ? "available (graphics queue, stable compaction)" : "unavailable; CPU indirect fallback"
+            );
             VkFormatProperties color_properties{};
             vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R8G8B8A8_UNORM, &color_properties);
             constexpr auto color_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
@@ -882,17 +1822,14 @@ namespace RelayCore::render
                     throw std::invalid_argument("Vulkan shadow resolution exceeds the device framebuffer/image limits");
                 shadow_maps[i] = std::make_unique<ShadowImage>(device, VkExtent2D{size, size}, 1);
                 shadow_maps[i]->initialize(
-                    VK_FORMAT_X8_D24_UNORM_PACK32,
-                    i == 0   ? "Shadow near cascade D24"
-                    : i == 1 ? "Shadow far cascade D24"
-                             : "Shadow spot D24"
+                    depth_formats.shadow,
+                    i == 0   ? "Shadow near cascade depth"
+                    : i == 1 ? "Shadow far cascade depth"
+                             : "Shadow spot depth"
                 );
             }
             point_shadows = std::make_unique<ShadowImage>(device, VkExtent2D{512, 512}, 48);
-            point_shadows->initialize(
-                VK_FORMAT_X8_D24_UNORM_PACK32,
-                "Shadow point faces D24 (eight lights, six faces)"
-            );
+            point_shadows->initialize(depth_formats.shadow, "Shadow point faces depth (eight lights, six faces)");
             atlas_source.initialize_rgba(atlas.width, atlas.height, atlas.pixels, encoding);
             const std::array bindings{
                 VkDescriptorSetLayoutBinding{
@@ -1024,15 +1961,71 @@ namespace RelayCore::render
                 vkCreateDescriptorSetLayout(device.handle(), &descriptor_info, nullptr, &descriptor_layout),
                 "Failed to create Vulkan mesh descriptor layout"
             );
-            const VkPushConstantRange push{
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(DrawPush)
+            std::array<VkDescriptorSetLayoutBinding, 16> input_bindings{};
+            input_bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+            for (uint32_t i = 1; i < input_bindings.size(); ++i)
+                input_bindings[i] =
+                    {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+            input_bindings[13] = {13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+            const VkDescriptorSetLayoutCreateInfo input_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = static_cast<uint32_t>(input_bindings.size()),
+                .pBindings = input_bindings.data()
             };
+            require_mesh_vk(
+                vkCreateDescriptorSetLayout(device.handle(), &input_info, nullptr, &input_layout),
+                "Pass input descriptor layout"
+            );
+            const VkDescriptorSetLayoutBinding instance_binding{
+                0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1,
+                VkShaderStageFlags{VK_SHADER_STAGE_VERTEX_BIT} | (mesh_shaders ? VK_SHADER_STAGE_MESH_BIT_EXT : 0U),
+                nullptr
+            };
+            const VkDescriptorSetLayoutCreateInfo instance_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = &instance_binding
+            };
+            require_mesh_vk(
+                vkCreateDescriptorSetLayout(device.handle(), &instance_info, nullptr, &instance_layout),
+                "Scene instance descriptor layout"
+            );
+            const VkDescriptorPoolSize instance_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2};
+            const VkDescriptorPoolCreateInfo instance_pool_info{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .maxSets = 2,
+                .poolSizeCount = 1,
+                .pPoolSizes = &instance_size
+            };
+            require_mesh_vk(
+                vkCreateDescriptorPool(device.handle(), &instance_pool_info, nullptr, &instance_pool),
+                "Scene instance descriptor pool"
+            );
+            const std::array instance_layouts{instance_layout, instance_layout};
+            const VkDescriptorSetAllocateInfo instance_allocation{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = instance_pool,
+                .descriptorSetCount = 2,
+                .pSetLayouts = instance_layouts.data()
+            };
+            require_mesh_vk(
+                vkAllocateDescriptorSets(device.handle(), &instance_allocation, instance_sets.data()),
+                "Scene instance descriptor sets"
+            );
+            std::vector set_layouts{descriptor_layout, input_layout, instance_layout};
+            if (material_table)
+                set_layouts.push_back(material_table->layout());
+            else if (mesh_shaders)
+                set_layouts.push_back(empty_table_layout);
+            if (mesh_shaders)
+                set_layouts.push_back(meshlet_layout);
+            const VkPushConstantRange push{draw_stages, 0, sizeof(DrawPush)};
             const VkPipelineLayoutCreateInfo layout_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount = 1,
-                .pSetLayouts = &descriptor_layout,
+                .setLayoutCount = static_cast<uint32_t>(set_layouts.size()),
+                .pSetLayouts = set_layouts.data(),
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = &push,
             };
@@ -1060,34 +2053,112 @@ namespace RelayCore::render
                     vkAllocateCommandBuffers(device.handle(), &allocation, slot.buffers.data()),
                     "Failed to allocate scene slot commands"
                 );
+                auto culling_allocation = allocation;
+                culling_allocation.commandBufferCount = 1;
+                require_mesh_vk(
+                    vkAllocateCommandBuffers(device.handle(), &culling_allocation, &slot.culling_commands),
+                    "Failed to allocate scene culling commands"
+                );
+            }
+            if (config.bloom_enabled)
+            {
+                VkFormatProperties bloom_properties{};
+                vkGetPhysicalDeviceFormatProperties(
+                    device.physical_device(),
+                    VK_FORMAT_R16G16B16A16_SFLOAT,
+                    &bloom_properties
+                );
+                constexpr auto required = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT
+                                          | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+                if ((bloom_properties.optimalTilingFeatures & required) != required)
+                    throw std::runtime_error("Bloom requires FP16 linear filtering/blits; disable render.bloom_enabled"
+                    );
             }
             if (config.hdr_enabled)
             {
-                tone_mapping = std::make_unique<ToneMapping>(device.handle());
+                tone_mapping = std::make_unique<ToneMapping>(device);
                 tone_mapping->initialize();
             }
         }
 
-        auto
-        create_pipeline(const std::filesystem::path& directory, const RenderPass pass, const int shadow_kind = -1) const
-            -> VkPipeline
+        auto create_pipeline(
+            const std::filesystem::path& directory,
+            const RenderPass pass,
+            const int shadow_kind = -1,
+            const bool mesh_shader = false
+        ) const -> VkPipeline
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan mesh pipeline creation");
             MeshShaders shaders{device.handle()};
-            const auto prefix = shadow_kind < 0 ? "mesh" : shadow_kind == 2 ? "point_shadow" : "shadow";
-            shaders.vertex = shaders.load(directory / (std::string(prefix) + ".vert.spv"), "vertex_main");
-            shaders.fragment = shaders.load(directory / (std::string(prefix) + ".frag.spv"), "fragment_main");
+            const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, temporal = shadow_kind == -5;
+            const bool gi = shadow_kind == -6, lens = shadow_kind == -7, reconstruct = shadow_kind == -8;
+            const bool advanced = gi || lens || reconstruct;
+            const bool debug_inputs = shadow_kind == -3 || ao || temporal || advanced;
+            const auto prefix = advanced                 ? "advanced"
+                                : temporal               ? "temporal"
+                                : inputs || debug_inputs ? "pass_inputs"
+                                : shadow_kind < 0        ? "mesh"
+                                : shadow_kind == 2       ? "point_shadow"
+                                                         : "shadow";
+            const auto vertex_entry = mesh_shader    ? "meshlet_main"
+                                      : advanced     ? "advanced_vertex"
+                                      : temporal     ? "temporal_vertex"
+                                      : inputs       ? "input_vertex"
+                                      : ao           ? "ao_vertex"
+                                      : debug_inputs ? "debug_vertex"
+                                                     : "vertex_main";
+            const auto fragment_entry = reconstruct    ? "reconstruct_fragment"
+                                        : gi           ? "gi_fragment"
+                                        : lens         ? "lens_fragment"
+                                        : temporal     ? "temporal_fragment"
+                                        : inputs       ? "input_fragment"
+                                        : ao           ? "ao_fragment"
+                                        : debug_inputs ? "debug_fragment"
+                                                       : "fragment_main";
+            shaders.vertex = shaders.load(
+                mesh_shader ? directory / (material_table ? "meshlets.mesh.indexed.spv" : "meshlets.mesh.spv")
+                            : directory
+                                  / (std::string(prefix) + "."
+                                     + (advanced                 ? "vert"
+                                        : inputs || debug_inputs ? vertex_entry
+                                                                 : "vert")
+                                     + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
+                vertex_entry
+            );
+            shaders.fragment = shaders.load(
+                directory
+                    / (std::string(
+                           advanced ? (reconstruct ? "advanced_reconstruct"
+                                       : gi        ? "advanced_gi"
+                                                   : "advanced_lens")
+                           : shadow_kind == -1
+                                   && (renderer_config.ssao_enabled || renderer_config.ssr_enabled
+                                       || renderer_config.ssgi_quality || renderer_config.volumetrics_enabled)
+                               ? (renderer_config.ssao_enabled || renderer_config.ssr_enabled
+                                          || renderer_config.ssgi_quality
+                                      ? "mesh_effects"
+                                      : "mesh_volume")
+                               : prefix
+                       )
+                       + "."
+                       + (advanced                 ? "frag"
+                          : inputs || debug_inputs ? fragment_entry
+                                                   : "frag")
+                       + (material_table && (shadow_kind == -1 || inputs) ? ".indexed.spv" : ".spv")),
+                fragment_entry
+            );
             const std::array stages{
                 VkPipelineShaderStageCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .stage = mesh_shader ? VK_SHADER_STAGE_MESH_BIT_EXT : VK_SHADER_STAGE_VERTEX_BIT,
                     .module = shaders.vertex,
-                    .pName = "vertex_main"
+                    .pName = vertex_entry
                 },
                 VkPipelineShaderStageCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
                     .module = shaders.fragment,
-                    .pName = "fragment_main"
+                    .pName = fragment_entry
                 },
             };
             const VkVertexInputBindingDescription binding{0, sizeof(ColorVertex), VK_VERTEX_INPUT_RATE_VERTEX};
@@ -1099,12 +2170,16 @@ namespace RelayCore::render
                 VkVertexInputAttributeDescription{4, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ColorVertex, uv)},
                 VkVertexInputAttributeDescription{5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(ColorVertex, tangent)},
             };
+            const std::array input_attributes{attributes[0], attributes[2], attributes[4], attributes[5]};
             const VkPipelineVertexInputStateCreateInfo vertex_info{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-                .vertexBindingDescriptionCount = 1,
+                .vertexBindingDescriptionCount = debug_inputs ? 0u : 1u,
                 .pVertexBindingDescriptions = &binding,
-                .vertexAttributeDescriptionCount = shadow_kind < 0 ? static_cast<uint32_t>(attributes.size()) : 1u,
-                .pVertexAttributeDescriptions = attributes.data(),
+                .vertexAttributeDescriptionCount = debug_inputs      ? 0u
+                                                   : inputs          ? static_cast<uint32_t>(input_attributes.size())
+                                                   : shadow_kind < 0 ? static_cast<uint32_t>(attributes.size())
+                                                                     : 1u,
+                .pVertexAttributeDescriptions = inputs ? input_attributes.data() : attributes.data(),
             };
             const VkPipelineInputAssemblyStateCreateInfo assembly{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -1118,7 +2193,8 @@ namespace RelayCore::render
             const VkPipelineRasterizationStateCreateInfo raster{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                 .polygonMode = VK_POLYGON_MODE_FILL,
-                .cullMode = shadow_kind == 0                                ? VkCullModeFlags{VK_CULL_MODE_FRONT_BIT}
+                .cullMode = debug_inputs                                    ? VkCullModeFlags{VK_CULL_MODE_NONE}
+                            : shadow_kind == 0                              ? VkCullModeFlags{VK_CULL_MODE_FRONT_BIT}
                             : shadow_kind > 0 || pass == RenderPass::Opaque ? VkCullModeFlags{VK_CULL_MODE_BACK_BIT}
                                                                             : VkCullModeFlags{VK_CULL_MODE_NONE},
                 .frontFace = shadow_kind < 0 ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE,
@@ -1126,18 +2202,18 @@ namespace RelayCore::render
             };
             const VkPipelineMultisampleStateCreateInfo multisample{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                .rasterizationSamples = shadow_kind < 0
+                .rasterizationSamples = shadow_kind == -1
                                             ? static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
                                             : VK_SAMPLE_COUNT_1_BIT,
             };
             const VkPipelineDepthStencilStateCreateInfo depth{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-                .depthTestEnable = VK_TRUE,
-                .depthWriteEnable = pass == RenderPass::Opaque ? VK_TRUE : VK_FALSE,
+                .depthTestEnable = debug_inputs ? VK_FALSE : VK_TRUE,
+                .depthWriteEnable = !debug_inputs && pass == RenderPass::Opaque ? VK_TRUE : VK_FALSE,
                 .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
             };
             const VkPipelineColorBlendAttachmentState blend_attachment{
-                .blendEnable = pass == RenderPass::Opaque ? VK_FALSE : VK_TRUE,
+                .blendEnable = pass == RenderPass::Opaque || inputs ? VK_FALSE : VK_TRUE,
                 .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
                 .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
                 .colorBlendOp = VK_BLEND_OP_ADD,
@@ -1147,10 +2223,13 @@ namespace RelayCore::render
                 .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT
                                   | VK_COLOR_COMPONENT_A_BIT,
             };
+            const std::array blend_attachments{blend_attachment, blend_attachment};
             const VkPipelineColorBlendStateCreateInfo blend{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                .attachmentCount = shadow_kind < 0 ? 1u : 0u,
-                .pAttachments = shadow_kind < 0 ? &blend_attachment : nullptr,
+                .attachmentCount = inputs            ? 2u
+                                   : shadow_kind < 0 ? 1u
+                                                     : 0u,
+                .pAttachments = shadow_kind < 0 ? blend_attachments.data() : nullptr,
             };
             const std::array dynamics{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             const VkPipelineDynamicStateCreateInfo dynamic{
@@ -1158,20 +2237,30 @@ namespace RelayCore::render
                 .dynamicStateCount = static_cast<uint32_t>(dynamics.size()),
                 .pDynamicStates = dynamics.data(),
             };
-            const VkFormat color = scene_format();
+            const std::array colors{
+                inputs || reconstruct                    ? VK_FORMAT_R32G32B32A32_SFLOAT
+                : ao                                     ? ao_format
+                : debug_inputs && !temporal && !advanced ? VK_FORMAT_R8G8B8A8_UNORM
+                                                         : scene_format(),
+                VK_FORMAT_R32G32B32A32_SFLOAT
+            };
             const VkPipelineRenderingCreateInfo rendering{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                .colorAttachmentCount = shadow_kind < 0 ? 1u : 0u,
-                .pColorAttachmentFormats = shadow_kind < 0 ? &color : nullptr,
-                .depthAttachmentFormat = shadow_kind < 0 ? VK_FORMAT_D32_SFLOAT : VK_FORMAT_X8_D24_UNORM_PACK32,
+                .colorAttachmentCount = inputs            ? 2u
+                                        : shadow_kind < 0 ? 1u
+                                                          : 0u,
+                .pColorAttachmentFormats = shadow_kind < 0 ? colors.data() : nullptr,
+                .depthAttachmentFormat = debug_inputs      ? VK_FORMAT_UNDEFINED
+                                         : shadow_kind < 0 ? depth_formats.scene
+                                                           : depth_formats.shadow,
             };
             const VkGraphicsPipelineCreateInfo info{
                 .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
                 .pNext = &rendering,
                 .stageCount = static_cast<uint32_t>(stages.size()),
                 .pStages = stages.data(),
-                .pVertexInputState = &vertex_info,
-                .pInputAssemblyState = &assembly,
+                .pVertexInputState = mesh_shader ? nullptr : &vertex_info,
+                .pInputAssemblyState = mesh_shader ? nullptr : &assembly,
                 .pViewportState = &viewport,
                 .pRasterizationState = &raster,
                 .pMultisampleState = &multisample,
@@ -1182,7 +2271,7 @@ namespace RelayCore::render
             };
             VkPipeline replacement = VK_NULL_HANDLE;
             const auto result =
-                vkCreateGraphicsPipelines(device.handle(), VK_NULL_HANDLE, 1, &info, nullptr, &replacement);
+                vkCreateGraphicsPipelines(device.handle(), device.pipeline_cache(), 1, &info, nullptr, &replacement);
             if (result != VK_SUCCESS)
             {
                 if (replacement)
@@ -1205,11 +2294,15 @@ namespace RelayCore::render
                 return found->second;
             auto entry = meshes.emplace(cpu.get(), Mesh{cpu, {}, {}, static_cast<uint32_t>(cpu->indices.size())}).first;
             auto& result = entry->second;
+            result.mins = resource.bounds_min();
+            result.maxs = resource.bounds_max();
             try
             {
                 auto vertices = uploads.upload_mesh_buffer(
                     std::as_bytes(std::span{cpu->vertices}),
-                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                    mesh_shaders
+                        ? VkBufferUsageFlags{VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT}
+                        : VkBufferUsageFlags{VK_BUFFER_USAGE_VERTEX_BUFFER_BIT}
                 );
                 result.vertices = std::move(vertices.buffer);
                 auto indices = uploads.upload_mesh_buffer(
@@ -1217,7 +2310,16 @@ namespace RelayCore::render
                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT
                 );
                 result.indices = std::move(indices.buffer);
-                result.upload_completion = indices.completion;
+                if (mesh_shaders)
+                {
+                    std::optional<MeshletData> generated;
+                    if (cpu->meshlets.clusters.empty())
+                        generated = build_meshlets(*cpu);
+                    result.meshlets = std::make_unique<MeshletGeometry>(device);
+                    result.meshlets
+                        ->initialize(uploads, meshlet_layout, result.vertices, generated ? *generated : cpu->meshlets);
+                }
+                result.upload_completion = uploads.dependency().value;
                 return result;
             } catch (...)
             {
@@ -1377,31 +2479,31 @@ namespace RelayCore::render
                     glm::vec4{emissive_factor, emissive ? 1.F : 0.F}
                 };
                 result->surface_data.write(std::as_bytes(std::span{surface_parameters}));
-                const std::array sizes{
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 14},
-                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20}
-                };
-                const VkDescriptorPoolCreateInfo pool_info{
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                    .maxSets = 2,
-                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
-                    .pPoolSizes = sizes.data(),
-                };
-                require_mesh_vk(
-                    vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &result->pool),
-                    "Failed to create mesh material pool"
-                );
-                const std::array layouts{descriptor_layout, descriptor_layout};
-                const VkDescriptorSetAllocateInfo allocation{
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                    .descriptorPool = result->pool,
-                    .descriptorSetCount = 2,
-                    .pSetLayouts = layouts.data(),
-                };
-                require_mesh_vk(
-                    vkAllocateDescriptorSets(device.handle(), &allocation, result->sets.data()),
-                    "Failed to allocate mesh material descriptors"
-                );
+                if (material_table)
+                {
+                    const auto image = [](const VulkanTexture& texture) {
+                        return VkDescriptorImageInfo{
+                            texture.sampler(),
+                            texture.view(),
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        };
+                    };
+                    result->table_index = material_table->allocate(
+                        {image(result->texture),
+                         image(normal ? result->normal_texture : result->texture),
+                         image(mr_map ? result->mr_texture : result->texture),
+                         image(occlusion ? result->occlusion_texture : result->texture),
+                         image(emissive ? result->emissive_texture : result->texture)},
+                        surface_parameters
+                    );
+                    if (*result->table_index != 0)
+                    {
+                        result->upload_completion = uploads.dependency().value;
+                        return *result;
+                    }
+                    global_material = result;
+                }
+                allocate_material_descriptors(*result);
                 for (size_t slot = 0; slot < frames.size(); ++slot)
                 {
                     const VkDescriptorBufferInfo buffer{
@@ -1626,9 +2728,49 @@ namespace RelayCore::render
             } catch (...)
             {
                 uploads.wait(uploads.dependency().value);
+                if (result->table_index)
+                    material_table->release(*result->table_index);
+                if (global_material == result)
+                    global_material = nullptr;
                 materials.erase(entry);
                 throw;
             }
+        }
+
+        void allocate_material_descriptors(Material& material)
+        {
+            const std::array layouts{descriptor_layout, descriptor_layout};
+            const auto allocate = [&](MaterialDescriptorPool& pool) {
+                std::array<VkDescriptorSet, 2> sets{};
+                const VkDescriptorSetAllocateInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = pool.handle,
+                    .descriptorSetCount = static_cast<uint32_t>(sets.size()),
+                    .pSetLayouts = layouts.data()
+                };
+                const auto result = vkAllocateDescriptorSets(device.handle(), &info, sets.data());
+                if (result == VK_SUCCESS)
+                {
+                    material.sets = sets;
+                    material.pool = &pool;
+                    ++pool.materials;
+                }
+                return result;
+            };
+            for (auto& pool : material_pools)
+                if (pool->materials < MaterialDescriptorPool::capacity)
+                {
+                    const auto result = allocate(*pool);
+                    if (result == VK_SUCCESS)
+                        return;
+                    if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)
+                        require_mesh_vk(result, "Failed to allocate shared mesh material descriptors");
+                }
+            material_pools.push_back(std::make_unique<MaterialDescriptorPool>(device.handle()));
+            require_mesh_vk(
+                allocate(*material_pools.back()),
+                "Failed to allocate mesh material descriptors from a new pool"
+            );
         }
 
         void collect_retired_resources()
@@ -1636,14 +2778,27 @@ namespace RelayCore::render
             RELAYCORE_PROFILE_ZONE_N("Vulkan material retirement collect");
             const auto completed = submissions.completed();
             const auto uploaded = uploads.completed();
-            std::erase_if(retired_materials, [completed, uploaded](const auto& material) {
-                return material->last_use.value <= completed && material->upload_completion <= uploaded;
+            std::erase_if(retired_materials, [this, completed, uploaded](const auto& material) {
+                if (material->last_use.value > completed || material->upload_completion > uploaded)
+                    return false;
+                if (material->table_index)
+                    material_table->release(*material->table_index);
+                return true;
+            });
+            // Keep one reusable block; never reclaim a pool holding in-flight descriptors.
+            if (!material_pools.empty())
+                std::erase_if(material_pools, [first = material_pools.front().get()](const auto& pool) {
+                    return pool.get() != first && pool->materials == 0;
+                });
+            std::erase_if(retired_meshlets, [completed, uploaded](const auto& geometry) {
+                return geometry.completion <= completed && geometry.upload <= uploaded;
             });
             submissions.collect();
         }
 
         void retire_materials()
         {
+            global_material = nullptr;
             retired_materials.reserve(retired_materials.size() + materials.size());
             for (auto& [key, material] : materials)
                 retired_materials.push_back(std::move(material));
@@ -1669,6 +2824,8 @@ namespace RelayCore::render
                     uploads.retire(std::move(mesh.vertices), mesh.upload_completion);
                     uploads.retire(std::move(mesh.indices), mesh.upload_completion);
                 }
+                if (mesh.meshlets)
+                    retired_meshlets.push_back({mesh.last_use.value, mesh.upload_completion, std::move(mesh.meshlets)});
                 it = meshes.erase(it);
             }
             for (auto it = materials.begin(); it != materials.end();)
@@ -1709,6 +2866,8 @@ namespace RelayCore::render
 
         void prepare(const std::span<const RenderItem> items)
         {
+            if (material_table && !global_material)
+                static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
             for (const auto& item : items)
                 if (item.mesh)
                 {
@@ -1726,20 +2885,491 @@ namespace RelayCore::render
                     ));
                 }
         }
+        void prepare_draw_storage(const size_t scene_count, const size_t shadow_count)
+        {
+            // Color, pass inputs and reflection source; two directional + spot + all point faces.
+            const uint64_t shadow_passes =
+                (spot.enabled ? 1 : 0)
+                + (renderer_config.shadow_enabled ? 2 + 6 * std::min(lights.count.x, int(kMaxPointShadowLights)) : 0);
+            const uint64_t count =
+                std::max(uint64_t{1}, uint64_t(scene_count) * 3 + uint64_t(shadow_count) * shadow_passes);
+            if (count > UINT32_MAX || count > instance_storage_limit)
+                throw std::invalid_argument("Scene instance records exceed the device storage buffer limit");
+            max_instance_records = static_cast<uint32_t>(count);
+            auto& slot = frame();
+            slot.instance_records.clear();
+            slot.draw_commands.clear();
+            slot.cull_records.clear();
+            slot.draw_usage = {};
+            const VkDeviceSize bytes = count * sizeof(DrawInstance);
+            const bool replace_instances = slot.instances.size() < bytes;
+            if (replace_instances)
+                slot.instances =
+                    VulkanBuffer(device, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::upload);
+            if (scene_submission == VulkanSceneSubmission::indirect
+                && slot.indirect_commands.size() < count * sizeof(VkDrawIndexedIndirectCommand))
+                slot.indirect_commands = VulkanBuffer(
+                    device,
+                    count * sizeof(VkDrawIndexedIndirectCommand),
+                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                    VulkanBufferMemory::upload
+                );
+            const bool gpu = scene_submission == VulkanSceneSubmission::gpu_culled;
+            if (gpu)
+            {
+                if (slot.visible_instances.size() < bytes)
+                    slot.visible_instances =
+                        VulkanBuffer(device, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::device);
+                if (slot.culling_batches.size() < count * sizeof(CullBatch))
+                    slot.culling_batches = VulkanBuffer(
+                        device,
+                        count * sizeof(CullBatch),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                        VulkanBufferMemory::upload
+                    );
+                if (slot.gpu_commands.size() < count * sizeof(VkDrawIndexedIndirectCommand))
+                    slot.gpu_commands = VulkanBuffer(
+                        device,
+                        count * sizeof(VkDrawIndexedIndirectCommand),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+                            | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        VulkanBufferMemory::device
+                    );
+                const std::array buffers{
+                    VkDescriptorBufferInfo{slot.instances.handle(), 0, slot.instances.size()},
+                    VkDescriptorBufferInfo{slot.visible_instances.handle(), 0, slot.visible_instances.size()},
+                    VkDescriptorBufferInfo{slot.culling_batches.handle(), 0, slot.culling_batches.size()},
+                    VkDescriptorBufferInfo{slot.gpu_commands.handle(), 0, slot.gpu_commands.size()}
+                };
+                std::array<VkWriteDescriptorSet, 4> writes{};
+                for (uint32_t i = 0; i < writes.size(); ++i)
+                    writes[i] = {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = culling->sets[frame_index],
+                        .dstBinding = i,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .pBufferInfo = &buffers[i]
+                    };
+                vkUpdateDescriptorSets(
+                    device.handle(),
+                    static_cast<uint32_t>(writes.size()),
+                    writes.data(),
+                    0,
+                    nullptr
+                );
+            }
+            const auto& vertex_instances = gpu ? slot.visible_instances : slot.instances;
+            const VkDescriptorBufferInfo buffer{vertex_instances.handle(), 0, vertex_instances.size()};
+            const VkWriteDescriptorSet write{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance_sets[frame_index],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &buffer
+            };
+            vkUpdateDescriptorSets(device.handle(), 1, &write, 0, nullptr);
+        }
+
+        void record_culling()
+        {
+            auto& slot = frame();
+            if (!slot.cull_records.empty())
+                slot.culling_batches.write(std::as_bytes(std::span{slot.cull_records}));
+            const VkCommandBufferBeginInfo begin{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            };
+            require_mesh_vk(vkBeginCommandBuffer(slot.culling_commands, &begin), "Begin scene culling commands");
+            if (slot.resolution_queries)
+            {
+                vkCmdResetQueryPool(slot.culling_commands, slot.resolution_queries, 0, 2);
+                vkCmdWriteTimestamp2(
+                    slot.culling_commands,
+                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                    slot.resolution_queries,
+                    0
+                );
+            }
+            {
+                RELAYCORE_PROFILE_VK_ZONE(slot.profiler, slot.culling_commands, "Scene GPU culling");
+                if (!slot.cull_records.empty())
+                {
+                    vkCmdBindPipeline(slot.culling_commands, VK_PIPELINE_BIND_POINT_COMPUTE, culling->pipeline);
+                    vkCmdBindDescriptorSets(
+                        slot.culling_commands,
+                        VK_PIPELINE_BIND_POINT_COMPUTE,
+                        culling->layout,
+                        0,
+                        1,
+                        &culling->sets[frame_index],
+                        0,
+                        nullptr
+                    );
+                    const auto count = static_cast<uint32_t>(slot.cull_records.size());
+                    for (uint32_t first = 0; first < count;)
+                    {
+                        const auto groups = std::min(count - first, culling->max_dispatch_x);
+                        vkCmdPushConstants(
+                            slot.culling_commands,
+                            culling->layout,
+                            VK_SHADER_STAGE_COMPUTE_BIT,
+                            0,
+                            sizeof(first),
+                            &first
+                        );
+                        vkCmdDispatch(slot.culling_commands, groups, 1, 1);
+                        first += groups;
+                    }
+                    const VkMemoryBarrier2 barrier{
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                                        | VK_PIPELINE_STAGE_2_COPY_BIT,
+                        .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT
+                                         | VK_ACCESS_2_TRANSFER_READ_BIT
+                    };
+                    const VkDependencyInfo dependency{
+                        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                        .memoryBarrierCount = 1,
+                        .pMemoryBarriers = &barrier
+                    };
+                    vkCmdPipelineBarrier2(slot.culling_commands, &dependency);
+                }
+            }
+            require_mesh_vk(vkEndCommandBuffer(slot.culling_commands), "End scene culling commands");
+            slot.culling_pending = true;
+        }
+
+        void begin_batches()
+        {
+            frame().batches.clear();
+        }
+
+        static auto draw_instance(const RenderItem& item, const glm::mat4& mvp, const uint32_t correspondence)
+            -> DrawInstance
+        {
+            DrawInstance instance{.mvp = mvp, .correspondence = {correspondence, 0, 0, 0}};
+            for (int row = 0; row < 3; ++row)
+                for (int col = 0; col < 4; ++col)
+                    instance.model_rows[row][col] = item.model_matrix[col][row];
+            return instance;
+        }
+
+        void add_instance(
+            const RenderItem& item,
+            Mesh& geometry,
+            Material* surface,
+            const uint32_t flags,
+            const glm::mat4& mvp,
+            const uint32_t correspondence,
+            const bool group
+        )
+        {
+            auto& slot = frame();
+            if (slot.instance_records.size() >= max_instance_records)
+                throw std::logic_error("Scene instance recording exceeded its reserved pass count");
+            const auto first = static_cast<uint32_t>(slot.instance_records.size());
+            auto instance = draw_instance(item, mvp, correspondence);
+            if (material_table && surface)
+            {
+                instance.correspondence.y = *surface->table_index;
+                use(*surface);
+            }
+            slot.instance_records.push_back(instance);
+            const BatchKey key{&geometry, surface, flags};
+            // Preserve submission order even for equal-depth opaque surfaces; merge only adjacent compatible draws.
+            if (group && scene_submission != VulkanSceneSubmission::direct && !slot.batches.empty()
+                && slot.batches.back().key.geometry == key.geometry && slot.batches.back().key.flags == key.flags
+                && (slot.batches.back().key.surface == key.surface || (material_table && surface)))
+                ++slot.batches.back().count;
+            else
+                slot.batches.push_back({key, first});
+        }
+
+        void finish_batches()
+        {
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                2,
+                1,
+                &instance_sets[frame_index],
+                0,
+                nullptr
+            );
+        }
+
+        void draw_batch(const DrawBatch& batch, const uint32_t first_instance = 0, const bool cull = false)
+        {
+            auto& slot = frame();
+            auto& geometry = *batch.key.geometry;
+            use(geometry);
+            const auto vertex = geometry.vertices.handle();
+            constexpr VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(slot.commands, 0, 1, &vertex, &offset);
+            vkCmdBindIndexBuffer(slot.commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
+            ++slot.draw_usage.draws;
+            slot.draw_usage.instances += batch.count;
+            // Base instance is supplied in push constants, keeping optional indirect-first-instance disabled.
+            if (scene_submission == VulkanSceneSubmission::gpu_culled)
+            {
+                if (slot.cull_records.size() >= max_instance_records)
+                    throw std::logic_error("Scene GPU commands exceeded their reserved count");
+                const auto command_offset = slot.cull_records.size() * sizeof(VkDrawIndexedIndirectCommand);
+                slot.cull_records.push_back(
+                    {{batch.first_instance, batch.count, geometry.index_count, cull ? 1U : 0U},
+                     {geometry.mins, 0},
+                     {geometry.maxs, 0}}
+                );
+                slot.draw_usage.culling_draws += cull ? 1 : 0;
+                vkCmdDrawIndexedIndirect(
+                    slot.commands,
+                    slot.gpu_commands.handle(),
+                    command_offset,
+                    1,
+                    sizeof(VkDrawIndexedIndirectCommand)
+                );
+                ++slot.draw_usage.indirect_draws;
+            } else if (scene_submission == VulkanSceneSubmission::indirect)
+            {
+                if (slot.draw_commands.size() >= max_instance_records)
+                    throw std::logic_error("Scene indirect commands exceeded their reserved count");
+                const auto command_offset = slot.draw_commands.size() * sizeof(VkDrawIndexedIndirectCommand);
+                slot.draw_commands.push_back({geometry.index_count, batch.count, 0, 0, 0});
+                vkCmdDrawIndexedIndirect(
+                    slot.commands,
+                    slot.indirect_commands.handle(),
+                    command_offset,
+                    1,
+                    sizeof(VkDrawIndexedIndirectCommand)
+                );
+                ++slot.draw_usage.indirect_draws;
+            } else
+                vkCmdDrawIndexed(slot.commands, geometry.index_count, batch.count, 0, 0, first_instance);
+        }
+
+        void emit_meshlet_batch(const DrawBatch& batch, DrawPush push)
+        {
+            auto& slot = frame();
+            auto& geometry = *batch.key.geometry;
+            use(geometry);
+            const auto& meshlets = *geometry.meshlets;
+            vkCmdBindDescriptorSets(
+                slot.commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                4,
+                1,
+                &meshlets.set,
+                0,
+                nullptr
+            );
+            const auto& caps = device.capabilities();
+            const uint32_t x_limit = std::min(caps.mesh_dispatch_limit[0], caps.mesh_dispatch_total);
+            const uint32_t x_count = std::min(meshlets.count, x_limit);
+            const uint32_t y_limit = meshlets.count > x_limit
+                                         ? 1
+                                         : std::min(caps.mesh_dispatch_limit[1], caps.mesh_dispatch_total / x_count);
+            slot.draw_usage.instances += batch.count;
+            // Split large meshes one instance at a time to retain instance/triangle rasterization order.
+            for (uint32_t instance = 0; instance < batch.count;)
+            {
+                const uint32_t instances = std::min(batch.count - instance, y_limit);
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance + instance);
+                for (uint32_t first = 0; first < meshlets.count;)
+                {
+                    const uint32_t groups = std::min(meshlets.count - first, x_limit);
+                    push.model_rows[0].y = glm::uintBitsToFloat(first);
+                    vkCmdPushConstants(slot.commands, layout, draw_stages, 0, sizeof(push), &push);
+                    cmd_mesh_tasks(slot.commands, groups, instances, 1);
+                    ++slot.draw_usage.draws;
+                    ++slot.draw_usage.mesh_draws;
+                    slot.draw_usage.mesh_workgroups += size_t(groups) * instances;
+                    first += groups;
+                }
+                instance += instances;
+            }
+        }
+
+        void emit_scene_batch(
+            const DrawBatch& batch,
+            const DrawInstance& instance,
+            const PerspectiveCamera& camera,
+            const bool inputs,
+            const bool mesh_requested = false
+        )
+        {
+            const bool mesh_pass = mesh_requested && batch.key.geometry->meshlets->count > 1;
+            if (mesh_requested && mesh_pipeline_bound != mesh_pass)
+            {
+                vkCmdBindPipeline(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    mesh_pass ? meshlet_pipeline : pipelines[0]
+                );
+                mesh_pipeline_bound = mesh_pass;
+            }
+
+            const auto position = camera.position();
+            use(*batch.key.surface);
+            if (!material_table)
+            {
+                const auto set = batch.key.surface->sets[frame_index];
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    0,
+                    1,
+                    &set,
+                    0,
+                    nullptr
+                );
+                ++frame().draw_usage.material_binds;
+            }
+            const bool instance_storage = mesh_pass || batch.count > 1
+                                          || scene_submission == VulkanSceneSubmission::gpu_culled
+                                          || (inputs && scene_submission == VulkanSceneSubmission::indirect);
+            DrawPush push{
+                instance.mvp,
+                instance.model_rows,
+                batch.key.flags | (instance_storage ? 2048U : 0U)
+                    | (material_table ? *batch.key.surface->table_index << 16 : 0U),
+                {position.x, position.y, position.z}
+            };
+            if (instance_storage)
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
+            if (mesh_pass)
+            {
+                emit_meshlet_batch(batch, push);
+                return;
+            }
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
+            draw_batch(
+                batch,
+                inputs && !instance_storage ? instance.correspondence.x : 0,
+                (batch.key.flags & (2U | 4U | 32U)) == 0
+            );
+        }
+
+        void prepare_opaque_order(const std::span<const RenderItem> items, const PerspectiveCamera& camera)
+        {
+            auto& order = frame().opaque_order;
+            auto& ranges = frame().opaque_depth_ranges;
+            order.clear();
+            ranges.resize(items.size());
+            const float margin = std::max(
+                8 * std::numeric_limits<float>::epsilon(),
+                depth_formats.scene == VK_FORMAT_D16_UNORM             ? 2.0F / 65535
+                : depth_formats.scene == VK_FORMAT_X8_D24_UNORM_PACK32 ? 2.0F / 16777215
+                                                                       : 0.0F
+            );
+            const auto projected_depth = [&](const float distance) {
+                const auto clip = camera.projection_matrix() * glm::vec4{0, 0, -distance, 1};
+                return (clip.z + clip.w) * .5F / clip.w;
+            };
+            for (size_t index = 0; index < items.size(); ++index)
+            {
+                const auto& item = items[index];
+                if (!item.mesh || item.pass != RenderPass::Opaque)
+                    continue;
+                const auto sphere = shadow_caster_sphere(item);
+                const auto center = -(camera.view_matrix() * glm::vec4{glm::vec3{sphere}, 1}).z;
+                ranges[index] =
+                    center > sphere.w
+                        ? glm::vec2{projected_depth(center - sphere.w), projected_depth(center + sphere.w)}
+                        : glm::vec2{-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
+                order.push_back(index);
+                auto position = order.size() - 1;
+                // Disjoint world intervals can still tie after D16/D24 quantization; preserve those winners too.
+                while (position > 0 && ranges[index].y + margin < ranges[order[position - 1]].x)
+                {
+                    order[position] = order[position - 1];
+                    --position;
+                }
+                order[position] = index;
+            }
+        }
+
+        bool has_adjacent_geometry(const std::span<const RenderItem> items, const RenderPass pass) const
+        {
+            const CpuColorMeshData* previous = nullptr;
+            for (const auto& item : items)
+                if (item.mesh && item.pass == pass)
+                {
+                    const auto* geometry = item.mesh->cpu_data().get();
+                    if (geometry == previous)
+                        return true;
+                    previous = geometry;
+                }
+            return false;
+        }
+
         void draw(
             const std::span<const RenderItem> items,
             const PerspectiveCamera& camera,
             const RenderPass pass,
-            const bool viewmodel = false
+            const bool viewmodel = false,
+            const bool inputs = false,
+            const uint32_t first_draw = 0,
+            const bool reflection_source = false
         )
         {
-            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[static_cast<size_t>(pass)]);
-            for (const auto& item : items)
+            RELAYCORE_PROFILE_ZONE_N("Vulkan scene draw recording");
+            const bool mesh_pass = mesh_shaders && !inputs && !viewmodel && pass == RenderPass::Opaque
+                                   && scene_submission != VulkanSceneSubmission::gpu_culled;
+            vkCmdBindPipeline(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                inputs ? input_pipelines[static_cast<size_t>(pass)] : pipelines[static_cast<size_t>(pass)]
+            );
+            mesh_pipeline_bound = false;
+            if (material_table)
             {
+                use(*global_material);
+                const auto globals = global_material->sets[frame_index];
+                const auto table = material_table->set(frame_index);
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    0,
+                    1,
+                    &globals,
+                    0,
+                    nullptr
+                );
+                vkCmdBindDescriptorSets(
+                    frame().commands,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    layout,
+                    3,
+                    1,
+                    &table,
+                    0,
+                    nullptr
+                );
+                ++frame().draw_usage.material_binds;
+            }
+            const bool batching = mesh_pass || scene_submission == VulkanSceneSubmission::gpu_culled
+                                  || scene_submission == VulkanSceneSubmission::indirect
+                                  || (scene_submission == VulkanSceneSubmission::instanced && !viewmodel
+                                      && pass == RenderPass::Opaque && has_adjacent_geometry(items, pass));
+            begin_batches();
+            finish_batches();
+            const bool ordered_opaque = !viewmodel && pass == RenderPass::Opaque;
+            const size_t count = ordered_opaque ? frame().opaque_order.size() : items.size();
+            for (size_t draw_index = 0; draw_index < count; ++draw_index)
+            {
+                const size_t index = ordered_opaque ? frame().opaque_order[draw_index] : draw_index;
+                const auto& item = items[index];
                 if ((!viewmodel && item.pass != pass) || !item.mesh)
                     continue;
                 auto& geometry = meshes.at(item.mesh->cpu_data().get());
-                use(geometry);
                 const auto& texture = item.diffuse_texture ? *item.diffuse_texture : atlas_source;
                 auto& surface = *materials.at(material_key(
                     texture,
@@ -1752,44 +3382,40 @@ namespace RelayCore::render
                     item.emissive_texture,
                     item.emissive_factor
                 ));
-                use(surface);
-                const auto set = surface.sets[frame_index];
-                const auto vertex = geometry.vertices.handle();
-                const VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(frame().commands, 0, 1, &vertex, &offset);
-                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdBindDescriptorSets(
-                    frame().commands,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    layout,
-                    0,
-                    1,
-                    &set,
-                    0,
-                    nullptr
-                );
-                const auto position = camera.position();
-                DrawPush push{
-                    camera.view_projection_matrix() * item.model_matrix,
-                    {},
+                const uint32_t flags =
                     (item.diffuse_texture ? 1U : 0U) | (pass == RenderPass::Transparent ? 2U : 0U)
-                        | (pass == RenderPass::Overlay ? 4U : 0U) | (item.normal_texture ? 8U : 0U)
-                        | (item.metallic_roughness ? 16U : 0U) | (viewmodel ? 32U : 0U),
-                    {position.x, position.y, position.z}
-                };
-                for (int row = 0; row < 3; ++row)
-                    for (int col = 0; col < 4; ++col)
-                        push.model_rows[row][col] = item.model_matrix[col][row];
-                vkCmdPushConstants(
-                    frame().commands,
-                    layout,
-                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,
-                    sizeof(push),
-                    &push
-                );
-                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
+                    | (pass == RenderPass::Overlay ? 4U : 0U) | (item.normal_texture ? 8U : 0U)
+                    | (item.metallic_roughness ? 16U : 0U) | (viewmodel ? 32U : 0U) | (reflection_source ? 64U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::ao ? 128U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::reflection_confidence ? 256U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::ssgi ? 1024U : 0U)
+                    | (!inputs && !reflection_source && input_view == PassInputView::volume_transmittance ? 512U : 0U);
+                const auto mvp = ((renderer_config.taa_enabled && !viewmodel && pass == RenderPass::Opaque
+                                   && item.previous_model_matrix)
+                                      ? current_view_projection
+                                      : camera.view_projection_matrix())
+                                 * item.model_matrix;
+                const auto correspondence = first_draw + static_cast<uint32_t>(index);
+                if (batching)
+                    add_instance(
+                        item,
+                        geometry,
+                        &surface,
+                        flags,
+                        mvp,
+                        correspondence,
+                        !viewmodel && pass == RenderPass::Opaque
+                    );
+                else
+                    emit_scene_batch(
+                        {{&geometry, &surface, flags}, 0},
+                        draw_instance(item, mvp, correspondence),
+                        camera,
+                        inputs
+                    );
             }
+            for (const auto& batch : frame().batches)
+                emit_scene_batch(batch, frame().instance_records[batch.first_instance], camera, inputs, mesh_pass);
         }
 
         void shadow_barrier(
@@ -1799,7 +3425,8 @@ namespace RelayCore::render
             const VkPipelineStageFlags2 source_stage,
             const VkAccessFlags2 source_access,
             const VkPipelineStageFlags2 dest_stage,
-            const VkAccessFlags2 dest_access
+            const VkAccessFlags2 dest_access,
+            const uint32_t layer
         )
         {
             const VkImageMemoryBarrier2 barrier{
@@ -1813,7 +3440,7 @@ namespace RelayCore::render
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = map.image,
-                .subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, map.layers}
+                .subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, layer, 1}
             };
             const VkDependencyInfo info{
                 .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -1822,6 +3449,20 @@ namespace RelayCore::render
             };
             vkCmdPipelineBarrier2(frame().commands, &info);
         }
+        void emit_shadow_batch(const DrawBatch& batch, const DrawInstance& instance, const LocalLight* light)
+        {
+            ShadowPush push{.mvp = instance.mvp, .model_rows = instance.model_rows};
+            if (light)
+                push.light_position_radius = {light->position, light->radius};
+            if (batch.count > 1 || scene_submission == VulkanSceneSubmission::gpu_culled)
+            {
+                push.model_rows[0].x = glm::uintBitsToFloat(batch.first_instance);
+                push.light_position_radius.w = light ? -light->radius : -1.0F;
+            }
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
+            draw_batch(batch, 0, true);
+        }
+
         void draw_shadow(
             const std::span<const RenderItem> items,
             ShadowImage& map,
@@ -1831,6 +3472,53 @@ namespace RelayCore::render
             const LocalLight* light = nullptr
         )
         {
+            const auto planes = shadow_frustum_planes(view_projection);
+            const auto visible = [&](const PreparedShadowCaster& caster) {
+                const auto& item = *caster.item;
+                if (kind == 0 && !item.casts_directional_shadow)
+                    return false;
+                const auto sphere = caster.sphere;
+                if (!sphere_intersects_shadow_frustum(planes, glm::vec3(sphere), sphere.w))
+                    return false;
+                if (light)
+                {
+                    const auto delta = glm::vec3(sphere) - light->position;
+                    const auto range = light->radius + sphere.w;
+                    if (glm::dot(delta, delta) > range * range)
+                        return false;
+                }
+                return true;
+            };
+            shadow_caster_keys.clear();
+            shadow_caster_items.clear();
+            for (const auto& caster : shadow_bounds)
+                if (visible(caster))
+                {
+                    const auto& item = *caster.item;
+                    shadow_caster_items.push_back(&item);
+                    shadow_caster_keys.push_back({item.mesh->cpu_data(), item.model_matrix});
+                }
+            auto& cached = map.cached_layers[layer];
+            const glm::vec4 light_key = light ? glm::vec4{light->position, light->radius} : glm::vec4{0};
+            if (cached.valid && cached.active && cached.projection == view_projection && cached.light == light_key
+                && cached.casters == shadow_caster_keys)
+            {
+                ++frame().draw_usage.shadow_reused_faces;
+                return;
+            }
+            ++frame().draw_usage.shadow_rebuilt_faces;
+            constexpr auto stages =
+                VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            shadow_barrier(
+                map,
+                cached.valid ? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                stages,
+                VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                layer
+            );
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Shadow depth draws");
             const VkRenderingAttachmentInfo depth{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -1853,52 +3541,89 @@ namespace RelayCore::render
             vkCmdSetScissor(frame().commands, 0, 1, &scissor);
             vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipelines[kind]);
             vkCmdBeginRendering(frame().commands, &info);
-            const auto planes = shadow_frustum_planes(view_projection);
-            for (const auto& item : items)
+            RELAYCORE_PROFILE_ZONE_N("Vulkan shadow draw recording");
+            const bool batching = scene_submission == VulkanSceneSubmission::gpu_culled
+                                  || scene_submission == VulkanSceneSubmission::indirect
+                                  || (scene_submission == VulkanSceneSubmission::instanced
+                                      && has_adjacent_geometry(items, RenderPass::Opaque));
+            begin_batches();
+            finish_batches();
+            for (const auto* caster : shadow_caster_items)
             {
-                if (!item.mesh || item.pass != RenderPass::Opaque || (kind == 0 && !item.casts_directional_shadow))
-                    continue;
-                if (light)
-                {
-                    const auto sphere = shadow_caster_sphere(item);
-                    const glm::vec3 delta = glm::vec3(sphere) - light->position;
-                    const float range = light->radius + sphere.w;
-                    if (glm::dot(delta, delta) > range * range
-                        || !sphere_intersects_shadow_frustum(planes, glm::vec3(sphere), sphere.w))
-                        continue;
-                }
-                auto& geometry = mesh(*item.mesh);
-                use(geometry);
-                ShadowPush push{.mvp = view_projection * item.model_matrix};
-                for (int row = 0; row < 3; ++row)
-                    push.model_rows[row] = {
-                        item.model_matrix[0][row],
-                        item.model_matrix[1][row],
-                        item.model_matrix[2][row],
-                        item.model_matrix[3][row]
-                    };
-                if (light)
-                    push.light_position_radius = {light->position, light->radius};
-                vkCmdPushConstants(
-                    frame().commands,
-                    layout,
-                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,
-                    sizeof(push),
-                    &push
-                );
-                const auto buffer = geometry.vertices.handle();
-                constexpr VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(frame().commands, 0, 1, &buffer, &offset);
-                vkCmdBindIndexBuffer(frame().commands, geometry.indices.handle(), 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(frame().commands, geometry.index_count, 1, 0, 0, 0);
+                const auto& item = *caster;
+                auto& geometry = meshes.at(item.mesh->cpu_data().get());
+                const auto mvp = view_projection * item.model_matrix;
+                if (batching)
+                    add_instance(item, geometry, nullptr, 0, mvp, 0, true);
+                else
+                    emit_shadow_batch({{&geometry, nullptr, 0}, 0}, draw_instance(item, mvp, 0), light);
             }
+            for (const auto& batch : frame().batches)
+                emit_shadow_batch(batch, frame().instance_records[batch.first_instance], light);
             vkCmdEndRendering(frame().commands);
+            shadow_barrier(
+                map,
+                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                stages,
+                VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                layer
+            );
+            cached.valid = cached.active = true;
+            cached.projection = view_projection;
+            cached.light = light_key;
+            cached.casters.swap(shadow_caster_keys);
+        }
+
+        void clear_shadow_layer(ShadowImage& map, const uint32_t layer)
+        {
+            auto& cached = map.cached_layers[layer];
+            if (cached.valid && !cached.active)
+                return;
+            shadow_barrier(
+                map,
+                cached.valid ? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                layer
+            );
+            const VkClearDepthStencilValue clear{1, 0};
+            const VkImageSubresourceRange range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, layer, 1};
+            vkCmdClearDepthStencilImage(
+                frame().commands,
+                map.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                &clear,
+                1,
+                &range
+            );
+            shadow_barrier(
+                map,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                layer
+            );
+            cached.valid = true;
+            cached.active = false;
+            cached.casters.clear();
         }
         void render_shadows(const std::span<const RenderItem> items, const PerspectiveCamera& camera)
         {
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Shadows");
             const auto& config = renderer_config;
+            shadow_bounds.clear();
+            for (const auto& item : items)
+                if (item.mesh && item.pass == RenderPass::Opaque && item.casts_shadow)
+                    shadow_bounds.push_back({&item, shadow_caster_sphere(item)});
             shadow_parameters = {};
             shadow_parameters.view_projection[0] = shadow_light_view_projection(
                 camera,
@@ -1931,62 +3656,18 @@ namespace RelayCore::render
                 spot.enabled ? 1 : 0,
                 0
             };
-            constexpr auto stages =
-                VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-            const auto begin_map = [&](ShadowImage& map) {
-                shadow_barrier(
-                    map,
-                    VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT
-                );
-                const VkClearDepthStencilValue clear{1, 0};
-                const VkImageSubresourceRange range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, map.layers};
-                vkCmdClearDepthStencilImage(
-                    frame().commands,
-                    map.image,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    &clear,
-                    1,
-                    &range
-                );
-                shadow_barrier(
-                    map,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    stages,
-                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
-                );
-            };
-            const auto end_map = [&](ShadowImage& map) {
-                shadow_barrier(
-                    map,
-                    VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-                    stages | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
-                );
-            };
             for (size_t i = 0; i < 3; ++i)
             {
                 auto& map = *shadow_maps[i];
-                begin_map(map);
                 if (i == 2 ? spot.enabled : shadow_parameters.flags.x != 0)
                     draw_shadow(items, map, 0, shadow_parameters.view_projection[i], i == 2 ? 1 : 0);
-                end_map(map);
+                else
+                    clear_shadow_layer(map, 0);
             }
-            begin_map(*point_shadows);
             if (config.shadow_enabled)
             {
                 const auto planes = shadow_frustum_planes(camera.view_projection_matrix());
-                for (int i = 0; i < lights.count.x; ++i)
+                for (int i = 0; i < std::min(lights.count.x, static_cast<int>(kMaxPointShadowLights)); ++i)
                 {
                     const LocalLight light{
                         glm::vec3(lights.position_radius[i]),
@@ -2008,14 +3689,69 @@ namespace RelayCore::render
                         );
                 }
             }
-            end_map(*point_shadows);
+            for (uint32_t layer = 0; layer < point_shadows->layers; ++layer)
+                if ((uint32_t(shadow_parameters.flags.w) & (1u << (layer / 6))) == 0)
+                    clear_shadow_layer(*point_shadows, layer);
             frame().shadow_data.write(std::as_bytes(std::span{&shadow_parameters, 1}));
         }
 
         void set_config(const RendererConfig& config)
         {
+            if (config.mesh_shaders != renderer_config.mesh_shaders)
+                throw std::invalid_argument("Changing mesh shaders requires a prepared renderer reload");
+            if (config.descriptor_indexing != renderer_config.descriptor_indexing)
+                throw std::invalid_argument("Changing descriptor indexing requires a prepared renderer reload");
+            if (config.dynamic_resolution_enabled != renderer_config.dynamic_resolution_enabled)
+                throw std::invalid_argument("Changing dynamic resolution requires a prepared renderer reload");
+            if (!std::isfinite(config.dynamic_resolution_target_ms) || config.dynamic_resolution_target_ms < 4
+                || config.dynamic_resolution_target_ms > 50)
+                throw std::invalid_argument("Dynamic resolution target must be finite and in [4, 50] ms");
+            for (auto quality :
+                 {config.ssgi_quality, config.reflection_quality, config.dof_quality, config.motion_blur_quality})
+                if (quality < 0 || quality > 2)
+                    throw std::invalid_argument("SSGI/reflection/lens quality must be 0, 1 or 2");
+            if (!std::isfinite(config.dof_focus_distance) || config.dof_focus_distance < .25F
+                || config.dof_focus_distance > 100)
+                throw std::invalid_argument("DoF focus distance must be finite and in [0.25, 100]");
+            if ((config.ssgi_quality || config.dof_quality || config.motion_blur_quality) && !config.hdr_enabled)
+                throw std::invalid_argument("SSGI and lens effects require HDR enabled");
+            if (config.reflection_quality && !config.ssr_enabled)
+                throw std::invalid_argument("Improved reflections require SSR enabled");
+            if (config.ssgi_quality != renderer_config.ssgi_quality
+                || config.reflection_quality != renderer_config.reflection_quality
+                || config.dof_quality != renderer_config.dof_quality
+                || config.motion_blur_quality != renderer_config.motion_blur_quality)
+                throw std::invalid_argument("Changing advanced effects requires a prepared renderer reload");
+            if (config.dof_focus_distance != renderer_config.dof_focus_distance)
+                history_valid = false;
+            if (config.taa_enabled != renderer_config.taa_enabled)
+                throw std::invalid_argument("Changing TAA requires a prepared renderer reload");
+            if (!std::isfinite(config.render_scale) || config.render_scale < .5F || config.render_scale > 1)
+                throw std::invalid_argument("Render scale must be finite and in [0.5, 1]");
+            if ((config.taa_enabled || config.render_scale != 1 || config.dynamic_resolution_enabled)
+                && !config.hdr_enabled)
+                throw std::invalid_argument("TAA and scaling require HDR enabled");
+            if (config.render_scale != renderer_config.render_scale
+                || config.dynamic_resolution_target_ms != renderer_config.dynamic_resolution_target_ms)
+            {
+                history_valid = false;
+                jitter_index = 0;
+                resolution.reset(config.render_scale);
+            }
             if (config.hdr_enabled != renderer_config.hdr_enabled)
                 throw std::invalid_argument("Changing HDR requires a prepared renderer reload");
+            if (config.bloom_enabled != renderer_config.bloom_enabled
+                || config.ssao_enabled != renderer_config.ssao_enabled
+                || config.ssr_enabled != renderer_config.ssr_enabled
+                || config.volumetrics_enabled != renderer_config.volumetrics_enabled)
+                throw std::invalid_argument("Changing effects requires a prepared renderer reload");
+            if ((config.bloom_enabled || config.ssr_enabled) && !config.hdr_enabled)
+                throw std::invalid_argument("Bloom and SSR require HDR enabled");
+            if (!std::isfinite(config.bloom_strength) || config.bloom_strength < 0 || config.bloom_strength > 1
+                || !std::isfinite(config.bloom_threshold) || config.bloom_threshold < 0 || config.bloom_threshold > 10
+                || !std::isfinite(config.volumetric_density) || config.volumetric_density < 0
+                || config.volumetric_density > .1F)
+                throw std::invalid_argument("Invalid bloom strength/threshold or volumetric density");
             if (config.msaa_samples != renderer_config.msaa_samples)
                 throw std::invalid_argument("Changing MSAA requires a prepared renderer reload");
             if (config.hdr_enabled && color_pipeline != ColorPipelineMode::hardware_srgb)
@@ -2072,10 +3808,18 @@ namespace RelayCore::render
             require_mesh_vk(vkBeginCommandBuffer(frame().commands, &begin), "Failed to begin mesh commands");
         }
 
-        void submit_and_wait(const bool synchronous = true)
+        void submit_and_wait(const bool synchronous = true, const bool resolution_sample = false)
         {
             require_mesh_vk(vkEndCommandBuffer(frame().commands), "Failed to end mesh frame");
-            frame().pending = submissions.submit(frame().commands, uploads.dependency());
+            frame().pending = submissions.submit(
+                frame().commands,
+                uploads.dependency(),
+                {},
+                VK_NULL_HANDLE,
+                frame().culling_pending ? frame().culling_commands : VK_NULL_HANDLE
+            );
+            frame().culling_pending = false;
+            frame().resolution_sample_pending = frame().resolution_sample_pending || resolution_sample;
             // Publish use only after successful submission; failed recording/prepare owns no GPU references.
             for (auto* mesh : used_meshes)
                 mesh->last_use = frame().pending;
@@ -2088,31 +3832,846 @@ namespace RelayCore::render
             uploads.collect();
         }
 
+        void input_barrier(
+            MeshImage& image,
+            const VkImageLayout old_layout,
+            const VkImageLayout new_layout,
+            const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT
+        )
+        {
+            const VkImageMemoryBarrier2 barrier{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                .oldLayout = old_layout,
+                .newLayout = new_layout,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = image.image,
+                .subresourceRange = {aspect, 0, 1, 0, 1}
+            };
+            const VkDependencyInfo dependency{
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &barrier
+            };
+            vkCmdPipelineBarrier2(frame().commands, &dependency);
+        }
+
+        void set_input_view(const PassInputView view)
+        {
+            if (view < PassInputView::off || view > PassInputView::ssgi)
+                throw std::invalid_argument("Invalid pass input view");
+            if (view == PassInputView::ssgi && !renderer_config.ssgi_quality)
+                throw std::invalid_argument("SSGI diagnostic requires SSGI enabled");
+            if (view == PassInputView::temporal_source && !renderer_config.taa_enabled)
+                throw std::invalid_argument("Temporal source diagnostic requires TAA enabled");
+            if ((view == PassInputView::ao && !renderer_config.ssao_enabled)
+                || (view == PassInputView::reflection_confidence && !renderer_config.ssr_enabled)
+                || (view == PassInputView::volume_transmittance && !renderer_config.volumetrics_enabled))
+                throw std::invalid_argument("The requested effect diagnostic requires its effect enabled");
+            if (view == input_view)
+                return;
+            wait();
+            if (view != PassInputView::off && view != PassInputView::volume_transmittance && !input_pipelines[0])
+            {
+                VkImageFormatProperties properties{};
+                require_mesh_vk(
+                    vkGetPhysicalDeviceImageFormatProperties(
+                        device.physical_device(),
+                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                        VK_IMAGE_TYPE_2D,
+                        VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                        0,
+                        &properties
+                    ),
+                    "Pass inputs require sampled/transfer RGBA32F attachments"
+                );
+                std::array<VkPipeline, 4> replacements{};
+                try
+                {
+                    for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                        replacements[static_cast<size_t>(pass)] = create_pipeline(shader_directory, pass, -2);
+                    replacements[3] = create_pipeline(shader_directory, RenderPass::Opaque, -3);
+                } catch (...)
+                {
+                    for (auto pipeline : replacements)
+                        if (pipeline)
+                            vkDestroyPipeline(device.handle(), pipeline, nullptr);
+                    throw;
+                }
+                input_pipelines = replacements;
+            }
+            if (view != PassInputView::off && view != PassInputView::volume_transmittance && !input_pool)
+            {
+                const std::array sizes{
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 56}
+                };
+                const VkDescriptorPoolCreateInfo pool{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                    .maxSets = 4,
+                    .poolSizeCount = static_cast<uint32_t>(sizes.size()),
+                    .pPoolSizes = sizes.data()
+                };
+                require_mesh_vk(
+                    vkCreateDescriptorPool(device.handle(), &pool, nullptr, &input_pool),
+                    "Pass input pool"
+                );
+                const std::array layouts{input_layout, input_layout, input_layout, input_layout};
+                const VkDescriptorSetAllocateInfo allocation{
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                    .descriptorPool = input_pool,
+                    .descriptorSetCount = 4,
+                    .pSetLayouts = layouts.data()
+                };
+                require_mesh_vk(
+                    vkAllocateDescriptorSets(device.handle(), &allocation, input_sets.data()),
+                    "Pass input sets"
+                );
+                const VkSamplerCreateInfo sampler{
+                    .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                    .magFilter = VK_FILTER_NEAREST,
+                    .minFilter = VK_FILTER_NEAREST,
+                    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                    .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                    .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                    .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+                };
+                require_mesh_vk(
+                    vkCreateSampler(device.handle(), &sampler, nullptr, &input_sampler),
+                    "Pass input sampler"
+                );
+            }
+            if ((view == PassInputView::history || view == PassInputView::previous_color)
+                    != (input_view == PassInputView::history || input_view == PassInputView::previous_color)
+                || view == PassInputView::off || input_view == PassInputView::off
+                || view == PassInputView::temporal_source || input_view == PassInputView::temporal_source)
+                for (auto& slot : frames)
+                {
+                    slot.target.reset();
+                    slot.inputs.reset();
+                    slot.previous_draws = {};
+                }
+            history_valid = false;
+            input_view = view;
+        }
+
+        void prepare_inputs(
+            const std::span<const RenderItem> items,
+            const std::span<const RenderItem> viewmodel,
+            const PerspectiveCamera& camera,
+            const VkExtent2D extent
+        )
+        {
+            frame_history_valid = history_valid && history_slot != frame_index && history_extent.width == extent.width
+                                  && history_extent.height == extent.height
+                                  && previous_projection == camera.projection_matrix()
+                                  && previous_exposure == renderer_config.exposure_ev;
+            if (history_extent.width != extent.width || history_extent.height != extent.height)
+            {
+                wait();
+                for (auto& slot : frames)
+                    slot.inputs.reset();
+                frame_history_valid = false;
+            }
+            if (!frame().inputs)
+                frame().inputs = std::make_unique<InputTarget>(
+                    device,
+                    extent,
+                    depth_formats.scene,
+                    scene_format(),
+                    renderer_config.ssao_enabled,
+                    ao_format,
+                    renderer_config.taa_enabled,
+                    renderer_config.ssgi_quality != 0,
+                    renderer_config.dof_quality || renderer_config.motion_blur_quality,
+                    renderer_config.ssr_enabled || renderer_config.ssgi_quality,
+                    input_view == PassInputView::history || input_view == PassInputView::previous_color,
+                    depth_hierarchy != nullptr
+                );
+            const size_t count = std::max(size_t{1}, items.size() + viewmodel.size());
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(device.physical_device(), &properties);
+            if (count > std::numeric_limits<uint32_t>::max()
+                || count * sizeof(PreviousDraw) > properties.limits.maxStorageBufferRange)
+                throw std::invalid_argument("Pass input draw correspondence exceeds storage buffer limits");
+            auto& previous = frame().previous_records;
+            previous.resize(count);
+            for (size_t i = 0; i < items.size(); ++i)
+            {
+                const auto& item = items[i];
+                previous[i] = {
+                    frame_history_valid
+                        ? previous_unjittered_view_projection * item.previous_model_matrix.value_or(item.model_matrix)
+                        : camera.view_projection_matrix() * item.model_matrix,
+                    {item.previous_model_matrix ? 1.0F : 0.0F, jitter_uv.x, jitter_uv.y, 0}
+                };
+            }
+            for (size_t i = 0; i < viewmodel.size(); ++i)
+                previous[items.size() + i] = {
+                    camera.view_projection_matrix() * viewmodel[i].model_matrix,
+                    {0, 0, 0, 0}
+                };
+            const auto bytes = std::as_bytes(std::span{previous});
+            if (frame().previous_draws.size() < bytes.size())
+                frame().previous_draws =
+                    VulkanBuffer(device, bytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanBufferMemory::upload);
+            frame().previous_draws.write(bytes);
+            auto& current = *frame().inputs;
+            auto& old = frame_history_valid ? *frames[history_slot].inputs : current;
+            std::array images{
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{input_sampler, current.velocity.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                VkDescriptorImageInfo{input_sampler, old.normal_depth.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    frame_history_valid && old.color_history ? old.color_history->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{input_sampler, old.velocity.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.ao ? current.ao->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.radiance ? current.radiance->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    renderer_config.taa_enabled ? frame().target->hdr_scene->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    renderer_config.taa_enabled && frame_history_valid ? old.temporal->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.gi ? current.gi->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.gi && frame_history_valid ? old.gi->view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                },
+                VkDescriptorImageInfo{
+                    input_sampler,
+                    current.lens ? resolved_source().view : current.normal_depth.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                }
+            };
+            const VkDescriptorBufferInfo buffer{frame().previous_draws.handle(), 0, bytes.size()};
+            std::array<VkWriteDescriptorSet, 16> writes{};
+            writes[0] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = input_sets[frame_index],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &buffer
+            };
+            for (uint32_t i = 1; i <= images.size(); ++i)
+                writes[i] = {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = input_sets[frame_index],
+                    .dstBinding = i,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &images[i - 1]
+                };
+            const VkDescriptorBufferInfo bounds{current.depth_bounds.handle(), 0, current.depth_bounds.size()};
+            const VkDescriptorImageInfo reconstructed{
+                input_sampler,
+                current.reconstructed_gi ? current.reconstructed_gi->view : current.normal_depth.view,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            writes[13] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = input_sets[frame_index],
+                .dstBinding = 13,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &bounds
+            };
+            writes[14] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = input_sets[frame_index],
+                .dstBinding = 14,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &reconstructed
+            };
+            const VkDescriptorImageInfo trace_image{
+                input_sampler,
+                current.trace_depth ? current.trace_depth->view : current.normal_depth.view,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            writes[15] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = input_sets[frame_index],
+                .dstBinding = 15,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &trace_image
+            };
+            if (depth_hierarchy)
+            {
+                const VkDescriptorImageInfo storage_depth{
+                    VK_NULL_HANDLE,
+                    current.trace_depth->view,
+                    VK_IMAGE_LAYOUT_GENERAL
+                };
+                const std::array reduction_writes{
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = depth_hierarchy->sets[frame_index],
+                        .dstBinding = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &images[0]
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = depth_hierarchy->sets[frame_index],
+                        .dstBinding = 1,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .pBufferInfo = &bounds
+                    },
+                    VkWriteDescriptorSet{
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = depth_hierarchy->sets[frame_index],
+                        .dstBinding = 2,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                        .pImageInfo = &storage_depth
+                    }
+                };
+                vkUpdateDescriptorSets(
+                    device.handle(),
+                    uint32_t(reduction_writes.size()),
+                    reduction_writes.data(),
+                    0,
+                    nullptr
+                );
+            }
+            vkUpdateDescriptorSets(device.handle(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            // Source has its own immutable snapshot: it cannot sample its radiance output or pending GI.
+            const VkDescriptorImageInfo black{
+                input_sampler,
+                current.black_source ? current.black_source->view : current.normal_depth.view,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            images[6] = images[9] = black;
+            writes[14].pImageInfo = &black;
+            for (auto& write : writes)
+                write.dstSet = input_sets[frame_index + frames.size()];
+            vkUpdateDescriptorSets(device.handle(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        }
+
+        void record_inputs(
+            const std::span<const RenderItem> items,
+            const std::span<const RenderItem> viewmodel,
+            const PerspectiveCamera& camera
+        )
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Pass inputs");
+            auto& target = *frame().inputs;
+            for (auto* image : {&target.normal_depth, &target.velocity})
+                input_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            input_barrier(
+                target.depth,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT
+            );
+            std::array<VkRenderingAttachmentInfo, 2> colors{};
+            const std::array views{target.normal_depth.view, target.velocity.view};
+            for (size_t i = 0; i < colors.size(); ++i)
+                colors[i] = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = views[i],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {.color = {{0, 0, 0, 0}}}
+                };
+            const VkRenderingAttachmentInfo depth{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.depth.view,
+                .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .clearValue = {.depthStencil = {1, 0}}
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->render_extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 2,
+                .pColorAttachments = colors.data(),
+                .pDepthAttachment = &depth
+            };
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            vkCmdBeginRendering(frame().commands, &rendering);
+            for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                draw(items, camera, pass, false, true);
+            draw(viewmodel, camera, RenderPass::Opaque, true, true, static_cast<uint32_t>(items.size()));
+            vkCmdEndRendering(frame().commands);
+            for (auto* image : {&target.normal_depth, &target.velocity})
+                input_barrier(
+                    *image,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+        }
+
+        void record_depth_hierarchy()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Depth hierarchy");
+            auto& target = *frame().inputs;
+            input_barrier(*target.trace_depth, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_COMPUTE, depth_hierarchy->pipeline);
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
+                depth_hierarchy->layout,
+                0,
+                1,
+                &depth_hierarchy->sets[frame_index],
+                0,
+                nullptr
+            );
+            glm::uvec4 previous{0, frame().target->render_extent.width, frame().target->render_extent.height, 0};
+            for (const auto& level : target.hierarchy_levels)
+            {
+                if (level.y == 0)
+                    break;
+                const std::array push{previous, level};
+                vkCmdPushConstants(
+                    frame().commands,
+                    depth_hierarchy->layout,
+                    VK_SHADER_STAGE_COMPUTE_BIT,
+                    0,
+                    sizeof(push),
+                    push.data()
+                );
+                vkCmdDispatch(frame().commands, (level.y + 7) / 8, (level.z + 7) / 8, 1);
+                const VkMemoryBarrier2 barrier{
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                    .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                };
+                const VkDependencyInfo info{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .memoryBarrierCount = 1,
+                    .pMemoryBarriers = &barrier
+                };
+                vkCmdPipelineBarrier2(frame().commands, &info);
+                previous = level;
+            }
+            input_barrier(*target.trace_depth, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        void record_color_history()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Color history");
+            auto& source = frame().target->hdr_scene ? *frame().target->hdr_scene : frame().target->color;
+            auto& destination = *frame().inputs->color_history;
+            input_barrier(source, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            input_barrier(destination, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            const VkImageCopy copy{
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .extent = {frame().target->render_extent.width, frame().target->render_extent.height, 1}
+            };
+            vkCmdCopyImage(
+                frame().commands,
+                source.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                destination.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &copy
+            );
+            input_barrier(source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            input_barrier(destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        void record_input_view()
+        {
+            if (input_view == PassInputView::scene || input_view >= PassInputView::ao)
+                return;
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Pass input visualizer");
+            input_barrier(
+                frame().target->color,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            );
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView =
+                    frame().target->color.unorm_view ? frame().target->color.unorm_view : frame().target->color.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            const auto extent = frame().target->extent;
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, input_pipelines[3]);
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            const DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {glm::vec4{previous_jitter_uv - jitter_uv, 0, 0}, glm::vec4{}, glm::vec4{}},
+                .flags = static_cast<uint32_t>(input_view),
+                .camera_position =
+                    {frame_history_valid ? 1.0F : 0.0F,
+                     float(frame().target->extent.width),
+                     float(frame().target->extent.height)}
+            };
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+        }
+
+        void record_ao()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "SSAO");
+            auto& target = *frame().inputs->ao;
+            input_barrier(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->render_extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, ao_pipeline);
+            const auto set = (material_table ? global_material : materials.begin()->second.get())->sets[frame_index];
+            vkCmdBindDescriptorSets(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+            input_barrier(target, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        void record_bloom()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Bloom");
+            auto extent = frame().target->render_extent;
+            auto& source = tone_source();
+            input_barrier(source, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            auto& levels = tone_mapping->bloom[frame_index];
+            for (size_t level = 0; level < levels.size(); ++level)
+            {
+                auto next = VkExtent2D{std::max(1u, (extent.width + 1) / 2), std::max(1u, (extent.height + 1) / 2)};
+                auto& image = *levels[level];
+                if (level == 0)
+                {
+                    input_barrier(image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                    const VkRenderingAttachmentInfo color{
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                        .imageView = image.view,
+                        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                        .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+                    };
+                    const VkRenderingInfo rendering{
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                        .renderArea = {{0, 0}, next},
+                        .layerCount = 1,
+                        .colorAttachmentCount = 1,
+                        .pColorAttachments = &color
+                    };
+                    vkCmdBeginRendering(frame().commands, &rendering);
+                    vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, tone_mapping->bloom_pipeline);
+                    vkCmdBindDescriptorSets(
+                        frame().commands,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        tone_mapping->layout,
+                        0,
+                        1,
+                        &tone_mapping->sets[frame_index],
+                        0,
+                        nullptr
+                    );
+                    const ToneMappingPush push{
+                        {},
+                        {float(next.width), float(next.height), 0, 0},
+                        {0, 0, renderer_config.bloom_threshold, 0}
+                    };
+                    vkCmdPushConstants(
+                        frame().commands,
+                        tone_mapping->layout,
+                        VK_SHADER_STAGE_FRAGMENT_BIT | (tone_mapping->compute ? VK_SHADER_STAGE_COMPUTE_BIT : 0u),
+                        0,
+                        sizeof(push),
+                        &push
+                    );
+                    const VkViewport viewport{0, 0, float(next.width), float(next.height), 0, 1};
+                    const VkRect2D scissor{{0, 0}, next};
+                    vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+                    vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                    vkCmdDraw(frame().commands, 3, 1, 0, 0);
+                    vkCmdEndRendering(frame().commands);
+                    input_barrier(
+                        image,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+                    );
+                } else
+                {
+                    input_barrier(image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    const VkImageBlit region{
+                        .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                        .srcOffsets = {{0, 0, 0}, {int(extent.width), int(extent.height), 1}},
+                        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                        .dstOffsets = {{0, 0, 0}, {int(next.width), int(next.height), 1}}
+                    };
+                    vkCmdBlitImage(
+                        frame().commands,
+                        levels[level - 1]->image,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        image.image,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        1,
+                        &region,
+                        VK_FILTER_LINEAR
+                    );
+                    input_barrier(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                    input_barrier(
+                        *levels[level - 1],
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    );
+                }
+                extent = next;
+            }
+            input_barrier(
+                *levels.back(),
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
+            input_barrier(source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        }
+
+        void
+        record_advanced(MeshImage& target, const VkPipeline pipeline, const bool lens, const bool reconstruct = false)
+        {
+            if (lens)
+                input_barrier(
+                    resolved_source(),
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            input_barrier(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const auto extent = lens || reconstruct ? frame().target->render_extent : frame().inputs->gi_extent;
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            auto& surface = *(material_table ? global_material : materials.begin()->second.get());
+            use(surface);
+            const std::array sets{surface.sets[frame_index], input_sets[frame_index]};
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                0,
+                2,
+                sets.data(),
+                0,
+                nullptr
+            );
+            DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {},
+                .flags = 0,
+                .camera_position = {frame_history_valid ? 1.0F : 0.0F, float(extent.width), float(extent.height)}
+            };
+            push.model_rows[0] = {previous_jitter_uv - jitter_uv, 0, 0};
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+            if (!lens)
+                input_barrier(
+                    target,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            else if (!renderer_config.taa_enabled)
+                input_barrier(
+                    resolved_source(),
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                );
+        }
+
+        void record_temporal()
+        {
+            RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "TAA resolve");
+            auto& target = *frame().inputs->temporal;
+            input_barrier(
+                *frame().target->hdr_scene,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
+            input_barrier(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            const VkRenderingAttachmentInfo color{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = target.view,
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            };
+            const VkRenderingInfo rendering{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {{0, 0}, frame().target->render_extent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color
+            };
+            const auto extent = frame().target->render_extent;
+            const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VkRect2D scissor{{0, 0}, extent};
+            vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+            vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+            vkCmdBeginRendering(frame().commands, &rendering);
+            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, temporal_pipeline);
+            vkCmdBindDescriptorSets(
+                frame().commands,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                layout,
+                1,
+                1,
+                &input_sets[frame_index],
+                0,
+                nullptr
+            );
+            const DrawPush push{
+                .mvp = glm::mat4{1},
+                .model_rows = {},
+                .flags = 0,
+                .camera_position =
+                    {frame_history_valid ? 1.0F : 0.0F,
+                     previous_jitter_uv.x - jitter_uv.x,
+                     previous_jitter_uv.y - jitter_uv.y}
+            };
+            vkCmdPushConstants(frame().commands, layout, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(frame().commands, 3, 1, 0, 0);
+            vkCmdEndRendering(frame().commands);
+            input_barrier(
+                *frame().target->hdr_scene,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            );
+            if (input_view == PassInputView::temporal_source)
+                input_barrier(
+                    target,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+            // Tone mapping transitions the selected source to sampling. Previous-slot
+            // history remains sampled until queue-ordered reuse of that slot.
+        }
+
         void record_tone_mapping()
         {
             RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "HDR tone mapping");
+            const bool compute = tone_mapping->compute;
             const std::array barriers{
                 VkImageMemoryBarrier2{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                     .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                     .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                    .dstStageMask =
+                        compute ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                     .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                     .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .image = frame().target->hdr_scene->image,
+                    .image = tone_source().image,
                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
                 },
                 VkImageMemoryBarrier2{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                     .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                    .dstStageMask = compute ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .dstAccessMask =
+                        compute ? VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .newLayout = compute ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .image = frame().target->color.image,
@@ -2139,11 +4698,13 @@ namespace RelayCore::render
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &color
             };
-            vkCmdBeginRendering(frame().commands, &rendering);
-            vkCmdBindPipeline(frame().commands, VK_PIPELINE_BIND_POINT_GRAPHICS, tone_mapping->pipeline);
+            if (!compute)
+                vkCmdBeginRendering(frame().commands, &rendering);
+            const auto bind_point = compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+            vkCmdBindPipeline(frame().commands, bind_point, tone_mapping->pipeline);
             vkCmdBindDescriptorSets(
                 frame().commands,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                bind_point,
                 tone_mapping->layout,
                 0,
                 1,
@@ -2157,18 +4718,58 @@ namespace RelayCore::render
                  float(frame().target->extent.height),
                  scene_time,
                  renderer_config.exposure_ev},
-                material_parameters.grading
+                {material_parameters.grading.x,
+                 renderer_config.bloom_enabled ? renderer_config.bloom_strength : 0,
+                 renderer_config.bloom_threshold,
+                 0}
             };
             vkCmdPushConstants(
                 frame().commands,
                 tone_mapping->layout,
-                VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_FRAGMENT_BIT | (compute ? VK_SHADER_STAGE_COMPUTE_BIT : 0u),
                 0,
                 sizeof(push),
                 &push
             );
-            vkCmdDraw(frame().commands, 3, 1, 0, 0);
-            vkCmdEndRendering(frame().commands);
+            if (compute)
+            {
+                vkCmdDispatch(
+                    frame().commands,
+                    (frame().target->extent.width + 7) / 8,
+                    (frame().target->extent.height + 7) / 8,
+                    1
+                );
+                const VkImageMemoryBarrier2 ready{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                    .dstStageMask =
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                    .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+                                     | VK_ACCESS_2_TRANSFER_READ_BIT,
+                    .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+                    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = frame().target->color.image,
+                    .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+                };
+                const VkDependencyInfo ready_info{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .imageMemoryBarrierCount = 1,
+                    .pImageMemoryBarriers = &ready
+                };
+                vkCmdPipelineBarrier2(frame().commands, &ready_info);
+            } else
+            {
+                const VkViewport
+                    viewport{0, 0, float(frame().target->extent.width), float(frame().target->extent.height), 0, 1};
+                const VkRect2D scissor{{0, 0}, frame().target->extent};
+                vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+                vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                vkCmdDraw(frame().commands, 3, 1, 0, 0);
+                vkCmdEndRendering(frame().commands);
+            }
         }
 
         void record_ui(ImDrawData* ui)
@@ -2190,12 +4791,24 @@ namespace RelayCore::render
                 .pColorAttachments = &color
             };
             vkCmdBeginRendering(frame().commands, &rendering);
-            ImGui_ImplVulkan_RenderDrawData(ui, frame().commands);
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan ImGui backend recording");
+#if defined(TRACY_ENABLE)
+                size_t pending_textures = 0;
+                if (ui->Textures)
+                    for (const auto* texture : *ui->Textures)
+                        pending_textures += texture->Status == ImTextureStatus_WantCreate
+                                            || texture->Status == ImTextureStatus_WantUpdates;
+                RELAYCORE_PROFILE_PLOT("ImGui/PendingTextureUploads", pending_textures);
+#endif
+                ImGui_ImplVulkan_RenderDrawData(ui, frame().commands);
+            }
             vkCmdEndRendering(frame().commands);
         }
 
         void append_ui(ImDrawData* ui, PlayerUi* player_ui = nullptr)
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan UI recording/submission");
             if (!frame().target)
                 throw std::logic_error("Vulkan UI requires a prepared scene");
             if (!ui && !player_ui)
@@ -2291,7 +4904,8 @@ namespace RelayCore::render
             const auto& map = *shadow_maps[cascade];
             VulkanBuffer readback{
                 device,
-                VkDeviceSize(map.extent.width) * map.extent.height * 4,
+                VkDeviceSize(map.extent.width) * map.extent.height
+                    * (depth_formats.shadow == VK_FORMAT_D16_UNORM ? 2 : 4),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VulkanBufferMemory::readback
             };
@@ -2348,12 +4962,24 @@ namespace RelayCore::render
             };
             vkCmdPipelineBarrier2(frame().commands, &host_info);
             submit_and_wait();
-            std::vector<uint32_t> packed(size_t(map.extent.width) * map.extent.height);
-            readback.read(std::as_writable_bytes(std::span{packed}));
-            std::vector<float> output(packed.size());
-            std::transform(packed.begin(), packed.end(), output.begin(), [](uint32_t depth) {
-                return float(depth & 0xffffffu) / float(0xffffffu);
-            });
+            std::vector<float> output(size_t(map.extent.width) * map.extent.height);
+            if (depth_formats.shadow == VK_FORMAT_D32_SFLOAT)
+                readback.read(std::as_writable_bytes(std::span{output}));
+            else if (depth_formats.shadow == VK_FORMAT_D16_UNORM)
+            {
+                std::vector<uint16_t> packed(output.size());
+                readback.read(std::as_writable_bytes(std::span{packed}));
+                std::transform(packed.begin(), packed.end(), output.begin(), [](uint16_t depth) {
+                    return float(depth) / 65535.0F;
+                });
+            } else
+            {
+                std::vector<uint32_t> packed(output.size());
+                readback.read(std::as_writable_bytes(std::span{packed}));
+                std::transform(packed.begin(), packed.end(), output.begin(), [](uint32_t depth) {
+                    return float(depth & 0xffffffu) / float(0xffffffu);
+                });
+            }
             return output;
         }
 
@@ -2385,9 +5011,48 @@ namespace RelayCore::render
                 throw std::invalid_argument("Vulkan mesh target requires positive dimensions");
             if (static_cast<uint32_t>(width) > max_target_width || static_cast<uint32_t>(height) > max_target_height)
                 throw std::invalid_argument("Vulkan mesh target exceeds the device framebuffer/image limits");
-            select_frame(capture || ui);
+            select_frame(!needs_inputs() && (capture || ui));
+            const float scale =
+                renderer_config.dynamic_resolution_enabled ? resolution.scale : renderer_config.render_scale;
+            frame().rendered_scale = scale;
+            const VkExtent2D extent{
+                std::max(1u, static_cast<uint32_t>(std::lround(width * scale))),
+                std::max(1u, static_cast<uint32_t>(std::lround(height * scale)))
+            };
+            const VkExtent2D display_extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+            if (!history_valid || history_extent.width != extent.width || history_extent.height != extent.height
+                || previous_projection != camera.projection_matrix()
+                || previous_exposure != renderer_config.exposure_ev)
+                jitter_index = 0;
+            jitter_uv = {};
+            if (renderer_config.taa_enabled)
+            {
+                constexpr std::array<glm::vec2, 8> halton{
+                    {{0, -1.0F / 6},
+                     {-.25F, 1.0F / 6},
+                     {.25F, -7.0F / 18},
+                     {-.375F, -1.0F / 18},
+                     {.125F, 5.0F / 18},
+                     {-.125F, -5.0F / 18},
+                     {.375F, 1.0F / 18},
+                     {-.4375F, 7.0F / 18}}
+                };
+                jitter_uv = halton[jitter_index % halton.size()] / glm::vec2{extent.width, extent.height};
+            }
+            glm::mat4 jitter{1};
+            jitter[3][0] = 2 * jitter_uv.x;
+            jitter[3][1] = -2 * jitter_uv.y;
+            current_view_projection = jitter * camera.view_projection_matrix();
             frame().material_data.write(std::as_bytes(std::span{&material_parameters, 1}));
-            frame().light_data.write(std::as_bytes(std::span{&lights, 1}));
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan light tiles");
+                const auto spheres = std::span{lights.position_radius}.first(size_t(lights.count.x));
+                lights.tile_masks = light_tile_masks(current_view_projection, spheres);
+                const auto unjittered = light_tile_masks(camera.view_projection_matrix(), spheres);
+                for (size_t tile = 0; tile < lights.tile_masks.size(); ++tile)
+                    static_cast<void>(lights.tile_masks[tile] |= unjittered[tile]);
+                frame().light_data.write(std::as_bytes(std::span{&lights, 1}));
+            }
             IrradianceParameters indirect{};
             if (irradiance)
             {
@@ -2399,39 +5064,102 @@ namespace RelayCore::render
                         indirect.coefficients[probe * 9 + sh] = {irradiance->probes[probe][sh], 0};
             }
             frame().irradiance_data.write(std::as_bytes(std::span{&indirect, 1}));
-            const FrameParameters frame_parameters{
-                {float(width), float(height), scene_time, renderer_config.shadow_debug_cascades ? 1.0F : 0.0F}
+            FrameParameters frame_parameters{
+                {float(extent.width),
+                 float(extent.height),
+                 scene_time,
+                 renderer_config.shadow_debug_cascades ? 1.0F : 0.0F},
+                current_view_projection,
+                glm::inverse(current_view_projection),
+                camera.view_matrix(),
+                {camera.position(), 0},
+                {renderer_config.ssao_enabled ? 1.0F : 0.0F,
+                 renderer_config.ssr_enabled ? 1.0F : 0.0F,
+                 renderer_config.volumetrics_enabled ? renderer_config.volumetric_density : 0.0F,
+                 float(renderer_config.reflection_quality)},
+                {float(renderer_config.ssgi_quality),
+                 float(renderer_config.dof_quality),
+                 float(renderer_config.motion_blur_quality),
+                 renderer_config.dof_focus_distance}
             };
             frame().frame_data.write(std::as_bytes(std::span{&frame_parameters, 1}));
-            collect_expired_resources();
-            prepare(items);
-            // Opaque shadow pipelines consume geometry only.
-            for (const auto& caster : shadow_casters)
-                if (caster.mesh)
-                    static_cast<void>(mesh(*caster.mesh));
-            prepare(viewmodel);
-            uploads.collect();
-            const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-            if (!frame().target || frame().target->extent.width != extent.width
-                || frame().target->extent.height != extent.height)
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan resource preparation");
+                collect_expired_resources();
+                prepare(items);
+                if ((renderer_config.ssao_enabled || renderer_config.ssgi_quality || renderer_config.dof_quality
+                     || renderer_config.motion_blur_quality)
+                    && materials.empty())
+                    static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
+                // Opaque shadow pipelines consume geometry only.
+                for (const auto& caster : shadow_casters)
+                    if (caster.mesh)
+                        static_cast<void>(mesh(*caster.mesh));
+                prepare(viewmodel);
+                uploads.collect();
+                if (material_table)
+                    material_table->update(frame_index);
+            }
+            const bool replace_target = !frame().target || frame().target->extent.width != display_extent.width
+                                        || frame().target->extent.height != display_extent.height
+                                        || frame().target->render_extent.width != extent.width
+                                        || frame().target->render_extent.height != extent.height;
+            const bool replace_inputs =
+                needs_inputs()
+                && (!frame().inputs || history_extent.width != extent.width || history_extent.height != extent.height);
+            if (replace_target)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan target allocation");
                 frame().target = std::make_unique<MeshTarget>(
                     device,
+                    display_extent,
                     extent,
                     scene_format(),
                     display_format(),
-                    static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples)
+                    depth_formats.scene,
+                    static_cast<VkSampleCountFlagBits>(renderer_config.msaa_samples),
+                    tone_mapping && tone_mapping->compute,
+                    input_view == PassInputView::history || input_view == PassInputView::previous_color
                 );
-                if (tone_mapping)
-                    tone_mapping->bind(frame().target->hdr_scene->view, frame_index);
+            }
+            if (needs_inputs())
+            {
+                prepare_inputs(items, viewmodel, camera, extent);
+                if (depth_hierarchy)
+                    frame_parameters.depth_hierarchy = frame().inputs->hierarchy_levels;
+                frame().frame_data.write(std::as_bytes(std::span{&frame_parameters, 1}));
+                history_valid = false;
+            }
+            if (tone_mapping && (replace_target || replace_inputs))
+            {
+                const auto source_view = tone_source().view;
+                tone_mapping->bind(
+                    source_view,
+                    frame().target->color.unorm_view,
+                    frame_index,
+                    extent,
+                    renderer_config.bloom_enabled
+                );
             }
             CpuRgbaTextureData output{width, height, {}};
             if (capture)
                 output.pixels.resize(size_t(width) * height * 4);
             auto& scene_image = frame().target->hdr_scene ? *frame().target->hdr_scene : frame().target->color;
+            prepare_opaque_order(items, camera);
+            prepare_draw_storage(items.size() + viewmodel.size(), shadow_casters.size());
             begin_commands();
             {
                 RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Scene frame");
+                if (frame().resolution_queries && scene_submission != VulkanSceneSubmission::gpu_culled)
+                {
+                    vkCmdResetQueryPool(frame().commands, frame().resolution_queries, 0, 2);
+                    vkCmdWriteTimestamp2(
+                        frame().commands,
+                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                        frame().resolution_queries,
+                        0
+                    );
+                }
                 render_shadows(shadow_casters, camera);
                 std::array<VkImageMemoryBarrier2, 3> barriers{
                     VkImageMemoryBarrier2{
@@ -2491,7 +5219,7 @@ namespace RelayCore::render
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                     .clearValue = {.color = {{clear_rgb.x, clear_rgb.y, clear_rgb.z, 1}}}
                 };
-                const VkRenderingAttachmentInfo depth{
+                VkRenderingAttachmentInfo depth{
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
                     .imageView = frame().target->depth.view,
                     .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
@@ -2510,15 +5238,109 @@ namespace RelayCore::render
                 // Negative viewport height maps the existing Y-up camera to top-down Vulkan images without changing winding.
                 const VkViewport viewport{
                     0,
-                    static_cast<float>(height),
-                    static_cast<float>(width),
-                    -static_cast<float>(height),
+                    static_cast<float>(extent.height),
+                    static_cast<float>(extent.width),
+                    -static_cast<float>(extent.height),
                     0,
                     1
                 };
                 const VkRect2D scissor{{0, 0}, extent};
                 vkCmdSetViewport(frame().commands, 0, 1, &viewport);
                 vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                if (needs_inputs())
+                    record_inputs(items, viewmodel, camera);
+                if (depth_hierarchy)
+                    record_depth_hierarchy();
+                if (renderer_config.ssao_enabled)
+                    record_ao();
+                if (renderer_config.ssr_enabled || renderer_config.ssgi_quality)
+                {
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "SSR source");
+                    auto& history = *frame().inputs->black_source;
+                    input_barrier(history, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    const VkClearColorValue black{{0, 0, 0, 0}};
+                    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                    vkCmdClearColorImage(
+                        frame().commands,
+                        history.image,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        &black,
+                        1,
+                        &range
+                    );
+                    input_barrier(
+                        history,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    );
+                    auto& radiance = *frame().inputs->radiance;
+                    input_barrier(radiance, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                    auto source_color = color;
+                    if (frame().target->multisample_scene)
+                    {
+                        source_color.resolveImageView = radiance.view;
+                        source_color.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                    } else
+                        source_color.imageView = radiance.view;
+                    auto source_rendering = rendering;
+                    source_rendering.pColorAttachments = &source_color;
+                    depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                    vkCmdBindDescriptorSets(
+                        frame().commands,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        layout,
+                        1,
+                        1,
+                        &input_sets[frame_index + frames.size()],
+                        0,
+                        nullptr
+                    );
+                    vkCmdBeginRendering(frame().commands, &source_rendering);
+                    draw(items, camera, RenderPass::Opaque, false, false, 0, true);
+                    vkCmdEndRendering(frame().commands);
+                    input_barrier(
+                        radiance,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    );
+                    depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                    depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                    vkCmdBindDescriptorSets(
+                        frame().commands,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        layout,
+                        1,
+                        1,
+                        &input_sets[frame_index],
+                        0,
+                        nullptr
+                    );
+                    input_barrier(
+                        frame().target->depth,
+                        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_ASPECT_DEPTH_BIT
+                    );
+                    if (frame().target->multisample_scene)
+                        input_barrier(
+                            *frame().target->multisample_scene,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                        );
+                }
+                if (renderer_config.ssgi_quality)
+                {
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "SSGI");
+                    record_advanced(*frame().inputs->gi, gi_pipeline, false);
+                    {
+                        RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "GI reconstruction");
+                        record_advanced(*frame().inputs->reconstructed_gi, reconstruct_pipeline, false, true);
+                    }
+                    vkCmdSetViewport(frame().commands, 0, 1, &viewport);
+                    vkCmdSetScissor(frame().commands, 0, 1, &scissor);
+                }
+                if (frame().target->multisample_scene && viewmodel.empty())
+                    color.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 vkCmdBeginRendering(frame().commands, &rendering);
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "World passes");
@@ -2546,12 +5368,35 @@ namespace RelayCore::render
                     };
                     vkCmdPipelineBarrier2(frame().commands, &reuse_info);
                     color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                    if (frame().target->multisample_scene)
+                        color.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                    depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
                     vkCmdBeginRendering(frame().commands, &rendering);
                     draw(viewmodel, camera, RenderPass::Opaque, true);
                     vkCmdEndRendering(frame().commands);
                 }
+                if (frame().inputs && frame().inputs->color_history)
+                    record_color_history();
+                if (renderer_config.taa_enabled)
+                    record_temporal();
+                if (renderer_config.dof_quality || renderer_config.motion_blur_quality)
+                {
+                    RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "Lens effects");
+                    record_advanced(*frame().inputs->lens, lens_pipeline, true);
+                }
+                if (renderer_config.bloom_enabled)
+                    record_bloom();
                 if (tone_mapping)
                     record_tone_mapping();
+                if (input_view != PassInputView::off)
+                    record_input_view();
+                if (frame().resolution_queries)
+                    vkCmdWriteTimestamp2(
+                        frame().commands,
+                        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                        frame().resolution_queries,
+                        1
+                    );
                 if (ui)
                 {
                     RELAYCORE_PROFILE_VK_ZONE(frame().profiler, frame().commands, "ImGui");
@@ -2583,7 +5428,24 @@ namespace RelayCore::render
                 if (capture)
                     record_readback();
             }
-            submit_and_wait(capture || ui);
+            if (!frame().instance_records.empty())
+                frame().instances.write(std::as_bytes(std::span{frame().instance_records}));
+            if (!frame().draw_commands.empty())
+                frame().indirect_commands.write(std::as_bytes(std::span{frame().draw_commands}));
+            if (scene_submission == VulkanSceneSubmission::gpu_culled)
+                record_culling();
+            submit_and_wait(capture || ui, frame().resolution_queries != VK_NULL_HANDLE);
+            if (needs_inputs())
+            {
+                previous_projection = camera.projection_matrix();
+                previous_unjittered_view_projection = camera.view_projection_matrix();
+                previous_jitter_uv = jitter_uv;
+                previous_exposure = renderer_config.exposure_ev;
+                history_extent = extent;
+                history_slot = frame_index;
+                history_valid = true;
+                ++jitter_index;
+            }
             if (capture)
                 frame().target->readback.read(std::as_writable_bytes(std::span{output.pixels}));
             return output;
@@ -2597,13 +5459,162 @@ namespace RelayCore::render
         const CpuRgbaTextureData& atlas,
         const TextureEncoding encoding,
         const RendererConfig& config,
-        const ColorPipelineMode pipeline
+        const ColorPipelineMode pipeline,
+        const VulkanDepthFormats depth_formats
     ) : state_(std::make_unique<State>(device))
     {
-        state_->initialize(authoring, atlas, encoding, config, pipeline);
+        state_->initialize(authoring, atlas, encoding, config, pipeline, depth_formats);
+        VkFormatProperties trace_format{};
+        vkGetPhysicalDeviceFormatProperties(device.physical_device(), VK_FORMAT_R32_SFLOAT, &trace_format);
+        constexpr auto trace_features = VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        if ((state_->renderer_config.ssr_enabled || state_->renderer_config.ssgi_quality)
+            && device.capabilities().graphics_compute
+            && (trace_format.optimalTilingFeatures & trace_features) == trace_features)
+        {
+            state_->depth_hierarchy = std::make_unique<DepthHierarchy>(device);
+            state_->depth_hierarchy->initialize();
+        }
         reload_shaders(shader_directory);
+        if (config.ssao_enabled || config.ssr_enabled || config.taa_enabled || config.ssgi_quality || config.dof_quality
+            || config.motion_blur_quality)
+        {
+            state_->set_input_view(PassInputView::scene);
+            state_->input_view = PassInputView::off;
+        }
+        if (const auto* value = std::getenv("RELAYCORE_VULKAN_SCENE_SUBMISSION"))
+        {
+            const std::array names{"direct", "instanced", "indirect", "gpu_culled"};
+            const auto found = std::find(names.begin(), names.end(), std::string_view{value});
+            if (found == names.end())
+                throw std::invalid_argument(
+                    "RELAYCORE_VULKAN_SCENE_SUBMISSION must be direct, instanced, indirect or gpu_culled"
+                );
+            set_scene_submission(static_cast<VulkanSceneSubmission>(found - names.begin()));
+        }
+        if (const auto* value = std::getenv("RELAYCORE_VULKAN_PASS_INPUT_VIEW"))
+        {
+            const std::array names{
+                "off",
+                "scene",
+                "depth",
+                "normals",
+                "velocity",
+                "history",
+                "previous_color",
+                "ao",
+                "reflection_confidence",
+                "volume_transmittance",
+                "temporal_source",
+                "ssgi"
+            };
+            const auto found = std::find(names.begin(), names.end(), std::string_view{value});
+            if (found == names.end())
+                throw std::invalid_argument("RELAYCORE_VULKAN_PASS_INPUT_VIEW must be off, scene, depth, normals, "
+                                            "velocity, history, previous_color, ao, reflection_confidence, "
+                                            "volume_transmittance, temporal_source or ssgi");
+            set_pass_input_view(static_cast<PassInputView>(found - names.begin()));
+        }
+    }
+
+    auto VulkanMeshRenderer::resource_usage() const noexcept -> VulkanResourceUsage
+    {
+        const auto uploads = state_->uploads.memory_usage();
+        return {
+            .staging_bytes = uploads.staging_bytes,
+            .upload_batches = uploads.batches,
+            .upload_retirements = uploads.retirements,
+            .scene_retirements = state_->submissions.pending_retirements(),
+            .material_retirements = state_->retired_materials.size()
+        };
+    }
+    void VulkanMeshRenderer::set_scene_submission(const VulkanSceneSubmission mode) noexcept
+    {
+        state_->scene_submission =
+            mode == VulkanSceneSubmission::gpu_culled && !state_->culling ? VulkanSceneSubmission::indirect : mode;
+    }
+
+    auto VulkanMeshRenderer::supports_gpu_culling() const noexcept -> bool
+    {
+        return state_->culling != nullptr;
+    }
+
+    auto VulkanMeshRenderer::scene_submission() const noexcept -> VulkanSceneSubmission
+    {
+        return state_->scene_submission;
+    }
+
+    auto VulkanMeshRenderer::draw_usage() const noexcept -> VulkanDrawUsage
+    {
+        return state_->frame().draw_usage;
+    }
+
+    auto VulkanMeshRenderer::capture_draw_usage() -> VulkanDrawUsage
+    {
+        auto& slot = state_->frame();
+        auto usage = slot.draw_usage;
+        if (slot.cull_records.empty())
+            return usage;
+        state_->wait_frame(slot);
+        std::vector<VkDrawIndexedIndirectCommand> commands(slot.cull_records.size());
+        VulkanBuffer readback{
+            state_->device,
+            commands.size() * sizeof(commands.front()),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VulkanBufferMemory::readback
+        };
+        state_->begin_commands();
+        const VkBufferCopy copy{0, 0, readback.size()};
+        vkCmdCopyBuffer(slot.commands, slot.gpu_commands.handle(), readback.handle(), 1, &copy);
+        state_->submit_and_wait();
+        readback.read(std::as_writable_bytes(std::span{commands}));
+        usage.instances = 0;
+        for (size_t i = 0; i < commands.size(); ++i)
+        {
+            const auto& command = commands[i];
+            const auto& batch = slot.cull_records[i].range;
+            if (command.indexCount != batch.z || command.instanceCount > batch.y || command.firstIndex
+                || command.vertexOffset || command.firstInstance)
+                throw std::runtime_error("GPU scene culling produced an invalid indirect command");
+            usage.instances += command.instanceCount;
+        }
+        usage.culled_instances = slot.draw_usage.instances - usage.instances;
+        return usage;
+    }
+
+    auto VulkanMeshRenderer::resolution_status() const noexcept -> VulkanResolutionStatus
+    {
+        const auto& slot = state_->frame();
+        return {
+            slot.target ? int(slot.target->render_extent.width) : 0,
+            slot.target ? int(slot.target->render_extent.height) : 0,
+            slot.rendered_scale,
+            state_->gpu_scene_ms
+        };
     }
     VulkanMeshRenderer::~VulkanMeshRenderer() noexcept = default;
+
+    auto VulkanMeshRenderer::material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage
+    {
+        VulkanMaterialDescriptorUsage usage{.pools = state_->material_pools.size()};
+        for (const auto& pool : state_->material_pools)
+            usage.materials += pool->materials;
+        if (state_->material_table)
+        {
+            usage.materials = state_->materials.size() + state_->retired_materials.size();
+            usage.indexed_capacity = state_->material_table->capacity();
+        }
+        return usage;
+    }
+
+    auto VulkanMeshRenderer::uses_mesh_shaders() const noexcept -> bool
+    {
+        return state_->mesh_shaders;
+    }
+
+    auto VulkanMeshRenderer::uses_descriptor_indexing() const noexcept -> bool
+    {
+        return state_->material_table != nullptr;
+    }
 
     void VulkanMeshRenderer::prepare_resources(const std::span<const RenderItem> items)
     {
@@ -2651,6 +5662,7 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::append_player_ui(PlayerUi& ui)
     {
+        RELAYCORE_PROFILE_ZONE_N("Vulkan player UI");
         const auto extent = state_->frame().target->extent;
         ui.prepare(int(extent.width), int(extent.height));
         state_->append_ui(nullptr, &ui);
@@ -2711,13 +5723,90 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::set_scene_time(const float seconds) noexcept
     {
+        if (seconds < state_->scene_time)
+            reset_history();
         state_->scene_time = seconds;
+    }
+
+    void VulkanMeshRenderer::set_pass_input_view(const PassInputView view)
+    {
+        state_->set_input_view(view);
+    }
+
+    void VulkanMeshRenderer::reset_history() noexcept
+    {
+        state_->history_valid = false;
+        state_->jitter_index = 0;
+    }
+
+    auto VulkanMeshRenderer::capture_pass_inputs() -> VulkanPassInputCapture
+    {
+        if (!state_->frame().inputs)
+            throw std::logic_error("Pass inputs require an enabled, prepared frame");
+        state_->wait();
+        state_->begin_commands();
+        auto& target = *state_->frame().inputs;
+        const auto extent = state_->frame().target->render_extent;
+        const size_t pixels = size_t(extent.width) * extent.height;
+        if (!target.readback.handle())
+            target.readback = VulkanBuffer(
+                state_->device,
+                pixels * sizeof(glm::vec4) * 2,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VulkanBufferMemory::readback
+            );
+        const std::array images{&target.normal_depth, &target.velocity};
+        for (size_t i = 0; i < images.size(); ++i)
+        {
+            state_->input_barrier(
+                *images[i],
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+            );
+            const VkBufferImageCopy copy{
+                .bufferOffset = pixels * sizeof(glm::vec4) * i,
+                .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .imageExtent = {extent.width, extent.height, 1}
+            };
+            vkCmdCopyImageToBuffer(
+                state_->frame().commands,
+                images[i]->image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                target.readback.handle(),
+                1,
+                &copy
+            );
+            state_->input_barrier(
+                *images[i],
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            );
+        }
+        state_->submit_and_wait();
+        VulkanPassInputCapture capture{
+            int(extent.width),
+            int(extent.height),
+            std::vector<glm::vec4>(pixels),
+            std::vector<glm::vec4>(pixels),
+            state_->frame_history_valid,
+            state_->jitter_uv
+        };
+        target.readback.read(std::as_writable_bytes(std::span{capture.normal_depth}));
+        target.readback.read(std::as_writable_bytes(std::span{capture.velocity}), pixels * sizeof(glm::vec4));
+        return capture;
     }
 
     void VulkanMeshRenderer::reload_shaders(const std::filesystem::path& directory)
     {
+        const auto started = std::chrono::steady_clock::now();
+        log::debug(
+            "[renderer] Pipeline preparation begin: operation={} reason={}",
+            state_->pipelines[0] ? "recreate" : "initialize",
+            state_->pipelines[0] ? "shader_reload" : "backend_construction"
+        );
         state_->wait();
-        std::array<VkPipeline, 7> replacement{};
+        auto staged_directory = directory;
+        std::array<VkPipeline, 20> replacement{};
         try
         {
             for (const auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
@@ -2725,7 +5814,34 @@ namespace RelayCore::render
             for (int i = 0; i < 3; ++i)
                 replacement[3 + i] = state_->create_pipeline(directory, RenderPass::Opaque, i);
             if (state_->tone_mapping)
+            {
                 replacement[6] = state_->tone_mapping->create_pipeline(directory);
+                if (state_->renderer_config.bloom_enabled)
+                    replacement[11] = state_->tone_mapping->create_pipeline(directory, true);
+            }
+            if (state_->renderer_config.ssgi_quality)
+            {
+                replacement[14] = state_->create_pipeline(directory, RenderPass::Opaque, -6);
+                replacement[18] = state_->create_pipeline(directory, RenderPass::Opaque, -8);
+            }
+            if (state_->depth_hierarchy)
+                replacement[19] = state_->depth_hierarchy->create_pipeline(directory);
+            if (state_->renderer_config.dof_quality || state_->renderer_config.motion_blur_quality)
+                replacement[15] = state_->create_pipeline(directory, RenderPass::Opaque, -7);
+            if (state_->renderer_config.taa_enabled)
+                replacement[13] = state_->create_pipeline(directory, RenderPass::Opaque, -5);
+            if (state_->renderer_config.ssao_enabled)
+                replacement[12] = state_->create_pipeline(directory, RenderPass::Opaque, -4);
+            if (state_->input_pipelines[0])
+            {
+                for (auto pass : {RenderPass::Opaque, RenderPass::Overlay, RenderPass::Transparent})
+                    replacement[7 + static_cast<size_t>(pass)] = state_->create_pipeline(directory, pass, -2);
+                replacement[10] = state_->create_pipeline(directory, RenderPass::Opaque, -3);
+            }
+            if (state_->mesh_shaders)
+                replacement[17] = state_->create_pipeline(directory, RenderPass::Opaque, -1, true);
+            if (state_->culling)
+                replacement[16] = state_->culling->create_pipeline(directory);
         } catch (...)
         {
             for (const auto pipeline : replacement)
@@ -2741,12 +5857,62 @@ namespace RelayCore::render
                 vkDestroyPipeline(state_->device.handle(), pipeline, nullptr);
         std::copy_n(replacement.begin(), 3, state_->pipelines.begin());
         std::copy_n(replacement.begin() + 3, 3, state_->shadow_pipelines.begin());
+        for (auto& map : state_->shadow_maps)
+            for (auto& layer : map->cached_layers)
+                layer.valid = false;
+        for (auto& layer : state_->point_shadows->cached_layers)
+            layer.valid = false;
         if (state_->tone_mapping)
         {
             if (state_->tone_mapping->pipeline)
                 vkDestroyPipeline(state_->device.handle(), state_->tone_mapping->pipeline, nullptr);
             state_->tone_mapping->pipeline = replacement[6];
+            if (state_->tone_mapping->bloom_pipeline)
+                vkDestroyPipeline(state_->device.handle(), state_->tone_mapping->bloom_pipeline, nullptr);
+            state_->tone_mapping->bloom_pipeline = replacement[11];
         }
+        for (size_t i = 0; i < state_->input_pipelines.size(); ++i)
+        {
+            if (state_->input_pipelines[i])
+                vkDestroyPipeline(state_->device.handle(), state_->input_pipelines[i], nullptr);
+            state_->input_pipelines[i] = replacement[7 + i];
+        }
+        if (state_->ao_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->ao_pipeline, nullptr);
+        state_->ao_pipeline = replacement[12];
+        if (state_->temporal_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->temporal_pipeline, nullptr);
+        state_->temporal_pipeline = replacement[13];
+        if (state_->gi_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->gi_pipeline, nullptr);
+        state_->gi_pipeline = replacement[14];
+        if (state_->reconstruct_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->reconstruct_pipeline, nullptr);
+        state_->reconstruct_pipeline = replacement[18];
+        if (state_->depth_hierarchy)
+        {
+            if (state_->depth_hierarchy->pipeline)
+                vkDestroyPipeline(state_->device.handle(), state_->depth_hierarchy->pipeline, nullptr);
+            state_->depth_hierarchy->pipeline = replacement[19];
+        }
+        if (state_->lens_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->lens_pipeline, nullptr);
+        state_->lens_pipeline = replacement[15];
+        if (state_->culling)
+        {
+            if (state_->culling->pipeline)
+                vkDestroyPipeline(state_->device.handle(), state_->culling->pipeline, nullptr);
+            state_->culling->pipeline = replacement[16];
+        }
+        if (state_->meshlet_pipeline)
+            vkDestroyPipeline(state_->device.handle(), state_->meshlet_pipeline, nullptr);
+        state_->meshlet_pipeline = replacement[17];
+        log::debug(
+            "[renderer] Pipelines ready: duration_ms={:.3f} pipeline_cache=attached (hits not measured)",
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+        );
+        state_->shader_directory = std::move(staged_directory);
+        reset_history();
     }
     auto VulkanMeshRenderer::render_image(
         const std::span<const RenderItem> items,

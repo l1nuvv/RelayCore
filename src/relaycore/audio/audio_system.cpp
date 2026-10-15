@@ -34,7 +34,7 @@ namespace RelayCore
             RELAYCORE_PROFILE_FUNCTION();
             if (!std::filesystem::is_regular_file(file_path))
             {
-                log::warn("Looping sound file does not exist: {}", file_path.string());
+                log::warn("[audio] Looping sound file does not exist: {}", file_path.string());
                 return {};
             }
             auto loop_sound = std::make_unique<ma_sound>();
@@ -42,7 +42,7 @@ namespace RelayCore
             if (ma_sound_init_from_file(&engine, utf8_path.c_str(), 0, nullptr, nullptr, loop_sound.get())
                 != MA_SUCCESS)
             {
-                log::warn("Failed to initialize looping sound: {}", utf8_path);
+                log::warn("[audio] Failed to initialize looping sound: {}", utf8_path);
                 return {};
             }
 
@@ -109,11 +109,19 @@ namespace RelayCore
         }
 
         auto engine = std::make_unique<ma_engine>();
-        const ma_result result = ma_engine_init(nullptr, engine.get());
+        auto engine_config = ma_engine_config_init();
+#if defined(TRACY_ENABLE)
+        engine_config.dataCallback = [](ma_device* device, void* output, const void*, ma_uint32 frames) {
+            RELAYCORE_PROFILE_ZONE_N("Audio device mix");
+            // Same engine read as miniaudio's default device callback.
+            ma_engine_read_pcm_frames(static_cast<ma_engine*>(device->pUserData), output, frames, nullptr);
+        };
+#endif
+        const ma_result result = ma_engine_init(&engine_config, engine.get());
         if (result != MA_SUCCESS)
         {
             log::warn(
-                "Failed to initialize miniaudio engine (ma_result={}): {}. Audio disabled.",
+                "[audio] Failed to initialize miniaudio engine (ma_result={}): {}. Audio disabled.",
                 static_cast<int>(result),
                 ma_result_description(result)
             );
@@ -122,7 +130,7 @@ namespace RelayCore
 
         ma_engine_set_volume(engine.get(), config_.master_volume);
         engine_ = std::move(engine);
-        log::info("Audio initialized (master_volume={:.2f})", config_.master_volume);
+        log::info("[audio] Audio initialized (master_volume={:.2f})", config_.master_volume);
     }
 
     void AudioSystem::shutdown() noexcept
@@ -184,7 +192,7 @@ namespace RelayCore
                 continue;
             if (!std::filesystem::is_regular_file(path))
             {
-                log::warn("One-shot sound file does not exist: {}", path.string());
+                log::warn("[audio] One-shot sound file does not exist: {}", path.string());
                 continue;
             }
             auto sound = std::make_unique<ma_sound>();
@@ -198,7 +206,11 @@ namespace RelayCore
             );
             if (result != MA_SUCCESS)
             {
-                log::warn("Could not preload player sound {}: {}", path.string(), ma_result_description(result));
+                log::warn(
+                    "[audio] Could not preload player sound {}: {}",
+                    path.string(),
+                    ma_result_description(result)
+                );
                 continue;
             }
             InitializedSound initialized{sound.release()};
@@ -332,7 +344,7 @@ namespace RelayCore
         ma_sound_set_volume(next_loop_sound.get(), active_loop_volume_);
         if (ma_sound_start(next_loop_sound.get()) != MA_SUCCESS)
         {
-            log::warn("Failed to start looping sound: {}", file_path.string());
+            log::warn("[audio] Failed to start looping sound: {}", file_path.string());
             return;
         }
 

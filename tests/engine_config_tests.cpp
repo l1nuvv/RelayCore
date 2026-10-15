@@ -1,5 +1,6 @@
 #include "relaycore/core/engine_config.h"
 #include "relaycore/core/log.h"
+#include "relaycore/render/render_resolution.h"
 
 #include <doctest/doctest.h>
 #include <filesystem>
@@ -89,6 +90,115 @@ TEST_CASE("engine config validates explicit HDR exposure")
     for (const auto value : {"nan", "inf", "10.1", "-10.1", "'bright'"})
         check_invalid_config(temp.path(), std::string{"[render]\nexposure_ev = "} + value + "\n", "render.exposure_ev");
     check_invalid_config(temp.path(), "[render]\nhdr_enabled = 1\n", "render.hdr_enabled");
+}
+
+TEST_CASE("engine config validates spatial effect controls and HDR dependencies")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = write_engine_config(
+        temp.path(),
+        "[render]\nhdr_enabled = true\nbloom_enabled = true\nbloom_strength = 0.2\n"
+        "bloom_threshold = 1.5\nssao_enabled = true\nssr_enabled = true\n"
+        "volumetrics_enabled = true\nvolumetric_density = 0.04\n"
+    );
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.renderer.bloom_enabled);
+    CHECK(config.renderer.ssao_enabled);
+    CHECK(config.renderer.ssr_enabled);
+    CHECK(config.renderer.volumetrics_enabled);
+    CHECK(config.renderer.bloom_strength == doctest::Approx(.2F));
+    CHECK(config.renderer.bloom_threshold == doctest::Approx(1.5F));
+    CHECK(config.renderer.volumetric_density == doctest::Approx(.04F));
+    for (const auto effect : {"bloom_enabled", "ssr_enabled"})
+        check_invalid_config(temp.path(), std::string{"[render]\n"} + effect + " = true\n", "render.hdr_enabled");
+    for (const auto key : {"bloom_strength", "bloom_threshold", "volumetric_density"})
+        for (const auto value : {"nan", "inf", "-0.1", "11", "'bright'"})
+            check_invalid_config(
+                temp.path(),
+                std::string{"[render]\n"} + key + " = " + value + "\n",
+                std::string{"render."} + key
+            );
+}
+
+TEST_CASE("engine config validates temporal and resolution controls")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path =
+        write_engine_config(temp.path(), "[render]\nhdr_enabled = true\ntaa_enabled = true\nrender_scale = 0.67\n");
+    const auto config = RelayCore::core::load_engine_config(path);
+    CHECK(config.renderer.taa_enabled);
+    CHECK(config.renderer.render_scale == doctest::Approx(.67F));
+    check_invalid_config(temp.path(), "[render]\ndynamic_resolution_enabled = true\n", "render.hdr_enabled");
+    for (const auto value : {"nan", "inf", "3.9", "50.1", "'fast'"})
+        check_invalid_config(
+            temp.path(),
+            std::string{"[render]\ndynamic_resolution_target_ms = "} + value,
+            "render.dynamic_resolution_target_ms"
+        );
+    check_invalid_config(temp.path(), "[render]\ntaa_enabled = true\n", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\nrender_scale = 0.75\n", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\ntaa_enabled = 1\n", "render.taa_enabled");
+    for (const auto value : {"nan", "inf", "0.49", "1.01", "'low'"})
+        check_invalid_config(temp.path(), std::string{"[render]\nrender_scale = "} + value, "render.render_scale");
+}
+
+TEST_CASE("engine config validates advanced lighting and lens quality")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto config = RelayCore::core::load_engine_config(write_engine_config(
+        temp.path(),
+        "[render]\nhdr_enabled = true\nssr_enabled = true\nssgi_quality = 2\n"
+        "reflection_quality = 1\ndof_quality = 2\nmotion_blur_quality = 1\ndof_focus_distance = 3.5\n"
+    ));
+    CHECK(config.renderer.ssgi_quality == 2);
+    CHECK(config.renderer.reflection_quality == 1);
+    CHECK(config.renderer.dof_quality == 2);
+    CHECK(config.renderer.motion_blur_quality == 1);
+    CHECK(config.renderer.dof_focus_distance == doctest::Approx(3.5F));
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+        for (const auto value : {"-1", "3", "1.5", "true", "'high'"})
+            check_invalid_config(
+                temp.path(),
+                std::string{"[render]\n"} + key + " = " + value,
+                std::string{"render."} + key
+            );
+    for (const auto key : {"ssgi_quality", "dof_quality", "motion_blur_quality"})
+        check_invalid_config(temp.path(), std::string{"[render]\n"} + key + " = 1", "render.hdr_enabled");
+    check_invalid_config(temp.path(), "[render]\nreflection_quality = 1", "render.reflection_quality");
+    for (const auto value : {"nan", "inf", "0.24", "100.1"})
+        check_invalid_config(
+            temp.path(),
+            std::string{"[render]\ndof_focus_distance = "} + value,
+            "render.dof_focus_distance"
+        );
+}
+
+TEST_CASE("render resolution filters GPU pressure and rejects stale-scale feedback")
+{
+    RelayCore::render::RenderResolution controller;
+    for (int i = 0; i < 96; ++i)
+        controller.update(i % 2 ? 17.0F : 16.0F, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == 1);
+    for (int i = 0; i < 32; ++i)
+        controller.update(30, controller.scale, 1, 16.67F);
+    CHECK(controller.scale < 1);
+    const float reduced = controller.scale;
+    for (int i = 0; i < 100; ++i)
+        controller.update(1, 1, 1, 16.67F);
+    CHECK(controller.scale == reduced);
+    for (int i = 0; i < 400; ++i)
+        controller.update(30, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == .5F);
+    for (int i = 0; i < 400; ++i)
+        controller.update(1, controller.scale, 1, 16.67F);
+    CHECK(controller.scale == 1);
+    controller.reset(.67F);
+    for (int i = 0; i < 96; ++i)
+        controller.update(1, controller.scale, .67F, 16.67F);
+    CHECK(controller.scale == .67F);
 }
 
 TEST_CASE("engine config validates MSAA sample counts")
@@ -268,4 +378,15 @@ TEST_CASE("engine config validates semantic constraints")
             "render.shadow_far_projection_depth"
         );
     }
+}
+
+TEST_CASE("engine config validates optional GPU opt-ins")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const auto path = write_engine_config(temp.path(), "[render]\ndescriptor_indexing = true\nmesh_shaders = true\n");
+    CHECK(RelayCore::core::load_engine_config(path).renderer.descriptor_indexing);
+    CHECK(RelayCore::core::load_engine_config(path).renderer.mesh_shaders);
+    check_invalid_config(temp.path(), "[render]\ndescriptor_indexing = 1\n", "render.descriptor_indexing");
+    check_invalid_config(temp.path(), "[render]\nmesh_shaders = 1\n", "render.mesh_shaders");
 }

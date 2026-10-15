@@ -1,0 +1,4 @@
+interface:
+  display_name: "RelayCore SVG Precision"
+  short_description: "Create precise vector graphics and PNG previews"
+  default_prompt: "Use $svg-precision-skill to create precise SVG artwork for RelayCore."

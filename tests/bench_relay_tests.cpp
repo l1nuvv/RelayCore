@@ -1,3 +1,4 @@
+#include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor_document.h"
 #include "relaygame/static_props.h"
 
@@ -6,6 +7,63 @@
 #include "bench_relay_route.h"
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
+
+TEST_CASE("bullet and pellet marks retain each world hit and stay bounded across repeated fire")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    RelayGame::GameWorldRuntime runtime;
+    const auto load = [&] {
+        runtime.load_level_session(
+            {},
+            RelayGame::LevelSessionBuilder{{}}.build(RelayCore::core::asset_path("levels/bench_relay.toml"))
+        );
+    };
+    load();
+    const glm::vec3 origin{0, 1.5F, -2}, direction{0, 0, -1};
+    const auto first = runtime.debug_apply_player_fire(origin, direction);
+    REQUIRE(first.world_impact);
+    REQUIRE(runtime.bullet_impact_marks().size() == 1);
+    CHECK(runtime.bullet_impact_marks()[0].hit.position == first.world_impact->position);
+    CHECK(runtime.bullet_impact_marks()[0].hit.normal == first.world_impact->normal);
+    CHECK_FALSE(runtime.debug_apply_player_fire(origin, direction).fired);
+    CHECK(runtime.bullet_impact_marks().size() == 1);
+
+    const auto pickup = std::ranges::find(runtime.usables(), "bay_shotgun", &RelayCore::gameplay::RuntimeUsable::name);
+    REQUIRE(pickup != runtime.usables().end());
+    CHECK(runtime.debug_apply_usable_interaction(static_cast<std::size_t>(pickup - runtime.usables().begin()))
+              .primary_applied);
+    REQUIRE(runtime.select_weapon(RelayGame::PlayerWeapon::Shotgun));
+    runtime.debug_tick_combat(2);
+    REQUIRE(runtime.debug_apply_player_fire(origin, direction).fired);
+    REQUIRE(runtime.bullet_impact_marks().size() == 8);
+    for (const auto& mark : runtime.bullet_impact_marks().subspan(1))
+    {
+        CHECK(mark.radius < runtime.bullet_impact_marks()[0].radius);
+        CHECK(mark.hit.position.z == doctest::Approx(first.world_impact->position.z));
+    }
+    runtime.debug_tick_combat(2);
+    const auto count = runtime.bullet_impact_marks().size();
+    REQUIRE(runtime.debug_apply_player_fire({0, 1.5F, -2}, {0, 1, 0}).fired);
+    // The ceiling is also a world surface; the effect outlives its short shot trace.
+    CHECK(runtime.bullet_impact_marks().size() > count);
+    runtime.debug_tick_combat(2);
+    CHECK(runtime.bullet_impact_marks().size() > count);
+    for (int i = 0; i < 40; ++i)
+    {
+        runtime.debug_tick_combat(2);
+        REQUIRE(runtime.debug_apply_player_fire(origin, direction).fired);
+    }
+    CHECK(runtime.bullet_impact_marks().size() == 256);
+    load();
+    CHECK(runtime.bullet_impact_marks().empty());
+    const auto door = runtime.debug_apply_player_fire({0, 1.5F, 0}, {0, 0, 1});
+    REQUIRE(door.world_impact);
+    CHECK(runtime.bullet_impact_marks()[0].hit.object.kind == RelayCore::physics::WorldObjectKind::Door);
+    const auto saved = runtime.capture_saved_game(0, false);
+    runtime.restore_saved_game(saved);
+    CHECK(runtime.bullet_impact_marks().empty());
+}
 
 TEST_CASE("bench relay native opening passes rover and low rays while the enclosing box blocks them")
 {

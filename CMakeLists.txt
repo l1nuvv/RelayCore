@@ -103,13 +103,39 @@ foreach(stage IN ITEMS vert frag)
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang" "${SLANGC_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang"
         COMMENT "Compiling mesh.slang (${entry}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
-foreach(stage IN ITEMS vert frag)
-    if(stage STREQUAL "vert")
+set(output "${RELAYCORE_SPIRV_DIRECTORY}/scene_culling.comp.spv")
+add_custom_command(OUTPUT "${output}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+    COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_culling.slang"
+        -entry compute_main -stage compute -target spirv -profile spirv_1_5
+        -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_culling.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang" "${SLANGC_EXECUTABLE}"
+    COMMENT "Compiling scene culling to SPIR-V" VERBATIM)
+list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+set(output "${RELAYCORE_SPIRV_DIRECTORY}/depth_hierarchy.comp.spv")
+add_custom_command(OUTPUT "${output}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+    COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/depth_hierarchy.slang"
+        -entry compute_main -stage compute -target spirv -profile spirv_1_5
+        -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/depth_hierarchy.slang" "${SLANGC_EXECUTABLE}"
+    COMMENT "Compiling depth hierarchy to SPIR-V" VERBATIM)
+list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+foreach(stage IN ITEMS vert frag comp bloom)
+    if(stage STREQUAL "comp")
+        set(entry compute_main)
+        set(shader_stage compute)
+    elseif(stage STREQUAL "bloom")
+        set(entry bloom_fragment)
+        set(shader_stage fragment)
+    elseif(stage STREQUAL "vert")
         set(entry vertex_main)
         set(shader_stage vertex)
     else()
@@ -125,6 +151,84 @@ foreach(stage IN ITEMS vert frag)
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/tone_mapping.slang"
                 "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
         COMMENT "Compiling tone_mapping.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(entry IN ITEMS input_vertex input_fragment debug_vertex debug_fragment ao_vertex ao_fragment)
+    if(entry MATCHES "vertex$")
+        set(shader_stage vertex)
+    else()
+        set(shader_stage fragment)
+    endif()
+    if(entry MATCHES "^ao_")
+        set(input_source mesh)
+        set(input_defines -DSCREEN_EFFECTS=1)
+    else()
+        set(input_source pass_inputs)
+        set(input_defines)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/pass_inputs.${entry}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/${input_source}.slang" ${input_defines}
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+        COMMENT "Compiling pass_inputs.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(stage IN ITEMS vertex fragment)
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/temporal.temporal_${stage}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/temporal.slang"
+            -entry temporal_${stage} -stage ${stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/temporal.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling temporal.slang (${stage}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(entry IN ITEMS advanced_vertex gi_fragment lens_fragment reconstruct_fragment)
+    if(entry MATCHES "vertex$")
+        set(shader_stage vertex)
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/advanced.vert.spv")
+    else()
+        set(shader_stage fragment)
+        string(REPLACE "_fragment" "" advanced_kind "${entry}")
+        set(output "${RELAYCORE_SPIRV_DIRECTORY}/advanced_${advanced_kind}.frag.spv")
+    endif()
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/advanced.slang"
+            -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/advanced.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling advanced.slang (${entry}) to SPIR-V" VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(effect IN ITEMS effects volume)
+    set(effect_defines -DSCREEN_EFFECTS=1)
+    if(effect STREQUAL "volume")
+        list(APPEND effect_defines -DVOLUME_ONLY=1)
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/mesh_${effect}.frag.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            ${effect_defines} -entry fragment_main -stage fragment -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+                "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        COMMENT "Compiling mesh screen effects to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
 foreach(shadow IN ITEMS shadow point_shadow)
@@ -147,7 +251,8 @@ foreach(shadow IN ITEMS shadow point_shadow)
             COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
                 -DPOINT_SHADOW=${point_shadow} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
                 -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
-            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang" "${SLANGC_EXECUTABLE}"
+            DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/shadow.slang"
+                    "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang" "${SLANGC_EXECUTABLE}"
             COMMENT "Compiling shadow.slang (${shadow}, ${entry}) to SPIR-V" VERBATIM)
         list(APPEND RELAYCORE_MESH_SPIRV "${output}")
     endforeach()
@@ -166,6 +271,66 @@ foreach(stage IN ITEMS vert frag)
             -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
             -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
         DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/player_ui.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(variant IN ITEMS mesh mesh_effects mesh_volume pass_inputs mesh_vertex pass_inputs_vertex)
+    set(defines -DDESCRIPTOR_INDEXING=1)
+    set(shader_stage fragment)
+    set(output_prefix ${variant})
+    set(source mesh)
+    set(entry fragment_main)
+    set(stage frag)
+    if(variant STREQUAL "mesh_effects")
+        list(APPEND defines -DSCREEN_EFFECTS=1)
+    elseif(variant STREQUAL "mesh_volume")
+        list(APPEND defines -DSCREEN_EFFECTS=1 -DVOLUME_ONLY=1)
+    elseif(variant STREQUAL "pass_inputs")
+        set(source pass_inputs)
+        set(entry input_fragment)
+        set(stage input_fragment)
+    endif()
+    if(variant STREQUAL "mesh_vertex" OR variant STREQUAL "pass_inputs_vertex")
+        set(shader_stage vertex)
+        set(stage vert)
+        set(entry vertex_main)
+        set(output_prefix mesh)
+        if(variant STREQUAL "pass_inputs_vertex")
+            set(source pass_inputs)
+            set(output_prefix pass_inputs)
+            set(stage input_vertex)
+            set(entry input_vertex)
+        endif()
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/${output_prefix}.${stage}.indexed.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/${source}.slang"
+            ${defines} -entry ${entry} -stage ${shader_stage} -target spirv -profile spirv_1_5
+            -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/pass_inputs.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_effects.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
+        VERBATIM)
+    list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+endforeach()
+foreach(indexed IN ITEMS 0 1)
+    set(suffix "")
+    if(indexed)
+        set(suffix ".indexed")
+    endif()
+    set(output "${RELAYCORE_SPIRV_DIRECTORY}/meshlets.mesh${suffix}.spv")
+    add_custom_command(OUTPUT "${output}"
+        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/meshlets.slang"
+            -DDESCRIPTOR_INDEXING=${indexed} -entry meshlet_main -stage mesh -target spirv -profile spirv_1_5
+            -capability spvMeshShadingEXT -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+        DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/meshlets.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/mesh.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_materials.slang"
+            "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_postfx.slang" "${SLANGC_EXECUTABLE}"
         VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()

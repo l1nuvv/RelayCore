@@ -81,8 +81,12 @@ namespace RelayCore::gameplay
 
     } // namespace
 
-    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source)
-        -> float
+    [[nodiscard]] auto apply_player_damage(
+        PlayerCombatState& player,
+        const float amount,
+        const std::string_view source,
+        const std::optional<glm::vec3> source_position
+    ) -> float
     {
         if (!player.alive || amount <= 0.0F)
         {
@@ -93,6 +97,10 @@ namespace RelayCore::gameplay
         player.health = std::max(0.0F, player.health - amount);
         player.damage_taken += applied_damage;
         player.hurt_flash_remaining_seconds = std::max(player.hurt_flash_remaining_seconds, 0.30F);
+        player.damage_direction_remaining_seconds = 0.30F;
+        player.damage_source_position_valid = source_position.has_value();
+        if (source_position)
+            player.damage_source_position = *source_position;
         player.last_damage_source = std::string{source};
         if (player.health <= 0.0F)
         {
@@ -121,6 +129,7 @@ namespace RelayCore::gameplay
             if (turret.health <= 0.0F)
             {
                 turret.destroyed = true;
+                turret.hit_feedback = {};
                 turret.enabled = false;
                 turret.cooldown_remaining_seconds = 0.0F;
                 turret.warmup_remaining_seconds = 0.0F;
@@ -235,6 +244,9 @@ namespace RelayCore::gameplay
         state.health = state.max_health;
         state.weapon_cooldown_remaining_seconds = 0.0F;
         state.hurt_flash_remaining_seconds = 0.0F;
+        state.damage_direction_remaining_seconds = 0.0F;
+        state.damage_source_position = {};
+        state.damage_source_position_valid = false;
         state.hit_confirmation_remaining_seconds = 0.0F;
         state.shot_trace = {};
         state.respawn_remaining_seconds = 0.0F;
@@ -253,6 +265,9 @@ namespace RelayCore::gameplay
         state.health = state.max_health;
         state.weapon_cooldown_remaining_seconds = 0.0F;
         state.hurt_flash_remaining_seconds = 0.0F;
+        state.damage_direction_remaining_seconds = 0.0F;
+        state.damage_source_position = {};
+        state.damage_source_position_valid = false;
         state.hit_confirmation_remaining_seconds = 0.0F;
         state.shot_trace = {};
         state.respawn_remaining_seconds = 0.0F;
@@ -266,6 +281,9 @@ namespace RelayCore::gameplay
         player.weapon_cooldown_remaining_seconds = std::max(0.0F, player.weapon_cooldown_remaining_seconds - step);
         player.hurt_flash_remaining_seconds = std::max(0.0F, player.hurt_flash_remaining_seconds - step);
         player.hit_confirmation_remaining_seconds = std::max(0.0F, player.hit_confirmation_remaining_seconds - step);
+        player.damage_direction_remaining_seconds = std::max(0.0F, player.damage_direction_remaining_seconds - step);
+        if (player.damage_direction_remaining_seconds == 0.0F)
+            player.damage_source_position_valid = false;
         player.shot_trace.remaining_seconds = std::max(0.0F, player.shot_trace.remaining_seconds - step);
         if (!player.alive)
         {
@@ -277,6 +295,9 @@ namespace RelayCore::gameplay
             turret.cooldown_remaining_seconds = std::max(0.0F, turret.cooldown_remaining_seconds - step);
             turret.warmup_remaining_seconds = std::max(0.0F, turret.warmup_remaining_seconds - step);
             turret.hit_flash_remaining_seconds = std::max(0.0F, turret.hit_flash_remaining_seconds - step);
+            turret.hit_feedback.remaining_seconds = std::max(0.0F, turret.hit_feedback.remaining_seconds - step);
+            if (turret.hit_feedback.remaining_seconds == 0)
+                turret.hit_feedback = {};
             turret.fire_flash_remaining_seconds = std::max(0.0F, turret.fire_flash_remaining_seconds - step);
             turret.shot_trace.remaining_seconds = std::max(0.0F, turret.shot_trace.remaining_seconds - step);
 
@@ -315,6 +336,7 @@ namespace RelayCore::gameplay
 
         float best_hit_distance = blocker_distance;
         int best_turret_index = -1;
+        glm::vec3 hit_normal{};
         for (std::size_t turret_index = 0; turret_index < turrets.size(); ++turret_index)
         {
             const RuntimeTurret& turret = turrets[turret_index];
@@ -323,14 +345,14 @@ namespace RelayCore::gameplay
                 continue;
             }
 
-            const auto hit =
-                physics::ray_intersection_distance(origin, shot_direction, turret.bounds, best_hit_distance);
+            const auto hit = physics::ray_intersection(origin, shot_direction, turret.bounds, best_hit_distance);
             if (!hit.has_value())
             {
                 continue;
             }
 
-            best_hit_distance = *hit;
+            best_hit_distance = hit->distance;
+            hit_normal = hit->normal;
             best_turret_index = static_cast<int>(turret_index);
         }
 
@@ -347,7 +369,7 @@ namespace RelayCore::gameplay
         player.shot_trace.impact = physics::WorldQueryHit{
             .distance = best_hit_distance,
             .position = player.shot_trace.end,
-            .normal = -shot_direction,
+            .normal = hit_normal,
             .surface = SurfaceMaterial::Metal,
         };
         result.hit_turret = true;
@@ -355,7 +377,16 @@ namespace RelayCore::gameplay
         result.hit_distance = best_hit_distance;
         ++player.shots_hit;
         player.hit_confirmation_remaining_seconds = 0.16F;
-        player.damage_dealt += apply_turret_damage(turret, player.weapon_damage, result);
+        const float damage = apply_turret_damage(turret, player.weapon_damage, result);
+        player.damage_dealt += damage;
+        result.actor_contact = CombatActorContact{
+            .kind = CombatActorKind::Turret,
+            .index = best_turret_index,
+            .position = player.shot_trace.end,
+            .normal = hit_normal,
+            .direction = shot_direction,
+            .damage = damage,
+        };
         if (result.killed_turret)
         {
             ++player.kills;
@@ -466,8 +497,12 @@ namespace RelayCore::gameplay
             turret.warmup_remaining_seconds = turret.warmup_seconds;
             turret.warming_up = false;
             ++result.turret_shots;
-            result.damage_taken +=
-                apply_player_damage(player, turret.damage, turret.label.empty() ? turret.name : turret.label);
+            result.damage_taken += apply_player_damage(
+                player,
+                turret.damage,
+                turret.label.empty() ? turret.name : turret.label,
+                turret.origin
+            );
             if (!player.alive)
             {
                 result.player_died = true;

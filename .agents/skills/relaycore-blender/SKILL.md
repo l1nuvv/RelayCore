@@ -5,7 +5,7 @@ description: Create or refine RelayCore models with Blender and Python, includin
 
 # RelayCore Blender modeling
 
-Paths are relative to the repository root. Use `relaycore-art-direction` for visual decisions and `relaycore-assets` for source/export/native delivery. Read `docs/ART_DIRECTION.md` and the static-model section of `docs/DEVELOPMENT.md` for the requested asset. Their project constraints override the generic workflows below.
+Paths are relative to the repository root. Use `relaycore-art-direction` for visual decisions and `relaycore-assets` for source/export/native delivery. Read `docs/ART_DIRECTION.md` and the relevant section of `docs/MODEL_ASSETS.md` for the requested asset. Their project constraints override the generic workflows below.
 
 For external textures, HDRIs and models, follow `docs/ASSET_SOURCES.md`: it maps each asset need to suitable sites and records the private-project workflow. Keep search/adaptation within the requested asset task.
 
@@ -51,6 +51,18 @@ For material/HDRI lookup, the rendering skill includes `scripts/poly-haven-cli.t
 
 Use the existing meter scale, origin and Blender-to-runtime basis conventions. Follow the current exporter and importer rather than inventing export flags. Realize required procedural geometry and inspect the evaluated result before export.
 
-The current importer accepts static opaque meshes, base color and tangent-space normals. Metallic/roughness scalar factors require the existing explicit opt-in. It rejects skins/animation/morphs, alpha/double-sided materials and occlusion/emissive/metallic-roughness maps. Procedural shader graphs, glass, volumes, HDRI lighting and Blender compositor effects do not become supported runtime features through GLB export. Adapt the asset to the documented subset; a render-only request may retain Blender-specific materials.
+The importer accepts static opaque core glTF meshes with base-color textures/factors, tangent-space normals, metallic/roughness factors and maps, occlusion maps/strength, and emissive textures/factors. Metallic/roughness factors and maps require `--metallic-roughness` (the existing per-model CMake opt-in). It rejects glTF extensions, including emissive-strength, skins, animation, morphs, alpha and double-sided materials; base-color texels must be opaque.
+
+Textures must be embedded PNG/JPEG, use `TEXCOORD_0` without texture transforms, and use repeat wrapping with linear magnification and linear/trilinear minification (or omitted filters). Base color and emissive RGB are sRGB; normal, metallic-roughness (G=roughness, B=metallic) and AO (R) are linear data. Normal maps require exported tangents and use +Y tangent space; do not flip UVs or the green channel. Emissive factors are independent linear RGB in [0,1]. See [supported import](../../../docs/MODEL_ASSETS.md#поддерживаемый-импорт) for the full contract and current declarations.
+
+Procedural shader graphs, glass, volumes, HDRI lighting and Blender compositor effects do not become runtime features through GLB export. Bake unsupported procedural surface properties into compatible textures or change the authoring; a render-only request may retain Blender-specific materials.
 
 Fresh-import the GLB and use `relaycore-assets` for the affected native compilation/staging and runtime check when delivering a game asset. Keep collision separate from the render mesh. Report exactly which views, export/native checks and runtime inspection were performed. A skill setup request does not authorize new models, roadmap work or packaging.
+
+## RelayCore texturing handoff
+
+Inspect the UV0 layout and a neutral material view for stretching, visible seams, texture orientation and texel density at the intended gameplay distance. Match grain, repeat size and density across adjacent parts to the asset's physical scale; author required tiling in UV0 rather than relying on a texture-transform extension. Inspect mirrored/negative-scale instances after export for winding, normal direction and tangent handedness; a correct Blender preview alone does not establish correct runtime shading.
+
+Bake unsupported procedural surface inputs into the supported glTF channels and inspect the fresh-imported GLB, rather than assuming the Blender shader graph exports. Use sRGB for base color/emissive and Non-Color data for normal/MR/AO inputs. Verify +Y normals with exported tangents, G/B MR packing and R AO; MR maps multiply their factors, and AO strength affects indirect light. Check emissive color/intensity under the target SDR/HDR exposure using the supported [0,1] factors; emission does not itself light neighboring geometry. Use `docs/RENDERING.md` for the target image settings.
+
+For game delivery, follow the material through exported GLB, native product and a representative in-engine view. Scale evidence to risk: reuse accepted evidence for unchanged parts of a simple prop; inspect channel samples, seam close-ups and matched exposure views when a hero asset or a material defect needs them. Blender lighting, color management and compositor previews do not replace the engine appearance check. Report any unperformed checks explicitly.

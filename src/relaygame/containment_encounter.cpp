@@ -111,7 +111,8 @@ namespace RelayGame
                 strike_delta.y = 0;
                 if (sees && distance < 3.6F && glm::length(strike_delta) < 1.5F
                     && player_bounds.mins.y < state.position.y + 2)
-                    static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 32, "Хранитель"));
+                    static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 32, "Хранитель", state.position)
+                    );
                 state.mode = GuardianMode::Recovery;
                 state.timer = 4;
             }

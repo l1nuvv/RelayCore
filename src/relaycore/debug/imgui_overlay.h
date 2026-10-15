@@ -127,7 +127,6 @@ namespace RelayCore::debug
         ImGuiOverlayConfig config_{};
         const Window* window_ = nullptr;
         bool initialized_ = false;
-        float fps_log_accumulator_ = 0.0F;
         std::array<float, kFrameTimeSampleCount> frame_time_samples_{};
         std::size_t frame_time_sample_count_ = 0;
         std::size_t frame_time_sample_cursor_ = 0;

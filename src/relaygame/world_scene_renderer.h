@@ -10,6 +10,7 @@
 #include "relaycore/render/static_model.h"
 #include "relaygame/containment_encounter.h"
 #include "relaygame/enemy_runtime.h"
+#include "relaygame/player_feedback.h"
 #include "relaygame/scientist_pose.h"
 #include "relaygame/static_props.h"
 #include "relaygame/world_environment.h"
@@ -101,7 +102,8 @@ namespace RelayGame
             std::span<const RuntimeEnemy> enemies = {},
             const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
             std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {},
-            const ContainmentEncounter* containment = nullptr
+            const ContainmentEncounter* containment = nullptr,
+            std::span<const BulletImpactMark> bullet_impact_marks = {}
         );
 
         void prepare_render_queue(
@@ -119,7 +121,8 @@ namespace RelayGame
             std::span<const RuntimeEnemy> enemies = {},
             const RelayCore::gameplay::PlayerCombatState* player_combat = nullptr,
             std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces = {},
-            const ContainmentEncounter* containment = nullptr
+            const ContainmentEncounter* containment = nullptr,
+            std::span<const BulletImpactMark> bullet_impact_marks = {}
         );
 
         [[nodiscard]] auto render_items() const noexcept -> std::span<const RelayCore::render::RenderItem>
@@ -160,6 +163,7 @@ namespace RelayGame
             -> const std::vector<RelayCore::render::AuthoringWarningDiagnostics>&;
 
     private:
+        static constexpr glm::vec3 actor_hit_emission{.65F, .35F, .12F};
         void initialize_prop_meshes(RelayCore::render::ColorPipelineMode pipeline);
         void initialize_environment_meshes(RelayCore::render::ColorPipelineMode pipeline);
         void render_environment(
@@ -228,7 +232,8 @@ namespace RelayGame
             const RelayCore::render::ModelAsset& asset,
             const glm::mat4& model,
             bool visible,
-            bool emissive_enabled = true
+            bool emissive_enabled = true,
+            bool hit = false
         );
 
         struct RenderChunk {
@@ -264,6 +269,7 @@ namespace RelayGame
         RelayCore::render::StaticColorMesh inspector_hit_mesh_{};
         RelayCore::render::StaticColorMesh player_shot_mesh_{};
         RelayCore::render::StaticColorMesh pellet_mesh_{};
+        std::array<RelayCore::render::StaticColorMesh, 2> bullet_impact_meshes_{};
         RelayCore::render::StaticColorMesh turret_shot_mesh_{};
         RelayCore::render::StaticColorMesh turret_warning_mesh_{};
         std::array<RelayCore::render::StaticColorMesh, 2> rover_signal_meshes_{};
@@ -307,6 +313,7 @@ namespace RelayGame
             std::shared_ptr<const RelayCore::render::StaticModel> model;
             glm::mat4 transform{1};
             std::shared_ptr<const RelayCore::render::ModelAsset> asset;
+            bool casts_shadow = true;
         };
         std::vector<PropInstance> props_;
         RelayCore::render::RenderQueue render_queue_{};

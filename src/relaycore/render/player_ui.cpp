@@ -13,6 +13,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "../../../extern/rmlui/RmlUi_Platform_SDL.h"
@@ -36,6 +37,7 @@ namespace RelayCore::render
         std::vector<WorldMarkerElements> world_markers;
         std::unordered_map<std::string, std::string> text_cache;
         std::unordered_map<std::string, std::string> property_cache;
+        std::unordered_set<Rml::FontFaceHandle> prepared_fonts;
         bool initialized = false;
         State(SDL_Window* target, const VulkanDevice& device) :
             window(target), system(target), renderer(device, core::asset_path("shaders/vulkan"))
@@ -238,8 +240,57 @@ namespace RelayCore::render
         // Documents use dp; pointer input and viewport use framebuffer pixels, converted by the SDL backend.
         const float fit = std::min(float(width) / 1280.0F, float(height) / 720.0F);
         state_->context->SetDensityIndependentPixelRatio(std::max(0.75F, fit));
+        {
+            RELAYCORE_PROFILE_ZONE_N("RmlUi context update");
+            state_->context->Update();
+        }
+        {
+            RELAYCORE_PROFILE_ZONE_N("RmlUi context render");
+            state_->context->Render();
+        }
+    }
+    void PlayerUi::prepare_fonts(int width, int height)
+    {
+        RELAYCORE_PROFILE_ZONE_N("RmlUi prepare fonts");
+        state_->context->SetDimensions({width, height});
+        const float fit = std::min(float(width) / 1280.0F, float(height) / 720.0F);
+        state_->context->SetDensityIndependentPixelRatio(std::max(0.75F, fit));
+
+        // Dynamic damage markers use a font size absent from the static document.
+        auto marker = state_->hud->CreateElement("div");
+        marker->SetClass("world-marker", true);
+        marker->SetClass("damage", true);
+        auto* marker_element = state_->hud->AppendChild(std::move(marker));
         state_->context->Update();
-        state_->context->Render();
+        const Rml::String glyphs =
+            " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+            "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя×—–−·…→←↑↓•°№«»";
+        auto* engine = Rml::GetFontEngineInterface();
+        auto& manager = state_->context->GetRenderManager();
+        const Rml::String language = "ru";
+        const Rml::TextShapingContext shaping{language};
+        const auto prepare_element = [&](const auto& self, Rml::Element* element) -> void {
+            const auto face = element->GetFontFaceHandle();
+            if (face && state_->prepared_fonts.insert(face).second)
+            {
+                // Width discovery must precede mesh generation: adding glyphs invalidates the atlas.
+                engine->GetStringWidth(face, glyphs, shaping);
+                Rml::TexturedMeshList meshes;
+                engine
+                    ->GenerateString(manager, face, 0, glyphs, {}, Rml::ColourbPremultiplied{255}, 1, shaping, meshes);
+                for (const auto& mesh : meshes)
+                {
+                    const auto dimensions = mesh.texture.GetDimensions();
+                    if (dimensions.x <= 0 || dimensions.y <= 0)
+                        throw std::runtime_error("Cannot prepare player UI font atlas");
+                }
+            }
+            for (int i = 0; i < element->GetNumChildren(); ++i)
+                self(self, element->GetChild(i));
+        };
+        for (auto* document : {state_->hud, state_->menu, state_->finale})
+            prepare_element(prepare_element, document);
+        state_->hud->RemoveChild(marker_element);
     }
     auto PlayerUi::retain_render_resources() const -> std::shared_ptr<const void>
     {
@@ -309,6 +360,12 @@ namespace RelayCore::render
         reticle->SetClass("focused", !data.prompt.empty());
         state_->element("status")->SetClass("danger", !data.alive || data.health < data.max_health * 0.35F);
         state_->property("hurt", "opacity", std::to_string(data.hurt));
+        state_->property("damage-direction", "opacity", std::to_string(data.damage_alert));
+        state_->property(
+            "damage-direction",
+            "transform",
+            "rotate(" + std::to_string(data.damage_direction_degrees) + "deg)"
+        );
         state_->property("hit", "opacity", std::to_string(data.hit));
         state_->property("spread", "width", std::to_string(data.reticle_radius * 2) + "px");
         state_->property("spread", "height", std::to_string(data.reticle_radius * 2) + "px");

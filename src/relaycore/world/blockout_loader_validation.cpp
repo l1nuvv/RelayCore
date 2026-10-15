@@ -677,7 +677,7 @@ namespace RelayCore::detail
                 }
 
                 log::warn(
-                    "Suspicious overlap between trigger {} and door {} in loaded level",
+                    "[assets] Suspicious overlap between trigger {} and door {} in loaded level",
                     format_entity_label(level.entities[trigger_entity_index], trigger_entity_index),
                     format_entity_label(level.entities[door_entity_index], door_entity_index)
                 );
@@ -694,7 +694,7 @@ namespace RelayCore::detail
                 }
 
                 log::warn(
-                    "Suspicious overlapping triggers {} and {} in loaded level",
+                    "[assets] Suspicious overlapping triggers {} and {} in loaded level",
                     format_entity_label(level.entities[trigger_bounds[left].first], trigger_bounds[left].first),
                     format_entity_label(level.entities[trigger_bounds[right].first], trigger_bounds[right].first)
                 );

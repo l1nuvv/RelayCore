@@ -4,8 +4,6 @@ Status: architecture reference. This document records approved third-party respo
 
 Read this file when a task adds, replaces, upgrades, removes, or exposes a third-party dependency, or when choosing the foundation for rendering, physics, asset processing, navigation, animation, audio, compression, or tooling.
 
-Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime и CMake требуют Vulkan 1.4 на уже установленных headers/vk-bootstrap/VMA. Проверки и открытые gates записаны в плане; dependency baseline и версии библиотек не менялись, новые эффекты и зависимости пока не реализованы.
-
 ## 1. Policy
 
 RelayCore should own engine policy and product-specific behavior, but it should not reimplement mature commodity infrastructure without a concrete reason.
@@ -25,7 +23,7 @@ Rules:
 
 Version numbers below are a **2026-09-30 research snapshot**, not permanent pins. The checked-in vcpkg baseline is authoritative after each accepted dependency update.
 
-Current vcpkg manifest baseline: `a42757564758c60651ebc616d9b000b7b91249ef`; product version is read from `VERSION`. Vulkan is the sole runtime backend after VK-013; VK-014 review is complete. The VK-D00 OpenGL builds below are historical dependency-refresh evidence. Current Vulkan build/runtime verification is recorded in `VULKAN_MIGRATION_PLAN.md`, sections 27–28. Recheck the manifest and current source before changing dependencies.
+Exact pins belong to [vcpkg.json](../vcpkg.json) and repository overlays; product version belongs to [VERSION](../VERSION). The VK-D00 OpenGL build results below are historical dependency-refresh evidence. Vulkan migration evidence is in [VULKAN_MIGRATION_PLAN](VULKAN_MIGRATION_PLAN.md); subsequent VK14 work is in the [renderer-plan](RENDERER_MODERNIZATION_PLAN.md).
 
 ## 2. Keep the current foundations
 
@@ -46,23 +44,9 @@ The verified VK-D00 manifest resolves SDL3 `3.4.16#1`, miniaudio `0.11.25`, GLM 
 
 ### Player-facing UI decision — 2026-10-09
 
-Implementation selection: **RmlUi 6.3**, standard manifest port at the existing
-`a42757564758c60651ebc616d9b000b7b91249ef` baseline, default FreeType font engine.
-Lua/SVG/Lottie and sample graphics backends are not enabled. `extern/rmlui`
-contains the official 6.3 SDL platform/input adapter and MIT notice. RelayCore's
-small `VulkanRmlRenderer` implements geometry, generated font textures,
-premultiplied alpha, rectangular scissor and transforms on the existing device/VMA.
-The upstream Vulkan demo owns its device/swapchain/frame machinery, so importing
-that backend would duplicate runtime ownership. Authored UI uses no images,
-filters, layers, transformed clipping or rounded overflow; these optional features
-are outside the adapter's current contract. `assets/fonts/RobotoMono-Regular.ttf`
-and its upstream font license are staged with RML/RCSS. See
-[6.3 release](https://github.com/mikke89/RmlUi/releases/tag/6.3) and
-[baseline port](https://github.com/microsoft/vcpkg/blob/a42757564758c60651ebc616d9b000b7b91249ef/ports/rmlui/vcpkg.json).
+Use **RmlUi 6.3**, the standard manifest port at the existing baseline with the default FreeType font engine. Lua/SVG/Lottie and sample graphics backends are disabled. `extern/rmlui` contains the official SDL adapter and MIT notice. The upstream Vulkan demo owns device/swapchain/frame machinery and would duplicate RelayCore ownership, so RelayCore supplies its own small render interface on the existing device/VMA.
 
-The owner requires replacing ImGui for game HUD and player-facing menus/screens. ImGui remains the debug/editor/developer-tools foundation. The ImGui HUD/menu integration below describes the historical Vulkan cutover. VIS-43–46 have completed the technical migration to RmlUi; their visual acceptance remains open. See [scope and gates](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui).
-
-RmlUi types remain within UI implementation; manifest/version policy is unchanged. Gameplay presentation data and actions are RelayCore-owned and independent of ImGui and diagnostics contracts. The implementation uses the selected release's headers/backends rather than master documentation for API signatures.
+[Runtime ownership](ARCHITECTURE.md#player-ui-ownership-rmlui-63), [authoring/adapter limits](DEVELOPMENT.md#игровой-ui-rmlui-63), [VIS-43–46 acceptance](tickets/VIS-43-46.md). Use the selected release's headers/backends for API signatures, not master documentation. [Release](https://github.com/mikke89/RmlUi/releases/tag/6.3) and [baseline port](https://github.com/microsoft/vcpkg/blob/a42757564758c60651ebc616d9b000b7b91249ef/ports/rmlui/vcpkg.json) record the selection.
 
 ## 3. Vulkan migration dependencies — approved for VK-000
 

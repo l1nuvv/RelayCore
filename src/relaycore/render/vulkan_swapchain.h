@@ -19,6 +19,11 @@ namespace RelayCore::render
     class PerspectiveCamera;
     struct RenderItem;
 
+    struct VulkanPresentationCalls {
+        PFN_vkAcquireNextImageKHR acquire = vkAcquireNextImageKHR;
+        PFN_vkQueuePresentKHR present = vkQueuePresentKHR;
+    };
+
     class VulkanSwapchain {
     public:
         // Device, window and optional host allocation callbacks must outlive this owner.
@@ -26,7 +31,8 @@ namespace RelayCore::render
             const VulkanDevice& device,
             const Window& window,
             bool vsync = true,
-            VkAllocationCallbacks* host_allocator = nullptr
+            VkAllocationCallbacks* host_allocator = nullptr,
+            VulkanPresentationCalls calls = {}
         );
         ~VulkanSwapchain() noexcept;
 
@@ -48,6 +54,7 @@ namespace RelayCore::render
         // Explicit recovery after a failed recreation; never acquires from a retired swapchain.
         void recreate();
         [[nodiscard]] auto extent() const noexcept -> VkExtent2D;
+        [[nodiscard]] auto present_mode() const noexcept -> VkPresentModeKHR;
 
     private:
         struct State;

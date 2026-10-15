@@ -1,6 +1,6 @@
 # Статические модели
 
-Текущий pipeline: GLB → native `.rcmodel` v5 (reader принимает v1–5), с отдельными collision/probe products. Авторинг и staging описаны в [DEVELOPMENT.md](../../docs/DEVELOPMENT.md#статические-модели-glb--native-product). Ниже сохранены источники прежних OBJ/BMP и native-семейств; OBJ не задаёт материалы текущего native viewmodel.
+Текущий pipeline: GLB → native `.rcmodel` v5 (reader принимает v1–5), с отдельными collision/probe products. Авторинг и staging описаны в [MODEL_ASSETS](../../docs/MODEL_ASSETS.md#статические-модели-glb--native-product). Ниже сохранены источники прежних OBJ/BMP и native-семейств; OBJ не задаёт материалы текущего native viewmodel.
 
 `shotgun_body.obj` и `shotgun_pump.obj` — Stevens Model 520 из предоставленного
 автором архива `low-poly-stevens-model-520a.zip` ([источник](https://sketchfab.com/3d-models/low-poly-stevens-model-520a-275af36ee49545f3bdf117329f72745f)).
@@ -117,7 +117,7 @@ Collision product явно связан с моделью, компилируе�
 `lab_bench` сохраняет проход снизу через `content/collision/lab_bench.toml`.
 Контракт, сборка, receipts и editor inspection описаны в
 [COLLISION_ASSETS.md](../../docs/COLLISION_ASSETS.md), GLB import и scalar
-metallic/roughness opt-in — в [DEVELOPMENT.md](../../docs/DEVELOPMENT.md#поддерживаемый-импорт).
+metallic/roughness opt-in — в [MODEL_ASSETS](../../docs/MODEL_ASSETS.md#поддерживаемый-импорт).
 
 ## Владение и перезагрузка
 

@@ -9,6 +9,7 @@
 #include "relaygame/level_session_builder.h"
 #include "relaygame/mission_runtime.h"
 #include "relaygame/runtime_model.h"
+#include "relaygame/static_props.h"
 #include "relaygame/usable_interaction.h"
 #include "relaygame/world_audio_zones.h"
 
@@ -838,6 +839,68 @@ TEST_CASE("power restoration final threshold needs no jump at walking speed")
         CHECK(position.z > 8.5F);
         CHECK(position.y < 0.03F);
     }
+}
+
+TEST_CASE("power pump pipes and laboratory camera block queries without filling the service aisle")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    const RelayCore::core::GameplayConfig config{};
+    const RelayGame::LevelSessionBuilder builder{config};
+    const auto pump = builder.build(repo_root() / "assets/levels/power_restoration.toml");
+    REQUIRE(pump.physics_fixture);
+    const RelayCore::physics::WorldQuery pump_query{*pump.physics_fixture};
+    const auto pipe = pump_query.raycast({5.8F, 2.19F, 7.7F}, {-1, 0, 0}, 0.7F);
+    REQUIRE(pipe);
+    CHECK(pipe->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
+    CHECK(pipe->surface == RelayCore::SurfaceMaterial::Metal);
+    CHECK(pump_query.move_axis({5.8F, 0.6F, 7.7F}, {}, 0, -0.7F).hit);
+    CHECK_FALSE(pump_query.raycast({5.8F, 1.5F, 7.7F}, {-1, 0, 0}, 0.4F));
+    for (const auto& ray : std::array{
+             std::pair{glm::vec3{3, 0.55F, 26}, glm::vec3{0, 0, 1}},
+             std::pair{glm::vec3{5.8F, 1.2F, 29}, glm::vec3{-1, 0, 0}}
+         })
+    {
+        const auto filter_pipe = pump_query.raycast(ray.first, ray.second, 1.5F);
+        REQUIRE(filter_pipe);
+        CHECK(filter_pipe->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
+        CHECK(filter_pipe->surface == RelayCore::SurfaceMaterial::Metal);
+    }
+    CHECK(pump_query.move_axis({3, 0.02F, 26}, {}, 2, 2).hit);
+    CHECK(pump_query.move_axis({5.8F, 0.02F, 29}, {}, 0, -1).hit);
+    CHECK_FALSE(pump_query.move_axis({7.5F, 0.02F, 28}, {}, 2, 1).hit);
+
+    auto paint_level = pump.level;
+    const auto paint = std::find_if(paint_level.entities.begin(), paint_level.entities.end(), [](const auto& entity) {
+        const auto model = entity.properties.find("model");
+        return model != entity.properties.end() && model->second == "models/blood_pentagram.rcmodel";
+    });
+    REQUIRE(paint != paint_level.entities.end());
+    const auto props = RelayGame::build_static_props(paint_level);
+    const auto painted_prop = std::find_if(props.begin(), props.end(), [](const auto& prop) {
+        return prop.model.filename() == "blood_pentagram.rcmodel";
+    });
+    REQUIRE(painted_prop != props.end());
+    CHECK_FALSE(painted_prop->casts_shadow);
+    paint->properties["casts_shadow"] = "invalid";
+    CHECK_THROWS_WITH(
+        static_cast<void>(RelayGame::build_static_props(paint_level)),
+        doctest::Contains("casts_shadow requires true or false")
+    );
+
+    const auto lab = builder.build(repo_root() / "assets/levels/occult_lab_b17.toml");
+    REQUIRE(lab.physics_fixture);
+    const RelayCore::physics::WorldQuery camera_query{*lab.physics_fixture};
+    for (const float height : {1.2F, 1.65F})
+    {
+        const auto camera = camera_query.raycast({-0.82F, height, -2.9F}, {0, 0, -1}, 1);
+        REQUIRE(camera);
+        CHECK(camera->object.kind == RelayCore::physics::WorldObjectKind::CollisionMesh);
+        CHECK(camera->surface == RelayCore::SurfaceMaterial::Metal);
+    }
+    CHECK_FALSE(camera_query.raycast({-0.45F, 1.2F, -2.9F}, {0, 0, -1}, 1));
+    CHECK(camera_query.move_axis({-0.82F, 0.02F, -2.3F}, {}, 2, -1.8F).hit);
+    CHECK_FALSE(camera_query.move_axis({0.4F, 0.02F, -2.3F}, {}, 2, -1.8F).hit);
 }
 
 TEST_CASE("all shipped maps build clean runtime content")

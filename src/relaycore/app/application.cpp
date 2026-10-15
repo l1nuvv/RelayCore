@@ -37,6 +37,11 @@ namespace RelayCore
              */
             ~AppShutdownGuard() noexcept
             {
+                try
+                {
+                    services_.frame_diagnostics().flush();
+                } catch (...)
+                {}
                 delegate_.on_shutdown(services_);
             }
 
@@ -60,7 +65,6 @@ namespace RelayCore
         config_.emplace(
             config_path.empty() ? core::load_default_engine_config() : core::load_engine_config(config_path)
         );
-        log::info("Loaded engine config: {}", config_->source_path.string());
         window_.emplace(config_->window);
         renderer_.emplace(config_->renderer, color_pipeline_mode);
         audio_system_.emplace(config_->audio);
@@ -76,7 +80,7 @@ namespace RelayCore
             audio_system_->play_one_shot(core::asset_path(config_->audio.startup_sound));
         }
 
-        log::info("Application initialized");
+        log::info("[app] Application initialized");
     }
 
     auto Application::run() -> int
@@ -88,10 +92,16 @@ namespace RelayCore
         EngineServices services{*config_, *window_, *renderer_, *audio_system_, is_running_};
         AppShutdownGuard shutdown_guard(*app_delegate_, services);
         app_delegate_->on_startup(services);
+        auto& diagnostics = services.frame_diagnostics();
 
         while (is_running_)
         {
             RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
+            diagnostics.begin_frame();
+            const auto finish_diagnostics = [&] {
+                const auto& settings = renderer_->config().imgui;
+                diagnostics.end_frame(settings.log_fps_to_console, settings.fps_log_interval_seconds);
+            };
 
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
@@ -116,6 +126,8 @@ namespace RelayCore
 
             if (!can_present(presentation_state))
             {
+                diagnostics.mark_suspended();
+                finish_diagnostics();
                 RELAYCORE_PROFILE_FRAME();
                 continue;
             }
@@ -149,12 +161,14 @@ namespace RelayCore
             [[maybe_unused]] const auto present_ms =
                 std::chrono::duration<double, std::milli>(present_end - present_start).count();
 
-            RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.delta_seconds * 1000.0);
+            RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.wall_delta_seconds * 1000.0);
             RELAYCORE_PROFILE_PLOT("cpu_work_ms", cpu_work_ms);
             RELAYCORE_PROFILE_PLOT("present_ms", present_ms);
 
+            finish_diagnostics();
             RELAYCORE_PROFILE_FRAME();
         }
+        diagnostics.flush();
 
         return 0;
     }
@@ -188,7 +202,7 @@ namespace RelayCore
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 renderer_->on_resize(event.window.data1, event.window.data2);
-                RelayCore::log::debug("Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
+                RelayCore::log::debug("[app] Window pixel size changed: {}x{}", event.window.data1, event.window.data2);
                 break;
 
             case SDL_EVENT_KEY_DOWN:
@@ -196,7 +210,7 @@ namespace RelayCore
                 {
                     renderer_->toggle_diagnostics_visible();
                     RelayCore::log::info(
-                        "Diagnostics overlay {}",
+                        "[app] Diagnostics overlay {}",
                         renderer_->diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();
@@ -206,7 +220,7 @@ namespace RelayCore
                 {
                     renderer_->toggle_advanced_diagnostics_visible();
                     RelayCore::log::info(
-                        "Advanced diagnostics {}",
+                        "[app] Advanced diagnostics {}",
                         renderer_->advanced_diagnostics_visible() ? "enabled" : "disabled"
                     );
                     RelayCore::log::flush();

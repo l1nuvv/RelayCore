@@ -199,7 +199,7 @@ namespace RelayCore::core
 
         if (!std::filesystem::exists(config_path))
         {
-            log::warn("Config file not found: {}. Using defaults.", config_path.string());
+            log::warn("[config] Config file not found: {}. Using defaults.", config_path.string());
             return config;
         }
 
@@ -232,6 +232,55 @@ namespace RelayCore::core
             RELAYCORE_ASSIGN_RENDER("postfx_saturation", postfx_saturation);
             RELAYCORE_ASSIGN_RENDER("hdr_enabled", hdr_enabled);
             RELAYCORE_ASSIGN_RENDER("exposure_ev", exposure_ev);
+            RELAYCORE_ASSIGN_RENDER("bloom_enabled", bloom_enabled);
+            RELAYCORE_ASSIGN_RENDER("bloom_strength", bloom_strength);
+            RELAYCORE_ASSIGN_RENDER("bloom_threshold", bloom_threshold);
+            RELAYCORE_ASSIGN_RENDER("ssao_enabled", ssao_enabled);
+            RELAYCORE_ASSIGN_RENDER("ssr_enabled", ssr_enabled);
+            RELAYCORE_ASSIGN_RENDER("volumetrics_enabled", volumetrics_enabled);
+            RELAYCORE_ASSIGN_RENDER("volumetric_density", volumetric_density);
+            RELAYCORE_ASSIGN_RENDER("ssgi_quality", ssgi_quality);
+            if (config.renderer.ssgi_quality < 0 || config.renderer.ssgi_quality > 2)
+                invalid_config_value(config_path, "render.ssgi_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("reflection_quality", reflection_quality);
+            if (config.renderer.reflection_quality < 0 || config.renderer.reflection_quality > 2)
+                invalid_config_value(config_path, "render.reflection_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("dof_quality", dof_quality);
+            if (config.renderer.dof_quality < 0 || config.renderer.dof_quality > 2)
+                invalid_config_value(config_path, "render.dof_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("motion_blur_quality", motion_blur_quality);
+            if (config.renderer.motion_blur_quality < 0 || config.renderer.motion_blur_quality > 2)
+                invalid_config_value(config_path, "render.motion_blur_quality", "must be 0, 1 or 2");
+            RELAYCORE_ASSIGN_RENDER("dof_focus_distance", dof_focus_distance);
+            if (config.renderer.dof_focus_distance < .25F || config.renderer.dof_focus_distance > 100)
+                invalid_config_value(config_path, "render.dof_focus_distance", "must be in [0.25, 100]");
+            if ((config.renderer.ssgi_quality || config.renderer.dof_quality || config.renderer.motion_blur_quality)
+                && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "SSGI and lens effects require HDR enabled");
+            if (config.renderer.reflection_quality && !config.renderer.ssr_enabled)
+                invalid_config_value(config_path, "render.reflection_quality", "requires SSR enabled");
+            RELAYCORE_ASSIGN_RENDER("descriptor_indexing", descriptor_indexing);
+            RELAYCORE_ASSIGN_RENDER("mesh_shaders", mesh_shaders);
+            RELAYCORE_ASSIGN_RENDER("taa_enabled", taa_enabled);
+            RELAYCORE_ASSIGN_RENDER("render_scale", render_scale);
+            RELAYCORE_ASSIGN_RENDER("dynamic_resolution_enabled", dynamic_resolution_enabled);
+            RELAYCORE_ASSIGN_RENDER("dynamic_resolution_target_ms", dynamic_resolution_target_ms);
+            if (config.renderer.dynamic_resolution_target_ms < 4 || config.renderer.dynamic_resolution_target_ms > 50)
+                invalid_config_value(config_path, "render.dynamic_resolution_target_ms", "must be in [4, 50]");
+            if (config.renderer.render_scale < .5F || config.renderer.render_scale > 1)
+                invalid_config_value(config_path, "render.render_scale", "must be in [0.5, 1]");
+            if ((config.renderer.taa_enabled || config.renderer.render_scale != 1
+                 || config.renderer.dynamic_resolution_enabled)
+                && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "TAA and scaling require HDR enabled");
+            if ((config.renderer.bloom_enabled || config.renderer.ssr_enabled) && !config.renderer.hdr_enabled)
+                invalid_config_value(config_path, "render.hdr_enabled", "bloom and SSR require HDR enabled");
+            if (config.renderer.bloom_strength < 0 || config.renderer.bloom_strength > 1)
+                invalid_config_value(config_path, "render.bloom_strength", "must be in [0, 1]");
+            if (config.renderer.bloom_threshold < 0 || config.renderer.bloom_threshold > 10)
+                invalid_config_value(config_path, "render.bloom_threshold", "must be in [0, 10] scene-linear units");
+            if (config.renderer.volumetric_density < 0 || config.renderer.volumetric_density > 0.1F)
+                invalid_config_value(config_path, "render.volumetric_density", "must be in [0, 0.1]");
             RELAYCORE_ASSIGN_RENDER("msaa_samples", msaa_samples);
             if (config.renderer.msaa_samples != 1 && config.renderer.msaa_samples != 2
                 && config.renderer.msaa_samples != 4)
@@ -416,11 +465,11 @@ namespace RelayCore::core
                 );
             }
 
-            log::info("Loaded engine config: {}", config_path.string());
+            log::info("[config] Loaded engine config: {}", config_path.string());
         } catch (const toml::parse_error& error)
         {
             log::error(
-                "Failed to parse config {} at line {}, column {}: {}",
+                "[config] Failed to parse config {} at line {}, column {}: {}",
                 config_path.string(),
                 error.source().begin.line,
                 error.source().begin.column,

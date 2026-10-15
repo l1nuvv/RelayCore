@@ -1,6 +1,6 @@
 <rml><head><title>RelayCore</title><link type="text/rcss" href="player.rcss" /></head><body id="menu">
 <div id="menu-panel" class="card">
-<div id="identity"><div id="seal"><div class="seal-ring"></div><div class="seal-inner"></div><div class="seal-spine"></div><div class="seal-crossbar"></div><div class="seal-core"></div></div><div id="identity-copy"><div id="brand">RELAYCORE</div><div id="identity-caption">ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС</div></div><span id="version"></span></div>
+<div id="identity"><img id="seal" src="../branding/relaycore-menu.bmp" /><div id="identity-copy"><div id="brand">RELAYCORE</div><div id="identity-caption">ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС</div></div><span id="version"></span></div>
 <div id="menu-title" class="label"></div><div id="description" class="secondary"></div>
 <div id="update-notice"><span id="update-notice-text"></span><button data-action="notice">Понятно</button></div>
 <div id="main-actions"><button id="continue" class="primary" data-action="continue">Продолжить [Enter]</button><div id="save-summary" class="secondary"></div>
@@ -20,7 +20,19 @@
 <label>Движение камеры · <span id="camera-motion-label"></span><input id="camera-motion" type="range" min="0" max="1" step="0.01" data-action="camera-motion" data-event="change" /></label>
 <p class="secondary">Ноль отключает покачивание и проседание камеры при приземлении.</p>
 <label>Вертикальная синхронизация <select id="vsync" data-action="vsync" data-event="change"><option value="1">Включена</option><option value="0">Выключена</option></select></label>
-<label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR</option></select></label>
+<label>Качество графики <select id="graphics-preset" data-action="graphics-preset" data-event="change"><option value="0">Своё</option><option value="1">Низкое</option><option value="2">Сбалансированное</option><option value="3">Высокое</option></select></label>
+<label>Режим изображения <select id="hdr" data-action="hdr" data-event="change"><option value="0">SDR</option><option value="1">HDR-сцена (вывод SDR)</option></select></label>
+<label>Свечение <select id="bloom" data-action="bloom" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Затенение углов <select id="ssao" data-action="ssao" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Отражения на экране <select id="ssr" data-action="ssr" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Объёмный свет <select id="volumetrics" data-action="volumetrics" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Непрямое освещение SSGI <select id="ssgi-quality" data-action="ssgi-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Качество отражений <select id="reflection-quality" data-action="reflection-quality" data-event="change"><option value="0">Исходное</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Глубина резкости <select id="dof-quality" data-action="dof-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Размытие движения <select id="motion-blur-quality" data-action="motion-blur-quality" data-event="change"><option value="0">Выкл.</option><option value="1">Низкое</option><option value="2">Высокое</option></select></label>
+<label>Сглаживание TAA <select id="taa" data-action="taa" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
+<label>Разрешение сцены · <span id="render-scale-label"></span><input id="render-scale" type="range" min="0.5" max="1" step="0.01" data-action="render-scale" data-event="change" /></label>
+<label>Динамическое разрешение <select id="dynamic-resolution" data-action="dynamic-resolution" data-event="change"><option value="0">Выкл.</option><option value="1">Вкл.</option></select></label>
 <button id="save-settings" class="primary" data-action="save-settings">Сохранить настройки</button><div id="settings-message" class="error"></div>
 </div>
 <div id="controls" class="secondary">WASD — движение · Shift — бег · Space — прыжок<br />E — взаимодействие · F — фонарик</div>

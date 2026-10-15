@@ -37,6 +37,10 @@ namespace RelayGame
         bool lunge_attack = false;
         bool ranged_attack = false;
         std::vector<glm::vec3> route_points;
+        std::array<std::uint16_t, 16> static_route_links{};
+        std::array<std::uint16_t, 16> static_route_known{};
+        bool route_links_prepared = false;
+        std::vector<RelayCore::physics::WorldCollider> route_colliders;
         std::array<glm::vec3, 18> route{};
         std::size_t route_count = 0;
         std::size_t route_cursor = 0;
@@ -44,6 +48,7 @@ namespace RelayGame
         float route_replan_seconds = 0;
         bool seeking_last_seen = false;
         RelayCore::gameplay::CombatShotTrace shot_trace;
+        RelayCore::gameplay::CombatHitFeedback hit_feedback{};
     };
 
     [[nodiscard]] auto build_enemies(const RelayCore::BlockoutLevel& level) -> std::vector<RuntimeEnemy>;

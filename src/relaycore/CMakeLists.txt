@@ -1,6 +1,7 @@
 set(RELAYCORE_ENGINE_SOURCES
     app/application.cpp
     app/engine_services.cpp
+    app/frame_diagnostics.cpp
     app/frame_timer.cpp
     app/run_application.cpp
     app/startup_options.cpp
@@ -43,8 +44,10 @@ set(RELAYCORE_ENGINE_SOURCES
     render/vulkan_uploads.cpp
     render/vulkan_scene_submissions.cpp
     render/vulkan_mesh_renderer.cpp
+    render/vulkan_material_table.cpp
     render/vma_impl.cpp
     render/mesh.cpp
+    render/meshlets.cpp
     render/static_model.cpp
     render/model_asset.cpp
     render/reflection_probe.cpp
@@ -55,6 +58,8 @@ set(RELAYCORE_ENGINE_SOURCES
 
     render/renderer.cpp
     render/shadow_math.cpp
+    render/light_tiles.cpp
+    render/light_tiles.h
     render/vulkan_gpu_profiler.cpp
     render/texture2d.cpp
     world/blockout_loader.cpp
@@ -70,6 +75,7 @@ set(RELAYCORE_ENGINE_HEADERS
     app/app_delegate.h
     app/application.h
     app/engine_services.h
+    app/frame_diagnostics.h
     app/frame_timer.h
     app/run_application.h
     app/startup_options.h
@@ -123,6 +129,7 @@ set(RELAYCORE_ENGINE_HEADERS
     render/render_diagnostics.h
     render/render_queue.h
     render/renderer.h
+    render/render_resolution.h
     render/shadow_math.h
     render/vulkan_gpu_profiler.h
     render/texture2d.h

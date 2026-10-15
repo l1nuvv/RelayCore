@@ -1,5 +1,7 @@
 #include "relaycore/render/model_asset.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <bit>
 #include <cmath>
 #include <fstream>
@@ -13,7 +15,7 @@ namespace RelayCore::render
     namespace
     {
         constexpr std::uint32_t kMagic = 0x4c444d52; // RMDL, little endian.
-        constexpr std::uint32_t kVersion = 5;
+        constexpr std::uint32_t kVersion = 6;
         constexpr std::size_t kMaxBytes = 256 * 1024 * 1024;
 
         void require(const bool condition, const char* message)
@@ -145,8 +147,10 @@ namespace RelayCore::render
                 image.pixels.size() == static_cast<std::size_t>(image.width) * image.height * 4,
                 "model base-color RGBA byte count differs from dimensions"
             );
-            for (std::size_t i = 3; i < image.pixels.size(); i += 4)
-                require(image.pixels[i] == 255, "model base-color must be opaque");
+            const auto* image_end = image.pixels.data() + image.pixels.size();
+            for (const auto* pixel = image.pixels.data(); pixel < image_end; pixel += 4)
+                if (pixel[3] != 255)
+                    throw std::runtime_error("model base-color must be opaque");
             bytes += 72 + image.pixels.size();
             for (const auto factor :
                  {material.emissive_factor.x, material.emissive_factor.y, material.emissive_factor.z})
@@ -197,14 +201,13 @@ namespace RelayCore::render
                     normal.pixels.size() == static_cast<std::size_t>(normal.width) * normal.height * 4,
                     "model normal-map RGBA byte count differs from dimensions"
                 );
-                for (std::size_t i = 0; i < normal.pixels.size(); i += 4)
+                const auto* normal_end = normal.pixels.data() + normal.pixels.size();
+                for (const auto* pixel = normal.pixels.data(); pixel < normal_end; pixel += 4)
                 {
-                    const auto n =
-                        glm::vec3{normal.pixels[i], normal.pixels[i + 1], normal.pixels[i + 2]} / 127.5F - 1.0F;
-                    require(
-                        glm::length(n) > .5F && n.z > 0,
-                        "normal-map texel must encode a nonzero +Z tangent-space normal"
-                    );
+                    const int x = 2 * pixel[0] - 255, y = 2 * pixel[1] - 255, z = 2 * pixel[2] - 255;
+                    // Decoded n = (2*RGB - 255)/255: |n| > 1/2 iff 4*dot(numerator,numerator) > 255^2.
+                    if (4 * (x * x + y * y + z * z) <= 255 * 255 || z <= 0)
+                        throw std::runtime_error("normal-map texel must encode a nonzero +Z tangent-space normal");
                 }
                 bytes += normal.pixels.size();
             }
@@ -312,6 +315,27 @@ namespace RelayCore::render
                 for (int row = 0; row < 4; ++row)
                     append_float(bytes, part.transform[column][row]);
         }
+        for (const auto& mesh : model.meshes)
+        {
+            const auto data = build_meshlets(mesh.geometry);
+            append(bytes, uint32_t(data.clusters.size()));
+            append(bytes, uint32_t(data.vertices.size()));
+            append(bytes, uint32_t(data.triangles.size()));
+            for (const auto& cluster : data.clusters)
+            {
+                for (uint32_t i = 0; i < 4; ++i)
+                    append(bytes, cluster.range[i]);
+                for (uint32_t i = 0; i < 4; ++i)
+                    append_float(bytes, cluster.mins[i]);
+                for (uint32_t i = 0; i < 4; ++i)
+                    append_float(bytes, cluster.maxs[i]);
+            }
+            for (auto index : data.vertices)
+                append(bytes, index);
+            for (auto triangle : data.triangles)
+                append(bytes, triangle);
+        }
+        require(bytes.size() <= kMaxBytes, "model product exceeds 256 MiB including meshlets");
         auto temporary = path;
         temporary += ".tmp";
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -329,18 +353,23 @@ namespace RelayCore::render
     {
         try
         {
-            std::ifstream input(path, std::ios::binary | std::ios::ate);
-            require(static_cast<bool>(input), "cannot open model product");
-            const auto size = input.tellg();
-            require(size >= 20 && size <= static_cast<std::streamoff>(kMaxBytes), "invalid model product size");
-            std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-            input.seekg(0);
-            input.read(reinterpret_cast<char*>(bytes.data()), size);
-            require(static_cast<bool>(input), "cannot read model product");
+            std::vector<std::uint8_t> bytes;
+            {
+                RELAYCORE_PROFILE_ZONE_N("Native model file read");
+                std::ifstream input(path, std::ios::binary | std::ios::ate);
+                require(static_cast<bool>(input), "cannot open model product");
+                const auto size = input.tellg();
+                require(size >= 20 && size <= static_cast<std::streamoff>(kMaxBytes), "invalid model product size");
+                bytes.resize(static_cast<std::size_t>(size));
+                input.seekg(0);
+                input.read(reinterpret_cast<char*>(bytes.data()), size);
+                require(static_cast<bool>(input), "cannot read model product");
+            }
+            RELAYCORE_PROFILE_ZONE_N("Native model decode");
             ProductReader reader{bytes};
             require(reader.integer() == kMagic, "invalid model product magic");
             const auto version = reader.integer();
-            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1..5)");
+            require(version >= 1 && version <= kVersion, "unsupported model product version (supported: 1..6)");
             const auto meshes = reader.integer(), materials = reader.integer(), parts = reader.integer();
             require(
                 meshes > 0 && meshes <= 4096 && materials > 0 && materials <= 4096 && parts > 0 && parts <= 65536,
@@ -475,6 +504,35 @@ namespace RelayCore::render
                         part.transform[column][row] = reader.number();
                 result.parts.push_back(part);
             }
+            if (version >= 6)
+                for (auto& mesh : result.meshes)
+                {
+                    auto& data = mesh.geometry.meshlets;
+                    const auto clusters = reader.integer(), vertices = reader.integer(), triangles = reader.integer();
+                    require(
+                        clusters > 0 && clusters <= mesh.geometry.indices.size() / 3 && vertices > 0
+                            && vertices <= mesh.geometry.indices.size()
+                            && triangles == mesh.geometry.indices.size() / 3,
+                        "invalid meshlet product counts"
+                    );
+                    auto payload = reader.take(size_t(clusters) * 48 + size_t(vertices) * 4 + size_t(triangles) * 4);
+                    ProductReader packed{payload};
+                    data.clusters.resize(clusters);
+                    for (auto& cluster : data.clusters)
+                    {
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.range[i] = packed.integer();
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.mins[i] = packed.number();
+                        for (uint32_t i = 0; i < 4; ++i)
+                            cluster.maxs[i] = packed.number();
+                    }
+                    for (uint32_t i = 0; i < vertices; ++i)
+                        data.vertices.push_back(packed.integer());
+                    for (uint32_t i = 0; i < triangles; ++i)
+                        data.triangles.push_back(packed.integer());
+                    validate_meshlets(mesh.geometry, data);
+                }
             require(reader.empty(), "unexpected bytes after model product");
             validate_model_asset(result);
             return result;

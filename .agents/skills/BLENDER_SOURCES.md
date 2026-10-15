@@ -7,7 +7,7 @@ Installed into this repository with the system `skill-installer`, with supportin
 | https://github.com/ifBars/blender-agent-studio | `9191be7ee2b5ce4bd0596fadcddf8f7b0c6ec3b1` | `blender-modeling-workflow`, `blender-iterative-refinement`, `blender-asset-validation`, `blender-rendering-workflow`, `blender-procedural-workflow` |
 | https://github.com/libevm/agent-skills | `cc98ad8cd54fcb1ef365c6b738559f418fddef89` | `blender` (source path `skills/blender`) |
 
-`relaycore-blender` is the project-owned integration skill. Local adaptations to Blender Agent Studio: installed specialist invocations omit the plugin namespace; each entrypoint links to the project integration skill. Upstream Python/TypeScript helpers are unchanged. Read only the specialists relevant to the requested work.
+`relaycore-blender` is the project-owned integration skill. Local adaptations to Blender Agent Studio: installed specialist invocations omit the plugin namespace; each entrypoint links to the project integration skill. Modeling intake uses `relaycore-art-direction`; character/animation specialists outside the installed set are conditional, not required routes. Entrypoints load only task-relevant sections of the identical `astra-workflow.md` copies and reuse already-read sections across specialists. Copies remain in place for standalone compatibility. Upstream Python/TypeScript helpers are unchanged. Read only the specialists relevant to the requested work.
 
 Blender supplies `bpy`, `bmesh`, `mathutils` and NumPy for the scripts. No global Python packages are required. Optional Poly Haven lookup runs with Bun or a Node version supporting native TypeScript stripping. MCP, Rust SceneIR, hosted generation and benchmark tooling are not installed or required.
 

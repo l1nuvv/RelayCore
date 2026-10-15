@@ -331,21 +331,22 @@ namespace RelayGame
             activated_target_ids_
         );
 
-        std::filesystem::path desired_loop_path{};
+        const RuntimeAudioZone* zone =
+            next_zone_index >= 0 && static_cast<std::size_t>(next_zone_index) < audio_zones_.size()
+                ? &audio_zones_[static_cast<std::size_t>(next_zone_index)]
+                : nullptr;
+        const auto& desired_loop_path = zone ? zone->loop_path : audio_cues_.ambient_loop;
         float desired_loop_gain = 0.0F;
-        std::string desired_source_kind{};
-        std::string desired_zone_name{};
+        std::string_view desired_source_kind{};
+        std::string_view desired_zone_name{};
 
-        if (next_zone_index >= 0 && static_cast<std::size_t>(next_zone_index) < audio_zones_.size())
+        if (zone)
         {
-            const RuntimeAudioZone& zone = audio_zones_[static_cast<std::size_t>(next_zone_index)];
-            desired_loop_path = zone.loop_path;
-            desired_loop_gain = zone.gain;
+            desired_loop_gain = zone->gain;
             desired_source_kind = "zone";
-            desired_zone_name = zone.name;
+            desired_zone_name = zone->name;
         } else if (!audio_cues_.ambient_loop.empty())
         {
-            desired_loop_path = audio_cues_.ambient_loop;
             desired_loop_gain = 1.0F;
             desired_source_kind = "global";
         }
@@ -371,8 +372,8 @@ namespace RelayGame
         }
 
         audio_state_.active_zone_index = next_zone_index;
-        audio_state_.active_source_kind = std::move(desired_source_kind);
-        audio_state_.active_zone_name = std::move(desired_zone_name);
+        audio_state_.active_source_kind = desired_source_kind;
+        audio_state_.active_zone_name = desired_zone_name;
     }
 
     void GameWorldRuntime::tick_transient_hud_event(const float delta_seconds) noexcept

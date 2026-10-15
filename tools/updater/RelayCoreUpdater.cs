@@ -340,9 +340,21 @@ internal sealed class UpdateWindow : Form
     internal UpdateWindow(string root, string version, string workspace)
     {
         this.root = root; this.version = version; this.workspace = workspace;
-        Text = "Обновление RelayCore"; ClientSize = new Size(590, 260); MinimumSize = new Size(490, 260);
+        Text = "Обновление RelayCore"; ClientSize = new Size(590, 330); MinimumSize = new Size(490, 330);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Segoe UI", 11);
+        var applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        Icon = applicationIcon;
+        Disposed += delegate { if (applicationIcon != null) applicationIcon.Dispose(); };
         Controls.Add(status); Controls.Add(progress); Controls.Add(close);
+        var identity = new PictureBox { Dock = DockStyle.Top, Height = 74,
+            BackColor = Color.FromArgb(17, 24, 20), SizeMode = PictureBoxSizeMode.Zoom };
+        using (var stream = typeof(UpdateWindow).Assembly.GetManifestResourceStream("RelayCore.Wordmark"))
+        {
+            if (stream == null) throw new InvalidDataException("В обновляторе отсутствует логотип RelayCore.");
+            using (var image = new Bitmap(stream)) identity.Image = new Bitmap(image);
+        }
+        identity.Disposed += delegate { identity.Image.Dispose(); };
+        Controls.Add(identity);
         close.Click += delegate { if (finished) Close(); else cancel.Cancel(); };
         FormClosing += delegate(object sender, FormClosingEventArgs e) { if (!finished) { e.Cancel = true; if (!installing) cancel.Cancel(); } };
         Shown += async delegate { await Run(); };

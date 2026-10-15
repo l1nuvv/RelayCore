@@ -6,6 +6,8 @@ high_dpi = true
 vsync = true
 
 [render]
+descriptor_indexing = false
+mesh_shaders = true
 msaa_samples = 4
 clear_r = 0.06
 clear_g = 0.07

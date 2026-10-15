@@ -642,9 +642,18 @@ entries = [
 [[entity]]
 classname = "prop_static"
 model = "models/blood_pentagram.rcmodel"
+casts_shadow = false
 origin = [8, 1.2, 41.81]
 angles = [180, 0, 0]
 scale = [1.6, 1.6, 1.6]
+
+[[entity]]
+classname = "render_light"
+origin = [8, 2.56, 41.55]
+color = [1, 0.015, 0.005]
+intensity = 1.8
+radius = 3.2
+fixture_width = 0
 
 
 # Workshop small measuring equipment stays on the existing 1.25 m worktops.

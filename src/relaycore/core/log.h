@@ -24,7 +24,7 @@ namespace RelayCore::log
         std::string logs_directory = "logs";
         std::string latest_filename = "RelayCore_latest.log";
         bool enable_console_sink = true;
-        bool enable_timestamped_log = true;
+        bool enable_timestamped_log = false;
         bool enable_latest_log = true;
         bool truncate_latest_log = true;
         std::size_t max_timestamped_logs = 12;
@@ -41,6 +41,10 @@ namespace RelayCore::log
     void shutdown();
 
     [[nodiscard]] auto logger() -> spdlog::logger&;
+
+    // Teardown diagnostics remain available before init and after shutdown.
+    void error_noexcept(const char* operation, const char* detail) noexcept;
+    void error_noexcept(const char* operation, int result) noexcept;
 
     void flush();
 

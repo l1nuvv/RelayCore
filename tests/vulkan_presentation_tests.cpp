@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 #include "scoped_temp_directory.h"
 
@@ -16,6 +17,28 @@
 
 namespace
 {
+    VkResult acquire_failure = VK_SUCCESS;
+    bool lose_after_present = false;
+    auto VKAPI_CALL acquire_image(
+        VkDevice device,
+        VkSwapchainKHR swapchain,
+        uint64_t timeout,
+        VkSemaphore semaphore,
+        VkFence fence,
+        uint32_t* index
+    ) -> VkResult
+    {
+        if (acquire_failure != VK_SUCCESS)
+            return std::exchange(acquire_failure, VK_SUCCESS);
+        return vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, index);
+    }
+    auto VKAPI_CALL present_image(VkQueue queue, const VkPresentInfoKHR* info) -> VkResult
+    {
+        const auto result = vkQueuePresentKHR(queue, info);
+        if (std::exchange(lose_after_present, false) && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
+            return VK_ERROR_SURFACE_LOST_KHR;
+        return result;
+    }
     struct HostAllocations {
         bool fail = false;
         size_t failures = 0;
@@ -120,7 +143,7 @@ namespace
         );
     }
 
-    void check_presentation(const bool inject_allocation_failure)
+    void check_presentation(const bool inject_allocation_failure, const bool inject_surface_loss)
     {
         const RelayCore::test::ScopedTempDirectory temp;
         RelayCore::log::init({.logs_directory = temp.path().string(), .enable_timestamped_log = false});
@@ -143,7 +166,13 @@ namespace
                 .pfnFree = release,
             };
             {
-                RelayCore::render::VulkanSwapchain swapchain{device, window, cycle == 0, &callbacks};
+                RelayCore::render::VulkanSwapchain swapchain{
+                    device,
+                    window,
+                    cycle == 0,
+                    &callbacks,
+                    {.acquire = acquire_image, .present = present_image}
+                };
                 show_color(
                     swapchain,
                     window,
@@ -151,6 +180,29 @@ namespace
                     RGB(255, 0, 0),
                     cycle == 0 ? "FIFO initial" : "immediate initial"
                 );
+                if (inject_surface_loss)
+                {
+                    for (int loss = 0; loss < 3; ++loss)
+                    {
+                        acquire_failure = VK_ERROR_SURFACE_LOST_KHR;
+                        if (swapchain.draw_clear({1, 0, 0, 1}))
+                            throw std::runtime_error("Surface-lost acquire reported successful presentation");
+                        show_color(swapchain, window, {0, 1, 0, 1}, RGB(0, 255, 0), "surface-lost acquire recovery");
+                        lose_after_present = true;
+                        if (swapchain.draw_clear({0, 0, 1, 1}))
+                            throw std::runtime_error("Surface-lost present reported successful presentation");
+                        show_color(swapchain, window, {1, 0, 0, 1}, RGB(255, 0, 0), "surface-lost present recovery");
+                        VkBool32 supported = VK_FALSE;
+                        if (vkGetPhysicalDeviceSurfaceSupportKHR(
+                                device.physical_device(),
+                                device.capabilities().present_queue_family,
+                                device.surface(),
+                                &supported
+                            ) != VK_SUCCESS
+                            || !supported)
+                            throw std::runtime_error("Recovered surface lost present queue support");
+                    }
+                }
                 for (int resize = 0; resize < 3; ++resize)
                 {
                     RelayCore::core::require_sdl(
@@ -222,12 +274,35 @@ namespace
                     if (!swapchain.draw_clear({0, 1, 0, 1}))
                         throw std::runtime_error("Recovered swapchain did not sustain presentation");
                 }
+                if (inject_surface_loss)
+                {
+                    acquire_failure = VK_ERROR_DEVICE_LOST;
+                    const auto expect_stopped = [&](const auto& action) {
+                        try
+                        {
+                            action();
+                        } catch (const std::runtime_error& error)
+                        {
+                            if (std::string_view{error.what()}.find("VK_ERROR_DEVICE_LOST") != std::string_view::npos
+                                && std::string_view{error.what()}.find("restart") != std::string_view::npos)
+                                return;
+                            throw;
+                        }
+                        throw std::runtime_error("Device-lost path did not stop with restart diagnostics");
+                    };
+                    expect_stopped([&] {
+                        static_cast<void>(swapchain.draw_clear({1, 0, 0, 1}));
+                    });
+                    expect_stopped([&] {
+                        swapchain.recreate();
+                    });
+                }
             }
             if (allocations.live != 0)
                 throw std::runtime_error("Swapchain host allocations leaked after failure/recovery/shutdown");
         }
         std::cout << "vulkan_presentation=passed: clear pixels, resize, minimize/restore, hidden; allocation_failure="
-                  << inject_allocation_failure << '\n';
+                  << inject_allocation_failure << "; surface_loss=" << inject_surface_loss << '\n';
     }
 } // namespace
 #endif
@@ -246,7 +321,10 @@ int main(const int argc, char** argv)
     int result = 0;
     try
     {
-        check_presentation(argc == 2 && std::string_view{argv[1]} == "--allocation-failure");
+        check_presentation(
+            argc == 2 && std::string_view{argv[1]} == "--allocation-failure",
+            argc == 2 && std::string_view{argv[1]} == "--surface-loss"
+        );
     } catch (const std::exception& error)
     {
         std::cerr << "Vulkan presentation failed: " << error.what() << '\n';

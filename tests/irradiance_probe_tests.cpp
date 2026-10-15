@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 #include <fstream>
 #include <limits>
+#include <utility>
 
 #include "scoped_temp_directory.h"
 #include "scoped_test_logger.h"
@@ -170,4 +171,24 @@ TEST_CASE("native irradiance products reject stale geometry lights and settings 
             RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb)
         ));
     }
+}
+
+TEST_CASE("irradiance visibility keeps the first triangle on equal distance hits")
+{
+    IrradianceBakeScene scene;
+    scene.triangles = {
+        {{-20, -1, -20}, {-20, -1, 20}, {20, -1, 20}, {.8F, 0, 0}},
+        {{-20, -1, -20}, {20, -1, 20}, {20, -1, -20}, {.8F, 0, 0}}
+    };
+    scene.lights.push_back({{0, 1, 0}, {8, 8, 8}, 12});
+    const IrradianceProbeSettings settings{{-1, 0, -1}, {1, 2, 1}, {2, 2, 2}, 64};
+    const auto reference = bake_irradiance_probes(scene, settings);
+    auto duplicate = scene.triangles;
+    for (auto& triangle : duplicate)
+        triangle.diffuse = {0, 0, .8F};
+    scene.triangles.insert(scene.triangles.end(), duplicate.begin(), duplicate.end());
+    CHECK(bake_irradiance_probes(scene, settings).probes == reference.probes);
+    std::swap(scene.triangles[0], scene.triangles[2]);
+    std::swap(scene.triangles[1], scene.triangles[3]);
+    CHECK_FALSE(bake_irradiance_probes(scene, settings).probes == reference.probes);
 }

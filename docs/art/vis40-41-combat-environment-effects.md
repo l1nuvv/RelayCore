@@ -110,3 +110,176 @@ The owner still needs to judge threat direction, hits versus misses, effect stre
 and duration at combat distance, and leak/repair readability while moving. External
 playtest/GPU acceptance and measured performance are not claimed. VIS-42 and broader
 equipment state presentation remain outside this request.
+
+## Combat hit-feedback audit and implementation plan — 2026-10-14
+
+### Scope and inspected source
+
+This section records the requested audit and plan based on the supplied
+`RELAYCORE_COMBAT_HIT_FEEDBACK_CODEX_PROMPT.md`. The brief is proposal input,
+not authorization to implement its instructions. No gameplay or renderer changes
+were made during the audit.
+
+Verified repository: <https://github.com/l1nuvv/RelayCore>. `git fetch origin dev`
+succeeded; local `dev` and `origin/dev` matched
+`1bce0d6595bc3b2dc7fa307d3940374b24ebb72d`, with a clean working tree.
+The audit inspected that revision; no implementation branch was created.
+
+The recommended scope is to improve enemy-hit presentation and preserve complete
+resolved-hit data while reusing existing surface effects, audio, recoil and combat
+rules. Implementation follows the performance checkpoint selected by the owner;
+the [roadmap](../PLAYABLE_SLICE_ROADMAP.md) owns priorities and status.
+[H-008](../tickets/H-008.md) and its
+[current profiling report](../profiling/H-008-2026-10-14.md) own performance evidence.
+
+### Current-state findings
+
+| Area | Confirmed implementation | Gap or constraint |
+| --- | --- | --- |
+| Hit resolution | Fixed-step firing; `CombatFireResult`, `PlayerAttackResult`, contact-bearing traces | Mobile-enemy identity is not preserved per pellet; applied damage is absent from the result |
+| Enemy flash | Turret hit/death timers | Timers drive sparks, not a material flash; mobile enemies lack dedicated damage-flash state |
+| Impact effects | Metal sparks, hard-surface flecks, tracers, muzzle flashes and persistent bullet marks | Turrets also emit a burst from their origin toward the camera, independently of the contact burst |
+| Audio | Positional surface cues, generic enemy-hit cue, nearest contact per surface family for shotgun audio | No impact variation in this path; replaying a cue restarts its cached sound |
+| Gameplay reactions | Awareness/death transitions, protected windup/recovery/lunge behavior, guardian suppression | No general directional knockback or damage stagger |
+| Player feedback | Hit confirmation, damage numbers, weapon animation, shotgun camera recoil | Camera recoil directly changes aiming pitch; it cannot be reused blindly for cosmetic impact shake |
+
+Concrete owners and implications:
+
+1. [`fire_player_weapon`](../../src/relaygame/enemy_runtime.cpp) retains seven
+   pellet results, but their `CombatFireResult` entries lack mobile-enemy identity
+   and applied damage. [`apply_player_attack`](../../src/relaygame/game_world_runtime.cpp)
+   compares temporary before/after health arrays to generate damage numbers.
+   A small game-owned result extension can support feedback and remove this
+   reconstruction. This is a structural observation, not a measured speedup.
+2. [`render_turrets`](../../src/relaygame/world_scene_renderer_interactives.cpp)
+   uses hit timers for sparks. Mobile-enemy rendering in
+   [`world_scene_renderer.cpp`](../../src/relaygame/world_scene_renderer.cpp)
+   selects live/dead models and attack-state signals, without a damage flash.
+   Existing per-draw emissive factors in
+   [`RenderQueue`](../../src/relaycore/render/render_queue.h) are a candidate
+   integration path without material copies or a new shader interface; visual
+   suitability and integration across enemy model paths remain unverified.
+3. [`enemy_runtime_tests.cpp`](../../tests/enemy_runtime_tests.cpp) explicitly
+   protects windup and recovery from nonlethal hits, and committed lunge targeting
+   from retargeting on impact.
+   [`ContainmentEncounter::suppress`](../../src/relaygame/containment_encounter.cpp)
+   already supplies conditional 650 ms suppression. Generic stagger must not
+   silently override these contracts.
+4. Existing impact bursts use six metal streaks or four hard-surface flecks.
+   [`weapon_impact_feedback`](../../src/relaygame/player_feedback.cpp) bounds
+   surface audio per discharge.
+   [`AudioSystem::play_one_shot`](../../src/relaycore/audio/audio_system.cpp)
+   supplies attenuation and cached playback. More particles or a new pooling
+   system are not justified by this static audit.
+5. [`process_fire_input`](../../src/relaygame/game_world_runtime_feedback.cpp)
+   consumes resolved attacks and dispatches audio inside the fixed-step path.
+   [`game_world_runtime_update.cpp`](../../src/relaygame/game_world_runtime_update.cpp)
+   latches discrete input until simulation consumes it. Presentation must preserve
+   this ownership and avoid duplicate gameplay resolution or audio dispatch.
+
+### Corrections to the supplied brief
+
+- Replace its Vulkan 1.3 compatibility requirement with the current
+  [Vulkan 1.4 contract](../RENDERER_MODERNIZATION_PLAN.md), retaining optional-feature
+  fallbacks. Do not restore retired 1.3 paths.
+- Reuse implemented VIS-40 effects and surface audio instead of treating them as
+  missing. G-019 acceptance does not establish the separate VIS-40 moving-player
+  readability gate; consult the roadmap for current status.
+- Treat 70 ms flash, particle counts, stagger duration and camera angles as trial
+  values, not accepted defaults. Existing counts should remain the first baseline.
+- Preserve current enemy roles and attack commitments. Separate presentation work
+  from balance-changing stagger or knockback.
+- H-008 records existing runtime bottlenecks, not the incremental cost of these
+  proposed effects. Before/after measurements remain pending.
+- Follow the active repository workflow for future implementation commits and
+  verification. Routine work does not require archives or release packaging.
+
+### Implementation sequence
+
+1. **Establish the comparison scenario after the H-008 checkpoint.** Record current
+   pistol/shotgun feedback against a turret, rover, mobile shooter, guardian,
+   metal and concrete, with sound and ordinary gameplay cameras. Keep visual and
+   gameplay evidence in this report; keep profiling evidence under H-008. Preserve
+   damage, health, cadence, quality settings and existing behavior for comparison.
+
+2. **Preserve complete resolved hits locally.** Extend `PlayerAttackResult` with
+   bounded per-ray target identity, contact/direction and applied damage, populated
+   at existing damage-resolution sites without additional raycasts. Keep game-only
+   target classification out of engine contracts. Aggregate pellets per target for
+   damage numbers and reaction eligibility. Preserve nearest-hit ordering,
+   occlusion, kill events and the rule that an early pellet kill cannot expose a
+   target behind it. Use copied values and session-local identities rather than
+   retaining raw enemy pointers. Avoid a general event bus.
+
+3. **Implement the smallest presentation improvement.** Add transient enemy flash
+   state and evaluate a 70 ms emissive pulse through existing draw parameters.
+   Define repeated-hit behavior and clear transient state on death and session
+   restoration. Reuse contact bursts; evaluate removing the redundant
+   camera-oriented turret burst. Retain current particle counts and audio cues
+   initially. Keep short feedback visible across fixed-step catch-up without
+   replaying audio. Preserve material appearance outside the pulse and verify
+   both simple and multipart enemy model paths.
+
+4. **Evaluate gameplay reactions separately.** Start with presentation-only
+   flinch. Add collision-aware knockback or stagger only if playtesting shows a
+   need. Define weapon/role eligibility, interruption rules, cooldowns and
+   save/retry behavior first. Preserve guardian suppression and committed enemy
+   attacks by default. Do not reuse attack-recovery timers in a way that changes
+   cadence or permits stagger-lock; do not add an animation framework.
+
+5. **Tune audio and camera against observed problems.** Introduce bounded sound
+   variation if repeated cues are audibly monotonous. Keep firing recoil unchanged
+   initially. Any confirmed-hit camera impulse needs a separate bounded
+   presentation offset that respects `camera_motion` and does not alter shot
+   direction. Omit hitstop. Reuse existing assets; identify any demonstrated asset
+   gap before expanding production scope.
+
+### Verification and acceptance plan
+
+Use the current presets and the narrowest affected targets. Confirm an MSVC
+developer environment and valid `VCPKG_ROOT` per
+[DEVELOPMENT](../DEVELOPMENT.md#сборка-с-нуля); reuse configured builds.
+The following commands were checked against preset/target/test registrations,
+but were **not executed during this audit**:
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_tests
+cmake --build --preset graphics-debug --target relaycore_power_restoration_graphics relaycore_game_lifecycle
+ctest --preset graphics-debug --output-on-failure --no-tests=error -R '^graphics\.(world_effects(_sdr)?|weapon_impacts(_hdr)?|game_lifecycle)$'
+```
+
+Discover affected unit cases with `ctest --preset test-debug -N` before selecting
+them; execute the selected cases with `--output-on-failure --no-tests=error`.
+Start with combat, enemy, weapon-impact and containment regressions. Add audio
+lifetime or viewmodel targets only when changes affect those owners.
+
+Required regression cases:
+
+- Mixed-target pellets, actual applied damage, occlusion, early kills and one
+  target event per kill; misses and rejected cooldown shots produce no enemy-hit
+  feedback.
+- Repeated/overlapping hits, lethal hits, transient expiry and low-frame-rate
+  catch-up; bounded effects and no duplicate audio dispatch.
+- Restart, Continue and encounter snapshot restoration clear stale presentation
+  without altering persistent gameplay state.
+- Existing windup, recovery, lunge targeting and guardian suppression remain
+  unchanged unless a separately accepted gameplay change defines new behavior.
+- Add flash samples to existing graphics fixtures. Check HDR/SDR and affected
+  model paths, require executed cases without skips and clean Vulkan validation.
+
+Compare identical optimized combat workloads before/after, recording source/build
+identity, hardware, settings, CPU/GPU time, frame tails and relevant allocations.
+Existing H-008 measurements are context, not proof that added effects are cheap.
+Do not claim an improvement without comparable measurements.
+
+Conduct a sound-on G-019 playtest for hit/miss readability, repeated-fire noise,
+threat cues, aiming comfort and enemy-role preservation. Fixed-camera graphics
+captures cannot establish those qualities. Record human acceptance separately
+from technical test results. Run `git diff --check` after implementation and
+commit coherent, verified changes according to the repository workflow.
+
+**Audit verification actually performed:** remote/ref verification and static
+inspection of source, tests, presets and owning documents. Builds, runtime tests,
+profiling and playtesting were not run. No incremental performance or gameplay
+acceptance is claimed. Implementation remains subject to the current H-008
+priority and a subsequent implementation request.

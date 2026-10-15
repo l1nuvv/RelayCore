@@ -7,8 +7,12 @@ description: Build, diagnose, and deliver Blender still, turntable, sequence, an
 
 For this repository, read [RelayCore integration](../relaycore-blender/SKILL.md) once per task. It defines project constraints, standalone execution and the installed specialist set.
 
-Read [the shared execution guidance](references/astra-workflow.md) once per task
-for autonomous decisions, evidence cadence, and long-task continuity.
+Load only needed sections of [the shared execution guidance](references/astra-workflow.md):
+`Gather references that answer modeling questions` for new subjects or substantial
+shape repairs, `Preserve continuity during long work` for long/interrupted tasks,
+and other sections only for a concrete workflow question. Copies across installed
+specialists are identical; reuse already-read sections once per task. Routine edits
+do not require the full guide; model/benchmark guidance is only for requested comparisons.
 
 Treat a render as a reproducible deliverable, not a screenshot that happened to
 look acceptable once.

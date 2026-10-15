@@ -21,7 +21,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -394,6 +396,9 @@ namespace
             require(renderer.capture_prepared_image().pixels == lazy.pixels, "Second scene slot changed pixels");
             const auto lazy_stats = statistics();
             renderer.prepare_resources(scene.resource_items());
+            // Measure resident resources after the preparation uploads have retired their staging buffers.
+            require(vkDeviceWaitIdle(device.handle()) == VK_SUCCESS, "Could not finish resource preparation uploads");
+            renderer.prepare_resources({});
             const auto prepared = statistics();
             std::cout << "pressure_resources: cycle=" << cycle << "; lazy_bytes=" << lazy_stats.allocationBytes
                       << "; prepared_bytes=" << prepared.allocationBytes << "; allocations=" << prepared.allocationCount
@@ -445,6 +450,216 @@ namespace
                 renderer.render_image(scene.render_items(), camera, width, height, viewmodel).pixels == lazy.pixels,
                 "Failed resource preparation changed the active scene"
             );
+        }
+    }
+
+    void check_actor_hit_resources(
+        VulkanMeshRenderer& renderer,
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring
+    )
+    {
+        RelayCore::BlockoutLevel level;
+        for (const auto* kind : {"enemy_rover", "enemy_shooter"})
+        {
+            RelayCore::EntitySpawnData entity;
+            entity.classname = kind;
+            entity.origin = {0, .01F, 3};
+            if (entity.classname == "enemy_shooter")
+                entity.properties["route"] = "fixture";
+            level.entities.push_back(entity);
+        }
+        RelayCore::EntitySpawnData route;
+        route.classname = "enemy_route_point";
+        route.origin = {0, .01F, 3};
+        route.properties["route"] = "fixture";
+        level.entities.push_back(route);
+        StaticModelCache models;
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::legacy_gamma),
+            models
+        );
+        renderer.prepare_resources(scene.resource_items());
+        auto enemies = RelayGame::build_enemies(level);
+        std::array<RelayCore::gameplay::RuntimeTurret, 1> turrets;
+        turrets[0].origin = {0, .5F, 3};
+        turrets[0].bounds = {{-.5F, 0, 2.5F}, {.5F, 1, 3.5F}};
+        PerspectiveCamera camera{{.position = {0, 1.3F, 0}, .target = {0, .5F, 3}}};
+        camera.set_viewport(width, height);
+        const auto draw = [&] {
+            scene.prepare_render_queue(camera, 0, {}, turrets, {}, -1, {}, false, {}, {}, {}, enemies);
+            renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
+            (void) renderer.capture_prepared_image();
+        };
+        draw();
+        draw();
+        const auto materials = renderer.material_descriptor_usage().materials;
+        const auto allocations = allocation_count(device);
+        for (int i = 0; i < 12; ++i)
+        {
+            for (auto& enemy : enemies)
+                enemy.hit_feedback = {{0, .5F, 2.5F}, {0, 0, -1}, i % 2 == 0 ? .07F : 0};
+            turrets[0].hit_feedback = enemies[0].hit_feedback;
+            draw();
+            require(
+                renderer.material_descriptor_usage().materials == materials,
+                "Actor hits created unprepared material variants"
+            );
+            require(allocation_count(device) == allocations, "Actor hits allocated GPU resources after preparation");
+        }
+        std::cout << "actor_hit_resources: fixed materials=" << materials << "; allocations=" << allocations << '\n';
+    }
+
+    void check_material_descriptors(VulkanMeshRenderer& renderer, const VulkanDevice& device)
+    {
+        constexpr size_t count = 1025;
+        constexpr int size = 192;
+        renderer.set_config(RendererConfig{.shadow_enabled = false});
+        PerspectiveCamera camera{{.position = {0, 0, 45}, .target = {0, 0, 0}}};
+        camera.set_viewport(size, size);
+        auto box = make_color_box_mesh_data();
+        for (auto& vertex : box.vertices)
+            vertex.color = {1, 1, 1};
+        StaticColorMesh mesh, invalid;
+        mesh.initialize(box);
+        Texture2D retained;
+        const std::array<uint8_t, 4> white{255, 255, 255, 255};
+        retained.initialize_rgba(1, 1, white, TextureEncoding::linear);
+        const std::array retained_items{RenderItem{.mesh = &mesh, .diffuse_texture = &retained}};
+        const auto baseline = renderer.render_image(retained_items, camera, size, size);
+        renderer.prepare_frame(retained_items, {}, camera, size, size);
+        require(renderer.capture_prepared_image().pixels == baseline.pixels, "Descriptor fixture slot mismatch");
+        renderer.prepare_resources(retained_items);
+        const auto settled_allocations = allocation_count(device);
+        const auto settled = renderer.material_descriptor_usage();
+        require(settled.pools == 1 && settled.materials == 1, "Descriptor fixture did not start settled");
+
+        for (int cycle = 0; cycle < 3; ++cycle)
+        {
+            std::vector<Texture2D> textures(count);
+            std::vector<RenderItem> items;
+            items.reserve(count);
+            const auto initialize_texture = [&](const size_t i) {
+                const std::array<uint8_t, 4> color{
+                    static_cast<uint8_t>(40 + i % 200),
+                    static_cast<uint8_t>(40 + (i / 33) % 200),
+                    static_cast<uint8_t>(40 + (i * 7) % 200),
+                    255
+                };
+                textures[i].initialize_rgba(1, 1, color, TextureEncoding::linear);
+            };
+            for (size_t i = 0; i < count; ++i)
+            {
+                initialize_texture(i);
+                items.push_back(RenderItem{
+                    .mesh = &mesh,
+                    .model_matrix = glm::translate(
+                        glm::mat4{1},
+                        glm::vec3{(float(i % 33) - 16) * 1.1F, (float(i / 33) - 15.5F) * 1.1F, 0}
+                    ),
+                    .diffuse_texture = &textures[i]
+                });
+            }
+            renderer.prepare_resources(items);
+            const auto peak = renderer.material_descriptor_usage();
+            require(peak.materials == count + 1 && peak.pools <= 16, "Material descriptors did not share pools");
+            const auto image = renderer.render_image(items, camera, size, size);
+            require(image.pixels != baseline.pixels, "Bulk material fixture did not render");
+
+            for (size_t i = 0; i < count; i += 2)
+                textures[i] = Texture2D{};
+            renderer.prepare_resources(retained_items);
+            require(
+                renderer.material_descriptor_usage().materials == count / 2 + 1,
+                "Expired material descriptors were not freed"
+            );
+            for (size_t i = 0; i < count; i += 2)
+                initialize_texture(i);
+            renderer.prepare_resources(items);
+            const auto reused = renderer.material_descriptor_usage();
+            require(
+                reused.pools == peak.pools && reused.materials == peak.materials,
+                "Churn grew descriptor pools instead of reusing freed sets"
+            );
+            if (cycle == 0)
+            {
+                RelayCore::test::ScopedTempDirectory missing;
+                expect_failure(
+                    [&] {
+                        renderer.reload_shaders(missing.path());
+                    },
+                    "vertex_main"
+                );
+                require(
+                    renderer.render_image(items, camera, size, size).pixels == image.pixels,
+                    "Failed reload changed pooled material bindings"
+                );
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            }
+            require(
+                renderer.render_image(items, camera, size, size).pixels == image.pixels,
+                "Reused material descriptors changed pixels"
+            );
+            {
+                RelayCore::test::BlockGraphicsQueue gate{device};
+                gate.block();
+                renderer.prepare_frame(items, {}, camera, size, size);
+                textures.clear();
+                items.clear();
+                renderer.prepare_frame(retained_items, {}, camera, size, size);
+                const auto pending = renderer.material_descriptor_usage();
+                require(
+                    renderer.resource_usage().material_retirements == count,
+                    "Material telemetry lost GPU-pending retirements"
+                );
+                require(
+                    pending.pools == peak.pools && pending.materials == peak.materials,
+                    "In-flight material descriptors were reclaimed early"
+                );
+                gate.release();
+            }
+            require(
+                renderer.capture_prepared_image().pixels == baseline.pixels,
+                "Retiring pooled materials changed the retained scene"
+            );
+            renderer.prepare_resources(retained_items);
+            const auto reclaimed = renderer.material_descriptor_usage();
+            const auto resource_usage = renderer.resource_usage();
+            require(
+                resource_usage.staging_bytes == 0 && resource_usage.upload_batches == 0
+                    && resource_usage.upload_retirements == 0 && resource_usage.scene_retirements == 0
+                    && resource_usage.material_retirements == 0,
+                "Resource telemetry retained collected materials/uploads"
+            );
+            require(
+                reclaimed.pools == settled.pools && reclaimed.materials == settled.materials
+                    && allocation_count(device) == settled_allocations,
+                "Material churn retained obsolete descriptors or GPU allocations"
+            );
+            {
+                Texture2D abandoned;
+                abandoned.initialize_rgba(1, 1, white, TextureEncoding::linear);
+                const std::array broken{
+                    RenderItem{.mesh = &mesh, .diffuse_texture = &abandoned},
+                    RenderItem{.mesh = &invalid}
+                };
+                expect_failure(
+                    [&] {
+                        renderer.prepare_resources(broken);
+                    },
+                    "initialized CPU mesh"
+                );
+            }
+            static_cast<void>(renderer.render_image(retained_items, camera, size, size));
+            renderer.prepare_resources(retained_items);
+            require(
+                renderer.material_descriptor_usage().materials == settled.materials
+                    && allocation_count(device) == settled_allocations,
+                "Failed preparation retained pooled material resources"
+            );
+            std::cout << "material_descriptors: cycle=" << cycle << "; materials=" << peak.materials
+                      << "; peak_pools=" << peak.pools << "; settled_pools=" << reclaimed.pools << '\n';
         }
     }
 
@@ -670,6 +885,7 @@ namespace
         const auto authoring = load_render_authoring_config(
             std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "render_authoring.toml"
         );
+        const auto start = std::chrono::steady_clock::now();
         VulkanMeshRenderer renderer{
             device,
             RELAYCORE_TEST_SPIRV_DIRECTORY,
@@ -678,8 +894,261 @@ namespace
             TextureEncoding::linear,
             RendererConfig{}
         };
+        const auto initialized = std::chrono::steady_clock::now();
+        renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+        const auto reloaded = std::chrono::steady_clock::now();
+        std::cout << "pipeline_creation_ms=" << std::chrono::duration<double, std::milli>(initialized - start).count()
+                  << "; reload_ms=" << std::chrono::duration<double, std::milli>(reloaded - initialized).count()
+                  << '\n';
         check_pipeline(renderer, captures, device);
         check_passes(renderer, captures);
+    }
+
+    void check_pipeline_cache(
+        const VulkanDevice& device,
+        const RelayCore::Window& window,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        RelayCore::test::ScopedTempDirectory temp;
+        const auto file = temp.path() / "pipelines.cache";
+        const auto shaders = temp.path() / "shaders";
+        std::filesystem::copy(RELAYCORE_TEST_SPIRV_DIRECTORY, shaders, std::filesystem::copy_options::recursive);
+        require(device.save_pipeline_cache(file, shaders), "Pipeline cache save failed");
+        std::ifstream input(file, std::ios::binary);
+        const std::vector<char> original{std::istreambuf_iterator<char>{input}, {}};
+        input.close();
+        require(original.size() > 56, "Pipeline cache contains no Vulkan payload");
+        const auto write = [&](const std::vector<char>& bytes) {
+            std::ofstream output(file, std::ios::binary | std::ios::trunc);
+            output.write(bytes.data(), bytes.size());
+            output.close();
+            require(!output.fail(), "Could not write pipeline cache fixture");
+        };
+        const auto check_diagnostic = [](const std::string_view expected) {
+            RelayCore::log::flush();
+            std::ifstream log(RelayCore::log::latest_log_path());
+            const std::string text{std::istreambuf_iterator<char>{log}, {}};
+            const auto position = text.rfind("[renderer] Vulkan pipeline cache load:");
+            require(position != std::string::npos, "Cache load diagnostic missing");
+            const auto line = text.substr(position, text.find('\n', position) - position);
+            require(line.find(expected) != std::string::npos, "Incorrect cache rejection reason");
+            require(
+                line.find("duration_ms=") != std::string::npos && line.find("initial_bytes=") != std::string::npos,
+                "Cache load lost measured duration or accepted payload size"
+            );
+        };
+        VulkanDevice warm{window};
+        require(warm.load_pipeline_cache(file, shaders), "Compatible pipeline cache rejected");
+        check_diagnostic("outcome=loaded reason='merged_into_live_cache'");
+        check_mesh_pipeline(warm, atlas, captures);
+        const std::array<std::pair<size_t, std::string_view>, 9> mutations{
+            {{0, "outcome=incompatible reason='schema'"},
+             {4, "outcome=incompatible reason='vendor_or_device'"},
+             {8, "outcome=incompatible reason='vendor_or_device'"},
+             {12, "outcome=incompatible reason='driver'"},
+             {16, "outcome=incompatible reason='pipeline_cache_uuid'"},
+             {32, "outcome=incompatible reason='shader_hash'"},
+             {40, "outcome=corrupt reason='payload_size'"},
+             {48, "outcome=corrupt reason='checksum'"},
+             {56, "outcome=corrupt reason='checksum'"}}
+        };
+        for (const auto& [offset, diagnostic] : mutations)
+        {
+            auto corrupted = original;
+            corrupted[offset] ^= 1;
+            write(corrupted);
+            require(!warm.load_pipeline_cache(file, shaders), "Incompatible/corrupt pipeline cache accepted");
+            check_diagnostic(diagnostic);
+        }
+        write(std::vector<char>{original.begin(), original.begin() + 20});
+        require(!warm.load_pipeline_cache(file, shaders), "Truncated pipeline cache accepted");
+        check_diagnostic("outcome=corrupt reason='file_size'");
+        write(original);
+        {
+            std::ofstream changed(shaders / "mesh.vert.spv", std::ios::binary | std::ios::app);
+            changed.put('x');
+        }
+        require(!warm.load_pipeline_cache(file, shaders), "Changed shader cache accepted");
+        check_diagnostic("outcome=incompatible reason='shader_hash'");
+        require(!warm.load_pipeline_cache(file, temp.path() / "absent-shaders"), "Missing shader directory accepted");
+        check_diagnostic("outcome=io_error");
+        std::filesystem::remove(file);
+        require(!warm.load_pipeline_cache(file, shaders), "Missing pipeline cache accepted");
+        check_diagnostic("outcome=missing reason='file_absent'");
+        // Rejected data leaves the live cache and working pipeline path usable.
+        check_mesh_pipeline(warm, atlas, captures);
+        std::cout << "pipeline_cache=passed (warm restart, schema/vendor/device/driver/UUID/shaders/corruption)\n";
+    }
+
+    void check_depth_formats(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        expect_failure(
+            [&] {
+                static_cast<void>(device.select_depth_format(false, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_UNORM));
+            },
+            "No compatible Vulkan scene depth format"
+        );
+        StaticColorMesh mesh;
+        mesh.initialize(make_color_box_mesh_data());
+        RenderQueue queue;
+        queue.push(mesh, glm::translate(glm::mat4{1}, {0, -.6F, -2}) * glm::scale(glm::mat4{1}, {12, .2F, 18}));
+        queue.push(mesh, glm::mat4{1});
+        queue.push(mesh, glm::translate(glm::mat4{1}, {-1.5F, .4F, -3}) * glm::scale(glm::mat4{1}, {1.2F, 2, 1.5F}));
+        PerspectiveCamera camera{{.position = {4, 3, 8}, .target = {0, 0, -2}}};
+        camera.set_viewport(width, height);
+        RendererConfig config{};
+        config.shadow_enabled = true;
+        config.shadow_map_resolution = 512;
+        config.shadow_light_direction = {.5F, -1, .25F};
+        config.shadow_light_intensity = 1.8F;
+        const auto render = [&](const VulkanDepthFormats formats, const int samples) {
+            auto settings = config;
+            settings.msaa_samples = samples;
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::linear,
+                settings,
+                ColorPipelineMode::legacy_gamma,
+                formats
+            };
+            auto image = renderer.render_image(queue.items(), camera, width, height);
+            auto depth = renderer.capture_shadow_depth(0);
+            require(
+                std::all_of(
+                    depth.begin(),
+                    depth.end(),
+                    [](float value) {
+                        return std::isfinite(value) && value >= 0 && value <= 1;
+                    }
+                ),
+                "Selected shadow format produced invalid readback"
+            );
+            require(
+                std::any_of(
+                    depth.begin(),
+                    depth.end(),
+                    [](float value) {
+                        return value < .99F;
+                    }
+                ),
+                "Shadow format fixture contains no geometry"
+            );
+            save(
+                image,
+                captures
+                    / ("depth-" + std::to_string(formats.scene) + "-" + std::to_string(formats.shadow) + "-"
+                       + std::to_string(samples) + ".bmp")
+            );
+            return std::pair{std::move(image), std::move(depth)};
+        };
+        for (const int samples : {1, 4})
+        {
+            const auto baseline = render({}, samples);
+            for (const bool shadow : {false, true})
+            {
+                if (shadow && samples != 1)
+                    continue;
+                for (const auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_D16_UNORM})
+                {
+                    try
+                    {
+                        static_cast<void>(device.select_depth_format(
+                            shadow,
+                            shadow ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(samples),
+                            format
+                        ));
+                    } catch (const std::runtime_error& error)
+                    {
+                        require(
+                            std::string_view{error.what()}.starts_with("No compatible Vulkan "),
+                            "Unexpected depth selection failure"
+                        );
+                        std::cout << "depth_candidate=" << format << "; shadow=" << shadow << "; unsupported\n";
+                        continue;
+                    }
+                    const auto alternate = render(
+                        shadow ? VulkanDepthFormats{.shadow = format} : VulkanDepthFormats{.scene = format},
+                        samples
+                    );
+                    double delta = 0;
+                    for (size_t i = 0; i < baseline.first.pixels.size(); ++i)
+                        delta += std::abs(int(baseline.first.pixels[i]) - int(alternate.first.pixels[i]));
+                    delta /= baseline.first.pixels.size();
+                    float max_depth_delta = 0;
+                    for (size_t i = 0; i < baseline.second.size(); ++i)
+                        max_depth_delta = std::max(max_depth_delta, std::abs(baseline.second[i] - alternate.second[i]));
+                    std::cout << "depth_candidate=" << format << "; shadow=" << shadow << "; samples=" << samples
+                              << "; mean_rgba_delta=" << delta << "; max_depth_delta=" << max_depth_delta << '\n';
+                    require(delta <= (shadow ? 1.5 : .5), "Depth fallback changed the rendered scene beyond tolerance");
+                    require(
+                        max_depth_delta <= 2.0F / 65535.0F,
+                        "Shadow depth fallback exceeded D16 quantization tolerance"
+                    );
+                    if (!shadow && samples == 1 && format == VK_FORMAT_D16_UNORM)
+                    {
+                        PerspectiveCamera tiny_camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+                        tiny_camera.set_viewport(641, 361);
+                        const auto& projection = tiny_camera.projection_matrix();
+                        const auto clip = projection * glm::vec4{0, 0, -45, 1};
+                        const float quantized = std::round((clip.z + clip.w) * .5F / clip.w * 65535) / 65535;
+                        const auto view = glm::inverse(projection) * glm::vec4{0, 0, quantized * 2 - 1, 1};
+                        const float distance = -view.z / view.w;
+                        auto quad = make_color_double_sided_quad_mesh_data();
+                        for (auto& vertex : quad.vertices)
+                        {
+                            vertex.color = {0, 1, 0};
+                            vertex.material_kind = 100;
+                        }
+                        StaticColorMesh green, red;
+                        green.initialize(quad);
+                        for (auto& vertex : quad.vertices)
+                            vertex.color = {1, 0, 0};
+                        red.initialize(quad);
+                        RenderQueue tiny_queue;
+                        tiny_queue.push(
+                            green,
+                            glm::translate(glm::mat4{1}, {0, 0, -distance - .05F})
+                                * glm::scale(glm::mat4{1}, {.01F, .01F, 1})
+                        );
+                        tiny_queue.push(
+                            red,
+                            glm::translate(glm::mat4{1}, {0, 0, -distance + .05F})
+                                * glm::scale(glm::mat4{1}, {.01F, .01F, 1})
+                        );
+                        RendererConfig tiny_config{};
+                        tiny_config.shadow_enabled = false;
+                        VulkanMeshRenderer tiny_renderer{
+                            device,
+                            RELAYCORE_TEST_SPIRV_DIRECTORY,
+                            authoring,
+                            atlas,
+                            TextureEncoding::linear,
+                            tiny_config,
+                            ColorPipelineMode::legacy_gamma,
+                            {.scene = format}
+                        };
+                        const auto tiny = tiny_renderer.render_image(tiny_queue.items(), tiny_camera, 641, 361);
+                        save(tiny, captures / "depth-order-d16.bmp");
+                        const auto pixel = size_t(180 * 641 + 320) * 4;
+                        require(
+                            tiny.pixels[pixel] > 240 && tiny.pixels[pixel + 1] < 10,
+                            "Opaque ordering changed the winner of quantized equal-depth fragments"
+                        );
+                    }
+                }
+            }
+        }
+        std::cout << "depth_formats=passed\n";
     }
 
     void check_lighting(
@@ -813,11 +1282,18 @@ namespace
     void check_shadows(
         const VulkanDevice& device,
         const RelayCore::Window& window,
-        const RenderAuthoringConfig& authoring,
-        const CpuRgbaTextureData& atlas,
+        const RenderAuthoringConfig&,
+        const CpuRgbaTextureData&,
         const std::filesystem::path& captures
     )
     {
+        const auto authoring = load_render_authoring_config(
+            std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "render_authoring.toml"
+        );
+        const auto frozen_atlas =
+            load_blockout_texture_atlas(std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "shadow_atlas.bmp");
+        require(frozen_atlas.has_value(), "Missing frozen VK-012 shadow atlas");
+        const auto& atlas = *frozen_atlas;
         auto box = make_color_box_mesh_data();
         for (auto& vertex : box.vertices)
         {
@@ -1026,6 +1502,96 @@ namespace
         }
     }
 
+    void check_shadow_cache(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas
+    )
+    {
+        StaticColorMesh mesh, replacement;
+        auto data = make_color_box_mesh_data();
+        mesh.initialize(data);
+        replacement.initialize(data);
+        RenderQueue queue;
+        queue.push(mesh, glm::scale(glm::mat4{1}, {8, .2F, 8}));
+        queue.push(mesh, glm::translate(glm::mat4{1}, {0, 1, 0}));
+        std::vector<RenderItem> items{queue.items().begin(), queue.items().end()};
+        PerspectiveCamera camera{{.position = {4, 3, 8}, .target = {0, 0, 0}}};
+        camera.set_viewport(width, height);
+        for (const auto submission :
+             {VulkanSceneSubmission::direct,
+              VulkanSceneSubmission::instanced,
+              VulkanSceneSubmission::indirect,
+              VulkanSceneSubmission::gpu_culled})
+        {
+            RendererConfig config{};
+            config.shadow_map_resolution = 256;
+            std::array lights{LocalLight{{0, 3, 2}, {1, .7F, .3F}, 8}};
+            SpotLight spot{};
+            VulkanMeshRenderer
+                cached{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::linear, config};
+            VulkanMeshRenderer
+                fresh{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::linear, config};
+            cached.set_scene_submission(submission);
+            fresh.set_scene_submission(submission);
+            const auto check = [&](const char* mutation) {
+                for (auto* renderer : {&cached, &fresh})
+                {
+                    renderer->set_config(config);
+                    renderer->set_local_lights(lights);
+                    renderer->set_spot_light(spot);
+                }
+                fresh.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                const auto a = cached.render_image(items, camera, width, height);
+                const auto b = fresh.render_image(items, camera, width, height);
+                require(a.pixels == b.pixels, mutation);
+                std::cout << "shadow_cache mutation=" << mutation
+                          << " rebuilt=" << cached.draw_usage().shadow_rebuilt_faces
+                          << " reused=" << cached.draw_usage().shadow_reused_faces << '\n';
+            };
+            check("initial");
+            check("unchanged");
+            require(
+                cached.draw_usage().shadow_rebuilt_faces == 0 && cached.draw_usage().shadow_reused_faces >= 6,
+                "Unchanged point faces were rebuilt"
+            );
+            items.back().model_matrix = glm::translate(glm::mat4{1}, {1, 1, 0});
+            check("moved caster");
+            items.pop_back();
+            check("removed caster");
+            auto changed = queue.items().back();
+            changed.mesh = &replacement;
+            items.push_back(changed);
+            check("replaced caster");
+            lights[0].position.x += 1;
+            check("moved light");
+            lights[0].radius = 6;
+            check("light radius");
+            config.shadow_enabled = false;
+            check("shadows off");
+            config.shadow_enabled = true;
+            check("shadows on");
+            spot = {
+                .position = {0, 3, 4},
+                .direction = glm::normalize(glm::vec3{0, -1, -1}),
+                .color = {1, 1, 1},
+                .range = 12,
+                .enabled = true
+            };
+            check("spot enabled");
+            spot.enabled = false;
+            check("spot disabled");
+            camera.set_position({-4, 3, 8});
+            check("camera cut");
+            cached.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            check("shader reload");
+            require(cached.draw_usage().shadow_rebuilt_faces > 0, "Shader reload retained stale shadow faces");
+            items.assign(queue.items().begin(), queue.items().end());
+            camera.set_position({4, 3, 8});
+        }
+        std::cout << "shadow_cache=passed\n";
+    }
+
     void check_point_shadow_receiver(
         const VulkanDevice& device,
         const RenderAuthoringConfig& authoring,
@@ -1129,18 +1695,25 @@ namespace
         const auto prepare = [&](const std::span<const std::string> targets = {},
                                  const std::span<const RelayGame::EnvironmentEffect> effects = {}) {
             scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false, targets, {}, effects);
-            require(scene.local_lights().size() == 8, "World selection did not retain its eight-light budget");
+            require(scene.local_lights().size() == (targets.empty() ? 10 : 11), "World dropped an authored light");
             renderer.set_local_lights(scene.local_lights());
         };
         const auto check = [&](const char* name) {
             auto image = renderer.render_image(scene.render_items(), camera, width, height);
-            compare(image, name, captures);
+            save(image, captures / (std::string{name} + "-vk.bmp"));
             return image;
         };
         prepare();
-        for (size_t i = 0; i < 8; ++i)
+        for (size_t i = 0; i < 10; ++i)
             require(scene.local_lights()[i].position.x == float(i) + 4, "Nearest-light selection order changed");
-        const auto initial = check("lighting-world-nearest-eight");
+        const auto initial = check("lighting-world-nearest-ten");
+        auto without_tenth = std::vector<LocalLight>{scene.local_lights().begin(), scene.local_lights().end()};
+        without_tenth.back().position = {4, 1.65F, 5};
+        renderer.set_local_lights(without_tenth);
+        const auto tenth = check("lighting-world-tenth-enabled");
+        without_tenth.back().color = {};
+        renderer.set_local_lights(without_tenth);
+        require(check("lighting-world-tenth-disabled").pixels != tenth.pixels, "GPU ignored lights beyond eight");
         const std::array targets{std::string{"lighting-test"}};
         prepare(targets);
         require(scene.local_lights()[0].radius == 9, "Target-gated source was not selected");
@@ -1170,6 +1743,30 @@ namespace
         prepare();
         require(scene.local_lights()[0].position.x == 13, "Camera movement did not update selected nearest lights");
         check("lighting-world-camera-switch");
+        scene.shutdown();
+
+        const auto power = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/power_restoration.toml"));
+        scene.initialize(
+            RelayGame::build_prepared_world_scene_data(power, authoring, ColorPipelineMode::legacy_gamma),
+            models
+        );
+        for (const float z : {-1.F, 4.F})
+        {
+            camera.set_position({-2, 1.65F, z});
+            camera.set_target({0, 1.85F, -4.58F});
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto lights = scene.local_lights();
+            const auto red = std::ranges::find(lights, glm::vec3{0, 1.85F, -4.58F}, &LocalLight::position);
+            require(red != lights.end(), "Distance dropped the pentagram light");
+            renderer.set_local_lights(lights);
+            const auto lit = renderer.render_image(scene.render_items(), camera, width, height);
+            auto disabled = std::vector<LocalLight>{lights.begin(), lights.end()};
+            disabled[static_cast<size_t>(red - lights.begin())].color = {};
+            renderer.set_local_lights(disabled);
+            const auto unlit = renderer.render_image(scene.render_items(), camera, width, height);
+            require(lit.pixels != unlit.pixels, "Pentagram light made no contribution at distance");
+            save(lit, captures / (z < 0 ? "lighting-pentagram-near.bmp" : "lighting-pentagram-far.bmp"));
+        }
         scene.shutdown();
         renderer.set_local_lights({});
     }
@@ -2557,15 +3154,35 @@ namespace
         );
         check_center(renderer.render_image(queue.items(), camera, width / 2, height / 2), expected(radiance, 0));
         check_center(renderer.render_image(queue.items(), camera, width, height), expected(radiance, 0));
+        RenderQueue full_screen;
+        full_screen.push(mesh, glm::scale(glm::mat4{1}, glm::vec3{100}));
+        for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 9}, glm::ivec2{319, 181}, glm::ivec2{641, 359}})
+        {
+            camera.set_viewport(size.x, size.y);
+            renderer.prepare_frame(full_screen.items(), {}, camera, size.x, size.y);
+            const auto image = renderer.capture_prepared_image();
+            const auto reference = expected(radiance, 0);
+            for (size_t pixel = 0; pixel < image.pixels.size(); pixel += 4)
+            {
+                for (int channel = 0; channel < 3; ++channel)
+                    require(
+                        std::abs(int(image.pixels[pixel + channel]) - int(std::lround(reference[channel] * 255))) <= 2,
+                        "HDR partial workgroup left an incorrect pixel"
+                    );
+                require(image.pixels[pixel + 3] == 255, "HDR partial workgroup lost alpha");
+            }
+        }
+        camera.set_viewport(width, height);
         RelayCore::test::ScopedTempDirectory broken;
         for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
-            if (file.path().extension() == ".spv" && file.path().filename() != "tone_mapping.frag.spv")
+            if (file.path().extension() == ".spv" && file.path().filename() != "tone_mapping.frag.spv"
+                && file.path().filename() != "tone_mapping.comp.spv")
                 std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
         expect_failure(
             [&] {
                 renderer.reload_shaders(broken.path());
             },
-            "tone_mapping.frag.spv"
+            "tone_mapping."
         );
         require(
             renderer.render_image(queue.items(), camera, width, height).pixels == original.pixels,
@@ -2906,6 +3523,8 @@ namespace
             hud->set_screen(PlayerUiScreen::Hud);
             hud->set_hud({.visible = true, .health = 72, .max_health = 100, .weapon = "Дробовик"});
             camera.set_viewport(width, height);
+            // Warm history after resize so this lifetime check compares the same diagnostic state.
+            renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
             renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, width, height);
             renderer.append_player_ui(*hud);
             const auto expected = renderer.capture_prepared_image();
@@ -3071,9 +3690,2677 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    void check_advanced_effects(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        const int w = profile ? 1920 : 320, h = profile ? 1080 : 180;
+        PerspectiveCamera camera{{.position = {0, 1.2F, 3}, .target = {0, .1F, 0}}};
+        camera.set_viewport(w, h);
+        const CpuColorMeshData quad{
+            {{{-1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}},
+             {{1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}},
+             {{1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}},
+             {{-1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}}},
+            {0, 1, 2, 0, 2, 3}
+        };
+        StaticColorMesh plane, box;
+        plane.initialize(quad);
+        box.initialize(make_color_box_mesh_data());
+        std::vector<uint8_t> pixels(32 * 32 * 4);
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+            {
+                const auto i = (y * 32 + x) * 4;
+                pixels[i] = pixels[i + 1] = pixels[i + 2] = ((x / 2 + y / 2) % 2) ? 220 : 60;
+                pixels[i + 3] = 255;
+            }
+        Texture2D checker, black;
+        checker.initialize_rgba(32, 32, pixels, TextureEncoding::srgb);
+        black.initialize_rgba(1, 1, std::array<uint8_t, 4>{0, 0, 0, 255}, TextureEncoding::linear);
+        std::vector<RenderItem> items{
+            {.mesh = &plane,
+             .model_matrix = glm::scale(glm::mat4{1}, {3, 3, 1}),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.8F, 0}},
+            {.mesh = &plane,
+             .model_matrix = glm::scale(
+                 glm::rotate(glm::translate(glm::mat4{1}, {0, -.5F, 1}), -glm::half_pi<float>(), glm::vec3{1, 0, 0}),
+                 {3, 3, 1}
+             ),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.4F, .7F}},
+            {.mesh = &box,
+             .model_matrix = glm::scale(glm::translate(glm::mat4{1}, {-.65F, -.15F, .5F}), glm::vec3{.4F}),
+             .diffuse_texture = &checker,
+             .metallic_roughness = MetallicRoughness{.5F, 0},
+             .emissive_factor = {1, .1F, .05F}}
+        };
+        for (auto& item : items)
+            item.previous_model_matrix = item.model_matrix;
+        RendererConfig base;
+        base.hdr_enabled = true;
+        base.shadow_enabled = base.fog_enabled = false;
+        base.shadow_light_intensity = .8F;
+        base.postfx_vignette_strength = base.postfx_grain_strength = base.postfx_scanline_strength = 0;
+        base.postfx_contrast = base.postfx_saturation = 1;
+        const auto make = [&](const RendererConfig& config) {
+            return std::make_unique<VulkanMeshRenderer>(
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            );
+        };
+        auto reference = make(base);
+        const auto baseline = reference->render_image(items, camera, w, h);
+        save(baseline, captures / "advanced-off.bmp");
+        if (!profile)
+        {
+            const auto boxModel = items[2].model_matrix;
+            std::array<bool, 4> visible{};
+            for (int effect = 0; effect < 5; ++effect)
+                for (int quality = 1; quality <= 2; ++quality)
+                {
+                    auto config = base;
+                    config.ssgi_quality = effect == 0 || effect == 4 ? quality : 0;
+                    config.ssr_enabled = effect == 1 || effect == 4;
+                    config.reflection_quality = config.ssr_enabled ? quality : 0;
+                    config.dof_quality = effect == 2 || effect == 4 ? quality : 0;
+                    config.motion_blur_quality = effect == 3 || effect == 4 ? quality : 0;
+                    config.dof_focus_distance = 1;
+                    config.ssao_enabled = effect == 4;
+                    items[2].model_matrix = boxModel;
+                    items[2].previous_model_matrix = boxModel;
+                    items[2].emissive_factor = {1, .1F, .05F};
+                    auto renderer = make(config);
+                    const auto first = renderer->render_image(items, camera, w, h);
+                    if (effect == 2 || effect == 3)
+                        require(
+                            first.pixels == baseline.pixels,
+                            "Lens effects reused invalid first-frame motion/history"
+                        );
+                    for (int frame = 0; frame < 12; ++frame)
+                    {
+                        items[2].previous_model_matrix = items[2].model_matrix;
+                        items[2].model_matrix =
+                            glm::translate(glm::mat4{1}, {.2F * std::sin(frame * .5F), 0, 0}) * boxModel;
+                        items[2].emissive_factor = frame >= 8 ? glm::vec3{0} : glm::vec3{1, .1F, .05F};
+                        if (frame == 10)
+                            items[2].previous_model_matrix.reset();
+                        camera.set_position({.04F * frame, 1.2F, 3});
+                        const auto image = renderer->render_image(items, camera, w, h);
+                        auto control = reference->render_image(items, camera, w, h);
+                        if (effect == 0 && quality == 1 && frame == 11)
+                            save(control, captures / "advanced-control.bmp");
+                        if (effect < 4)
+                            visible[effect] = visible[effect] || image.pixels != control.pixels;
+                        if (effect == 0 && frame >= 8)
+                        {
+                            auto fresh = make(config);
+                            const auto current = fresh->render_image(items, camera, w, h);
+                            int maximum = 0;
+                            for (size_t pixel = 0; pixel < image.pixels.size(); ++pixel)
+                                maximum =
+                                    std::max(maximum, std::abs(int(image.pixels[pixel]) - int(current.pixels[pixel])));
+                            std::cout << "advanced_gi_lighting_change_quality=" << quality << " frame=" << frame
+                                      << " history_max_delta=" << maximum << '\n';
+                            require(maximum <= 4, "SSGI retained a bright trail after the emitter switched off");
+                            save(
+                                current,
+                                captures
+                                    / ("advanced-gi-fresh-" + std::to_string(quality) + "-" + std::to_string(frame)
+                                       + ".bmp")
+                            );
+                        }
+                        save(
+                            image,
+                            captures
+                                / ("advanced-" + std::to_string(effect) + "-" + std::to_string(quality) + "-"
+                                   + std::to_string(frame) + ".bmp")
+                        );
+                    }
+                    if (effect == 2 || effect == 3)
+                    {
+                        items[2].previous_model_matrix.reset();
+                        const auto image = renderer->render_image(items, camera, w, h);
+                        const auto control = reference->render_image(items, camera, w, h);
+                        const auto inputs = renderer->capture_pass_inputs();
+                        size_t excluded = 0;
+                        for (size_t pixel = 0; pixel < inputs.velocity.size(); ++pixel)
+                            if (inputs.velocity[pixel].w == 0)
+                            {
+                                ++excluded;
+                                for (int channel = 0; channel < 4; ++channel)
+                                    require(
+                                        image.pixels[pixel * 4 + channel] == control.pixels[pixel * 4 + channel],
+                                        "Lens effects blurred an ineligible/background pixel"
+                                    );
+                            }
+                        require(excluded > 0, "Lens fixture had no rejected pixels");
+                        items[2].previous_model_matrix = items[2].model_matrix;
+                    }
+                    bool reload_failed = false;
+                    try
+                    {
+                        renderer->reload_shaders(captures / "missing-shaders");
+                    } catch (const std::runtime_error&)
+                    {
+                        reload_failed = true;
+                    }
+                    require(reload_failed, "Missing shader reload succeeded");
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(
+                        renderer->capture_pass_inputs().history_valid,
+                        "Failed advanced reload discarded working history"
+                    );
+                    renderer->reset_history();
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(
+                        !renderer->capture_pass_inputs().history_valid,
+                        "Advanced effect camera cut retained history"
+                    );
+                    renderer->reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                    static_cast<void>(renderer->render_image(items, camera, w, h));
+                    require(!renderer->capture_pass_inputs().history_valid, "Advanced shader reload retained history");
+                    auto scaled = config;
+                    scaled.render_scale = .67F;
+                    renderer->set_config(scaled);
+                    static_cast<void>(renderer->render_image(items, camera, w + 1, h + 1));
+                    require(!renderer->capture_pass_inputs().history_valid, "Advanced resize/scale retained history");
+                    scaled.exposure_ev = 1;
+                    renderer->set_config(scaled);
+                    static_cast<void>(renderer->render_image(items, camera, w + 1, h + 1));
+                    require(
+                        !renderer->capture_pass_inputs().history_valid,
+                        "Advanced exposure change retained history"
+                    );
+                    camera.set_position({0, 1.2F, 3});
+                }
+            items[2].model_matrix = boxModel;
+            items[2].previous_model_matrix = boxModel;
+            items[2].emissive_factor = {1, .1F, .05F};
+            for (int effect = 0; effect < 4; ++effect)
+            {
+                std::cout << "advanced_effect=" << effect << " visible=" << visible[effect] << '\n';
+                require(visible[effect], "An advanced effect had no visible contribution in its analytic fixture");
+            }
+            // A screen-space miss must retain the full authored/probe diffuse.
+            auto giConfig = base;
+            giConfig.ssgi_quality = 2;
+            auto gi = make(giConfig);
+            gi->set_pass_input_view(PassInputView::ssgi);
+            save(gi->render_image(items, camera, w, h), captures / "advanced-gi-debug.bmp");
+            gi->set_pass_input_view(PassInputView::off);
+            const auto single = std::span{items}.first(1);
+            const auto miss = gi->render_image(single, camera, w, h);
+            const auto missReference = reference->render_image(single, camera, w, h);
+            save(miss, captures / "advanced-gi-miss.bmp");
+            save(missReference, captures / "advanced-gi-miss-reference.bmp");
+            int missMaximum = 0;
+            for (size_t pixel = 0; pixel < miss.pixels.size(); ++pixel)
+                missMaximum =
+                    std::max(missMaximum, std::abs(int(miss.pixels[pixel]) - int(missReference.pixels[pixel])));
+            std::cout << "advanced_gi_miss_max_delta=" << missMaximum << '\n';
+            require(missMaximum <= 1, "SSGI miss changed authored diffuse fallback");
+            auto probe = std::make_shared<ReflectionProbe>();
+            probe->settings = {{0, 0, 0}, {-4, -4, -4}, {4, 4, 4}, 8, 32};
+            for (int size = 8; size >= 1; size /= 2)
+                probe->mips.emplace_back(6 * size * size, glm::vec4{.05F, .2F, .6F, 1});
+            reference->set_reflection_probe(probe);
+            const auto probeReference = reference->render_image(single, camera, w, h);
+            for (int quality = 1; quality <= 2; ++quality)
+            {
+                auto config = base;
+                config.ssr_enabled = true;
+                config.reflection_quality = quality;
+                auto reflection = make(config);
+                reflection->set_reflection_probe(probe);
+                const auto reflectionMiss = reflection->render_image(single, camera, w, h);
+                int maximum = 0;
+                for (size_t pixel = 0; pixel < reflectionMiss.pixels.size(); ++pixel)
+                    maximum = std::max(
+                        maximum,
+                        std::abs(int(reflectionMiss.pixels[pixel]) - int(probeReference.pixels[pixel]))
+                    );
+                std::cout << "advanced_reflection_miss_quality=" << quality << " max_delta=" << maximum << '\n';
+                require(maximum <= 1, "Improved SSR miss replaced the reflection probe");
+                save(reflectionMiss, captures / ("advanced-reflection-miss-" + std::to_string(quality) + ".bmp"));
+            }
+            reference->set_reflection_probe({});
+            for (auto& item : items)
+                item.occlusion_texture = &black;
+            require(
+                gi->render_image(items, camera, w, h).pixels == reference->render_image(items, camera, w, h).pixels,
+                "SSGI bypassed zero material AO or occluded direct/emissive light"
+            );
+        }
+        reference.reset();
+        StaticModelCache models;
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/containment_loop.toml"));
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(prepared, models);
+        for (int mode = 0; mode < (profile ? 11 : 3); ++mode)
+        {
+            auto config =
+                RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+            config.hdr_enabled = true;
+            config.bloom_enabled = config.ssao_enabled = config.ssr_enabled = config.volumetrics_enabled = true;
+            config.taa_enabled = true;
+            const int quality = mode == 0 ? 0 : (mode % 2 == 1 ? 1 : 2);
+            const int effect = profile ? (mode - 1) / 2 : 4;
+            config.ssgi_quality = effect == 0 || effect == 4 ? quality : 0;
+            config.reflection_quality = effect == 1 || effect == 4 ? quality : 0;
+            config.dof_quality = effect == 2 || effect == 4 ? quality : 0;
+            config.motion_blur_quality = effect == 3 || effect == 4 ? quality : 0;
+            const auto construction_start = std::chrono::steady_clock::now();
+            auto renderer = make(config);
+            if (profile)
+                std::cout << "advanced_mode=" << mode << " renderer_construction_ms="
+                          << std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - construction_start
+                             )
+                                 .count()
+                          << '\n';
+            renderer->set_irradiance_probes(scene.irradiance());
+            renderer->set_reflection_probe(prepared.reflection);
+            camera.set_position({-21, 1.65F, 19});
+            camera.set_target({-21, .6F, 23});
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            renderer->set_local_lights(scene.local_lights());
+            renderer->prepare_resources(scene.render_items());
+            const auto measure = [&] {
+                for (int frame = 0; frame < (profile ? 240 : 24); ++frame)
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced real CPU frame");
+                    camera.set_position({-21 + .3F * std::sin(frame * .03F), 1.65F, 19 + .2F * std::sin(frame * .025F)}
+                    );
+                    scene.prepare_render_queue(camera, frame / 60.0F, {}, {}, {}, -1, {}, false);
+                    const auto weapon = scene.prepare_shotgun_viewmodel(camera, frame / 60.0F);
+                    renderer->prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                    if (!profile)
+                        save(
+                            renderer->capture_prepared_image(),
+                            captures / ("advanced-g019-" + std::to_string(mode) + "-" + std::to_string(frame) + ".bmp")
+                        );
+                    SDL_PumpEvents();
+                    RELAYCORE_PROFILE_FRAME();
+                }
+            };
+            // Distinct fixed zones give comparable per-feature Tracy distributions.
+            switch (mode)
+            {
+                case 0:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced off");
+                    measure();
+                    break;
+                }
+                case 1:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced GI low");
+                    measure();
+                    break;
+                }
+                case 2:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced GI high");
+                    measure();
+                    break;
+                }
+                case 3:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced reflections low");
+                    measure();
+                    break;
+                }
+                case 4:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced reflections high");
+                    measure();
+                    break;
+                }
+                case 5:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced DoF low");
+                    measure();
+                    break;
+                }
+                case 6:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced DoF high");
+                    measure();
+                    break;
+                }
+                case 7:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced blur low");
+                    measure();
+                    break;
+                }
+                case 8:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced blur high");
+                    measure();
+                    break;
+                }
+                case 9:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced combined low");
+                    measure();
+                    break;
+                }
+                case 10:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Advanced combined high");
+                    measure();
+                    break;
+                }
+            }
+            uint64_t allocation = 0;
+            for (const auto& heap : device.memory_usage().heaps)
+                allocation += heap.allocation_bytes;
+            std::cout << "advanced_mode=" << mode << " profile_vma_allocation_bytes=" << allocation << '\n';
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, .4F);
+            save(
+                renderer->render_image(scene.render_items(), camera, w, h, weapon),
+                captures / ("advanced-profile-" + std::to_string(mode) + ".bmp")
+            );
+        }
+    }
+
+    void check_visual_effects(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile,
+        const bool analytic_only
+    )
+    {
+        const int w = profile ? 1920 : 319, h = profile ? 1080 : 181;
+        PerspectiveCamera camera{{.position = {0, 1.2F, 3}, .target = {0, .1F, 0}}};
+        camera.set_viewport(w, h);
+        CpuColorMeshData quad{
+            {{{-1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}},
+             {{1, -1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}},
+             {{1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}},
+             {{-1, 1, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}}},
+            {0, 1, 2, 0, 2, 3}
+        };
+        StaticColorMesh plane, box;
+        plane.initialize(quad);
+        box.initialize(make_color_box_mesh_data());
+        Texture2D white, black_ao;
+        white.initialize_rgba(1, 1, std::array<uint8_t, 4>{180, 180, 180, 255}, TextureEncoding::srgb);
+        black_ao.initialize_rgba(1, 1, std::array<uint8_t, 4>{0, 0, 0, 255}, TextureEncoding::linear);
+        std::array items{
+            RenderItem{
+                .mesh = &plane,
+                .model_matrix = glm::scale(glm::mat4{1}, {3, 3, 1}),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.8F, 0}
+            },
+            RenderItem{
+                .mesh = &plane,
+                .model_matrix = glm::scale(
+                    glm::rotate(glm::translate(glm::mat4{1}, {0, -.5F, 1}), -glm::half_pi<float>(), glm::vec3{1, 0, 0}),
+                    {3, 3, 1}
+                ),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.12F, .9F}
+            },
+            RenderItem{
+                .mesh = &box,
+                .model_matrix = glm::scale(glm::translate(glm::mat4{1}, {-.65F, -.15F, .5F}), glm::vec3{.4F}),
+                .diffuse_texture = &white,
+                .metallic_roughness = MetallicRoughness{.5F, 0},
+                .emissive_factor = {1, .2F, .1F}
+            }
+        };
+        RendererConfig base;
+        base.hdr_enabled = true;
+        base.shadow_enabled = base.fog_enabled = false;
+        base.shadow_light_intensity = .8F;
+        base.postfx_vignette_strength = base.postfx_grain_strength = base.postfx_scanline_strength = 0;
+        base.postfx_contrast = base.postfx_saturation = 1;
+        const auto make_renderer = [&](const RendererConfig& config,
+                                       const ColorPipelineMode pipeline = ColorPipelineMode::hardware_srgb) {
+            return std::make_unique<VulkanMeshRenderer>(
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                pipeline
+            );
+        };
+        auto reference = make_renderer(base);
+        const auto baseline = reference->render_image(items, camera, w, h);
+        save(baseline, captures / "effects-off.bmp");
+        const auto measure = [&](VulkanMeshRenderer& renderer) {
+            for (int frame = 0; frame < 240; ++frame)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Effects CPU frame");
+                renderer.prepare_frame(items, items, camera, w, h);
+                SDL_PumpEvents();
+                RELAYCORE_PROFILE_FRAME();
+            }
+            uint64_t allocation_bytes = 0;
+            for (const auto& heap : device.memory_usage().heaps)
+                allocation_bytes += heap.allocation_bytes;
+            std::cout << "profile_vma_allocation_bytes=" << allocation_bytes << '\n';
+        };
+        if (profile)
+        {
+            RELAYCORE_PROFILE_ZONE_N("Effects off");
+            measure(*reference);
+        }
+        std::array<CpuRgbaTextureData, 5> images;
+        for (int effect = 0; effect < 5; ++effect)
+        {
+            auto config = base;
+            config.bloom_enabled = effect == 0 || effect == 4;
+            config.ssao_enabled = effect == 1 || effect == 4;
+            config.ssr_enabled = effect == 2 || effect == 4;
+            config.volumetrics_enabled = effect == 3 || effect == 4;
+            auto renderer = make_renderer(config);
+            images[effect] = renderer->render_image(items, camera, w, h);
+            save(images[effect], captures / ("effects-" + std::to_string(effect) + ".bmp"));
+            size_t changed = 0, lighter = 0, darker = 0;
+            for (size_t p = 0; p < baseline.pixels.size(); p += 4)
+            {
+                const int delta = int(images[effect].pixels[p]) - baseline.pixels[p];
+                changed += std::abs(delta) > 2;
+                lighter += delta > 2;
+                darker += delta < -2;
+            }
+            std::cout << "effect=" << effect << " changed=" << changed << " lighter=" << lighter << " darker=" << darker
+                      << '\n';
+            require(changed > 20, "Enabled visual effect produced no visible change");
+            if (effect == 0)
+                require(lighter > 20 && darker == 0, "Bloom did not selectively add light");
+            if (effect == 1)
+                require(darker > 20 && lighter == 0, "SSAO did not selectively occlude indirect light");
+            if (!profile && !analytic_only)
+            {
+                if (effect < 4)
+                {
+                    const auto view = effect == 1   ? PassInputView::ao
+                                      : effect == 2 ? PassInputView::reflection_confidence
+                                      : effect == 3 ? PassInputView::volume_transmittance
+                                                    : PassInputView::scene;
+                    renderer->set_pass_input_view(view);
+                    save(
+                        renderer->render_image(items, camera, w, h),
+                        captures / ("effects-debug-" + std::to_string(effect) + ".bmp")
+                    );
+                    renderer->set_pass_input_view(PassInputView::off);
+                }
+                renderer->reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                require(
+                    renderer->render_image(items, camera, w, h).pixels == images[effect].pixels,
+                    "Successful shader reload changed a stable spatial effect"
+                );
+                RelayCore::test::ScopedTempDirectory missing;
+                expect_failure(
+                    [&] {
+                        renderer->reload_shaders(missing.path());
+                    },
+                    "SPIR-V"
+                );
+                require(
+                    renderer->render_image(items, camera, w, h).pixels == images[effect].pixels,
+                    "Failed shader reload replaced working effects"
+                );
+                renderer->prepare_frame(items, items, camera, w, h);
+                renderer->prepare_frame(items, items, camera, w, h);
+                require(
+                    renderer->capture_prepared_image().pixels == images[effect].pixels,
+                    "Overlapping effect frames changed output"
+                );
+                for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 3}, glm::ivec2{w, h}})
+                {
+                    camera.set_viewport(size.x, size.y);
+                    static_cast<void>(renderer->render_image(items, camera, size.x, size.y));
+                }
+                camera.set_viewport(w, h);
+            } else if (profile)
+            {
+                switch (effect)
+                {
+                    case 0:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects bloom");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 1:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects AO");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 2:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects SSR");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 3:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects volumes");
+                        measure(*renderer);
+                        break;
+                    }
+                    case 4:
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Effects combined");
+                        measure(*renderer);
+                        break;
+                    }
+                }
+            }
+        }
+        if (!profile)
+        {
+            auto config = base;
+            config.shadow_enabled = config.volumetrics_enabled = true;
+            config.shadow_contact_strength = config.shadow_light_intensity = 0;
+            auto zero_intensity = make_renderer(config);
+            config.shadow_light_color = {};
+            config.shadow_light_intensity = 1;
+            auto zero_color = make_renderer(config);
+            const std::array lights{
+                LocalLight{{0, 1, 2}, {.8F, .2F, .05F}, 4},
+                LocalLight{{-.5F, .2F, 1}, {.05F, .3F, .8F}, 1},
+                LocalLight{{20, 20, 20}, {.2F, .8F, .1F}, .5F}
+            };
+            zero_intensity->set_local_lights(lights);
+            zero_color->set_local_lights(lights);
+            const auto intensity_image = zero_intensity->render_image(items, camera, w, h);
+            const auto color_image = zero_color->render_image(items, camera, w, h);
+            require(
+                intensity_image.pixels == color_image.pixels,
+                "Zero-intensity directional volume differs from zero-radiance shadowed control"
+            );
+            save(intensity_image, captures / "effects-volume-zero-directional.bmp");
+            config.shadow_light_color = base.shadow_light_color;
+            config.shadow_light_intensity = .8F;
+            auto lit_volume = make_renderer(config);
+            lit_volume->set_local_lights(lights);
+            lit_volume->set_spot_light(
+                SpotLight{{0, 2, 5}, glm::normalize(glm::vec3{0, -.3F, -1}), {1, .75F, .5F}, 18, true}
+            );
+            const auto lit_image = lit_volume->render_image(items, camera, w, h);
+            require(lit_image.pixels != intensity_image.pixels, "Directional/spot volume made no scene contribution");
+            save(lit_image, captures / "effects-volume-all-lights.bmp");
+            zero_intensity->set_local_lights({});
+            require(
+                zero_intensity->render_image(items, camera, w, h).pixels != intensity_image.pixels,
+                "Colored point lights made no volumetric scene contribution"
+            );
+        }
+        if (analytic_only)
+            return;
+        // A plane reflecting behind the camera has no screen hit: preserve its probe exactly.
+        if (!profile)
+        {
+            auto config = base;
+            config.bloom_enabled = true;
+            config.bloom_strength = 0;
+            auto bloom = make_renderer(config);
+            require(
+                bloom->render_image(items, camera, w, h).pixels == baseline.pixels,
+                "Zero bloom strength changed the scene"
+            );
+            config = base;
+            config.volumetrics_enabled = true;
+            config.volumetric_density = 0;
+            auto volume = make_renderer(config);
+            require(
+                volume->render_image(items, camera, w, h).pixels == baseline.pixels,
+                "Zero volumetric density changed the scene"
+            );
+            for (int samples : {1, 4})
+            {
+                config = base;
+                config.hdr_enabled = false;
+                config.msaa_samples = samples;
+                config.ssao_enabled = config.volumetrics_enabled = true;
+                auto sdr = make_renderer(config);
+                const auto sdr_image = sdr->render_image(items, camera, w, h);
+                save(sdr_image, captures / ("effects-sdr-msaa-" + std::to_string(samples) + ".bmp"));
+                if (samples == 1)
+                {
+                    auto legacy = make_renderer(config, ColorPipelineMode::legacy_gamma);
+                    Texture2D legacy_white;
+                    legacy_white
+                        .initialize_rgba(1, 1, std::array<uint8_t, 4>{180, 180, 180, 255}, TextureEncoding::linear);
+                    auto legacy_items = items;
+                    for (auto& item : legacy_items)
+                        item.diffuse_texture = &legacy_white;
+                    const auto legacy_image = legacy->render_image(legacy_items, camera, w, h);
+                    uint64_t difference = 0;
+                    for (size_t p = 0; p < sdr_image.pixels.size(); p += 4)
+                        for (size_t channel = 0; channel < 3; ++channel)
+                            difference +=
+                                std::abs(int(sdr_image.pixels[p + channel]) - legacy_image.pixels[p + channel]);
+                    const double mean = double(difference) / (w * h * 3);
+                    std::cout << "volumetric_sdr_encoding_mean_delta=" << mean << '\n';
+                    require(mean < .5, "Volumetric lighting differs between SDR color encodings");
+                    save(legacy_image, captures / "effects-sdr-legacy.bmp");
+                }
+                config.hdr_enabled = config.bloom_enabled = config.ssr_enabled = true;
+                auto combined = make_renderer(config);
+                save(
+                    combined->render_image(items, camera, w, h),
+                    captures / ("effects-hdr-msaa-" + std::to_string(samples) + ".bmp")
+                );
+            }
+        }
+        auto probe = std::make_shared<ReflectionProbe>();
+        probe->settings = {{0, 0, 0}, {-4, -4, -4}, {4, 4, 4}, 8, 32};
+        for (uint32_t size = 8; size; size >>= 1)
+            probe->mips.emplace_back(6 * size * size, glm::vec4{.05F, .2F, .6F, 1});
+        items[0].metallic_roughness = MetallicRoughness{.1F, .8F};
+        reference->set_reflection_probe(probe);
+        const auto probe_baseline = reference->render_image(std::span{items}.first(1), camera, w, h);
+        auto config = base;
+        config.ssr_enabled = true;
+        auto ssr = make_renderer(config);
+        ssr->set_reflection_probe(probe);
+        const auto miss = ssr->render_image(std::span{items}.first(1), camera, w, h);
+        require(miss.pixels == probe_baseline.pixels, "SSR miss changed the probe fallback");
+        save(miss, captures / "effects-ssr-probe-miss.bmp");
+        // Asset AO=0 stays zero: SSAO must not multiply a second darkening onto indirect lighting.
+        for (auto& item : items)
+            item.occlusion_texture = &black_ao;
+        config = base;
+        config.ssao_enabled = true;
+        auto ao = make_renderer(config);
+        require(
+            ao->render_image(items, camera, w, h).pixels == reference->render_image(items, camera, w, h).pixels,
+            "SSAO changed fully occluded indirect or direct/emissive lighting"
+        );
+        config.bloom_enabled = true;
+        config.hdr_enabled = false;
+        expect_failure(
+            [&] {
+                static_cast<void>(make_renderer(config));
+            },
+            "require HDR"
+        );
+        config = base;
+        config.bloom_strength = std::numeric_limits<float>::quiet_NaN();
+        expect_failure(
+            [&] {
+                static_cast<void>(make_renderer(config));
+            },
+            "Invalid bloom"
+        );
+        // Real content comparisons retain its probes, lights, native models and viewmodel.
+        StaticModelCache models;
+        for (const auto level_name : {"power_restoration", "pressure_transfer", "containment_loop"})
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + level_name + ".toml")
+            );
+            RelayGame::WorldSceneRenderer scene;
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            scene.initialize(prepared, models);
+            camera = PerspectiveCamera{{.position = {4, 1.65F, 2}, .target = {4, 1.65F, 10}}};
+            if (std::string_view{level_name} == "power_restoration")
+                camera = PerspectiveCamera{{.position = {0, 1.65F, -3.5F}, .target = {0, 1.65F, 4}}};
+            if (std::string_view{level_name} == "containment_loop")
+                camera = PerspectiveCamera{{.position = {-21, 1.65F, 19}, .target = {-21, .6F, 23}}};
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, .4F);
+            for (int effect = -1; effect < 5; ++effect)
+            {
+                config =
+                    RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+                config.hdr_enabled = true;
+                config.bloom_enabled = effect == 0 || effect == 4;
+                config.ssao_enabled = effect == 1 || effect == 4;
+                config.ssr_enabled = effect == 2 || effect == 4;
+                config.volumetrics_enabled = effect == 3 || effect == 4;
+                auto renderer = make_renderer(config);
+                renderer->set_local_lights(scene.local_lights());
+                renderer->set_irradiance_probes(scene.irradiance());
+                renderer->set_reflection_probe(prepared.reflection);
+                save(
+                    renderer->render_image(scene.render_items(), camera, w, h, weapon),
+                    captures / (std::string{"effects-"} + level_name + "-" + std::to_string(effect) + ".bmp")
+                );
+                if (profile)
+                {
+                    const auto measure_scene = [&] {
+                        for (int frame = 0; frame < 240; ++frame)
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real CPU frame");
+                            renderer->prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                            SDL_PumpEvents();
+                            RELAYCORE_PROFILE_FRAME();
+                        }
+                        uint64_t bytes = 0;
+                        for (const auto& heap : device.memory_usage().heaps)
+                            bytes += heap.allocation_bytes;
+                        std::cout << "profile_level=" << level_name << " effect=" << effect << " vma_bytes=" << bytes
+                                  << '\n';
+                    };
+                    switch (effect)
+                    {
+                        case -1:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real off");
+                            measure_scene();
+                            break;
+                        }
+                        case 0:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real bloom");
+                            measure_scene();
+                            break;
+                        }
+                        case 1:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real AO");
+                            measure_scene();
+                            break;
+                        }
+                        case 2:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real SSR");
+                            measure_scene();
+                            break;
+                        }
+                        case 3:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real volumes");
+                            measure_scene();
+                            break;
+                        }
+                        case 4:
+                        {
+                            RELAYCORE_PROFILE_ZONE_N("Effects real combined");
+                            measure_scene();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void profile_graphics_settings(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        constexpr int w = 2560, h = 1440;
+        struct Mode {
+            const char* name;
+            bool hdr, bloom, ao, ssr, volumes, taa;
+            float scale = 1;
+            int samples = 4;
+        };
+        constexpr std::array modes{
+            Mode{"off", false, false, false, false, false, false},
+            Mode{"hdr", true, false, false, false, false, false},
+            Mode{"bloom", true, true, false, false, false, false},
+            Mode{"ao", true, false, true, false, false, false},
+            Mode{"ssr", true, false, false, true, false, false},
+            Mode{"volumes", true, false, false, false, true, false},
+            Mode{"taa", true, false, false, false, false, true},
+            Mode{"combined_no_taa", true, true, true, true, true, false},
+            Mode{"combined", true, true, true, true, true, true},
+            Mode{"combined_no_volumes", true, true, true, true, false, true},
+            Mode{"combined_no_ssr", true, true, true, false, true, true},
+            Mode{"combined_scale_75", true, true, true, true, true, true, .75F},
+            Mode{"combined_msaa_1", true, true, true, true, true, true, 1, 1}
+        };
+        struct View {
+            const char* name;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"entrance", {0, 1.65F, -3.5F}, {0, 1.65F, 4}},
+            View{"maintenance", {14.3F, 1.65F, 20.2F}, {14.3F, 1.65F, 34}},
+            View{"maintenance_corridor", {13, 1.65F, 34}, {13, 1.65F, 16}}
+        };
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/power_restoration.toml"));
+        StaticModelCache models;
+        RelayGame::WorldSceneRenderer scene;
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        scene.initialize(prepared, models);
+        std::ofstream output{captures / "graphics-settings-profile.csv"};
+        output.exceptions(std::ios::failbit | std::ios::badbit);
+        output << "view,mode,frame,cpu_ms,gpu_ms,scale,width,height\n";
+        for (const auto& view : views)
+        {
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(w, h);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto weapon = scene.prepare_pistol_viewmodel(camera, 0, .24F);
+            for (const auto& mode : modes)
+            {
+                auto config =
+                    RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+                config.hdr_enabled = mode.hdr;
+                config.bloom_enabled = mode.bloom;
+                config.ssao_enabled = mode.ao;
+                config.ssr_enabled = mode.ssr;
+                config.volumetrics_enabled = mode.volumes;
+                config.taa_enabled = mode.taa;
+                config.render_scale = mode.scale;
+                config.msaa_samples = mode.samples;
+                // Reuse GPU timestamps while holding the authored scale, checked on every frame.
+                config.dynamic_resolution_enabled = mode.hdr;
+                config.dynamic_resolution_target_ms = 50;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                renderer.set_local_lights(scene.local_lights());
+                renderer.set_irradiance_probes(scene.irradiance());
+                renderer.set_reflection_probe(prepared.reflection);
+                struct Sample {
+                    double cpu_ms;
+                    VulkanResolutionStatus resolution;
+                };
+                std::array<Sample, 240> measured{};
+                for (auto& sample : measured)
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                    sample.cpu_ms =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    sample.resolution = renderer.resolution_status();
+                    require(std::abs(sample.resolution.scale - mode.scale) < .0001F, "Profile resolution changed");
+                    SDL_PumpEvents();
+                }
+                save(
+                    renderer.capture_prepared_image(),
+                    captures / (std::string{"settings-"} + view.name + "-" + mode.name + ".bmp")
+                );
+                for (size_t frame = 0; frame < measured.size(); ++frame)
+                {
+                    const auto& sample = measured[frame];
+                    if (frame >= 40 && mode.hdr)
+                        require(sample.resolution.gpu_scene_ms > 0, "Profile missing completed GPU timestamps");
+                    output << view.name << ',' << mode.name << ',' << frame << ',' << sample.cpu_ms << ',';
+                    if (mode.hdr)
+                        output << sample.resolution.gpu_scene_ms;
+                    output << ',' << sample.resolution.scale << ',' << sample.resolution.render_width << ','
+                           << sample.resolution.render_height << '\n';
+                }
+                std::cout << "settings_profile view=" << view.name << " mode=" << mode.name << " resolution=" << w
+                          << 'x' << h << " scale=" << mode.scale << " msaa=" << mode.samples << " warm_samples=200\n";
+            }
+        }
+    }
+
+    void profile_temporal(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        bool profile,
+        bool dynamic_only = false
+    )
+    {
+        StaticModelCache models;
+        const auto level = RelayCore::load_blockout_level(RelayCore::core::asset_path("levels/containment_loop.toml"));
+        const auto prepared =
+            RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+        RelayGame::WorldSceneRenderer scene;
+        scene.initialize(prepared, models);
+        for (int stage = dynamic_only ? 5 : 0; stage < (profile ? 6 : 3); ++stage)
+        {
+            const int w = profile ? (stage < 3 ? 1920 : 3840) : 640;
+            const int h = profile ? (stage < 3 ? 1080 : 2160) : 360;
+            PerspectiveCamera camera{{.position = {-21, 1.65F, 19}, .target = {-21, .6F, 23}}};
+            camera.set_viewport(w, h);
+            auto config =
+                RelayCore::core::load_engine_config(RelayCore::core::asset_path("config/engine.toml")).renderer;
+            config.hdr_enabled = true;
+            config.bloom_enabled = config.ssao_enabled = config.ssr_enabled = config.volumetrics_enabled = true;
+            if (!profile)
+                config.reflection_quality = config.ssgi_quality = 2;
+            config.taa_enabled = stage != 0;
+            config.render_scale = stage == 2 || stage == 4 ? .67F : 1;
+            config.dynamic_resolution_enabled = stage == 5;
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            };
+            renderer.set_irradiance_probes(scene.irradiance());
+            renderer.set_reflection_probe(prepared.reflection);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            renderer.set_local_lights(scene.local_lights());
+            renderer.prepare_resources(scene.render_items());
+            auto moving_enemies = RelayGame::build_enemies(level);
+            require(!moving_enemies.empty(), "Temporal scene fixture has no enemy");
+            moving_enemies.resize(1);
+            std::vector<VulkanResolutionStatus> resolution_samples;
+            resolution_samples.reserve(240);
+            const auto measure = [&] {
+                for (int frame = 0; frame < (profile ? 240 : 32); ++frame)
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal real CPU frame");
+                    if (!profile)
+                    {
+                        camera.set_position({-21 + .008F * frame, 1.65F, 19 + .015F * frame});
+                        moving_enemies[0].state.position = {-21 + .4F * std::sin(frame * .2F), 0, 21.5F};
+                        scene.prepare_render_queue(
+                            camera,
+                            frame / 60.0F,
+                            {},
+                            {},
+                            {},
+                            -1,
+                            {},
+                            false,
+                            {},
+                            {},
+                            {},
+                            moving_enemies
+                        );
+                    }
+                    const auto weapon = scene.prepare_shotgun_viewmodel(camera, frame / 60.0F);
+                    renderer.prepare_frame(scene.render_items(), scene.render_items(), camera, w, h, weapon);
+                    resolution_samples.push_back(renderer.resolution_status());
+                    if (!profile)
+                        save(
+                            renderer.capture_prepared_image(),
+                            captures / ("temporal-g019-" + std::to_string(stage) + "-" + std::to_string(frame) + ".bmp")
+                        );
+                    SDL_PumpEvents();
+                    RELAYCORE_PROFILE_FRAME();
+                }
+            };
+            switch (stage)
+            {
+                case 0:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 1080 off");
+                    measure();
+                    break;
+                }
+                case 1:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 1080 native");
+                    measure();
+                    break;
+                }
+                case 2:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 1080 scaled");
+                    measure();
+                    break;
+                }
+                case 3:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 4K native");
+                    measure();
+                    break;
+                }
+                case 4:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 4K scaled");
+                    measure();
+                    break;
+                }
+                case 5:
+                {
+                    RELAYCORE_PROFILE_ZONE_N("Temporal 4K dynamic");
+                    measure();
+                    break;
+                }
+            }
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, .4F);
+            save(
+                renderer.render_image(scene.render_items(), camera, w, h, weapon),
+                captures / ("temporal-profile-" + std::to_string(stage) + ".bmp")
+            );
+            uint64_t bytes = 0;
+            for (const auto& heap : device.memory_usage().heaps)
+                bytes += heap.allocation_bytes;
+            if (stage == 5)
+            {
+                require(
+                    resolution_samples.back().scale < 1 && resolution_samples.back().gpu_scene_ms > 0,
+                    "GPU pressure did not drive dynamic resolution"
+                );
+                std::ofstream timing(captures.parent_path() / "dynamic-resolution.csv");
+                timing << "frame,scale,width,height,gpu_ms\n";
+                for (size_t i = 0; i < resolution_samples.size(); ++i)
+                {
+                    const auto& v = resolution_samples[i];
+                    timing << i << "," << v.scale << "," << v.render_width << "," << v.render_height << ","
+                           << v.gpu_scene_ms << "\n";
+                }
+            }
+            std::cout << "temporal_stage=" << stage << " vma_bytes=" << bytes << '\n';
+        }
+    }
+
+    void check_temporal(
+        const VulkanDevice& device,
+        const RelayCore::Window& window,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        constexpr int w = 319, h = 181;
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(w, h);
+        StaticColorMesh plane;
+        plane.initialize(
+            {{{{-2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 0}, {1, 0, 0, 1}},
+              {{2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 0}, {1, 0, 0, 1}},
+              {{2, 2, 0}, {1, 1, 1}, {0, 0, 1}, 0, {1, 1}, {1, 0, 0, 1}},
+              {{-2, 2, 0}, {1, 1, 1}, {0, 0, 1}, 0, {0, 1}, {1, 0, 0, 1}}},
+             {0, 1, 2, 0, 2, 3}}
+        );
+        Texture2D red, green, checker;
+        red.initialize_rgba(1, 1, std::array<uint8_t, 4>{255, 0, 0, 255}, TextureEncoding::srgb);
+        green.initialize_rgba(1, 1, std::array<uint8_t, 4>{0, 255, 0, 255}, TextureEncoding::srgb);
+        CpuRgbaTextureData checks{64, 64, std::vector<uint8_t>(64 * 64 * 4)};
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+                for (int c = 0; c < 4; ++c)
+                    checks.pixels[(y * 64 + x) * 4 + c] = c == 3 ? 255 : ((x + y) % 2 ? 240 : 8);
+        checker.initialize_rgba(checks.width, checks.height, checks.pixels, TextureEncoding::srgb);
+        RendererConfig config;
+        config.hdr_enabled = true;
+        config.shadow_enabled = config.fog_enabled = false;
+        config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        config.postfx_contrast = config.postfx_saturation = 1;
+        auto make = [&](RendererConfig cfg) {
+            return std::make_unique<VulkanMeshRenderer>(
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                cfg,
+                ColorPipelineMode::hardware_srgb
+            );
+        };
+        std::array items{RenderItem{.mesh = &plane, .diffuse_texture = &red, .previous_model_matrix = glm::mat4{1}}};
+        const size_t center = (h / 2 * w + w / 2) * 4;
+        for (int samples : {1, 4})
+        {
+            config.msaa_samples = samples;
+            config.taa_enabled = false;
+            auto off = make(config);
+            const auto reference = off->render_image(items, camera, w, h);
+            config.taa_enabled = true;
+            auto taa = make(config);
+            auto image = taa->render_image(items, camera, w, h);
+            require(!taa->capture_pass_inputs().history_valid, "TAA first frame reused history");
+            glm::vec2 old_jitter = taa->capture_pass_inputs().jitter_uv;
+            for (int i = 0; i < 10; ++i)
+            {
+                image = taa->render_image(items, camera, w, h);
+                const auto inputs = taa->capture_pass_inputs();
+                require(inputs.history_valid && inputs.jitter_uv != old_jitter, "TAA slots lost history/jitter");
+                const glm::vec2 velocity{inputs.velocity[inputs.velocity.size() / 2]};
+                require(glm::length(velocity) < .00001F, "Stationary surface velocity contains camera jitter");
+                old_jitter = inputs.jitter_uv;
+                require(
+                    std::abs(int(image.pixels[center]) - reference.pixels[center]) <= 2,
+                    "Constant HDR radiance changed in TAA"
+                );
+            }
+            items[0].diffuse_texture = &green;
+            image = taa->render_image(items, camera, w, h);
+            const auto green_reference = off->render_image(items, camera, w, h);
+            require(
+                reference.pixels[center] > green_reference.pixels[center] + 20,
+                "Fixture did not change surface color"
+            );
+            for (int c = 0; c < 3; ++c)
+                require(
+                    std::abs(int(image.pixels[center + c]) - green_reference.pixels[center + c]) <= 2,
+                    "TAA retained bright old-color ghost"
+                );
+            items[0].previous_model_matrix.reset();
+            const auto unknown = taa->render_image(items, camera, w, h);
+            const auto current = off->render_image(items, camera, w, h);
+            require(unknown.pixels == current.pixels, "Unknown-motion enemy was jittered or accumulated");
+            for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+            {
+                items[0].pass = pass;
+                image = taa->render_image(items, camera, w, h);
+                require(
+                    image.pixels == off->render_image(items, camera, w, h).pixels,
+                    "Overlay/glass retained temporal ghosting"
+                );
+            }
+            items[0].pass = RenderPass::Opaque;
+            const auto weapon = taa->render_image({}, camera, w, h, items);
+            require(
+                weapon.pixels == off->render_image({}, camera, w, h, items).pixels,
+                "Viewmodel was jittered/blurred"
+            );
+            items[0].previous_model_matrix = glm::mat4{1};
+            for (int i = 0; i < 12; ++i)
+            {
+                const auto previous = items[0].model_matrix;
+                items[0].model_matrix = glm::translate(glm::mat4{1}, {.03F * i, 0, 0});
+                items[0].previous_model_matrix = previous;
+                camera.set_position({-.01F * i, 0, 3});
+                image = taa->render_image(items, camera, w, h);
+                const auto moving_reference = off->render_image(items, camera, w, h);
+                for (int c = 0; c < 3; ++c)
+                    require(
+                        std::abs(int(image.pixels[center + c]) - moving_reference.pixels[center + c]) <= 2,
+                        "Moving object retained old-color ghost"
+                    );
+                save(
+                    image,
+                    captures / ("temporal-motion-" + std::to_string(samples) + "-" + std::to_string(i) + ".bmp")
+                );
+            }
+            camera.set_position({0, 0, 3});
+            items[0].model_matrix = glm::mat4{1};
+            items[0].previous_model_matrix = glm::mat4{1};
+            items[0].diffuse_texture = &checker;
+            taa->reset_history();
+            auto raw = make(config);
+            raw->set_pass_input_view(PassInputView::temporal_source);
+            CpuRgbaTextureData previous_filtered, previous_raw;
+            uint64_t filtered_shimmer = 0, raw_shimmer = 0;
+            for (int i = 0; i < 24; ++i)
+            {
+                image = taa->render_image(items, camera, w, h);
+                auto raw_image = raw->render_image(items, camera, w, h);
+                if (i == 0)
+                    require(image.pixels == raw_image.pixels, "First TAA resolve differs from current jittered source");
+                if (i >= 16)
+                    for (int y = h / 2 - 40; y < h / 2 + 40; ++y)
+                        for (int x = w / 2 - 60; x < w / 2 + 60; ++x)
+                            for (int c = 0; c < 3; ++c)
+                            {
+                                const auto p = (y * w + x) * 4 + c;
+                                filtered_shimmer += std::abs(int(image.pixels[p]) - previous_filtered.pixels[p]);
+                                raw_shimmer += std::abs(int(raw_image.pixels[p]) - previous_raw.pixels[p]);
+                            }
+                previous_filtered = image;
+                previous_raw = raw_image;
+                save(
+                    raw_image,
+                    captures / ("temporal-raw-" + std::to_string(samples) + "-" + std::to_string(i) + ".bmp")
+                );
+                save(
+                    image,
+                    captures / ("temporal-checker-" + std::to_string(samples) + "-" + std::to_string(i) + ".bmp")
+                );
+            }
+            std::cout << "temporal_samples=" << samples << " shimmer_raw=" << raw_shimmer
+                      << " shimmer_filtered=" << filtered_shimmer << "\n";
+            require(
+                raw_shimmer > 0 && filtered_shimmer < raw_shimmer * .8,
+                "TAA did not reduce textured-plane shimmer"
+            );
+            const auto reset_check = [&](const char* message) {
+                static_cast<void>(taa->render_image(items, camera, w, h));
+                require(!taa->capture_pass_inputs().history_valid, message);
+            };
+            taa->reset_history();
+            reset_check("Camera cut retained TAA history");
+            taa->reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            reset_check("Reload retained TAA history");
+            RelayCore::test::ScopedTempDirectory broken;
+            std::filesystem::copy(
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                broken.path(),
+                std::filesystem::copy_options::recursive
+            );
+            std::ofstream(broken.path() / "temporal.temporal_fragment.spv", std::ios::binary | std::ios::trunc)
+                << "bad";
+            expect_failure(
+                [&] {
+                    taa->reload_shaders(broken.path());
+                },
+                "temporal.temporal_fragment.spv"
+            );
+            static_cast<void>(taa->render_image(items, camera, w, h));
+            require(taa->capture_pass_inputs().history_valid, "Failed temporal reload discarded working history");
+            PerspectiveCameraConfig projection;
+            projection.vertical_fov_radians = samples == 1 ? .9F : 1.0F;
+            camera.apply_projection_config(projection);
+            reset_check("FOV change retained TAA history");
+            taa->set_scene_time(2);
+            static_cast<void>(taa->render_image(items, camera, w, h));
+            taa->set_scene_time(1);
+            reset_check("Scene rewind retained TAA history");
+            config.exposure_ev = 1;
+            taa->set_config(config);
+            reset_check("Exposure retained TAA history");
+            config.exposure_ev = 0;
+            config.render_scale = .67F;
+            taa->set_config(config);
+            image = taa->render_image(items, camera, w, h);
+            const auto scaled = taa->capture_pass_inputs();
+            require(
+                image.width == w && image.height == h && scaled.width == 214 && scaled.height == 121
+                    && !scaled.history_valid,
+                "Spatial upscale extent/history contract failed"
+            );
+            save(image, captures / ("temporal-scaled-" + std::to_string(samples) + ".bmp"));
+            for (const auto extent : {glm::ivec2{1, 1}, glm::ivec2{17, 9}, glm::ivec2{321, 183}})
+            {
+                camera.set_viewport(extent.x, extent.y);
+                image = taa->render_image(items, camera, extent.x, extent.y);
+                require(image.pixels.size() == size_t(extent.x) * extent.y * 4, "Odd/tiny upscale lost native pixels");
+                require(!taa->capture_pass_inputs().history_valid, "Resize retained temporal history");
+            }
+            config.render_scale = 1;
+            config.dynamic_resolution_enabled = true;
+            config.taa_enabled = false;
+            auto dynamic = make(config);
+            camera.set_viewport(w, h);
+            for (int i = 0; i < 12; ++i)
+                static_cast<void>(dynamic->render_image({}, camera, w, h));
+            require(
+                dynamic->resolution_status().gpu_scene_ms > 0 && dynamic->resolution_status().scale == 1,
+                "Dynamic timing did not complete at native size"
+            );
+            config.dynamic_resolution_enabled = false;
+            camera.set_viewport(w, h);
+            items[0].diffuse_texture = &red;
+        }
+        config = RendererConfig{};
+        config.hdr_enabled = true;
+        config.shadow_enabled = config.fog_enabled = false;
+        config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        auto native = make(config);
+        config.taa_enabled = true;
+        config.render_scale = .67F;
+        auto scaled_ui = make(config);
+        PlayerUi hud{window.handle(), device};
+        hud.set_screen(PlayerUiScreen::Hud);
+        hud.set_hud({.visible = true, .health = 73, .max_health = 100, .reticle_radius = 12, .weapon = "Shotgun"});
+        native->prepare_frame({}, {}, camera, w, h);
+        const auto clear = native->capture_prepared_image();
+        native->append_player_ui(hud);
+        const auto native_hud = native->capture_prepared_image();
+        scaled_ui->prepare_frame({}, {}, camera, w, h);
+        scaled_ui->append_player_ui(hud);
+        const auto scaled_hud = scaled_ui->capture_prepared_image();
+        require(
+            native_hud.pixels != clear.pixels && native_hud.pixels == scaled_hud.pixels,
+            "Native HUD pixels blurred or changed under TAA/scaling"
+        );
+        scaled_ui->prepare_frame({}, {}, camera, w, h);
+        require(scaled_ui->capture_prepared_image().pixels == clear.pixels, "HUD entered temporal history");
+        save(scaled_hud, captures / "temporal-native-hud.bmp");
+    }
+
+    void check_pass_inputs(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        constexpr int w = 319, h = 181;
+        PerspectiveCamera camera{{.position = {0, 0, 3}, .target = {0, 0, 0}}};
+        camera.set_viewport(w, h);
+        CpuColorMeshData triangle{
+            {{{-2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {0, 0}, {1, 0, 0, 1}},
+             {{2, -2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {1, 0}, {1, 0, 0, 1}},
+             {{0, 2, 0}, {1, 1, 1}, {0, 0, 1}, 40, {.5F, 1}, {1, 0, 0, 1}}},
+            {0, 1, 2}
+        };
+        StaticColorMesh mesh;
+        mesh.initialize(triangle);
+        std::array items{RenderItem{.mesh = &mesh, .previous_model_matrix = glm::mat4{1}}};
+        const size_t center = size_t(h / 2) * w + w / 2;
+        for (bool hdr : {false, true})
+            for (int samples : {1, 4})
+            {
+                RendererConfig config;
+                config.hdr_enabled = hdr;
+                config.msaa_samples = samples;
+                config.shadow_enabled = config.fog_enabled = false;
+                config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                const auto baseline = renderer.render_image(items, camera, w, h);
+                renderer.set_pass_input_view(PassInputView::scene);
+                const auto scene = renderer.render_image(items, camera, w, h);
+                require(scene.pixels == baseline.pixels, "Pass-input preparation changed scene color");
+                auto input = renderer.capture_pass_inputs();
+                require(
+                    !input.history_valid && glm::length(glm::vec2(input.velocity[center])) < .00001F,
+                    "First frame reused history or produced motion"
+                );
+                require(
+                    glm::length(glm::vec3(input.normal_depth[center]) - glm::vec3{0, 0, 1}) < .0001F
+                        && std::abs(input.normal_depth[center].w - 3) < .0001F,
+                    "Normal/depth encoding differs from analytic plane"
+                );
+                for (size_t p = 0; p < input.normal_depth.size(); ++p)
+                    for (int c = 0; c < 4; ++c)
+                        require(
+                            std::isfinite(input.normal_depth[p][c]) && std::isfinite(input.velocity[p][c]),
+                            "Pass input contains nonfinite values"
+                        );
+                for (int i = 0; i < 4; ++i)
+                {
+                    renderer.prepare_frame(items, items, camera, w, h);
+                    input = renderer.capture_pass_inputs();
+                    require(
+                        input.history_valid && input.velocity[center].w == 1
+                            && glm::length(glm::vec2(input.velocity[center])) < .00001F,
+                        "Stationary history/velocity differs across scene slots"
+                    );
+                }
+                for (int i = 0; i < 8; ++i)
+                    renderer.prepare_frame(items, items, camera, w, h);
+                require(renderer.capture_pass_inputs().history_valid, "Queued scene slots lost history");
+                renderer.set_pass_input_view(PassInputView::history);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                auto history = renderer.render_image(items, camera, w, h);
+                require(
+                    history.pixels[center * 4 + 1] == 255 && history.pixels[center * 4] == 0,
+                    "GPU reprojection rejected stationary geometry"
+                );
+                save(
+                    history,
+                    captures / ("inputs-history-" + std::to_string(samples) + (hdr ? "-hdr.bmp" : "-sdr.bmp"))
+                );
+                camera.set_position({.1F, .1F, 3});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                const auto projection = camera.projection_matrix();
+                const glm::vec2 expected{projection[0][0] * .1F / 6, -projection[1][1] * .1F / 6};
+                require(
+                    glm::length(glm::vec2(input.velocity[center]) - expected) < .00001F,
+                    "Camera velocity sign/units differ from top-down UV convention"
+                );
+                camera.set_position({0, 0, 3});
+                camera.set_position({10, 0, 3});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                camera.set_position({0, 0, 3});
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Out-of-bounds reprojection accepted history");
+                renderer.reset_history();
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                items[0].model_matrix = glm::translate(glm::mat4{1}, glm::vec3{.1F, .1F, 0});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                require(
+                    glm::length(glm::vec2(input.velocity[center]) + expected) < .00001F,
+                    "Object velocity omitted previous transform"
+                );
+                items[0].model_matrix = glm::mat4{1};
+                items[0].previous_model_matrix.reset();
+                history = renderer.render_image(items, camera, w, h);
+                require(
+                    renderer.capture_pass_inputs().velocity[center].w == 0 && history.pixels[center * 4] == 255,
+                    "Unknown correspondence reused history"
+                );
+                items[0].previous_model_matrix = glm::mat4{1};
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Previous unknown-motion pixel accepted history");
+                for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+                {
+                    items[0].pass = pass;
+                    static_cast<void>(renderer.render_image(items, camera, w, h));
+                    require(
+                        renderer.capture_pass_inputs().velocity[center].w == 0,
+                        "Nonopaque fragment reused opaque history"
+                    );
+                }
+                items[0].pass = RenderPass::Opaque;
+                auto backface = triangle;
+                backface.indices = {0, 2, 1};
+                StaticColorMesh backface_mesh;
+                backface_mesh.initialize(backface);
+                auto glass = items[0];
+                glass.mesh = &backface_mesh;
+                glass.pass = RenderPass::Transparent;
+                glass.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, .5F});
+                const std::array glass_items{items[0], glass};
+                static_cast<void>(renderer.render_image(glass_items, camera, w, h));
+                require(
+                    renderer.capture_pass_inputs().normal_depth[center].w == 0,
+                    "Back-facing transparent fragment failed to mask history"
+                );
+                static_cast<void>(renderer.render_image(items, camera, w, h, items));
+                require(renderer.capture_pass_inputs().velocity[center].w == 0, "Viewmodel reused world history");
+                auto foreground = items[0];
+                foreground.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, .5F});
+                foreground.previous_model_matrix = foreground.model_matrix;
+                const std::array occluded{items[0], foreground};
+                static_cast<void>(renderer.render_image(occluded, camera, w, h));
+                history = renderer.render_image(occluded, camera, w, h);
+                require(
+                    history.pixels[center * 4 + 1] == 255
+                        && std::abs(renderer.capture_pass_inputs().velocity[center].z - 2.5F) < .0001F,
+                    "Shared-mesh instances lost independent previous transforms"
+                );
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Disoccluded background accepted foreground history");
+                for (auto& vertex : triangle.vertices)
+                    vertex.normal = {0, 0, -1};
+                StaticColorMesh reversed;
+                reversed.initialize(triangle);
+                items[0].mesh = &reversed;
+                history = renderer.render_image(items, camera, w, h);
+                require(history.pixels[center * 4] == 255, "Normal discontinuity accepted history");
+                items[0].mesh = &mesh;
+                for (auto& vertex : triangle.vertices)
+                    vertex.normal = {0, 0, 1};
+                Texture2D normal;
+                const std::array<uint8_t, 4> normal_pixel{191, 128, 238, 255};
+                normal.initialize_rgba(1, 1, normal_pixel, TextureEncoding::linear);
+                auto double_sided = triangle;
+                double_sided.indices.insert(double_sided.indices.end(), {0, 2, 1});
+                StaticColorMesh mirrored;
+                mirrored.initialize(double_sided);
+                items[0].mesh = &mirrored;
+                items[0].normal_texture = &normal;
+                items[0].model_matrix = glm::scale(glm::mat4{1}, glm::vec3{-1.2F, .8F, 1});
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                input = renderer.capture_pass_inputs();
+                const glm::vec3 sampled = glm::normalize(glm::vec3{191, 128, 238} * (2.0F / 255) - 1.0F);
+                require(
+                    glm::length(glm::vec3(input.normal_depth[center]) - glm::vec3{-sampled.x, sampled.y, sampled.z})
+                        < .0001F,
+                    "Mapped normal lost mirrored/nonuniform tangent transform"
+                );
+                items[0].normal_texture = nullptr;
+                items[0].mesh = &mesh;
+                items[0].model_matrix = glm::mat4{1};
+                for (auto view :
+                     {PassInputView::depth,
+                      PassInputView::normals,
+                      PassInputView::velocity,
+                      PassInputView::previous_color})
+                {
+                    renderer.set_pass_input_view(view);
+                    static_cast<void>(renderer.render_image(items, camera, w, h));
+                    save(
+                        renderer.render_image(items, camera, w, h),
+                        captures
+                            / ("inputs-view-" + std::to_string(int(view)) + "-" + std::to_string(samples)
+                               + (hdr ? "-hdr.bmp" : "-sdr.bmp"))
+                    );
+                }
+                renderer.reset_history();
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Explicit camera cut kept history");
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Shader reload kept history");
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                RelayCore::test::ScopedTempDirectory broken;
+                for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+                    if (file.path().extension() == ".spv")
+                        std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
+                std::ofstream(broken.path() / "pass_inputs.debug_fragment.spv", std::ios::binary | std::ios::trunc)
+                    << "invalid";
+                expect_failure(
+                    [&] {
+                        renderer.reload_shaders(broken.path());
+                    },
+                    "pass_inputs.debug_fragment.spv"
+                );
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(
+                    renderer.capture_pass_inputs().history_valid,
+                    "Failed staged reload discarded working history/pipelines"
+                );
+                auto changed = config;
+                changed.exposure_ev = 1;
+                renderer.set_config(changed);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Exposure change kept history");
+                auto camera_config = changed.camera;
+                camera_config.vertical_fov_radians = .8F;
+                camera.apply_projection_config(camera_config);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Projection change kept history");
+                camera.apply_projection_config(config.camera);
+                renderer.set_scene_time(2);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                renderer.set_scene_time(1);
+                static_cast<void>(renderer.render_image(items, camera, w, h));
+                require(!renderer.capture_pass_inputs().history_valid, "Rewound scene kept history");
+                for (const auto size : {glm::ivec2{1, 1}, glm::ivec2{7, 9}, glm::ivec2{641, 359}, glm::ivec2{w, h}})
+                {
+                    camera.set_viewport(size.x, size.y);
+                    static_cast<void>(renderer.render_image(items, camera, size.x, size.y));
+                    require(!renderer.capture_pass_inputs().history_valid, "Resize kept history");
+                }
+                renderer.set_pass_input_view(PassInputView::off);
+                expect_failure(
+                    [&] {
+                        static_cast<void>(renderer.capture_pass_inputs());
+                    },
+                    "enabled, prepared"
+                );
+                renderer.set_config(config);
+                require(
+                    renderer.render_image(items, camera, w, h).pixels == baseline.pixels,
+                    "Disabling inputs changed baseline"
+                );
+            }
+    }
+    void check_gpu_culling_edges(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas
+    )
+    {
+        StaticColorMesh box;
+        box.initialize(make_color_box_mesh_data());
+        RendererConfig config;
+        config.shadow_enabled = false;
+        config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        PerspectiveCamera camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+        camera.set_viewport(160, 90);
+        for (const int count : {0, 1, 63, 64, 65, 129, 4097})
+            for (int visibility = 0; visibility < 3; ++visibility)
+            {
+                std::vector<RenderItem> items;
+                size_t visible = 0;
+                for (int i = 0; i < count; ++i)
+                {
+                    const bool inside = visibility == 0 || (visibility == 1 && i % 3 == 0);
+                    visible += inside ? 1 : 0;
+                    const glm::vec3 position =
+                        inside ? glm::vec3{0, 0, -4} : (i % 2 ? glm::vec3{20, 0, -4} : glm::vec3{0, 0, 4});
+                    items.push_back(
+                        {.mesh = &box,
+                         .model_matrix = glm::translate(glm::mat4{1}, position)
+                                         * glm::scale(glm::mat4{1}, glm::vec3{i % 2 ? -.2F : .2F, .3F, .2F})}
+                    );
+                }
+                renderer.set_scene_submission(VulkanSceneSubmission::direct);
+                const auto reference = renderer.render_image(items, camera, 160, 90);
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                renderer.prepare_frame(items, {}, camera, 160, 90);
+                require(
+                    renderer.capture_prepared_image().pixels == reference.pixels,
+                    "GPU compaction changed empty/visible/culled batch pixels"
+                );
+                const auto usage = renderer.capture_draw_usage();
+                require(
+                    usage.instances == (renderer.supports_gpu_culling() ? visible : items.size()),
+                    "GPU compaction lost, duplicated or retained an invisible instance"
+                );
+                require(
+                    usage.culled_instances == (renderer.supports_gpu_culling() ? items.size() - visible : 0),
+                    "GPU culling command count disagrees with known visibility"
+                );
+                require(
+                    renderer.scene_submission()
+                        == (renderer.supports_gpu_culling() ? VulkanSceneSubmission::gpu_culled
+                                                            : VulkanSceneSubmission::indirect),
+                    "Unavailable GPU culling did not select CPU indirect fallback"
+                );
+            }
+        const auto projection = camera.projection_matrix();
+        const float far_distance = projection[3][2] / (projection[2][2] + 1);
+        const std::array boundary_positions{
+            glm::vec3{4 / projection[0][0], 0, -4},
+            glm::vec3{0, 4 / projection[1][1], -4},
+            glm::vec3{0, 0, -.01F},
+            glm::vec3{0, 0, -far_distance}
+        };
+        for (const auto& position : boundary_positions)
+        {
+            RenderItem item{.mesh = &box, .model_matrix = glm::translate(glm::mat4{1}, position)};
+            item.model_matrix[0][0] = -1;
+            item.model_matrix[1][0] = .35F;
+            const std::array items{item};
+            renderer.set_scene_submission(VulkanSceneSubmission::direct);
+            const auto reference = renderer.render_image(items, camera, 160, 90);
+            renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+            renderer.prepare_frame(items, {}, camera, 160, 90);
+            require(
+                renderer.capture_prepared_image().pixels == reference.pixels,
+                "GPU culling rejected a mirrored/sheared bound crossing a clip plane"
+            );
+            require(renderer.capture_draw_usage().instances == 1, "GPU culling falsely rejected a frustum boundary");
+        }
+        // Camera cuts and fast object motion use current bounds, without waiting for a visibility history.
+        std::vector<RenderItem> moving(65, RenderItem{.mesh = &box});
+        for (int frame = 0; frame < 4; ++frame)
+        {
+            camera.set_target(frame % 2 ? glm::vec3{0, 0, 1} : glm::vec3{0, 0, -1});
+            for (size_t i = 0; i < moving.size(); ++i)
+                moving[i].model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 0, (i + frame) % 2 ? 4 : -4});
+            renderer.set_scene_submission(VulkanSceneSubmission::direct);
+            renderer.reset_history();
+            const auto reference = renderer.render_image(moving, camera, 160, 90);
+            renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+            renderer.reset_history();
+            renderer.prepare_frame(moving, {}, camera, 160, 90);
+            require(
+                renderer.capture_prepared_image().pixels == reference.pixels,
+                "Camera cut/fast motion left stale GPU visibility"
+            );
+            const auto usage = renderer.capture_draw_usage();
+            if (renderer.supports_gpu_culling())
+                require(usage.instances == 33, "Camera cut culled a newly visible object");
+        }
+        // Failed compute reload is transactional while a slot has outstanding work.
+        RelayCore::test::ScopedTempDirectory broken;
+        for (const auto& file : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+            if (file.is_regular_file())
+                std::filesystem::copy_file(file.path(), broken.path() / file.path().filename());
+        std::ofstream{broken.path() / "scene_culling.comp.spv", std::ios::binary} << "bad";
+        renderer.prepare_frame(moving, {}, camera, 160, 90);
+        if (renderer.supports_gpu_culling())
+            expect_failure(
+                [&] {
+                    renderer.reload_shaders(broken.path());
+                },
+                "scene_culling.comp.spv"
+            );
+        renderer.prepare_frame(moving, {}, camera, 161, 91);
+        static_cast<void>(renderer.capture_prepared_image());
+        renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+        std::cout << "gpu_culling_edges=passed supported=" << renderer.supports_gpu_culling() << '\n';
+    }
+
+    void profile_gpu_culling_stress(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures
+    )
+    {
+        CpuColorMeshData data;
+        constexpr int side = 32;
+        for (int y = 0; y <= side; ++y)
+            for (int x = 0; x <= side; ++x)
+                data.vertices.push_back(
+                    {.position = {x / float(side) - .5F, y / float(side) - .5F, 0},
+                     .color = {1, 1, 1},
+                     .normal = {0, 0, 1},
+                     .tangent = {1, 0, 0, 1}}
+                );
+        for (uint32_t y = 0; y < side; ++y)
+            for (uint32_t x = 0; x < side; ++x)
+            {
+                const auto a = y * (side + 1) + x, b = a + 1, c = a + side + 1, d = c + 1;
+                data.indices.insert(data.indices.end(), {a, b, d, a, d, c});
+            }
+        StaticColorMesh mesh;
+        mesh.initialize(data);
+        std::vector<RenderItem> items;
+        for (int i = 0; i < 4096; ++i)
+        {
+            const glm::vec3 position = i < 256 ? glm::vec3{(i % 16 - 7.5F) * .11F, (i / 16 - 7.5F) * .11F, -4}
+                                               : glm::vec3{500 + i % 64, 0, -4};
+            items.push_back(
+                {.mesh = &mesh,
+                 .model_matrix = glm::translate(glm::mat4{1}, position) * glm::scale(glm::mat4{1}, glm::vec3{.1F})}
+            );
+        }
+        RendererConfig config;
+        config.shadow_enabled = false;
+        config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+        VulkanMeshRenderer renderer{
+            device,
+            RELAYCORE_TEST_SPIRV_DIRECTORY,
+            authoring,
+            atlas,
+            TextureEncoding::srgb,
+            config,
+            ColorPipelineMode::hardware_srgb
+        };
+        require(renderer.supports_gpu_culling(), "GPU culling stress requires graphics-queue compute");
+        PerspectiveCamera camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+        camera.set_viewport(640, 360);
+        renderer.prepare_resources(items);
+        CpuRgbaTextureData reference;
+        const std::array modes{
+            VulkanSceneSubmission::instanced,
+            VulkanSceneSubmission::indirect,
+            VulkanSceneSubmission::gpu_culled
+        };
+        for (size_t mode = 0; mode < modes.size(); ++mode)
+        {
+            renderer.set_scene_submission(modes[mode]);
+            for (int frame = 0; frame < 240; ++frame)
+            {
+                {
+                    RELAYCORE_PROFILE_ZONE_N("GPU culling stress CPU frame");
+                    renderer.prepare_frame(items, {}, camera, 640, 360);
+                }
+                SDL_PumpEvents();
+                RELAYCORE_PROFILE_FRAME();
+                SDL_Delay(8);
+            }
+            const auto image = renderer.capture_prepared_image();
+            if (!mode)
+                reference = image;
+            else
+                require(image.pixels == reference.pixels, "GPU culling stress changed visible geometry");
+            const auto usage = renderer.capture_draw_usage();
+            require(usage.instances == (mode == 2 ? 256 : 4096), "GPU culling stress command count mismatch");
+            save(image, captures / ("culling-stress-" + std::to_string(mode) + ".bmp"));
+            std::cout << "gpu_culling_stress mode=" << mode << " candidates=4096 visible=" << usage.instances
+                      << " culled=" << usage.culled_instances << " triangles_per_mesh=" << data.indices.size() / 3
+                      << '\n';
+        }
+    }
+
+    void profile_scene_culling(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        if (!profile)
+        {
+            check_gpu_culling_edges(device, authoring, atlas);
+            if (const auto* disable = std::getenv("RELAYCORE_VULKAN_DISABLE_GPU_CULLING");
+                disable && std::string_view{disable} == "1")
+                return;
+        }
+        struct View {
+            const char* name;
+            const char* level;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"power", "power_restoration", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"pressure", "pressure_transfer", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"observation", "containment_loop", {0, 1.63F, 9}, {0, 2, 34}},
+            View{"workshop", "containment_loop", {-21, 1.63F, 19}, {-21, .6F, 23}},
+            View{"archive", "containment_loop", {-26, 1.63F, 51}, {-17.5F, 1.2F, 51.5F}},
+            View{"return", "containment_loop", {-7, 1.63F, 24}, {0, 3, 33}}
+        };
+        constexpr int w = 1280, h = 720;
+        const int frames = profile ? 160 : 2;
+        StaticModelCache models;
+        for (const auto& view : views)
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + view.level + ".toml")
+            );
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(prepared, models);
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(w, h);
+            for (int frame = 0; frame < frames; ++frame)
+            {
+                RELAYCORE_PROFILE_ZONE_N("Culling gate world queue");
+                scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            }
+            const std::vector<RenderItem> original{scene.render_items().begin(), scene.render_items().end()};
+            std::vector<RenderItem> filtered;
+            size_t removed_indices = 0;
+            // An optimistic frustum experiment: exclude filtering/upload/compute cost from the GPU comparison.
+            // Keep every original shadow caster, overlay and transparent; only opaque camera bounds are tested.
+            for (const auto& item : original)
+            {
+                bool visible = true;
+                if (item.mesh && item.pass == RenderPass::Opaque)
+                {
+                    const auto mvp = camera.view_projection_matrix() * item.model_matrix;
+                    const auto mins = item.mesh->bounds_min(), maxs = item.mesh->bounds_max();
+                    std::array<glm::vec4, 8> corners;
+                    for (size_t corner = 0; corner < corners.size(); ++corner)
+                        corners[corner] = mvp
+                                          * glm::vec4{
+                                              corner & 1 ? maxs.x : mins.x,
+                                              corner & 2 ? maxs.y : mins.y,
+                                              corner & 4 ? maxs.z : mins.z,
+                                              1
+                                          };
+                    for (int plane = 0; plane < 6; ++plane)
+                        if (std::ranges::all_of(corners, [plane](const glm::vec4& corner) {
+                                return corner.w + (plane % 2 ? -corner[plane / 2] : corner[plane / 2]) < -.0001F;
+                            }))
+                        {
+                            visible = false;
+                            break;
+                        }
+                }
+                if (visible)
+                    filtered.push_back(item);
+                else
+                    removed_indices += static_cast<size_t>(item.mesh->index_count());
+            }
+            RendererConfig config;
+            config.hdr_enabled = true;
+            config.msaa_samples = 4;
+            config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+            VulkanMeshRenderer renderer{
+                device,
+                RELAYCORE_TEST_SPIRV_DIRECTORY,
+                authoring,
+                atlas,
+                TextureEncoding::srgb,
+                config,
+                ColorPipelineMode::hardware_srgb
+            };
+            renderer.set_local_lights(scene.local_lights());
+            renderer.set_irradiance_probes(prepared.irradiance);
+            renderer.set_reflection_probe(prepared.reflection);
+            renderer.set_spot_light({camera.position(), camera.forward(), {1, .94F, .84F}, 18, true});
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, 0);
+            renderer.prepare_resources(original);
+            renderer.prepare_resources(weapon);
+            CpuRgbaTextureData reference;
+            for (int phase = 0; phase < 4; ++phase)
+            {
+                renderer.set_scene_submission(
+                    phase == 3 ? VulkanSceneSubmission::gpu_culled : VulkanSceneSubmission::instanced
+                );
+                const auto& items = phase == 1 ? filtered : original;
+                for (int frame = 0; frame < frames; ++frame)
+                {
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Culling gate CPU frame");
+                        renderer.prepare_frame(items, original, camera, w, h, weapon);
+                    }
+                    SDL_PumpEvents();
+                    RELAYCORE_PROFILE_FRAME();
+                    if (profile)
+                        SDL_Delay(4);
+                }
+                const auto image = renderer.capture_prepared_image();
+                if (!phase)
+                    reference = image;
+                else
+                    require(image.pixels == reference.pixels, "Frustum experiment changed visible scene pixels");
+                save(image, captures / (std::string{"culling-"} + view.name + "-" + std::to_string(phase) + ".bmp"));
+                const auto usage = renderer.capture_draw_usage();
+                std::cout << "culling_gate view=" << view.name << " phase=" << phase << " submitted=" << items.size()
+                          << " removed=" << original.size() - items.size()
+                          << " removed_indices=" << (phase == 1 ? removed_indices : 0) << " draws=" << usage.draws
+                          << " instances=" << usage.instances
+                          << " visible_chunks=" << scene.diagnostics().visible_chunks
+                          << " culled_chunks=" << scene.diagnostics().culled_chunks << '\n';
+                if (phase == 3)
+                    std::cout << "gpu_culling view=" << view.name << " supported=" << renderer.supports_gpu_culling()
+                              << " culled_instances=" << usage.culled_instances
+                              << " culling_draws=" << usage.culling_draws << '\n';
+            }
+        }
+        std::cout << "scene_culling_gate=passed\n";
+        if (profile)
+            profile_gpu_culling_stress(device, authoring, atlas, captures);
+    }
+
+    void check_optional_gpu_world_views(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        bool profile,
+        bool mesh_check = false
+    )
+    {
+        struct View {
+            const char* name;
+            const char* level;
+            glm::vec3 position, target;
+        };
+        const std::array views{
+            View{"power", "power_restoration", {4, 1.65F, 2}, {4, 1.65F, 10}},
+            View{"workshop", "containment_loop", {-21, 1.63F, 19}, {-21, .6F, 23}},
+            View{"native", "native_lab", {1.5F, 1.45F, 1.7F}, {1.5F, 1.45F, 4}}
+        };
+        StaticModelCache models;
+        for (const auto& view : views)
+        {
+            const auto level = RelayCore::load_blockout_level(
+                RelayCore::core::asset_path(std::string{"levels/"} + view.level + ".toml")
+            );
+            const auto prepared =
+                RelayGame::build_prepared_world_scene_data(level, authoring, ColorPipelineMode::hardware_srgb);
+            RelayGame::WorldSceneRenderer scene;
+            scene.initialize(prepared, models);
+            PerspectiveCamera camera{{.position = view.position, .target = view.target}};
+            camera.set_viewport(1280, 720);
+            scene.prepare_render_queue(camera, 0, {}, {}, {}, -1, {}, false);
+            const auto original = scene.render_items();
+            const auto weapon = scene.prepare_shotgun_viewmodel(camera, 0);
+            CpuRgbaTextureData reference;
+            for (int phase = 0; phase < 3; ++phase)
+            {
+                RendererConfig config;
+                config.descriptor_indexing = !mesh_check && phase == 1;
+                config.mesh_shaders = mesh_check && phase == 1;
+                config.hdr_enabled = true;
+                config.msaa_samples = 4;
+                config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                renderer.set_local_lights(scene.local_lights());
+                renderer.set_irradiance_probes(prepared.irradiance);
+                renderer.set_reflection_probe(prepared.reflection);
+                renderer.set_spot_light({camera.position(), camera.forward(), {1, .94F, .84F}, 18, true});
+                renderer.prepare_resources(original);
+                renderer.prepare_resources(weapon);
+                for (int frame = 0; frame < (profile ? 160 : 2); ++frame)
+                {
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Indexed world CPU frame");
+                        renderer.prepare_frame(original, original, camera, 1280, 720, weapon);
+                    }
+                    RELAYCORE_PROFILE_FRAME();
+                    SDL_PumpEvents();
+                    if (profile)
+                        SDL_Delay(4);
+                }
+                uint64_t allocation = 0;
+                for (const auto& heap : device.memory_usage().heaps)
+                    allocation += heap.allocation_bytes;
+                std::cout << "world_vma_allocation_bytes=" << allocation << '\n';
+                auto image = renderer.capture_prepared_image();
+                if (phase == 0)
+                    reference = image;
+                else
+                    require(
+                        image.pixels == reference.pixels,
+                        "Optional GPU world view changed native models, probes, shadows, or weapon"
+                    );
+                const auto usage = renderer.draw_usage();
+                std::cout << "indexed_world=" << view.name << " phase=" << phase << " draws=" << usage.draws
+                          << " material_binds=" << usage.material_binds << " mesh_draws=" << usage.mesh_draws << '\n';
+                save(
+                    image,
+                    captures / ("indexed-world-" + std::string{view.name} + "-" + std::to_string(phase) + ".bmp")
+                );
+            }
+        }
+    }
+
+    void check_optional_gpu(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        bool profile,
+        bool mesh_check = false
+    )
+    {
+        StaticColorMesh box;
+        auto data = make_color_box_mesh_data();
+        for (auto& vertex : data.vertices)
+        {
+            vertex.color = {1, 1, 1};
+            vertex.material_kind = 0;
+            const auto axis = std::abs(vertex.normal.y) < .9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0};
+            vertex.tangent = {glm::normalize(glm::cross(axis, vertex.normal)), 1};
+        }
+        if (mesh_check && !profile)
+        {
+            const auto original = data;
+            for (uint32_t copy = 1; copy < 16; ++copy)
+            {
+                for (auto vertex : original.vertices)
+                {
+                    vertex.position += glm::vec3{float(copy % 4) * .22F, 0, float(copy / 4) * .22F};
+                    data.vertices.push_back(vertex);
+                }
+                for (auto index : original.indices)
+                    data.indices.push_back(index + copy * uint32_t(original.vertices.size()));
+            }
+        }
+        if (mesh_check && profile)
+        {
+            data = {};
+            constexpr uint32_t cells = 256;
+            for (uint32_t z = 0; z <= cells; ++z)
+                for (uint32_t x = 0; x <= cells; ++x)
+                    data.vertices.push_back(
+                        {{(float(x) - cells / 2) * .5F, 0, (float(z) - cells / 2) * .5F},
+                         {1, 1, 1},
+                         {0, 1, 0},
+                         0,
+                         {float(x) / 16, float(z) / 16},
+                         {1, 0, 0, -1}}
+                    );
+            for (uint32_t z = 0; z < cells; ++z)
+                for (uint32_t x = 0; x < cells; ++x)
+                {
+                    const auto a = z * (cells + 1) + x, b = a + 1, d = a + cells + 1, c = d + 1;
+                    data.indices.insert(data.indices.end(), {a, c, b, a, d, c});
+                }
+        }
+        box.initialize(data);
+        std::vector<Texture2D> textures(profile ? 256 : 40);
+        for (size_t i = 0; i < textures.size(); ++i)
+            textures[i].initialize_rgba(
+                1,
+                1,
+                std::array<uint8_t, 4>{uint8_t(40 + i % 190), uint8_t(210 - i % 170), uint8_t(70 + i % 130), 255},
+                TextureEncoding::srgb
+            );
+        Texture2D normal, mr, ao, emission;
+        normal.initialize_rgba(1, 1, std::array<uint8_t, 4>{175, 145, 238, 255}, TextureEncoding::linear);
+        mr.initialize_rgba(1, 1, std::array<uint8_t, 4>{255, 170, 90, 255}, TextureEncoding::linear);
+        ao.initialize_rgba(1, 1, std::array<uint8_t, 4>{190, 255, 255, 255}, TextureEncoding::linear);
+        emission.initialize_rgba(1, 1, std::array<uint8_t, 4>{70, 100, 200, 255}, TextureEncoding::srgb);
+        std::vector<RenderItem> items;
+        const int side = profile ? 64 : 6;
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x)
+            {
+                const float step = profile ? .18F : 1.6F;
+                const auto model =
+                    glm::translate(glm::mat4{1}, glm::vec3{(x - side / 2) * step, 0, (y - side / 2) * step})
+                    * glm::rotate(glm::mat4{1}, (x + y) * .17F, glm::vec3{0, 1, 0})
+                    * glm::scale(glm::mat4{1}, profile ? glm::vec3{.12F} : glm::vec3{x % 2 ? -.5F : .5F, .65F, .35F});
+                RenderItem item{
+                    .mesh = &box,
+                    .model_matrix = model,
+                    .diffuse_texture = &textures[items.size() % textures.size()],
+                    .previous_model_matrix = model
+                };
+                if (!profile)
+                {
+                    item.normal_texture = &normal;
+                    item.normal_scale = .4F + float(items.size() % 5) * .2F;
+                    item.metallic_roughness = MetallicRoughness{.3F + float(items.size() % 5) * .1F, .3F};
+                    item.metallic_roughness_map = &mr;
+                    item.occlusion_texture = &ao;
+                    item.occlusion_strength = .6F;
+                    item.emissive_texture = &emission;
+                    item.emissive_factor = {.08F, .1F, .12F};
+                }
+                items.push_back(item);
+            }
+        if (mesh_check && profile)
+        {
+            items.clear();
+            for (int plane = 0; plane < 8; ++plane)
+            {
+                const auto model = glm::translate(glm::mat4{1}, glm::vec3{0, -.15F * plane, 0});
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = model,
+                     .diffuse_texture = &textures[plane],
+                     .previous_model_matrix = model}
+                );
+            }
+        }
+        if (!profile)
+        {
+            items.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, -1, 0})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{12, .3F, 12})}
+            );
+            for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+            {
+                auto item = items.front();
+                item.pass = pass;
+                item.model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 1, 3});
+                items.push_back(item);
+            }
+        }
+        PerspectiveCamera camera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+        camera.set_viewport(640, 360);
+        std::vector<RenderItem> weapon;
+        if (!profile)
+        {
+            weapon.push_back(items[0]);
+            weapon[0].model_matrix =
+                glm::translate(glm::mat4{1}, glm::vec3{8, 6, 13}) * glm::scale(glm::mat4{1}, glm::vec3{.3F});
+        }
+        for (bool hdr : {false, true})
+        {
+            if (profile && hdr)
+                continue;
+            std::array<std::vector<CpuRgbaTextureData>, 3> images;
+            std::array<std::vector<VulkanPassInputCapture>, 3> inputs;
+            std::array<std::vector<float>, 3> shadows;
+            for (int mode = 0; mode < 3; ++mode)
+            {
+                RendererConfig config;
+                config.descriptor_indexing = !mesh_check && mode == 1;
+                config.mesh_shaders = mesh_check && mode == 1;
+                if (mesh_check && hdr)
+                    config.descriptor_indexing = true;
+                config.hdr_enabled = hdr;
+                config.taa_enabled = hdr;
+                config.msaa_samples = hdr ? 4 : 1;
+                config.shadow_enabled = !profile;
+                config.shadow_map_resolution = 256;
+                config.fog_enabled = false;
+                config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                const bool indexed = config.descriptor_indexing && device.capabilities().indexed_material_capacity != 0;
+                const bool meshed = config.mesh_shaders && device.capabilities().mesh_dispatch_total != 0;
+                require(renderer.uses_mesh_shaders() == meshed, "Mesh shader selection/fallback failed");
+                require(
+                    renderer.uses_descriptor_indexing() == indexed,
+                    "Descriptor indexing selection/fallback failed"
+                );
+                if (!profile)
+                    renderer.set_pass_input_view(PassInputView::scene);
+                renderer.prepare_resources(items);
+                std::vector<double> timings;
+                camera = PerspectiveCamera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+                camera.set_viewport(640, 360);
+                auto moving = items;
+                for (int frame = 0; frame < (profile ? 280 : 3); ++frame)
+                {
+                    if (!profile && frame)
+                        for (auto& item : moving)
+                        {
+                            item.previous_model_matrix = item.model_matrix;
+                            item.model_matrix[3].x += .03F;
+                        }
+                    if (mesh_check && !profile && frame == 2)
+                    {
+                        camera = PerspectiveCamera{{.position = {0, 1.2F, .3F}, .target = {0, 1.2F, -1}}};
+                        camera.set_viewport(640, 360);
+                        renderer.reset_history();
+                    }
+                    const auto start = std::chrono::steady_clock::now();
+                    {
+                        RELAYCORE_PROFILE_ZONE_N("Descriptor indexing CPU frame");
+                        renderer.prepare_frame(
+                            moving,
+                            profile ? std::span<const RenderItem>{} : std::span<const RenderItem>{moving},
+                            camera,
+                            640,
+                            360,
+                            weapon
+                        );
+                    }
+                    const double ms =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    if (profile && frame >= 40)
+                        timings.push_back(ms);
+                    if (!profile)
+                    {
+                        images[mode].push_back(renderer.capture_prepared_image());
+                        inputs[mode].push_back(renderer.capture_pass_inputs());
+                    }
+                    RELAYCORE_PROFILE_FRAME();
+                    if (profile)
+                    {
+                        SDL_PumpEvents();
+                        SDL_Delay(4);
+                    }
+                }
+                uint64_t allocation = 0;
+                for (const auto& heap : device.memory_usage().heaps)
+                    allocation += heap.allocation_bytes;
+                std::cout << "stress_vma_allocation_bytes=" << allocation << '\n';
+                auto usage = renderer.material_descriptor_usage();
+                auto draws = renderer.draw_usage();
+                require((draws.mesh_draws > 0) == meshed, "Selected geometry path was not exercised");
+                if (indexed && !profile)
+                    require(
+                        usage.pools == 1 && usage.materials > 1 && draws.material_binds < draws.draws,
+                        "Indexed materials still allocate/bind per-material sets"
+                    );
+                std::cout << "descriptor_mode=" << mode << " hdr=" << hdr << " capacity=" << usage.indexed_capacity
+                          << " materials=" << usage.materials << " pools=" << usage.pools
+                          << " binds=" << draws.material_binds << " draws=" << draws.draws
+                          << " mesh_draws=" << draws.mesh_draws << " mesh_groups=" << draws.mesh_workgroups;
+                if (profile)
+                {
+                    std::sort(timings.begin(), timings.end());
+                    std::cout << " cpu_p50_ms=" << timings[120] << " cpu_p95_ms=" << timings[228]
+                              << " cpu_p99_ms=" << timings[237];
+                    images[mode].push_back(renderer.capture_prepared_image());
+                } else
+                {
+                    shadows[mode] = renderer.capture_shadow_depth(0);
+                    auto changed = config;
+                    if (mesh_check)
+                        changed.mesh_shaders = !changed.mesh_shaders;
+                    else
+                        changed.descriptor_indexing = !changed.descriptor_indexing;
+                    expect_failure(
+                        [&] {
+                            renderer.set_config(changed);
+                        },
+                        "prepared renderer reload"
+                    );
+                    renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    if (mesh_check)
+                    {
+                        box.initialize(data);
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    }
+                    renderer.prepare_frame({}, {}, camera, 641, 361);
+                    renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                    RelayCore::test::ScopedTempDirectory broken;
+                    for (const auto& entry : std::filesystem::directory_iterator(RELAYCORE_TEST_SPIRV_DIRECTORY))
+                        if (entry.path().extension() == ".spv")
+                            std::filesystem::copy_file(entry.path(), broken.path() / entry.path().filename());
+                    std::ofstream{
+                        broken.path()
+                            / (meshed ? (indexed ? "meshlets.mesh.indexed.spv" : "meshlets.mesh.spv")
+                                      : (indexed ? "mesh.frag.indexed.spv" : "mesh.frag.spv")),
+                        std::ios::binary
+                    } << "bad";
+                    expect_failure(
+                        [&] {
+                            renderer.reload_shaders(broken.path());
+                        },
+                        "SPIR-V"
+                    );
+                    textures[0].initialize_rgba(1, 1, std::array<uint8_t, 4>{40, 210, 70, 255}, TextureEncoding::srgb);
+                    renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                    static_cast<void>(renderer.capture_prepared_image());
+                    if (mesh_check && !hdr)
+                    {
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                        const auto raster = renderer.capture_prepared_image();
+                        renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                        renderer.prepare_frame(items, items, camera, 640, 360, weapon);
+                        require(
+                            renderer.capture_prepared_image().pixels == raster.pixels,
+                            "GPU-culling indexed fallback changed the mesh-shader image"
+                        );
+                        require(renderer.draw_usage().mesh_draws == 0, "Mesh shaders bypassed GPU-culling ownership");
+                        renderer.set_scene_submission(VulkanSceneSubmission::instanced);
+                    }
+                    if (indexed && !mesh_check)
+                    {
+                        std::vector<Texture2D> excess(usage.indexed_capacity);
+                        std::vector<RenderItem> overflow;
+                        for (auto& texture : excess)
+                        {
+                            texture.initialize_rgba(
+                                1,
+                                1,
+                                std::array<uint8_t, 4>{255, 255, 255, 255},
+                                TextureEncoding::srgb
+                            );
+                            overflow.push_back({.mesh = &box, .diffuse_texture = &texture});
+                        }
+                        expect_failure(
+                            [&] {
+                                renderer.prepare_resources(overflow);
+                            },
+                            "Indexed material table exhausted"
+                        );
+                    }
+                }
+                std::cout << '\n';
+                save(
+                    images[mode].back(),
+                    captures / ("descriptor-" + std::to_string(hdr) + "-" + std::to_string(mode) + ".bmp")
+                );
+            }
+            for (int mode = 1; mode < 3; ++mode)
+            {
+                for (size_t frame = 0; frame < images[0].size(); ++frame)
+                {
+                    require(
+                        images[mode][frame].pixels == images[0][frame].pixels,
+                        "Descriptor indexing changed color/map/order/viewmodel parity"
+                    );
+                    if (!profile)
+                        for (size_t p = 0; p < inputs[0][frame].velocity.size(); ++p)
+                        {
+                            require(
+                                glm::length(inputs[mode][frame].normal_depth[p] - inputs[0][frame].normal_depth[p])
+                                    < .00001F,
+                                "Descriptor indexing changed mapped normals/depth"
+                            );
+                            require(
+                                glm::length(inputs[mode][frame].velocity[p] - inputs[0][frame].velocity[p]) < .00001F,
+                                "Descriptor indexing changed temporal correspondence"
+                            );
+                        }
+                }
+                if (!profile)
+                    require(shadows[mode] == shadows[0], "Descriptor indexing changed shadow depth");
+            }
+        }
+        check_optional_gpu_world_views(device, authoring, atlas, captures, profile, mesh_check);
+        std::cout << (mesh_check ? "mesh_shaders=passed\n" : "descriptor_indexing=passed\n");
+    }
+
+    void check_scene_submission(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas,
+        const std::filesystem::path& captures,
+        const bool profile
+    )
+    {
+        constexpr int w = 640, h = 360;
+        StaticColorMesh box, plane;
+        auto data = make_color_box_mesh_data();
+        for (auto& vertex : data.vertices)
+        {
+            vertex.color = {1, 1, 1};
+            vertex.material_kind = 0;
+            const auto axis = std::abs(vertex.normal.y) < .9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0};
+            vertex.tangent = {glm::normalize(glm::cross(axis, vertex.normal)), 1};
+        }
+        box.initialize(data);
+        plane.initialize(make_color_double_sided_quad_mesh_data());
+        Texture2D red, green, normal;
+        red.initialize_rgba(1, 1, std::array<uint8_t, 4>{210, 65, 40, 255}, TextureEncoding::srgb);
+        green.initialize_rgba(1, 1, std::array<uint8_t, 4>{40, 180, 100, 255}, TextureEncoding::srgb);
+        normal.initialize_rgba(1, 1, std::array<uint8_t, 4>{175, 145, 238, 255}, TextureEncoding::linear);
+        PerspectiveCamera camera{{.position = {9, 7, 15}, .target = {0, 0, 0}}};
+        camera.set_viewport(w, h);
+        std::vector<RenderItem> items;
+        const int side = profile ? 64 : 6;
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x)
+            {
+                const float step = profile ? .18F : 1.6F;
+                const auto model =
+                    glm::translate(glm::mat4{1}, glm::vec3{(x - side / 2) * step, 0, (y - side / 2) * step})
+                    * glm::rotate(glm::mat4{1}, (x + y) * .17F, glm::vec3{0, 1, 0})
+                    * glm::scale(glm::mat4{1}, profile ? glm::vec3{.12F} : glm::vec3{x % 2 ? -.5F : .5F, .65F, .35F});
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = model,
+                     .diffuse_texture = &red,
+                     .normal_texture = profile ? nullptr : &normal,
+                     .previous_model_matrix = model}
+                );
+            }
+        std::vector<RenderItem> weapon;
+        if (!profile)
+        {
+            // Break material groups and temporal correspondence, retaining long shared-mesh runs.
+            for (size_t i = 12; i < 24; ++i)
+                items[i].diffuse_texture = &green;
+            items[7].previous_model_matrix.reset();
+            items[9].casts_shadow = false;
+            items[11].casts_directional_shadow = false;
+            items.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, -1, 0})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{12, .3F, 12}),
+                 .diffuse_texture = &green,
+                 .previous_model_matrix = glm::mat4{1}}
+            );
+            items.back().previous_model_matrix = items.back().model_matrix;
+            // Equal-depth opaque colors must retain their authored last-writer order.
+            for (int i = 0; i < 3; ++i)
+                items.push_back(
+                    {.mesh = &box,
+                     .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{2, 2, 3}),
+                     .diffuse_texture = i % 2 ? &green : &red}
+                );
+            for (auto pass : {RenderPass::Overlay, RenderPass::Transparent})
+                for (int i = 0; i < 3; ++i)
+                    items.push_back(
+                        {.mesh = &plane,
+                         .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{0, 1, 2 + .1F * i}),
+                         .pass = pass,
+                         .diffuse_texture = i % 2 ? &green : &red}
+                    );
+            weapon.push_back(
+                {.mesh = &box,
+                 .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{7.8F, 5.8F, 12.5F})
+                                 * glm::scale(glm::mat4{1}, glm::vec3{.25F}),
+                 .diffuse_texture = &red}
+            );
+            weapon.push_back(weapon.front());
+        }
+        const std::array modes{
+            VulkanSceneSubmission::direct,
+            VulkanSceneSubmission::instanced,
+            VulkanSceneSubmission::indirect,
+            VulkanSceneSubmission::gpu_culled
+        };
+        for (const bool hdr : {false, true})
+            for (const int samples : {1, 4})
+            {
+                if (profile && (hdr || samples != 1))
+                    continue;
+                RendererConfig config;
+                config.hdr_enabled = hdr;
+                config.taa_enabled = hdr;
+                config.msaa_samples = samples;
+                config.shadow_enabled = !profile;
+                config.shadow_map_resolution = 128;
+                config.fog_enabled = false;
+                config.postfx_vignette_strength = config.postfx_grain_strength = config.postfx_scanline_strength = 0;
+                VulkanMeshRenderer renderer{
+                    device,
+                    RELAYCORE_TEST_SPIRV_DIRECTORY,
+                    authoring,
+                    atlas,
+                    TextureEncoding::srgb,
+                    config,
+                    ColorPipelineMode::hardware_srgb
+                };
+                if (!profile)
+                {
+                    renderer.set_pass_input_view(PassInputView::scene);
+                    renderer.set_spot_light({.position = {0, 6, 3}, .direction = {0, -1, -.3F}, .enabled = true});
+                    const std::array lights{
+                        LocalLight{{0, 3, 0}, {1, .7F, .4F}, 10},
+                        LocalLight{{-4, 2, 3}, {.3F, .5F, 1}, 6}
+                    };
+                    renderer.set_local_lights(lights);
+                }
+                std::array<std::vector<CpuRgbaTextureData>, modes.size()> images;
+                std::array<std::vector<VulkanPassInputCapture>, modes.size()> inputs;
+                std::array<std::array<std::vector<float>, 2>, modes.size()> shadows;
+                std::array<VulkanDrawUsage, modes.size()> usage;
+                for (size_t mode = 0; mode < modes.size(); ++mode)
+                {
+                    renderer.set_scene_submission(modes[mode]);
+                    renderer.reset_history();
+                    auto moving = items;
+                    if (profile)
+                    {
+                        renderer.prepare_resources(moving);
+                        std::vector<double> timings;
+                        for (int frame = 0; frame < 280; ++frame)
+                        {
+                            const auto start = std::chrono::steady_clock::now();
+                            {
+                                RELAYCORE_PROFILE_ZONE_N("Submission stress CPU frame");
+                                renderer.prepare_frame(moving, {}, camera, w, h);
+                            }
+                            const double ms =
+                                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                                    .count();
+                            if (frame >= 40)
+                                timings.push_back(ms);
+                            SDL_PumpEvents();
+                            RELAYCORE_PROFILE_FRAME();
+                            SDL_Delay(8);
+                        }
+                        std::sort(timings.begin(), timings.end());
+                        usage[mode] = renderer.draw_usage();
+                        std::cout << "submission_stress mode=" << mode << " objects=" << moving.size()
+                                  << " draws=" << usage[mode].draws << " cpu_p50_ms=" << timings[120]
+                                  << " cpu_p95_ms=" << timings[228] << " cpu_p99_ms=" << timings[237] << '\n';
+                        save(
+                            renderer.capture_prepared_image(),
+                            captures / ("submission-stress-" + std::to_string(mode) + ".bmp")
+                        );
+                        continue;
+                    }
+                    for (int frame = 0; frame < 3; ++frame)
+                    {
+                        if (frame)
+                            for (size_t i = 0; i < 36; ++i)
+                            {
+                                moving[i].previous_model_matrix = moving[i].model_matrix;
+                                moving[i].model_matrix[3].x += (i % 2 ? .04F : -.06F);
+                            }
+                        moving[7].previous_model_matrix.reset();
+                        // A distinct shadow-caster span exercises correspondence ownership across passes.
+                        auto casters = moving;
+                        casters.push_back(
+                            {.mesh = &box, .model_matrix = glm::translate(glm::mat4{1}, glm::vec3{6, 2, 1})}
+                        );
+                        renderer.prepare_frame(moving, casters, camera, w, h, weapon);
+                        images[mode].push_back(renderer.capture_prepared_image());
+                        inputs[mode].push_back(renderer.capture_pass_inputs());
+                    }
+                    usage[mode] = renderer.draw_usage();
+                    for (size_t cascade = 0; cascade < 2; ++cascade)
+                        shadows[mode][cascade] = renderer.capture_shadow_depth(cascade);
+                    save(
+                        images[mode].back(),
+                        captures
+                            / ("submission-" + std::to_string(hdr) + "-" + std::to_string(samples) + "-"
+                               + std::to_string(mode) + ".bmp")
+                    );
+                }
+                require(
+                    usage[1].draws < usage[0].draws && usage[2].draws == usage[1].draws,
+                    "Instancing did not reduce compatible draws"
+                );
+                require(
+                    usage[0].instances == usage[1].instances && usage[1].instances == usage[2].instances,
+                    "Submission dropped or duplicated instances"
+                );
+                require(
+                    usage[2].indirect_draws == usage[2].draws && !usage[1].indirect_draws,
+                    "Indirect mode bypassed its command buffer"
+                );
+                if (profile)
+                    continue;
+                for (size_t mode = 1; mode < modes.size(); ++mode)
+                {
+                    for (size_t frame = 0; frame < images[0].size(); ++frame)
+                    {
+                        require(
+                            images[mode][frame].pixels == images[0][frame].pixels,
+                            "Batched scene changed color/order/viewmodel parity"
+                        );
+                        for (size_t pixel = 0; pixel < inputs[0][frame].velocity.size(); ++pixel)
+                        {
+                            const auto difference =
+                                inputs[mode][frame].normal_depth[pixel] - inputs[0][frame].normal_depth[pixel];
+                            if (!(glm::length(difference) < .00001F))
+                                std::cout << "normal_depth_diff mode=" << mode << " frame=" << frame
+                                          << " pixel=" << pixel << " delta=" << difference.x << ',' << difference.y
+                                          << ',' << difference.z << ',' << difference.w
+                                          << " reference=" << inputs[0][frame].normal_depth[pixel].w << '\n';
+                            require(
+                                glm::length(difference) < .00001F,
+                                "Batched scene changed depth or transformed normals"
+                            );
+                            require(
+                                glm::length(inputs[mode][frame].velocity[pixel] - inputs[0][frame].velocity[pixel])
+                                    < .00001F,
+                                "Batched scene lost original temporal correspondence"
+                            );
+                        }
+                    }
+                    for (size_t cascade = 0; cascade < 2; ++cascade)
+                        require(shadows[mode][cascade] == shadows[0][cascade], "Batched shadow depth changed");
+                }
+                // Both slots can remain submitted across switches, growth, mesh replacement and reload.
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                auto large = items;
+                large.insert(large.end(), items.begin(), items.end());
+                renderer.prepare_frame(large, large, camera, w, h, weapon);
+                renderer.set_scene_submission(VulkanSceneSubmission::direct);
+                renderer.prepare_frame({}, {}, camera, w + 1, h + 1);
+                renderer.set_scene_submission(VulkanSceneSubmission::gpu_culled);
+                box.initialize(data);
+                renderer.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                renderer.prepare_frame(items, items, camera, w, h, weapon);
+                static_cast<void>(renderer.capture_prepared_image());
+                std::cout << "submission_parity hdr=" << hdr << " msaa=" << samples
+                          << " direct_draws=" << usage[0].draws << " instanced_draws=" << usage[1].draws
+                          << " instances=" << usage[0].instances << '\n';
+            }
+        std::cout << "scene_submission=passed\n";
+    }
+
+} // namespace
+
 int main(int argc, char** argv)
 {
+    const bool meshlets_only = argc == 2 && std::string_view{argv[1]} == "--mesh-shaders";
+    const bool meshlets_profile = argc == 2 && std::string_view{argv[1]} == "--mesh-shaders-profile";
+    const bool indexing_only = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing";
+    const bool indexing_profile = argc == 2 && std::string_view{argv[1]} == "--descriptor-indexing-profile";
+    const bool submission_only = argc == 2 && std::string_view{argv[1]} == "--scene-submission";
+    const bool culling_only = argc == 2 && std::string_view{argv[1]} == "--scene-culling";
+    const bool culling_profile = argc == 2 && std::string_view{argv[1]} == "--scene-culling-profile";
+    const bool submission_profile = argc == 2 && std::string_view{argv[1]} == "--scene-submission-profile";
+    const bool shadow_cache = argc == 2 && std::string_view{argv[1]} == "--shadow-cache";
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
+    const bool light_selection_only = argc == 2 && std::string_view{argv[1]} == "--light-selection";
     const bool point_receiver_only = argc == 2 && std::string_view{argv[1]} == "--point-receiver-only";
     const bool color_baseline = argc == 2 && std::string_view{argv[1]} == "--color-baseline";
     const bool profiling = argc == 2 && std::string_view{argv[1]} == "--profile-views";
@@ -3081,19 +6368,37 @@ int main(int argc, char** argv)
     const bool mr_only = argc == 2 && std::string_view{argv[1]} == "--metallic-roughness";
     const bool emission_only = argc == 2 && std::string_view{argv[1]} == "--emission";
     const bool msaa_only = argc == 2 && std::string_view{argv[1]} == "--msaa";
+    const bool advanced_only = argc == 2 && std::string_view{argv[1]} == "--advanced-effects";
+    const bool advanced_profile = argc == 2 && std::string_view{argv[1]} == "--advanced-effects-profile";
+    const bool effects_only = argc == 2 && std::string_view{argv[1]} == "--visual-effects";
+    const bool effects_profile = argc == 2 && std::string_view{argv[1]} == "--visual-effects-profile";
+    const bool settings_profile = argc == 2 && std::string_view{argv[1]} == "--graphics-settings-profile";
+    const bool effects_analytic = argc == 2 && std::string_view{argv[1]} == "--visual-effects-analytic";
+    const bool temporal_profile = argc == 2 && std::string_view{argv[1]} == "--temporal-profile";
+    const bool temporal_dynamic = argc == 2 && std::string_view{argv[1]} == "--temporal-dynamic";
+    const bool temporal_scene = argc == 2 && std::string_view{argv[1]} == "--temporal-scene";
+    const bool temporal_only = argc == 2 && std::string_view{argv[1]} == "--temporal";
+    const bool inputs_only = argc == 2 && std::string_view{argv[1]} == "--pass-inputs";
     const bool hdr_only = argc == 2 && std::string_view{argv[1]} == "--hdr";
     const bool probes_only = argc == 2 && std::string_view{argv[1]} == "--irradiance";
     const bool resources_only = argc == 2 && std::string_view{argv[1]} == "--resource-preparation";
+    const bool descriptors_only = argc == 2 && std::string_view{argv[1]} == "--material-descriptors";
     const bool pistol_only = argc == 2 && std::string_view{argv[1]} == "--pistol-viewmodel";
     const bool shotgun_only = argc == 2 && std::string_view{argv[1]} == "--shotgun-viewmodel";
     const bool pressure_slice_only = argc == 2 && std::string_view{argv[1]} == "--pressure-transfer-slice";
     const bool power_slice_only = argc == 2 && std::string_view{argv[1]} == "--power-restoration-slice";
     const bool ui_only = argc == 2 && std::string_view{argv[1]} == "--ui-only";
     const bool pipeline_only = argc == 2 && std::string_view{argv[1]} == "--pipeline-only";
+    const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
-    if (argc > 1 && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only && !emission_only
-        && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only && !resources_only
-        && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only && !shotgun_only)
+    if (argc > 1 && !meshlets_only && !meshlets_profile && !indexing_only && !indexing_profile && !submission_only
+        && !submission_profile && !shadow_cache && !shadows_only && !color_baseline && !profiling && !native_view
+        && !mr_only && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only
+        && !resources_only && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only
+        && !shotgun_only && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile
+        && !effects_analytic && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile
+        && !temporal_scene && !temporal_dynamic && !settings_profile && !light_selection_only && !culling_profile
+        && !culling_only)
         return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -3114,15 +6419,50 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (pistol_only)
+        if (shadow_cache)
+            check_shadow_cache(device, authoring, atlas);
+        else if (meshlets_only || meshlets_profile)
+            check_optional_gpu(device, authoring, atlas, captures, meshlets_profile, true);
+        else if (indexing_only || indexing_profile)
+            check_optional_gpu(device, authoring, atlas, captures, indexing_profile);
+        else if (culling_only || culling_profile)
+            profile_scene_culling(device, authoring, atlas, captures, culling_profile);
+        else if (submission_only || submission_profile)
+            check_scene_submission(device, authoring, atlas, captures, submission_profile);
+        else if (light_selection_only)
+            check_light_selection(device, authoring, atlas, captures);
+        else if (advanced_only || advanced_profile)
+            check_advanced_effects(device, authoring, atlas, captures, advanced_profile);
+        else if (settings_profile)
+            profile_graphics_settings(device, authoring, atlas, captures);
+        else if (temporal_profile || temporal_scene || temporal_dynamic)
+            profile_temporal(
+                device,
+                authoring,
+                atlas,
+                captures,
+                temporal_profile || temporal_dynamic,
+                temporal_dynamic
+            );
+        else if (temporal_only)
+            check_temporal(device, vk_window, authoring, atlas, captures);
+        else if (effects_only || effects_profile || effects_analytic)
+            check_visual_effects(device, authoring, atlas, captures, effects_profile, effects_analytic);
+        else if (inputs_only)
+            check_pass_inputs(device, authoring, atlas, captures);
+        else if (pistol_only)
             check_pistol_viewmodel(device, authoring, atlas, captures);
         else if (shotgun_only)
             check_shotgun_viewmodel(device, authoring, atlas, captures);
+        else if (depth_only)
+            check_depth_formats(device, authoring, atlas, captures);
         else if (pipeline_only)
+        {
             check_mesh_pipeline(device, atlas, captures);
-        else if (ui_only)
+            check_pipeline_cache(device, vk_window, atlas, captures);
+        } else if (ui_only)
             check_ui(device, vk_window, authoring, atlas, captures);
-        else if (resources_only)
+        else if (resources_only || descriptors_only)
         {
             VulkanMeshRenderer renderer{
                 device,
@@ -3132,7 +6472,13 @@ int main(int argc, char** argv)
                 TextureEncoding::linear,
                 RendererConfig{}
             };
-            check_resource_preparation(renderer, device, authoring);
+            if (descriptors_only)
+                check_material_descriptors(renderer, device);
+            else
+            {
+                check_resource_preparation(renderer, device, authoring);
+                check_actor_hit_resources(renderer, device, authoring);
+            }
         } else if (point_receiver_only)
             check_point_shadow_receiver(device, authoring, atlas, captures);
         else if (native_hdr)

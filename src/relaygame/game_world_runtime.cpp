@@ -10,6 +10,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/diagnostics_publication_policy.h"
+#include "relaygame/enemy_navigation.h"
 #include "relaygame/player_controller_config.h"
 #include "relaygame/usable_interaction.h"
 #include "relaygame/world_inspector.h"
@@ -75,6 +76,7 @@ namespace RelayGame
         authoring_warnings_ = std::move(session.authoring_warnings);
         containment_ = std::move(session.containment);
         enemies_ = std::move(session.enemies);
+        prepare_enemy_navigation(world_query(), enemies_);
         enemy_blockers_.reserve(enemies_.size() + 1);
         loaded_level_turrets_ = std::move(session.combat.turrets);
         loaded_level_hazards_ = std::move(session.combat.hazards);
@@ -108,6 +110,8 @@ namespace RelayGame
         RelayCore::gameplay::reset_player_combat_state(combat_state_.player);
         transient_hud_event_ = {};
         damage_numbers_.clear();
+        bullet_impact_marks_.clear();
+        bullet_impact_marks_.reserve(256);
         inspector_state_ = {};
         mission_runtime_.reset(loaded_mission_definition_);
         interaction_state_.use_binding_label =
@@ -171,6 +175,7 @@ namespace RelayGame
     void GameWorldRuntime::activate_level_session(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("GameWorldRuntime::activate_level_session");
+        services.renderer().reset_render_history();
         services.audio_system().stop_one_shots();
         player_controller_.apply_camera(services.camera());
         try
@@ -203,7 +208,9 @@ namespace RelayGame
         audio_state_.initialized = services.audio_system().is_initialized();
         audio_state_.master_volume = services.audio_system().config().master_volume;
         audio_state_.has_active_loop = services.audio_system().has_active_loop();
-        audio_state_.active_loop_path = services.audio_system().current_loop_path();
+        const auto& loop_path = services.audio_system().current_loop_path();
+        if (audio_state_.active_loop_path != loop_path)
+            audio_state_.active_loop_path = loop_path;
         audio_state_.active_loop_volume = services.audio_system().current_loop_volume();
     }
 
@@ -588,6 +595,24 @@ namespace RelayGame
                 }
         if (hit_guardian)
             add_number(containment_->state.position + glm::vec3{0, 3.9F, 0}, 0);
+        for (std::size_t i = 0; i < attack.ray_count; ++i)
+        {
+            const auto& ray = attack.rays[i];
+            if (!ray.fired || !ray.world_impact
+                || ray.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Player
+                || ray.world_impact->object.kind == RelayCore::physics::WorldObjectKind::Enemy
+                || (containment_ && ray.world_impact->object == containment_->collider().object))
+                continue;
+            auto hit = *ray.world_impact;
+            if (hit.object.kind == RelayCore::physics::WorldObjectKind::Door)
+            {
+                const auto& door = doors_.at(hit.object.index);
+                hit.position -= door.open_offset * door.open_fraction;
+            }
+            if (bullet_impact_marks_.size() == 256)
+                bullet_impact_marks_.erase(bullet_impact_marks_.begin());
+            bullet_impact_marks_.push_back({hit, selected_weapon_ == PlayerWeapon::Shotgun ? 0.014F : 0.032F});
+        }
         return attack;
     }
 
@@ -816,6 +841,10 @@ namespace RelayGame
         );
         if (result.restored)
         {
+            for (auto& turret : combat_state_.turrets)
+                turret.hit_feedback = {};
+            for (auto& enemy : enemies_)
+                enemy.hit_feedback = {};
             if (containment_)
                 containment_->state = *snapshot.containment;
             selected_weapon_ = snapshot.selected_weapon;
@@ -826,6 +855,7 @@ namespace RelayGame
             (void) player_controller_.consume_weapon_selection();
             transient_hud_event_ = {};
             damage_numbers_.clear();
+            bullet_impact_marks_.clear();
             interaction_state_.last_event = {};
             interaction_state_.fired_triggers = 0;
             combat_state_.active_hazard_contacts = 0;
@@ -990,6 +1020,7 @@ namespace RelayGame
             actions.weapon_selection.reset();
             if (advance_dead_player_state(sim_delta_seconds))
             {
+                services.renderer().reset_render_history();
                 play_gameplay_audio(services, audio_cues_.player_respawn);
                 push_transient_hud_event(
                     "Вы у входа. Выполненные задачи и состояние врагов сохранены.",
@@ -1000,7 +1031,7 @@ namespace RelayGame
             return;
         }
 
-        const RelayGame::MissionStatus mission_before = mission_runtime_.status();
+        const auto mission_before = mission_runtime_.snapshot();
         const bool mission_was_complete = mission_before.completed;
         RelayCore::gameplay::collect_blocking_doors(doors_, player_controller_.player_bounds(), dynamic_blockers_);
         for (const auto& enemy : enemies_)
@@ -1126,6 +1157,10 @@ namespace RelayGame
 
         if (!combat_state_.player.alive)
         {
+            for (auto& turret : combat_state_.turrets)
+                turret.hit_feedback = {};
+            for (auto& enemy : enemies_)
+                enemy.hit_feedback = {};
             services.audio_system().stop_one_shots();
             play_gameplay_audio(services, audio_cues_.player_hurt);
             push_transient_hud_event(
@@ -1142,12 +1177,13 @@ namespace RelayGame
             activated_target_ids_,
             signaled_target_ids_
         );
-        const RelayGame::MissionStatus mission_after = mission_runtime_.status();
+        const auto mission_after = mission_runtime_.snapshot();
         if (!mission_was_complete && mission_after.completed)
         {
             play_gameplay_audio(services, audio_cues_.mission_complete);
+            const auto status = mission_runtime_.status();
             push_transient_hud_event(
-                mission_after.title.empty() ? std::string{"Задача выполнена"} : mission_after.title,
+                status.title.empty() ? std::string{"Задача выполнена"} : status.title,
                 RelayCore::render::HudEventStyle::Success,
                 2.6F
             );
@@ -1155,7 +1191,7 @@ namespace RelayGame
                    && (!mission_before.active || mission_after.current_step != mission_before.current_step))
         {
             RELAYCORE_PROFILE_FUNCTION();
-            push_mission_status_event(mission_after, RelayCore::render::HudEventStyle::Neutral, 2.4F);
+            push_mission_status_event(mission_runtime_.status(), RelayCore::render::HudEventStyle::Neutral, 2.4F);
         }
     }
 

@@ -72,9 +72,16 @@ namespace RelayGame
         glm::vec3 editor_camera_position_{};
         glm::vec2 editor_camera_angles_{};
         Screen paused_screen_ = Screen::Playing;
+        void update_frame_context(RelayCore::EngineServices& services);
+        void log_effective_settings(RelayCore::EngineServices& services);
+        std::optional<PlayerSettings> logged_settings_;
+        int logged_width_ = 0, logged_height_ = 0;
+        RelayCore::render::ColorPipelineMode logged_pipeline_{};
+        std::string_view logged_presentation_mode_;
+        bool campaign_completion_logged_ = false;
         void initialize_progress();
         auto save_progress() noexcept -> bool;
-        void begin_finale(RelayCore::EngineServices& services);
+        void begin_finale(RelayCore::EngineServices& services, bool restored = false);
         void update_finale(float dt, RelayCore::EngineServices& services);
         void draw_finale(RelayCore::EngineServices& services);
         std::filesystem::path user_data_directory_;

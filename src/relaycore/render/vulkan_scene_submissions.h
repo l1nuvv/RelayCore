@@ -19,16 +19,19 @@ namespace RelayCore::render
         VulkanSceneSubmissions(const VulkanSceneSubmissions&) = delete;
         auto operator=(const VulkanSceneSubmissions&) -> VulkanSceneSubmissions& = delete;
 
+        // Optional compute commands execute before scene draws under the same completion token.
         [[nodiscard]] auto submit(
             VkCommandBuffer commands,
             VkSemaphoreSubmitInfo dependency = {},
             VkSemaphoreSubmitInfo extra_signal = {},
-            VkFence fence = VK_NULL_HANDLE
+            VkFence fence = VK_NULL_HANDLE,
+            VkCommandBuffer before = VK_NULL_HANDLE
         ) -> VulkanSceneCompletion;
         [[nodiscard]] auto last_submission() const noexcept -> VulkanSceneCompletion;
         [[nodiscard]] auto completed() const -> uint64_t;
         void wait(VulkanSceneCompletion completion) const;
         void collect();
+        [[nodiscard]] auto pending_retirements() const noexcept -> size_t;
         // The supplied final scene use must depend on the resource's upload.
         void retire(VulkanBuffer&& buffer, VulkanSceneCompletion last_use);
         void retire(VulkanTexture&& texture, VulkanSceneCompletion last_use);

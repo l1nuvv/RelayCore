@@ -7,8 +7,12 @@ description: Inspect and validate Blender assets technically and visually. Use f
 
 For this repository, read [RelayCore integration](../relaycore-blender/SKILL.md) once per task. It defines project constraints, standalone execution and the installed specialist set.
 
-Read [the shared execution guidance](references/astra-workflow.md) once per task
-for autonomous decisions, evidence cadence, and long-task continuity.
+Load only needed sections of [the shared execution guidance](references/astra-workflow.md):
+`Gather references that answer modeling questions` for new subjects or substantial
+shape repairs, `Preserve continuity during long work` for long/interrupted tasks,
+and other sections only for a concrete workflow question. Copies across installed
+specialists are identical; reuse already-read sections once per task. Routine edits
+do not require the full guide; model/benchmark guidance is only for requested comparisons.
 
 Validate both the authored scene and the exported deliverable. A clean export or low triangle count is not proof of visual or functional quality.
 

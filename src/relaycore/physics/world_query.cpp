@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <glm/vector_relational.hpp>
 
 namespace RelayCore::physics
 {
@@ -26,6 +27,41 @@ namespace RelayCore::physics
     {
         auto result = *this;
         result.colliders_[2] = actors;
+        return result;
+    }
+
+    auto WorldQuery::static_only() const noexcept -> WorldQuery
+    {
+        auto result = *this;
+        result.colliders_[1] = {};
+        result.colliders_[2] = {};
+        return result;
+    }
+
+    auto WorldQuery::dynamic_overlap(const Aabb& bounds) const -> bool
+    {
+        for (const auto colliders : {colliders_[1], colliders_[2]})
+            for (const auto& collider : colliders)
+                if (overlaps(bounds, collider.bounds, 0))
+                    return true;
+        return false;
+    }
+
+    auto
+    WorldQuery::local_static(const Aabb& bounds, std::vector<WorldCollider>& candidates, bool* remained_in_bounds) const
+        -> WorldQuery
+    {
+        candidates.clear();
+        candidates.reserve(colliders_[0].size());
+        for (const auto& collider : colliders_[0])
+            if (overlaps(bounds, collider.bounds, 0))
+                candidates.push_back(collider);
+        auto result = *this;
+        result.local_static_colliders_ = candidates;
+        result.local_static_bounds_ = bounds;
+        result.remained_in_local_bounds_ = remained_in_bounds;
+        if (remained_in_bounds)
+            *remained_in_bounds = true;
         return result;
     }
 
@@ -94,18 +130,40 @@ namespace RelayCore::physics
                 hit = true;
             }
         }
-        for (const auto colliders : colliders_)
+        auto actor = make_player_aabb(position, config.radius, config.height);
+        const auto inside_local_bounds = [&] {
+            return glm::all(glm::greaterThanEqual(actor.mins, local_static_bounds_->mins))
+                   && glm::all(glm::lessThanEqual(actor.maxs, local_static_bounds_->maxs));
+        };
+        const bool local = local_static_bounds_ && inside_local_bounds();
+        if (local_static_bounds_ && !local && remained_in_local_bounds_)
+            *remained_in_local_bounds_ = false;
+        for (std::size_t group = 0; group < colliders_.size(); ++group)
+        {
+            const auto colliders = group == 0 && local ? local_static_colliders_ : colliders_[group];
             for (const auto& collider : colliders)
             {
                 const auto& solid = collider.bounds;
-                if (!overlaps(make_player_aabb(position, config.radius, config.height), solid, config.epsilon))
+                if (!overlaps(actor, solid, config.epsilon))
                     continue;
                 hit = true;
                 if (delta > 0)
                     position[axis] = std::min(position[axis], solid.mins[axis] - max_offsets[axis] - config.epsilon);
                 else if (delta < 0)
                     position[axis] = std::max(position[axis], solid.maxs[axis] - min_offsets[axis] + config.epsilon);
+                actor = make_player_aabb(position, config.radius, config.height);
+                if (group == 0 && local && !inside_local_bounds())
+                {
+                    if (remained_in_local_bounds_)
+                        *remained_in_local_bounds_ = false;
+                    auto full = *this;
+                    full.local_static_bounds_.reset();
+                    return full.move_axis(start_position, config, axis, delta);
+                }
             }
+        }
+        if (local_static_bounds_ && remained_in_local_bounds_ && !inside_local_bounds())
+            *remained_in_local_bounds_ = false;
         return {.position_axis = position[axis], .hit = hit};
     }
 } // namespace RelayCore::physics

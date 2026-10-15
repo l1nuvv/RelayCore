@@ -4,6 +4,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,7 +50,7 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             progress_message_ = std::string{"Прогресс не сохранён: "} + error.what();
-            RelayCore::log::error("{}", progress_message_);
+            RelayCore::log::error("[gameplay] {}", progress_message_);
             return false;
         }
     }
@@ -58,6 +59,13 @@ namespace RelayGame
     {
         if (screen_ != Screen::MainMenu)
             return;
+        if (continuing && !disk_save_)
+            return;
+        const auto destination = continuing                ? disk_save_->world.level_path
+                                 : new_game_level_.empty() ? services.config().gameplay.level_path
+                                                           : RelayCore::core::asset_path(new_game_level_).string();
+        detail::LevelTransitionDiagnostics
+            transition{services, runtime_, continuing ? "continue" : "new_game", destination};
         std::vector<SavedGame> initial_history;
         try
         {
@@ -66,8 +74,6 @@ namespace RelayGame
                 save_player_settings(settings_path_, settings_);
                 settings_dirty_ = false;
             }
-            if (continuing && !disk_save_)
-                return;
             if (continuing)
                 initial_history = disk_save_->visited_levels;
             const LevelSessionBuilder builder{services.config().gameplay};
@@ -82,13 +88,16 @@ namespace RelayGame
                 continuing ? &*disk_save_ : nullptr
             );
             install_level_session(std::move(prepared), services, window_focused_);
+            transition.succeeded();
         } catch (const std::exception& error)
         {
             progress_message_ = error.what();
-            RelayCore::log::error("Begin episode: {}", error.what());
+            transition.failed(error.what());
+            RelayCore::log::error("[gameplay] Begin episode: {}", error.what());
             return;
         }
 
+        campaign_completion_logged_ = false;
         visited_levels_ = std::move(initial_history);
         played_seconds_ = continuing ? disk_save_->played_seconds : 0;
         flashlight_on_ = continuing && disk_save_->flashlight;
@@ -105,12 +114,12 @@ namespace RelayGame
         {
             runtime_.publish_diagnostics(services.renderer());
             if (runtime_.mission_status().completed && !runtime_.has_completion_exit())
-                begin_finale(services);
+                begin_finale(services, continuing);
             else if (!continuing)
                 static_cast<void>(save_progress());
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Episode started, but presentation update failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Episode started, but presentation update failed: {}", error.what());
         }
     }
 
@@ -148,8 +157,22 @@ namespace RelayGame
         show_settings_ = false;
     }
 
-    void DemoGame::begin_finale(RelayCore::EngineServices& services)
+    void DemoGame::begin_finale(RelayCore::EngineServices& services, bool restored)
     {
+        if (screen_ == Screen::Finale || screen_ == Screen::Complete)
+            return;
+        if (!editor_return_ && !development_sandbox_ && !campaign_completion_logged_
+            && std::filesystem::path(runtime_.level_path()).lexically_normal()
+                   == RelayCore::core::asset_path("levels/containment_loop.toml").lexically_normal())
+        {
+            RelayCore::log::info(
+                "[gameplay] Campaign {}: map='{}' played_seconds={:.3f}",
+                restored ? "completion restored" : "completed",
+                runtime_.level_path(),
+                played_seconds_
+            );
+            campaign_completion_logged_ = true;
+        }
         change_screen(runtime_.ending() ? Screen::Finale : Screen::Complete, services);
         finale_time_ = 0;
         finale_start_position_ = services.camera().position();

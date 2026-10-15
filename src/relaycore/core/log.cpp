@@ -11,6 +11,7 @@
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_stdinc.h>
 #include <algorithm>
+#include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <memory>
@@ -321,15 +322,15 @@ namespace RelayCore::log
             }
 
             log::info("===== Session {} start =====", g_session_id);
-            log::info("Logger initialized");
+            log::debug("Logger initialized");
             if (!file_sink_error.empty())
             {
                 log::warn("File logging disabled; continuing with console sink: {}", file_sink_error);
             } else if (file_sinks_requested)
             {
-                log::info("Resolved logs directory: {}", resolved_logs_dir.string());
+                log::debug("Resolved logs directory: {}", resolved_logs_dir.string());
             }
-            log::info("Logger name: {}", config.logger_name);
+            log::debug("Logger name: {}", config.logger_name);
             log::info("Log level: {}", spdlog::level::to_string_view(config.level));
             if (!g_run_log_path.empty())
             {
@@ -375,6 +376,32 @@ namespace RelayCore::log
             throw std::runtime_error("RelayCore logger is not initialized");
         }
         return *g_logger;
+    }
+
+    void error_noexcept(const char* operation, const char* detail) noexcept
+    {
+        try
+        {
+            std::shared_ptr<spdlog::logger> target;
+            {
+                std::lock_guard<std::mutex> lock(g_logger_mutex);
+                target = g_logger;
+            }
+            if (target)
+            {
+                target->error("{}: {}", operation, detail);
+                return;
+            }
+        } catch (...)
+        {}
+        std::fprintf(stderr, "%s: %s\n", operation, detail);
+    }
+
+    void error_noexcept(const char* operation, const int result) noexcept
+    {
+        char detail[48]{};
+        std::snprintf(detail, sizeof(detail), "VkResult %d", result);
+        error_noexcept(operation, detail);
     }
 
     void flush()

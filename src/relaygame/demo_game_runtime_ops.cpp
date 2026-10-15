@@ -6,6 +6,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 #include <exception>
 #include <stdexcept>
@@ -30,7 +31,8 @@ namespace RelayGame::detail
         )
         {
             RelayCore::log::info(
-                "DemoGame loaded level {}: {} solids, {} entities, {} render chunks, {} triangles, {} doors, {} "
+                "[gameplay] DemoGame loaded level {}: {} solids, {} entities, {} render chunks, {} triangles, {} "
+                "doors, {} "
                 "triggers, {} usables",
                 services.renderer().runtime_diagnostics().level_name.empty()
                     ? std::string{"<unknown>"}
@@ -69,6 +71,18 @@ namespace RelayGame::detail
             RelayCore::core::EngineConfig reloaded_config =
                 RelayCore::core::load_engine_config(services.config().source_path);
             reloaded_config.renderer.hdr_enabled = services.renderer().config().hdr_enabled;
+            reloaded_config.renderer.bloom_enabled = services.renderer().config().bloom_enabled;
+            reloaded_config.renderer.ssao_enabled = services.renderer().config().ssao_enabled;
+            reloaded_config.renderer.ssr_enabled = services.renderer().config().ssr_enabled;
+            reloaded_config.renderer.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            reloaded_config.renderer.ssgi_quality = services.renderer().config().ssgi_quality;
+            reloaded_config.renderer.reflection_quality = services.renderer().config().reflection_quality;
+            reloaded_config.renderer.dof_quality = services.renderer().config().dof_quality;
+            reloaded_config.renderer.motion_blur_quality = services.renderer().config().motion_blur_quality;
+            reloaded_config.renderer.taa_enabled = services.renderer().config().taa_enabled;
+            reloaded_config.renderer.render_scale = services.renderer().config().render_scale;
+            reloaded_config.renderer.dynamic_resolution_enabled =
+                services.renderer().config().dynamic_resolution_enabled;
             const RelayCore::render::RenderAuthoringConfig reloaded_authoring_config =
                 RelayCore::render::load_default_render_authoring_config();
 
@@ -151,7 +165,7 @@ namespace RelayGame::detail
             publish_iteration_diagnostics(state, services);
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Level loaded, but diagnostics publication failed: {}", error.what());
+            RelayCore::log::error("[gameplay] Level loaded, but diagnostics publication failed: {}", error.what());
         }
     }
 
@@ -174,9 +188,10 @@ namespace RelayGame::detail
     auto reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::reload_live_content");
+        LevelTransitionDiagnostics transition{services, state.runtime, "live_reload", state.runtime.level_path()};
         const std::string level_name = services.renderer().runtime_diagnostics().level_name;
         RelayCore::log::info(
-            "Reloading live content for {}",
+            "[gameplay] Reloading live content for {}",
             level_name.empty() ? std::string{"<unknown>"} : level_name
         );
 
@@ -204,12 +219,14 @@ namespace RelayGame::detail
             services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
             state.runtime.publish_diagnostics(services.renderer());
             publish_iteration_diagnostics(state, services);
-            RelayCore::log::error("Live content reload failed: {}", error.what());
+            transition.failed(error.what());
+            RelayCore::log::error("[gameplay] Live content reload failed: {}", error.what());
             return false;
         }
 
         replace_level_session(state, std::move(staged.session), services);
         services.commit_live_reload_config(std::move(staged.config));
+        transition.succeeded();
         try
         {
             publish_reload_result(
@@ -222,11 +239,14 @@ namespace RelayGame::detail
                 )
             );
             publish_iteration_diagnostics(state, services);
-            RelayCore::log::info("{}", state.iteration_diagnostics.last_reload_summary);
+            RelayCore::log::info("[gameplay] {}", state.iteration_diagnostics.last_reload_summary);
             log_level_loaded(services, state.runtime, state.world_scene);
         } catch (const std::exception& error)
         {
-            RelayCore::log::error("Live content reloaded, but diagnostics publication failed: {}", error.what());
+            RelayCore::log::error(
+                "[gameplay] Live content reloaded, but diagnostics publication failed: {}",
+                error.what()
+            );
         }
         return true;
     }

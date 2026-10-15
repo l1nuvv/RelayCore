@@ -1,5 +1,7 @@
 #include "relaygame/enemy_navigation.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
@@ -10,26 +12,65 @@ namespace RelayGame
     namespace
     {
         constexpr float route_arrival_distance = .12F;
+        constexpr float route_reach_tolerance = .03F;
+        constexpr RelayCore::physics::CollisionConfig route_collision{
+            .radius = .42F,
+            .height = .95F,
+            .step_height = .15F
+        };
 
-        auto clear_segment(RelayCore::physics::WorldQuery world, glm::vec3 from, glm::vec3 to) -> bool
+        auto segment_bounds(glm::vec3 from, glm::vec3 to) -> RelayCore::physics::Aabb
+        {
+            // Include every accepted position, step raise and downward ground/step probe.
+            constexpr float margin = route_reach_tolerance + route_collision.epsilon;
+            constexpr float radius = route_collision.radius + margin;
+            constexpr glm::vec3 below{
+                radius,
+                route_collision.step_height + route_collision.ground_probe_distance + margin,
+                radius
+            };
+            constexpr glm::vec3 above{radius, route_collision.height + route_collision.step_height + margin, radius};
+            return {glm::min(from, to) - below, glm::max(from, to) + above};
+        }
+
+        struct SegmentReachability {
+            bool clear = false;
+            bool reusable = true;
+        };
+
+        auto clear_segment(
+            RelayCore::physics::WorldQuery world,
+            glm::vec3 from,
+            glm::vec3 to,
+            std::vector<RelayCore::physics::WorldCollider>* candidates
+        ) -> SegmentReachability
         {
             // These authored routes are flat. Check the entire footprint and floor, not just eye LOS.
             if (std::abs(from.y - to.y) > .08F || glm::distance(from, to) > 32)
-                return false;
-            const RelayCore::physics::CollisionConfig collision{.radius = .42F, .height = .95F, .step_height = .15F};
+                return {};
+            SegmentReachability result;
+            const auto local_world =
+                candidates ? world.local_static(segment_bounds(from, to), *candidates, &result.reusable) : world;
             auto position = from;
             const auto count = std::max(1, static_cast<int>(std::ceil(glm::distance(from, to) / .35F)));
             for (int i = 1; i <= count; ++i)
             {
                 const auto desired = glm::mix(from, to, static_cast<float>(i) / static_cast<float>(count));
-                const auto move =
-                    RelayCore::physics::move_and_collide(world, position, desired - position, 1, collision, true);
-                if (glm::distance(move.position, desired) > .03F
-                    || !RelayCore::physics::probe_ground(world, move.position, collision))
-                    return false;
+                const auto move = RelayCore::physics::move_and_collide(
+                    local_world,
+                    position,
+                    desired - position,
+                    1,
+                    route_collision,
+                    true
+                );
+                if (glm::distance(move.position, desired) > route_reach_tolerance
+                    || !RelayCore::physics::probe_ground(local_world, move.position, route_collision))
+                    return result;
                 position = move.position;
             }
-            return true;
+            result.clear = true;
+            return result;
         }
 
         void plan_route(
@@ -39,6 +80,7 @@ namespace RelayGame
             float target_eye_height
         )
         {
+            RELAYCORE_PROFILE_ZONE_N("Enemy navigation route plan");
             enemy.route_count = enemy.route_cursor = 0;
             enemy.route_goal = goal;
             enemy.route_replan_seconds = .5F;
@@ -67,7 +109,20 @@ namespace RelayGame
                 for (std::size_t next = 1; next < count; ++next)
                 {
                     const auto cost = distance[current] + glm::distance(points[current], points[next]);
-                    if (!visited[next] && cost < distance[next] && clear_segment(world, points[current], points[next]))
+                    if (visited[next] || cost >= distance[next])
+                        continue;
+                    const bool cached = enemy.route_links_prepared && current > 0 && current < end && next < end
+                                        && (enemy.static_route_known[current - 1] & (1U << (next - 1))) != 0
+                                        && !world.dynamic_overlap(segment_bounds(points[current], points[next]));
+                    const bool clear = cached ? (enemy.static_route_links[current - 1] & (1U << (next - 1))) != 0
+                                              : clear_segment(
+                                                    world,
+                                                    points[current],
+                                                    points[next],
+                                                    enemy.route_links_prepared ? &enemy.route_colliders : nullptr
+                                                )
+                                                    .clear;
+                    if (clear)
                     {
                         distance[next] = cost;
                         previous[next] = static_cast<int>(current);
@@ -107,6 +162,36 @@ namespace RelayGame
             std::reverse(enemy.route.begin(), enemy.route.begin() + static_cast<std::ptrdiff_t>(enemy.route_count));
         }
     } // namespace
+
+    void prepare_enemy_navigation(RelayCore::physics::WorldQuery world, std::span<RuntimeEnemy> enemies)
+    {
+        RELAYCORE_PROFILE_ZONE_N("Enemy navigation prepare links");
+        const auto static_world = world.static_only();
+        for (auto& enemy : enemies)
+        {
+            enemy.static_route_links.fill(0);
+            enemy.static_route_known.fill(0);
+            enemy.route_links_prepared = false;
+            for (std::size_t from = 0; from < enemy.route_points.size(); ++from)
+                for (std::size_t to = 0; to < enemy.route_points.size(); ++to)
+                    if (from != to)
+                    {
+                        const auto segment = clear_segment(
+                            static_world,
+                            enemy.route_points[from],
+                            enemy.route_points[to],
+                            &enemy.route_colliders
+                        );
+                        if (segment.reusable)
+                        {
+                            enemy.static_route_known[from] |= static_cast<std::uint16_t>(1U << to);
+                            if (segment.clear)
+                                enemy.static_route_links[from] |= static_cast<std::uint16_t>(1U << to);
+                        }
+                    }
+            enemy.route_links_prepared = true;
+        }
+    }
 
     auto enemy_route_velocity(
         RelayCore::physics::WorldQuery world,

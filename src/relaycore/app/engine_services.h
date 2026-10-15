@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "relaycore/app/frame_diagnostics.h"
 #include "relaycore/core/engine_config.h"
 
 namespace RelayCore
@@ -113,7 +114,13 @@ namespace RelayCore
          */
         [[nodiscard]] auto is_running() const noexcept -> bool;
 
+        [[nodiscard]] auto frame_diagnostics() noexcept -> FrameDiagnostics&
+        {
+            return frame_diagnostics_;
+        }
+
     private:
+        FrameDiagnostics frame_diagnostics_;
         core::EngineConfig* config_ = nullptr; ///< Configuration backing the current runtime.
         Window* window_ = nullptr;             ///< Window subsystem view.
         Renderer* renderer_ = nullptr;         ///< Renderer subsystem view.

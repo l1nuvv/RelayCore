@@ -10,7 +10,7 @@
 
 - For gameplay development, project direction, or milestone work, read the introduction, status table and selected ticket in `docs/PLAYABLE_SLICE_ROADMAP.md`. It is the active development queue; historical audits and plans retained in Git are evidence to recheck, not an automatic task list. Follow the user's requested scope, and update the roadmap task status and verification evidence when carrying out its tickets. The roadmap alone does not authorize implementation.
 - For changes that materially affect engine/world architecture, asset pipeline contracts, rendering/physics capabilities, or Source/Source 2 compatibility, read the relevant sections of `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. It is the long-term architecture/capability reference, not an automatic task queue.
-- For Vulkan/backend migration work, also read `docs/VULKAN_MIGRATION_PLAN.md` and operate only within the requested phase/gate. Do not mix parity migration with new renderer architecture unless the phase explicitly requires it.
+- For current renderer development and VK14 capabilities, read the selected milestone and acceptance gates in `docs/RENDERER_MODERNIZATION_PLAN.md`; operate only within the requested scope. Use `docs/VULKAN_MIGRATION_PLAN.md` only for completed OpenGL → Vulkan migration, historical parity or decision rationale. Runtime GPU resources/lifetime, device/presentation and synchronization ownership belong to `docs/ARCHITECTURE.md`; material/light/HDR/probe authoring belongs to `docs/RENDERING.md`; verification procedures belong to the relevant `docs/DEVELOPMENT.md` section and current CMake/CTest registrations.
 - For dependency selection, replacement, addition/removal, version/baseline changes, or third-party subsystem foundations, read `docs/DEPENDENCY_STACK.md`. It records approved responsibilities and staged integration; it is not permission to add future dependencies before their owning milestone.
 
 - For build/runtime setup, graphics diagnostics, profiling or native asset production, read only the relevant section of `docs/DEVELOPMENT.md`. For editor/map transitions use `docs/EDITOR_AND_CAMPAIGN.md`; for native collision products use `docs/COLLISION_ASSETS.md`; for requested packaging/release/update work use `docs/UPDATES.md`.
@@ -20,6 +20,9 @@
 - Start with the files named by the task, their nearest tests, and direct call sites.
 - Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
 - Treat current source, CMake presets, tests, runtime output, and profiler captures as primary evidence. README/comments are secondary and may be stale.
+- Use `docs/README.md` to select the owning document; read only relevant sections. Gameplay/content statuses live in `docs/PLAYABLE_SLICE_ROADMAP.md`, detailed tickets in `docs/tickets/`, and VK14 statuses/evidence in the renderer plan and `docs/renderer/`.
+- Keep a fact, contract, status or procedure in one owning document. Overview/index/handoff files should link to it; put dated commands, metrics and failures in the selected ticket/report, not repeated summaries. Historical plans in `docs/history/` are evidence, not current instructions.
+- When moving documentation, update relative links and anchors, preserve useful old section redirects, and check local links. Do not turn shortening into removal of acceptance criteria, decisions, provenance or verification limits.
 - Reuse evidence already gathered in the current task. Do not reread unchanged large files or rerun an expensive command without a reason.
 - Prefer targeted search (`rg`, specific paths, specific symbols) over broad dumps. Summarize large logs; quote only the lines needed to establish the cause.
 - Separate confirmed facts, likely risks, hypotheses, and taste. Do not convert a suspicion into a patch without evidence.
@@ -60,7 +63,7 @@
 
 ## Authored content and assets
 
-- For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
+- For visual/art decisions, use `.agents/skills/relaycore-art-direction/SKILL.md` and the authoritative `docs/ART_DIRECTION.md`. For source/product/export/staging work, use `.agents/skills/relaycore-assets/SKILL.md` and the current workflow in `docs/MODEL_ASSETS.md`; material/HDR/probe authoring is in `docs/RENDERING.md`. Match nearby authored conventions; proposed scenes in reference documents do not authorize content or pipeline work.
 - For Blender/Python modeling, use `.agents/skills/relaycore-blender/SKILL.md` and its installed specialist skills. Review references, proportions, construction, materials and multiple rendered views; a primitive blockout is an intermediate stage unless explicitly requested as the deliverable. Project art direction and native importer constraints take precedence over generic Blender workflows.
 - For external textures, materials, HDRIs and models, follow `docs/ASSET_SOURCES.md` for source sites, task-specific search routes and adaptation checks. The owner intends a private project; do not turn licensing audits or public-release preparation into routine asset-work gates.
 
@@ -78,6 +81,8 @@
 ## Git and handoff
 
 - Inspect the diff before finishing. Keep it scoped and reviewable.
-- Do not use `git add .`; stage explicit paths only when staging is requested.
-- Do not commit, push, rewrite history, or modify unrelated working-tree changes unless asked.
+- After completing each milestone, feature, fix, or other implementation task, automatically stage and commit its changes without asking for additional permission. Run the relevant verification first; if verification is blocked, report the blocker and do not imply that checks passed.
+- Structure commits around coherent, independently reviewable changes. Use a concise imperative subject naming the affected area and outcome; add a body explaining rationale and verification when useful. Do not mix unrelated work into a commit.
+- Do not use `git add .`; stage explicit task-owned paths or hunks. Preserve unrelated working-tree changes unless the user explicitly asks to include them.
+- Do not push or rewrite history unless asked. Automatic local commits are the default unless the user explicitly requests otherwise.
 - Final handoff should be compact: result, changed paths, checks actually run, and any remaining blocker/risk. Do not paste full logs or repeat the prompt.

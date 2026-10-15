@@ -1796,7 +1796,7 @@ TEST_CASE("usable spatial index narrows focus candidates")
         RuntimeUsable{.label = "near", .target = "door_0", .origin = {0.0F, 1.0F, -1.0F}, .use_radius = 3.0F},
         RuntimeUsable{.label = "far", .target = "door_1", .origin = {32.0F, 1.0F, -1.0F}, .use_radius = 3.0F},
     };
-    RelayCore::gameplay::InteractionSpatialIndex index{};
+    RelayCore::gameplay::UsableSpatialIndex index{};
     std::vector<std::uint32_t> candidates;
 
     RelayCore::gameplay::rebuild_usable_spatial_index(usables, index);
@@ -1809,6 +1809,52 @@ TEST_CASE("usable spatial index narrows focus candidates")
         RelayCore::gameplay::find_focused_usable({0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, -1.0F}, usables, candidates);
 
     CHECK(result.usable_index == 0);
+}
+
+TEST_CASE("usable spatial index invalidates bounds and membership without changing focus rules")
+{
+    std::vector<RuntimeUsable> usables{{.origin = {0, 1, 0}, .use_radius = .5F}};
+    RelayCore::gameplay::UsableSpatialIndex index;
+    std::vector<std::uint32_t> candidates;
+    const auto query = [&](float x) {
+        RelayCore::gameplay::rebuild_usable_spatial_index(usables, index);
+        RelayCore::gameplay::query_usable_candidates(index, {x, 1, 0}, .1F, candidates);
+    };
+    for (int repeat = 0; repeat < 8; ++repeat)
+    {
+        query(0);
+        REQUIRE(candidates == std::vector<std::uint32_t>{0});
+    }
+
+    usables[0].origin.x = 20;
+    query(0);
+    CHECK(candidates.empty());
+    query(20);
+    REQUIRE(candidates == std::vector<std::uint32_t>{0});
+    usables[0].enabled = false;
+    query(20);
+    CHECK(candidates.empty());
+    usables[0].enabled = true;
+    usables[0].use_radius = 10;
+    query(29);
+    REQUIRE(candidates == std::vector<std::uint32_t>{0});
+
+    usables[0].has_focus_bounds = true;
+    usables[0].focus_bounds = {{40, 0, -1}, {42, 2, 1}};
+    query(20);
+    CHECK(candidates.empty());
+    query(41);
+    REQUIRE(candidates == std::vector<std::uint32_t>{0});
+    usables.insert(usables.begin(), {.origin = {-20, 1, 0}, .use_radius = .5F});
+    query(41);
+    REQUIRE(candidates == std::vector<std::uint32_t>{1});
+
+    usables.clear();
+    query(41);
+    CHECK(candidates.empty());
+    usables.push_back({.origin = {0, 1, 0}, .use_radius = .5F});
+    query(0);
+    CHECK(candidates == std::vector<std::uint32_t>{0});
 }
 
 TEST_CASE("shipped test_room preserves authored interaction metadata")

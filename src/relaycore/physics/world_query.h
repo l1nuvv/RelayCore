@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace RelayCore
 {
@@ -82,6 +83,12 @@ namespace RelayCore::physics
             std::span<const WorldCollider> actors = {}
         ) noexcept;
         [[nodiscard]] auto with_actors(std::span<const WorldCollider> actors) const noexcept -> WorldQuery;
+        [[nodiscard]] auto static_only() const noexcept -> WorldQuery;
+        [[nodiscard]] auto dynamic_overlap(const Aabb& bounds) const -> bool;
+        // Borrows candidates and optional containment result; native meshes and dynamic blockers remain live.
+        [[nodiscard]] auto
+        local_static(const Aabb& bounds, std::vector<WorldCollider>& candidates, bool* remained_in_bounds = nullptr)
+            const -> WorldQuery;
 
         // Direction is unit length; distance and position use world units. Inside hits have a zero normal.
         [[nodiscard]] auto raycast(
@@ -98,5 +105,8 @@ namespace RelayCore::physics
     private:
         std::array<std::span<const WorldCollider>, 3> colliders_;
         const PhysicsWorld* physics_ = nullptr;
+        std::span<const WorldCollider> local_static_colliders_;
+        std::optional<Aabb> local_static_bounds_;
+        bool* remained_in_local_bounds_ = nullptr;
     };
 } // namespace RelayCore::physics

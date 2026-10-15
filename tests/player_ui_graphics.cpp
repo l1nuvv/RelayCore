@@ -41,8 +41,11 @@ namespace
         require(written, "Player UI capture failed");
     }
 } // namespace
-int main()
+int main(int argc, char** argv)
 {
+    const bool quality_integration = argc == 2 && std::string_view{argv[1]} == "--quality-presets";
+    if (argc != 1 && !quality_integration)
+        return 1;
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -52,6 +55,7 @@ int main()
     {
         auto config = RelayCore::core::load_default_engine_config();
         config.renderer.imgui.enabled = false;
+        config.renderer.descriptor_indexing = quality_integration;
         config.audio.enabled = false;
         config.window.width = 1280;
         config.window.height = 720;
@@ -60,6 +64,40 @@ int main()
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{config.renderer};
         renderer.initialize(window);
+        const auto check_prepared_fonts = [&] {
+            auto* context = Rml::GetContext("player");
+            auto* engine = Rml::GetFontEngineInterface();
+            const Rml::String language = "ru";
+            const Rml::TextShapingContext shaping{language};
+            const auto check = [&](const auto& self, Rml::Element* element) -> void {
+                if (const auto face = element->GetFontFaceHandle())
+                {
+                    const auto version = engine->GetVersion(face);
+                    const Rml::String text = "Ёжик: здоровье 97 / 100; ВОЗВРАЩЕНИЕ × — … −20 · Броня";
+                    engine->GetStringWidth(face, text, shaping);
+                    Rml::TexturedMeshList meshes;
+                    engine->GenerateString(
+                        context->GetRenderManager(),
+                        face,
+                        0,
+                        text,
+                        {},
+                        Rml::ColourbPremultiplied{255},
+                        1,
+                        shaping,
+                        meshes
+                    );
+                    require(engine->GetVersion(face) == version, "First-use Cyrillic/numbers rebuilt a prepared atlas");
+                }
+                for (int i = 0; i < element->GetNumChildren(); ++i)
+                    self(self, element->GetChild(i));
+            };
+            for (const char* name : {"hud", "menu", "finale"})
+                check(check, context->GetDocument(name));
+        };
+        check_prepared_fonts();
+        renderer.player_ui().prepare_fonts(1280, 720);
+        check_prepared_fonts();
         RelayCore::AudioSystem audio{config.audio};
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
@@ -164,7 +202,27 @@ int main()
             element->DispatchEvent("change", {});
             game.on_update({}, services);
         };
-        (void) draw("");
+        const auto branded_menu = draw("branding");
+        Rml::Rectanglef seal_bounds;
+        require(
+            Rml::ElementUtilities::GetBoundingBox(seal_bounds, control("seal"), Rml::BoxArea::Content),
+            "Brand image has no projected bounds"
+        );
+        const auto seal_pixel = [&](float x, float y) {
+            const auto point = seal_bounds.TopLeft() + seal_bounds.Size() * Rml::Vector2f{x / 128, y / 128};
+            const auto offset = (size_t(point.y) * branded_menu.width + size_t(point.x)) * 4;
+            return std::array{
+                branded_menu.pixels.at(offset),
+                branded_menu.pixels.at(offset + 1),
+                branded_menu.pixels.at(offset + 2)
+            };
+        };
+        const auto axis = seal_pixel(64, 16), aperture = seal_pixel(64, 60), gap = seal_pixel(64, 30);
+        require(axis[0] > 150 && axis[1] > 130 && axis[2] < 140, "Brand BMP did not render in the menu palette");
+        require(
+            aperture[0] + 70 < axis[0] && gap[0] + 70 < axis[0],
+            "Brand BMP lost its transparent counter or axis gap"
+        );
         for (const auto lost : {SDL_EVENT_WINDOW_FOCUS_LOST, SDL_EVENT_WINDOW_MINIMIZED})
         {
             auto* button = control("settings-button");
@@ -213,6 +271,8 @@ int main()
             require(SDL_SetWindowSize(window.handle(), size.x, size.y), "Player UI resize failed");
             SDL_PumpEvents();
             renderer.on_resize(size.x, size.y);
+            renderer.player_ui().prepare_fonts(size.x, size.y);
+            check_prepared_fonts();
             (void) draw("menu-" + std::to_string(size.x));
             require(control("new-game")->IsVisible(true), "Resize hid the main action");
         }
@@ -248,9 +308,90 @@ int main()
         change("volume", "0.35");
         change("fov", "82");
         change("sensitivity", "2.5");
+        const auto camera_position = renderer.camera().position();
+        for (const char* value : {"3", "1", "2", "3"})
+        {
+            change("graphics-preset", value);
+            control("graphics-preset")->ScrollIntoView();
+            (void) draw(std::string{"preset-"} + value);
+            const auto& active = renderer.config();
+            const bool enhanced = std::string_view{value} != "1";
+            const bool high = std::string_view{value} == "3";
+            require(
+                active.hdr_enabled == enhanced && active.bloom_enabled == enhanced && active.ssao_enabled == enhanced
+                    && active.taa_enabled == enhanced && active.ssr_enabled == high
+                    && active.volumetrics_enabled == high && active.ssgi_quality == (high ? 2 : 0)
+                    && active.reflection_quality == (high ? 2 : 0) && active.dof_quality == 0
+                    && active.motion_blur_quality == 0 && active.render_scale == 1
+                    && !active.dynamic_resolution_enabled,
+                "Graphics preset did not apply the complete effect configuration"
+            );
+            require(
+                active.descriptor_indexing == quality_integration,
+                "Graphics preset discarded the requested optional binding path"
+            );
+            require(
+                game.has_custom_ui() && !window.relative_mouse_mode() && renderer.camera().position() == camera_position
+                    && renderer.player_diagnostics().position == initial.position,
+                "Graphics preset disturbed the paused player"
+            );
+            require(
+                dynamic_cast<Rml::ElementFormControl*>(control("graphics-preset"))->GetValue() == value,
+                "Graphics preset selector did not reflect the active configuration"
+            );
+            click("save-settings");
+            const auto saved = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
+            require(
+                static_cast<int>(RelayGame::graphics_preset(saved)) == std::stoi(value) && saved.fov == 82
+                    && std::abs(saved.volume - .35F) < .001F,
+                "Graphics preset did not persist or changed player preferences"
+            );
+        }
+        change("bloom", "1");
+        change("ssao", "1");
+        change("ssr", "1");
+        change("volumetrics", "1");
+        change("ssgi-quality", "2");
+        change("reflection-quality", "1");
+        change("dof-quality", "1");
+        change("motion-blur-quality", "2");
+        change("taa", "1");
+        change("render-scale", "0.67");
+        change("dynamic-resolution", "1");
+        require(
+            renderer.config().hdr_enabled && renderer.config().bloom_enabled && renderer.config().ssao_enabled
+                && renderer.config().ssr_enabled && renderer.config().volumetrics_enabled
+                && renderer.config().taa_enabled && renderer.config().render_scale == .67F
+                && renderer.config().dynamic_resolution_enabled && renderer.config().ssgi_quality == 2
+                && renderer.config().reflection_quality == 1 && renderer.config().dof_quality == 1
+                && renderer.config().motion_blur_quality == 2,
+            "RML effect controls did not apply to the renderer"
+        );
         (void) draw("settings-adjusted");
+        require(
+            dynamic_cast<Rml::ElementFormControl*>(control("graphics-preset"))->GetValue() == "0",
+            "Manual graphics edits did not select Custom"
+        );
+        control("menu-panel")->SetScrollTop(control("menu-panel")->GetScrollHeight());
+        (void) draw("settings-effects");
         click("save-settings");
         const auto settings = RelayGame::load_player_settings(user_path / "player_settings.toml", {});
+        require(
+            settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.ssr_enabled
+                && settings.volumetrics_enabled && settings.taa_enabled && settings.render_scale == .67F
+                && settings.dynamic_resolution_enabled && settings.ssgi_quality == 2 && settings.reflection_quality == 1
+                && settings.dof_quality == 1 && settings.motion_blur_quality == 2,
+            "RML effect settings were not persisted"
+        );
+        change("hdr", "0");
+        require(
+            !renderer.config().hdr_enabled && !renderer.config().bloom_enabled && !renderer.config().ssr_enabled
+                && !renderer.config().taa_enabled && renderer.config().render_scale == 1
+                && !renderer.config().dynamic_resolution_enabled && renderer.config().ssgi_quality == 0
+                && renderer.config().reflection_quality == 0 && renderer.config().dof_quality == 0
+                && renderer.config().motion_blur_quality == 0,
+            "Selecting SDR retained HDR-only effects"
+        );
         std::cout << "Saved settings: volume=" << settings.volume << " fov=" << settings.fov
                   << " sensitivity=" << settings.sensitivity << '\n';
         require(

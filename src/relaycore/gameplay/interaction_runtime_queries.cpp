@@ -220,18 +220,46 @@ namespace RelayCore::gameplay
         }
     }
 
-    void rebuild_usable_spatial_index(const std::vector<RuntimeUsable>& usables, InteractionSpatialIndex& index)
+    void UsableSpatialIndex::rebuild(const std::vector<RuntimeUsable>& usables)
     {
         RELAYCORE_PROFILE_FUNCTION();
-        index.reset(usables.size());
+        bool changed = entries_.size() != usables.size();
+        for (std::size_t i = 0; !changed && i < usables.size(); ++i)
+        {
+            const auto& usable = usables[i];
+            const auto& previous = entries_[i];
+            changed = previous.enabled != usable.enabled;
+            if (usable.enabled)
+            {
+                const auto bounds = detail::usable_spatial_bounds(usable);
+                changed = changed || previous.bounds.mins != bounds.mins || previous.bounds.maxs != bounds.maxs;
+            }
+        }
+        if (!changed)
+            return;
+
+        // Leave no accepted snapshot if validation or allocation fails during reconstruction.
+        entries_.clear();
+        cells_.reset(usables.size());
+        entries_.reserve(usables.size());
         for (std::size_t i = 0; i < usables.size(); ++i)
         {
-            if (!usables[i].enabled)
-            {
-                continue;
-            }
-            index.insert(detail::usable_spatial_bounds(usables[i]), static_cast<std::uint32_t>(i));
+            const auto& usable = usables[i];
+            const auto bounds = usable.enabled ? detail::usable_spatial_bounds(usable) : physics::Aabb{};
+            if (usable.enabled)
+                cells_.insert(bounds, static_cast<std::uint32_t>(i));
+            entries_.push_back({bounds, usable.enabled});
         }
+    }
+
+    void UsableSpatialIndex::query(const physics::Aabb& bounds, std::vector<std::uint32_t>& out_indices)
+    {
+        cells_.query(bounds, out_indices);
+    }
+
+    void rebuild_usable_spatial_index(const std::vector<RuntimeUsable>& usables, UsableSpatialIndex& index)
+    {
+        index.rebuild(usables);
     }
 
     void query_trigger_candidates(
@@ -245,7 +273,7 @@ namespace RelayCore::gameplay
     }
 
     void query_usable_candidates(
-        InteractionSpatialIndex& index,
+        UsableSpatialIndex& index,
         const glm::vec3& eye_position,
         const float max_distance,
         std::vector<std::uint32_t>& out_indices

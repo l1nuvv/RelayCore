@@ -35,6 +35,14 @@ namespace RelayCore::gameplay
         std::optional<physics::WorldQueryHit> impact{};
     };
 
+    inline constexpr float actor_hit_seconds = .07F;
+
+    struct CombatHitFeedback {
+        glm::vec3 position{};
+        glm::vec3 normal{};
+        float remaining_seconds = 0;
+    };
+
     struct RuntimeTurret {
         int authored_entity_index = -1;
         std::string name{};
@@ -54,6 +62,7 @@ namespace RelayCore::gameplay
         float hit_flash_remaining_seconds = 0.0F;
         float fire_flash_remaining_seconds = 0.0F;
         CombatShotTrace shot_trace{};
+        CombatHitFeedback hit_feedback{};
         float damage = 16.0F;
         bool enabled = true;
         bool destroyed = false;
@@ -76,6 +85,9 @@ namespace RelayCore::gameplay
         float weapon_range = 24.0F;
         float weapon_damage = 25.0F;
         float hurt_flash_remaining_seconds = 0.0F;
+        float damage_direction_remaining_seconds = 0.0F;
+        glm::vec3 damage_source_position{};
+        bool damage_source_position_valid = false;
         float hit_confirmation_remaining_seconds = 0.0F;
         CombatShotTrace shot_trace{};
         float respawn_delay_seconds = 1.20F;
@@ -95,6 +107,21 @@ namespace RelayCore::gameplay
         std::vector<RuntimeHazardVolume> hazards{};
     };
 
+    enum class CombatActorKind : std::uint8_t {
+        Turret,
+        Enemy,
+    };
+
+    // Indices refer to the corresponding runtime span in the current level session.
+    struct CombatActorContact {
+        CombatActorKind kind = CombatActorKind::Turret;
+        int index = -1;
+        glm::vec3 position{};
+        glm::vec3 normal{};
+        glm::vec3 direction{};
+        float damage = 0;
+    };
+
     struct CombatFireResult {
         bool fired = false;
         bool hit_turret = false;
@@ -102,6 +129,7 @@ namespace RelayCore::gameplay
         int turret_index = -1;
         float hit_distance = 0.0F;
         std::optional<physics::WorldQueryHit> world_impact{};
+        std::optional<CombatActorContact> actor_contact{};
         CombatTargetEvent target_event{};
     };
 
@@ -114,7 +142,12 @@ namespace RelayCore::gameplay
     };
 
     [[nodiscard]] auto build_runtime_combat(const BlockoutLevel& level) -> CombatBuildResult;
-    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, float amount, std::string_view source) -> float;
+    [[nodiscard]] auto apply_player_damage(
+        PlayerCombatState& player,
+        float amount,
+        std::string_view source,
+        std::optional<glm::vec3> source_position = std::nullopt
+    ) -> float;
 
     void reset_player_combat_state(PlayerCombatState& state) noexcept;
 

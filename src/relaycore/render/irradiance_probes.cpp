@@ -35,22 +35,30 @@ namespace RelayCore::render
             return std::size_t{s.dimensions.x} * s.dimensions.y * s.dimensions.z;
         }
 
+        struct VisibilityTriangle {
+            glm::vec3 a, e1, e2;
+            const IrradianceTriangle* source;
+        };
+
         // Two-sided visibility; the facing side is resolved at a radiance hit.
-        auto intersect(glm::vec3 origin, glm::vec3 direction, const IrradianceTriangle& t) -> float
+        auto intersect(const glm::vec3& origin, const glm::vec3& direction, const VisibilityTriangle& t) -> float
         {
-            const auto e1 = t.b - t.a, e2 = t.c - t.a;
+            const auto& e1 = t.e1;
+            const auto& e2 = t.e2;
             const auto p = glm::cross(direction, e2);
             const float determinant = glm::dot(e1, p);
             if (std::abs(determinant) < 1.e-8F)
                 return std::numeric_limits<float>::infinity();
             const auto delta = origin - t.a;
             const float u = glm::dot(delta, p) / determinant;
+            if (u < 0 || u > 1)
+                return std::numeric_limits<float>::infinity();
             const auto q = glm::cross(delta, e1);
             const float v = glm::dot(direction, q) / determinant;
-            const float distance = glm::dot(e2, q) / determinant;
-            if (u < 0 || v < 0 || u + v > 1 || distance <= .001F)
+            if (v < 0 || u + v > 1)
                 return std::numeric_limits<float>::infinity();
-            return distance;
+            const float distance = glm::dot(e2, q) / determinant;
+            return distance <= .001F ? std::numeric_limits<float>::infinity() : distance;
         }
 
         void append(std::vector<std::uint8_t>& bytes, std::uint32_t value)
@@ -171,6 +179,10 @@ namespace RelayCore::render
     {
         IrradianceProbeVolume volume{s, irradiance_source_signature(scene, s), {}};
         volume.probes.resize(probe_count(s));
+        std::vector<VisibilityTriangle> visibility;
+        visibility.reserve(scene.triangles.size());
+        for (const auto& triangle : scene.triangles)
+            visibility.push_back({triangle.a, triangle.b - triangle.a, triangle.c - triangle.a, &triangle});
         for (std::uint32_t z = 0; z < s.dimensions.z; ++z)
             for (std::uint32_t y = 0; y < s.dimensions.y; ++y)
                 for (std::uint32_t x = 0; x < s.dimensions.x; ++x)
@@ -189,13 +201,13 @@ namespace RelayCore::render
                         const glm::vec3 direction{radius * std::cos(angle), height, radius * std::sin(angle)};
                         float distance = std::numeric_limits<float>::infinity();
                         const IrradianceTriangle* hit = nullptr;
-                        for (const auto& triangle : scene.triangles)
+                        for (const auto& triangle : visibility)
                         {
                             const float candidate = intersect(position, direction, triangle);
                             if (candidate < distance)
                             {
                                 distance = candidate;
-                                hit = &triangle;
+                                hit = triangle.source;
                             }
                         }
                         if (!hit)
@@ -218,7 +230,7 @@ namespace RelayCore::render
                             const float cosine = std::max(0.F, glm::dot(normal, toward_light));
                             if (cosine == 0)
                                 continue;
-                            const bool blocked = std::ranges::any_of(scene.triangles, [&](const auto& t) {
+                            const bool blocked = std::ranges::any_of(visibility, [&](const auto& t) {
                                 return intersect(point, toward_light, t) < length - .002F;
                             });
                             if (!blocked)

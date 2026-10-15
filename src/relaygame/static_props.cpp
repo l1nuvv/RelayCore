@@ -41,6 +41,12 @@ namespace RelayGame
             };
             StaticProp prop;
             prop.authored_entity_index = static_cast<int>(i);
+            if (const auto found = entity.properties.find("casts_shadow"); found != entity.properties.end())
+            {
+                if (found->second != "true" && found->second != "false")
+                    throw std::runtime_error(label + ".casts_shadow requires true or false");
+                prop.casts_shadow = found->second == "true";
+            }
             prop.model = RelayCore::core::asset_path(required("model"));
             if (prop.model.extension() == ".rcmodel")
             {

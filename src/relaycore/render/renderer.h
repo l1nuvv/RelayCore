@@ -74,16 +74,22 @@ namespace RelayCore
         ~Renderer() noexcept;
 
         void initialize(const Window& window);
+        [[nodiscard]] auto validation_enabled() const noexcept -> bool;
+        [[nodiscard]] auto presentation_mode_name() const noexcept -> std::string_view;
+        // Explicit diagnostic sampling; heap budget queries stay outside ordinary timing runs.
+        void log_memory_usage(std::string_view reason);
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,
-            const render::RenderAuthoringConfig& authoring_config
+            const render::RenderAuthoringConfig& authoring_config,
+            std::string_view reason = "live_content_reload"
         ) -> PreparedLiveContentReload;
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,
             const render::RenderAuthoringConfig& authoring_config,
-            render::ColorPipelineMode color_pipeline_mode
+            render::ColorPipelineMode color_pipeline_mode,
+            std::string_view reason = "graphics_settings"
         ) -> PreparedLiveContentReload;
 
         [[nodiscard]] auto config() const noexcept -> const render::RendererConfig&
@@ -120,6 +126,7 @@ namespace RelayCore
         void set_irradiance_probes(std::shared_ptr<const render::IrradianceProbeVolume> probes);
 
         void set_scene_time(float seconds) noexcept;
+        void reset_render_history() noexcept;
         void set_spot_light(const render::SpotLight& light) noexcept;
         void set_field_of_view(float degrees);
 
@@ -205,6 +212,7 @@ namespace RelayCore
         [[nodiscard]] auto consume_iteration_command_requests() noexcept -> IterationCommandRequests;
 
     private:
+        void refresh_memory_snapshot();
         render::RendererConfig config_{};
         render::ColorPipelineMode color_pipeline_mode_ = render::ColorPipelineMode::legacy_gamma;
         render::RenderAuthoringConfig authoring_config_{};

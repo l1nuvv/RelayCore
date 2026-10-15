@@ -1,6 +1,7 @@
 #include "relaycore/core/paths.h"
 #include "relaycore/render/camera.h"
 #include "relaycore/render/static_model.h"
+#include "relaygame/enemy_navigation.h"
 #include "relaygame/enemy_runtime.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_editor_document.h"
@@ -41,6 +42,7 @@ TEST_CASE("routed rover reaches remembered player around cover that stops direct
         RelayCore::gameplay::PlayerCombatState player;
         std::vector<RelayCore::physics::WorldCollider> scratch;
         const RelayCore::test::WorldQueryFixture world{level};
+        RelayGame::prepare_enemy_navigation(world, enemies);
         for (int i = 0; i < 1200; ++i)
             RelayGame::update_enemies(
                 world,
@@ -74,6 +76,7 @@ TEST_CASE("routed enemies respect closed doors unreachable heights and reopen wi
     world.door_colliders.push_back(
         {.bounds = {{-10, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Door}}
     );
+    RelayGame::prepare_enemy_navigation(world, enemies);
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const auto tick = [&] {
@@ -103,6 +106,87 @@ TEST_CASE("routed enemies respect closed doors unreachable heights and reopen wi
     for (int i = 0; i < 600; ++i)
         tick();
     CHECK(enemies[0].state.position.z == doctest::Approx(3));
+}
+
+TEST_CASE("prepared route links match live planning after doors guardian endpoints and level changes")
+{
+    auto level = room();
+    level.solids.push_back({{-.8F, 0, 1.2F}, {.8F, 2, 2}, RelayCore::SurfaceMaterial::Metal});
+    auto enemies = RelayGame::build_enemies(level);
+    auto& enemy = enemies[0];
+    enemy.route_points = {{2, .01F, 3}, {2, .01F, .5F}};
+    RelayCore::test::WorldQueryFixture fixture{level};
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    const glm::vec3 goal{0, .01F, 0};
+    const auto compare = [&](RelayCore::physics::WorldQuery world, glm::vec3 target, bool reachable) {
+        auto live = enemy;
+        live.route_links_prepared = false;
+        live.route_replan_seconds = enemy.route_replan_seconds = 0;
+        CHECK(
+            RelayGame::enemy_route_velocity(world, enemy, target, 1.65F, 1.F / 120)
+            == RelayGame::enemy_route_velocity(world, live, target, 1.65F, 1.F / 120)
+        );
+        REQUIRE(enemy.route_count == live.route_count);
+        CHECK((enemy.route_count > 0) == reachable);
+        for (std::size_t i = 0; i < enemy.route_count; ++i)
+            CHECK(enemy.route[i] == live.route[i]);
+    };
+    compare(fixture, goal, true);
+    fixture.door_colliders.push_back(
+        {.bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Door}}
+    );
+    compare(fixture, goal, false);
+    fixture.door_colliders.clear();
+    compare(fixture, goal, true);
+    const std::array guardian{RelayCore::physics::WorldCollider{
+        .bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}},
+        .object = {RelayCore::physics::WorldObjectKind::Enemy}
+    }};
+    compare(RelayCore::physics::WorldQuery{fixture}.with_actors(guardian), goal, false);
+    compare(fixture, goal, true);
+    compare(fixture, {0, 4, 0}, false);
+    enemy.state.position = {2, .01F, .5F};
+    compare(fixture, goal, true);
+    fixture.colliders.push_back(
+        {.bounds = {{1, 0, 1.2F}, {10, 3, 1.4F}}, .object = {RelayCore::physics::WorldObjectKind::Solid}}
+    );
+    enemy.state.position = level.entities[0].origin;
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    compare(fixture, goal, false);
+}
+
+TEST_CASE("prepared route links revalidate ground supplied by a dynamic body")
+{
+    auto level = room();
+    level.solids = {
+        {{-10, -.2F, -10}, {10, 0, 1}, RelayCore::SurfaceMaterial::Tile},
+        {{-10, -.2F, 2.3F}, {10, 0, 10}, RelayCore::SurfaceMaterial::Tile}
+    };
+    auto enemies = RelayGame::build_enemies(level);
+    auto& enemy = enemies[0];
+    enemy.route_points = {{0, .01F, 3}, {0, .01F, .5F}};
+    const RelayCore::test::WorldQueryFixture fixture{level};
+    RelayGame::prepare_enemy_navigation(fixture, enemies);
+    const std::array bridge{RelayCore::physics::WorldCollider{
+        .bounds = {{-10, -.2F, 1}, {10, 0, 2.3F}},
+        .object = {RelayCore::physics::WorldObjectKind::Enemy}
+    }};
+    for (const bool supported : {false, true, false})
+    {
+        CAPTURE(supported);
+        const auto world = RelayCore::physics::WorldQuery{fixture}.with_actors(
+            supported ? std::span<const RelayCore::physics::WorldCollider>{bridge}
+                      : std::span<const RelayCore::physics::WorldCollider>{}
+        );
+        auto live = enemy;
+        live.route_links_prepared = false;
+        live.route_replan_seconds = enemy.route_replan_seconds = 0;
+        CHECK(
+            RelayGame::enemy_route_velocity(world, enemy, {}, 1.65F, 1.F / 120)
+            == RelayGame::enemy_route_velocity(world, live, {}, 1.65F, 1.F / 120)
+        );
+        CHECK((enemy.route_count > 0) == supported);
+    }
 }
 
 TEST_CASE("mobile shooter locks warning aim and respects movement doors and intervening bodies")
@@ -175,6 +259,7 @@ TEST_CASE("mobile shooter searches remembered position without learning an unsee
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const RelayCore::test::WorldQueryFixture world{level};
+    RelayGame::prepare_enemy_navigation(world, enemies);
     for (int i = 0; i < 1200; ++i)
         RelayGame::update_enemies(
             world,
@@ -203,6 +288,7 @@ TEST_CASE("mobile shooter finds a reachable firing angle after player disappears
     RelayCore::gameplay::PlayerCombatState player;
     std::vector<RelayCore::physics::WorldCollider> scratch;
     const RelayCore::test::WorldQueryFixture world{level};
+    RelayGame::prepare_enemy_navigation(world, enemies);
     for (int i = 0; i < 600; ++i)
         RelayGame::update_enemies(
             world,
@@ -233,6 +319,7 @@ TEST_CASE("mobile shooter reaches firing range instead of stalling at a boundary
         RelayCore::gameplay::PlayerCombatState player;
         std::vector<RelayCore::physics::WorldCollider> scratch;
         const RelayCore::test::WorldQueryFixture world{level};
+        RelayGame::prepare_enemy_navigation(world, enemies);
         unsigned shots = 0;
         for (int i = 0; i < 480; ++i)
             shots += RelayGame::update_enemies(
@@ -504,6 +591,213 @@ TEST_CASE("destroying a lunge rover during windup or the dash cancels its strike
     }
 }
 
+TEST_CASE("mobile actor contact preserves nearest target face and resolved damage")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies.push_back(enemies[0]);
+    enemies[0].state.position.z = 6;
+    enemies[1].state.health = 9;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto attack = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .45F, 0},
+        {.1F, 0, 1},
+        player,
+        {},
+        enemies
+    );
+    REQUIRE(attack.ray_count == 1);
+    REQUIRE(attack.rays[0].actor_contact);
+    REQUIRE(attack.combat.actor_contact);
+    const auto& contact = *attack.rays[0].actor_contact;
+    CHECK(contact.kind == RelayCore::gameplay::CombatActorKind::Enemy);
+    CHECK(contact.index == 1);
+    CHECK(contact.position.z == doctest::Approx(2.58F));
+    CHECK(contact.position.x == doctest::Approx(.258F));
+    CHECK(contact.normal == glm::vec3{0, 0, -1});
+    CHECK(glm::length(contact.direction) == doctest::Approx(1));
+    CHECK(contact.direction.x / contact.direction.z == doctest::Approx(.1F));
+    CHECK(contact.damage == 9);
+    CHECK(player.damage_dealt == 9);
+    CHECK(attack.killed_enemy);
+    CHECK_FALSE(attack.rays[0].world_impact);
+    CHECK(attack.combat.actor_contact->position == contact.position);
+    CHECK(attack.combat.hit_distance == doctest::Approx(glm::length(contact.position - glm::vec3{0, .45F, 0})));
+    CHECK(enemies[0].state.health == 60);
+}
+
+TEST_CASE("shotgun actor contacts retain multiple targets and sum actual damage")
+{
+    auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies.push_back(enemies[0]);
+    enemies[0].state.position = {-.48F, .01F, 3};
+    enemies[1].state.position = {.48F, .01F, 3};
+    enemies[0].state.health = 5;
+    enemies[1].state.health = 8;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto shot = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .45F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies,
+        RelayGame::PlayerWeapon::Shotgun
+    );
+    std::array<bool, 2> hit{};
+    float damage = 0;
+    for (std::size_t i = 0; i < shot.ray_count; ++i)
+        if (const auto& contact = shot.rays[i].actor_contact)
+        {
+            CHECK(contact->kind == RelayCore::gameplay::CombatActorKind::Enemy);
+            REQUIRE(contact->index >= 0);
+            REQUIRE(contact->index < 2);
+            hit[static_cast<std::size_t>(contact->index)] = true;
+            damage += contact->damage;
+            CHECK(contact->position == shot.pellet_traces[i].end);
+            CHECK_FALSE(shot.rays[i].world_impact);
+        }
+    CHECK(hit[0]);
+    CHECK(hit[1]);
+    CHECK(damage == 13);
+    CHECK(damage == player.damage_dealt);
+    CHECK(player.kills == 2);
+}
+
+TEST_CASE("actor hit feedback is bounded per discharge and expires without changing committed attacks")
+{
+    for (const auto weapon : {RelayGame::PlayerWeapon::Precise, RelayGame::PlayerWeapon::Shotgun})
+        for (const bool ranged : {false, true})
+        {
+            auto level = room();
+            auto enemies = RelayGame::build_enemies(level);
+            auto& enemy = enemies[0];
+            enemy.ranged_attack = ranged;
+            enemy.state.health = 1000;
+            enemy.state.mode = RelayGame::EnemyMode::Windup;
+            enemy.state.timer = .5F;
+            RelayCore::gameplay::PlayerCombatState player;
+            const RelayCore::test::WorldQueryFixture world{level, {}};
+            const auto fire = [&] {
+                return RelayGame::fire_player_weapon(world, {0, .45F, 0}, {0, 0, 1}, player, {}, enemies, weapon);
+            };
+            const auto attack = fire();
+            REQUIRE(attack.rays[0].actor_contact);
+            CHECK(enemy.hit_feedback.remaining_seconds == doctest::Approx(.07F));
+            CHECK(enemy.hit_feedback.position == attack.rays[0].actor_contact->position);
+            CHECK(enemy.hit_feedback.normal == attack.rays[0].actor_contact->normal);
+            CHECK(enemy.state.mode == RelayGame::EnemyMode::Windup);
+            CHECK(enemy.state.timer == .5F);
+            CHECK_FALSE(player.shot_trace.impact);
+            for (std::size_t i = 0; i < attack.ray_count; ++i)
+                if (attack.rays[i].actor_contact)
+                    CHECK_FALSE(attack.pellet_traces[i].impact);
+            std::vector<RelayCore::physics::WorldCollider> scratch;
+            const auto tick = [&](float dt) {
+                RelayGame::update_enemies(
+                    world,
+                    {{-.3F, 0, 0}, {.3F, 1.8F, .6F}},
+                    {0, 1.6F, 0},
+                    player,
+                    enemies,
+                    dt,
+                    scratch
+                );
+            };
+            tick(.03F);
+            CHECK(enemy.hit_feedback.remaining_seconds == doctest::Approx(.04F));
+            CHECK_FALSE(fire().combat.fired);
+            CHECK(enemy.hit_feedback.remaining_seconds == doctest::Approx(.04F));
+            player.weapon_cooldown_remaining_seconds = 0;
+            const auto miss =
+                RelayGame::fire_player_weapon(world, {0, .45F, 0}, {0, 0, -1}, player, {}, enemies, weapon);
+            REQUIRE(miss.combat.fired);
+            CHECK_FALSE(miss.rays[0].actor_contact);
+            CHECK(enemy.hit_feedback.remaining_seconds == doctest::Approx(.04F));
+            player.weapon_cooldown_remaining_seconds = 0;
+            REQUIRE(fire().combat.fired);
+            CHECK(enemy.hit_feedback.remaining_seconds == doctest::Approx(.07F));
+            tick(.08F);
+            CHECK(enemy.hit_feedback.remaining_seconds == 0);
+            CHECK(enemy.hit_feedback.position == glm::vec3{0});
+            player.weapon_cooldown_remaining_seconds = 0;
+            enemy.state.health = 1;
+            REQUIRE(fire().killed_enemy);
+            CHECK(enemy.hit_feedback.remaining_seconds == 0);
+        }
+}
+
+TEST_CASE("shotgun hit feedback keeps one contact for each surviving target")
+{
+    const auto level = room();
+    auto enemies = RelayGame::build_enemies(level);
+    enemies.push_back(enemies[0]);
+    enemies[0].state.position.x = -.48F;
+    enemies[1].state.position.x = .48F;
+    for (auto& enemy : enemies)
+        enemy.state.health = 1000;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto attack = RelayGame::fire_player_weapon(
+        RelayCore::test::WorldQueryFixture{level, {}},
+        {0, .45F, 0},
+        {0, 0, 1},
+        player,
+        {},
+        enemies,
+        RelayGame::PlayerWeapon::Shotgun
+    );
+    std::array<bool, 2> seen{};
+    for (std::size_t i = 0; i < attack.ray_count; ++i)
+        if (const auto& contact = attack.rays[i].actor_contact)
+        {
+            CHECK_FALSE(attack.pellet_traces[i].impact);
+            if (!seen[contact->index])
+                CHECK(enemies[contact->index].hit_feedback.position == contact->position);
+            CHECK(enemies[contact->index].hit_feedback.remaining_seconds == doctest::Approx(.07F));
+            seen[contact->index] = true;
+        }
+    CHECK(seen[0]);
+    CHECK(seen[1]);
+}
+
+TEST_CASE("turret hit feedback uses actor contact and clears on expiry and destruction")
+{
+    auto level = room();
+    level.entities.clear();
+    std::array<RelayCore::gameplay::RuntimeTurret, 1> turrets;
+    auto& turret = turrets[0];
+    turret.bounds = {{-.5F, 0, 2.5F}, {.5F, 1, 3.5F}};
+    turret.health = 1000;
+    RelayCore::gameplay::PlayerCombatState player;
+    const auto fire = [&] {
+        return RelayGame::fire_player_weapon(
+            RelayCore::test::WorldQueryFixture{level, {}},
+            {0, .45F, 0},
+            {0, 0, 1},
+            player,
+            turrets,
+            {},
+            RelayGame::PlayerWeapon::Shotgun
+        );
+    };
+    const auto attack = fire();
+    REQUIRE(attack.rays[0].actor_contact);
+    CHECK(turret.hit_feedback.remaining_seconds == doctest::Approx(.07F));
+    CHECK(turret.hit_feedback.position == attack.rays[0].actor_contact->position);
+    CHECK(turret.hit_feedback.normal == attack.rays[0].actor_contact->normal);
+    RelayCore::gameplay::tick_combat_state(.08F, player, turrets);
+    CHECK(turret.hit_feedback.remaining_seconds == 0);
+    CHECK(turret.hit_feedback.position == glm::vec3{0});
+    player.weapon_cooldown_remaining_seconds = 0;
+    REQUIRE(fire().combat.fired);
+    turret.health = 1;
+    player.weapon_cooldown_remaining_seconds = 0;
+    REQUIRE(fire().combat.killed_turret);
+    CHECK(turret.hit_feedback.remaining_seconds == 0);
+}
+
 TEST_CASE("shotgun has a close range advantage and counts one discharge")
 {
     for (float distance : {3.0F, 12.0F})
@@ -536,8 +830,17 @@ TEST_CASE("shotgun has a close range advantage and counts one discharge")
         CHECK(shotgun.shots_fired == 1);
         CHECK(shotgun.shots_hit == 1);
         CHECK_FALSE(shot.rays[0].world_impact);
-        REQUIRE(shot.pellet_traces[0].impact);
-        CHECK(shot.pellet_traces[0].impact->surface == RelayCore::SurfaceMaterial::Metal);
+        REQUIRE(shot.rays[0].actor_contact);
+        if (shot.killed_enemy)
+        {
+            REQUIRE(shot.pellet_traces[0].impact);
+            CHECK(shot.pellet_traces[0].impact->surface == RelayCore::SurfaceMaterial::Metal);
+        } else
+        {
+            CHECK_FALSE(shot.pellet_traces[0].impact);
+            CHECK(shotgun_enemies[0].hit_feedback.position == shot.rays[0].actor_contact->position);
+            CHECK(shotgun_enemies[0].hit_feedback.remaining_seconds == doctest::Approx(.07F));
+        }
         CHECK(shotgun.weapon_cooldown_remaining_seconds == doctest::Approx(.85F));
         CHECK(shotgun.weapon_damage == precise.weapon_damage);
         static_cast<void>(RelayGame::fire_player_weapon(
@@ -613,6 +916,8 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
     CHECK(player.shots_fired == 1);
     if (turrets.empty())
     {
+        for (std::size_t i = 0; i < shot.ray_count; ++i)
+            CHECK_FALSE(shot.rays[i].actor_contact);
         CHECK(enemies[0].state.health == 60);
         CHECK(player.shots_hit == 0);
         if (enemies[0].state.position.z < 14)
@@ -624,7 +929,14 @@ TEST_CASE("shotgun respects walls doors range and nearest target throughout a di
         CHECK(turrets[0].health == turrets[0].max_health);
         CHECK(player.kills == 1);
         for (std::size_t i = 0; i < shot.ray_count; ++i)
+        {
             CHECK_FALSE(shot.rays[i].world_impact);
+            if (shot.rays[i].actor_contact)
+            {
+                CHECK(shot.rays[i].actor_contact->kind == RelayCore::gameplay::CombatActorKind::Enemy);
+                CHECK(shot.rays[i].actor_contact->index == 0);
+            }
+        }
     }
 }
 
@@ -709,6 +1021,13 @@ TEST_CASE("shotgun can destroy multiple turrets with one event per target")
     {
         if (!result.rays[i].killed_turret)
             continue;
+        REQUIRE(result.rays[i].actor_contact);
+        const auto& contact = *result.rays[i].actor_contact;
+        CHECK(contact.kind == RelayCore::gameplay::CombatActorKind::Turret);
+        CHECK(contact.index == result.rays[i].turret_index);
+        CHECK(contact.damage == 14);
+        CHECK(contact.position == result.pellet_traces[i].end);
+        CHECK_FALSE(result.rays[i].world_impact);
         left += result.rays[i].target_event.target == "left";
         right += result.rays[i].target_event.target == "right";
     }
@@ -1016,6 +1335,7 @@ TEST_CASE("enemy HUD projects health and actual damage with visibility and resto
     CHECK(hud.world_markers[0].x == doctest::Approx(50));
     CHECK(hud.world_markers[0].y < 50);
     CHECK(runtime.debug_apply_player_fire(camera.position(), camera.forward()).fired);
+    CHECK(runtime.enemies()[0].hit_feedback.remaining_seconds > 0);
     hud = runtime.build_hud_presentation(&camera);
     REQUIRE(hud.world_markers.size() == 2);
     CHECK(hud.world_markers[0].text == "35 / 60");
@@ -1023,7 +1343,12 @@ TEST_CASE("enemy HUD projects health and actual damage with visibility and resto
     CHECK(hud.world_markers[1].damage);
     CHECK_FALSE(runtime.debug_apply_player_fire(camera.position(), camera.forward()).fired);
     CHECK(runtime.build_hud_presentation(&camera).world_markers.size() == 2);
+    const auto hit_snapshot = runtime.capture_encounter_snapshot(0, 0, false);
+    runtime.restore_encounter_snapshot(hit_snapshot);
+    CHECK(runtime.enemies()[0].hit_feedback.remaining_seconds == 0);
+    CHECK(runtime.enemies()[0].state.health == 35);
     runtime.restore_saved_game(initial);
+    CHECK(runtime.enemies()[0].hit_feedback.remaining_seconds == 0);
     CHECK(runtime.build_hud_presentation(&camera).world_markers.size() == 1);
     auto shotgun = initial;
     shotgun.world.inventory_item_ids.push_back(std::string(RelayGame::shotgun_item_id));

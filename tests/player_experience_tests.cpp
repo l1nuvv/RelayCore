@@ -76,6 +76,11 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.volume = 0.25F;
     settings.vsync = false;
     settings.hdr_enabled = true;
+    settings.ssgi_quality = settings.reflection_quality = settings.dof_quality = settings.motion_blur_quality = 2;
+    settings.taa_enabled = true;
+    settings.dynamic_resolution_enabled = true;
+    settings.render_scale = .67F;
+    settings.bloom_enabled = settings.ssao_enabled = settings.ssr_enabled = settings.volumetrics_enabled = true;
     RelayGame::save_player_settings(path, settings);
     auto loaded = RelayGame::load_player_settings(path, {});
     CHECK(loaded.fov == 85);
@@ -83,8 +88,25 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     CHECK(loaded.volume == 0.25F);
     CHECK_FALSE(loaded.vsync);
     CHECK(loaded.hdr_enabled);
+    CHECK(loaded.bloom_enabled);
+    CHECK(loaded.ssao_enabled);
+    CHECK(loaded.ssr_enabled);
+    CHECK(loaded.volumetrics_enabled);
+    CHECK(loaded.ssgi_quality == 2);
+    CHECK(loaded.reflection_quality == 2);
+    CHECK(loaded.dof_quality == 2);
+    CHECK(loaded.motion_blur_quality == 2);
+    CHECK(loaded.taa_enabled);
+    CHECK(loaded.dynamic_resolution_enabled);
+    CHECK(loaded.render_scale == doctest::Approx(.67F));
     settings.fov = 63;
     settings.hdr_enabled = false;
+    CHECK_THROWS(RelayGame::save_player_settings(path, settings));
+    settings.bloom_enabled = settings.ssr_enabled = false;
+    settings.ssgi_quality = settings.reflection_quality = settings.dof_quality = settings.motion_blur_quality = 0;
+    settings.taa_enabled = false;
+    settings.dynamic_resolution_enabled = false;
+    settings.render_scale = 1;
     RelayGame::save_player_settings(path, settings);
     CHECK(RelayGame::load_player_settings(path, {}).fov == 63);
     CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
@@ -117,6 +139,72 @@ TEST_CASE("player settings persist edits atomically and reject invalid authored 
     settings.volume = 0.25F;
     CHECK(RelayGame::load_player_settings(path, settings).hdr_enabled);
     CHECK_FALSE(RelayGame::load_player_settings(path, {}).hdr_enabled);
+}
+
+TEST_CASE("graphics presets preserve player preferences and persist without a preset label")
+{
+    using namespace RelayGame;
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "settings.toml";
+    PlayerSettings settings{.volume = .35F, .sensitivity = .003F, .fov = 82, .camera_motion = 0, .vsync = false};
+    for (const auto preset :
+         {GraphicsPreset::High, GraphicsPreset::Low, GraphicsPreset::Balanced, GraphicsPreset::High})
+    {
+        settings.dof_quality = settings.motion_blur_quality = 2;
+        settings.render_scale = .67F;
+        settings.dynamic_resolution_enabled = true;
+        apply_graphics_preset(settings, preset);
+        save_player_settings(path, settings);
+        settings = load_player_settings(path, {});
+        CHECK(graphics_preset(settings) == preset);
+        CHECK(settings.volume == doctest::Approx(.35F));
+        CHECK(settings.sensitivity == doctest::Approx(.003F));
+        CHECK(settings.fov == 82);
+        CHECK(settings.camera_motion == 0);
+        CHECK_FALSE(settings.vsync);
+        CHECK(settings.render_scale == 1);
+        CHECK_FALSE(settings.dynamic_resolution_enabled);
+        CHECK(settings.dof_quality == 0);
+        CHECK(settings.motion_blur_quality == 0);
+        CHECK(settings.hdr_enabled == (preset != GraphicsPreset::Low));
+        CHECK(settings.ssr_enabled == (preset == GraphicsPreset::High));
+        CHECK(settings.reflection_quality == (preset == GraphicsPreset::High ? 2 : 0));
+    }
+    settings.ssao_enabled = false;
+    CHECK(graphics_preset(settings) == GraphicsPreset::Custom);
+    apply_graphics_preset(settings, GraphicsPreset::Custom);
+    CHECK_FALSE(settings.ssao_enabled);
+    CHECK_THROWS_WITH(apply_graphics_preset(settings, static_cast<GraphicsPreset>(42)), "Unknown graphics preset");
+    CHECK_FALSE(settings.ssao_enabled);
+    for (const auto preset : {GraphicsPreset::Low, GraphicsPreset::Balanced, GraphicsPreset::High})
+    {
+        apply_graphics_preset(settings, preset);
+        settings.render_scale = .75F;
+        CHECK(graphics_preset(settings) == GraphicsPreset::Custom);
+    }
+}
+
+TEST_CASE("player settings reject malformed advanced quality and missing lighting prerequisites")
+{
+    RelayCore::test::ScopedTempDirectory directory;
+    const auto path = directory.path() / "settings.toml";
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+        for (const auto value : {"true", "1.5", "-1", "3"})
+        {
+            {
+                std::ofstream output{path};
+                output << key << " = " << value << '\n';
+            }
+            CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+        }
+    for (const auto key : {"ssgi_quality", "reflection_quality", "dof_quality", "motion_blur_quality"})
+    {
+        {
+            std::ofstream output{path};
+            output << key << " = 1\n";
+        }
+        CHECK_THROWS(static_cast<void>(RelayGame::load_player_settings(path, {})));
+    }
 }
 
 TEST_CASE("interaction respects occlusion while allowing a panel on a wall face")

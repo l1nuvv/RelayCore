@@ -20,6 +20,66 @@ namespace RelayCore::render
     struct IrradianceProbeVolume;
     struct ReflectionProbe;
 
+    struct VulkanMaterialDescriptorUsage {
+        size_t pools = 0;
+        size_t materials = 0;
+        size_t indexed_capacity = 0;
+    };
+
+    struct VulkanDepthFormats {
+        VkFormat scene = VK_FORMAT_UNDEFINED;
+        VkFormat shadow = VK_FORMAT_UNDEFINED;
+    };
+
+    struct VulkanResourceUsage {
+        uint64_t staging_bytes = 0;
+        size_t upload_batches = 0, upload_retirements = 0;
+        size_t scene_retirements = 0, material_retirements = 0;
+    };
+
+    struct VulkanResolutionStatus {
+        int render_width = 0, render_height = 0;
+        float scale = 1, gpu_scene_ms = 0;
+    };
+
+    enum class VulkanSceneSubmission {
+        direct,
+        instanced,
+        indirect,
+        gpu_culled
+    };
+
+    struct VulkanDrawUsage {
+        size_t draws = 0, instances = 0, indirect_draws = 0;
+        size_t culling_draws = 0, culled_instances = 0;
+        size_t material_binds = 0;
+        size_t mesh_draws = 0, mesh_workgroups = 0;
+        size_t shadow_rebuilt_faces = 0, shadow_reused_faces = 0;
+    };
+
+    enum class PassInputView {
+        off,
+        scene,
+        depth,
+        normals,
+        velocity,
+        history,
+        previous_color,
+        ao,
+        reflection_confidence,
+        volume_transmittance,
+        temporal_source,
+        ssgi
+    };
+
+    struct VulkanPassInputCapture {
+        int width = 0, height = 0;
+        std::vector<glm::vec4> normal_depth;
+        std::vector<glm::vec4> velocity;
+        bool history_valid = false;
+        glm::vec2 jitter_uv{};
+    };
+
     class VulkanMeshRenderer {
     public:
         // Device outlives this owner; render-thread access to its graphics queue is serialized.
@@ -30,10 +90,23 @@ namespace RelayCore::render
             const CpuRgbaTextureData& atlas,
             TextureEncoding encoding,
             const RendererConfig& config,
-            ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma
+            ColorPipelineMode pipeline = ColorPipelineMode::legacy_gamma,
+            VulkanDepthFormats depth_formats = {}
         );
         ~VulkanMeshRenderer() noexcept;
         void prepare_resources(std::span<const RenderItem> items);
+        // Includes retired materials until their final GPU use completes.
+        [[nodiscard]] auto material_descriptor_usage() const noexcept -> VulkanMaterialDescriptorUsage;
+        [[nodiscard]] auto uses_mesh_shaders() const noexcept -> bool;
+        [[nodiscard]] auto uses_descriptor_indexing() const noexcept -> bool;
+        [[nodiscard]] auto resource_usage() const noexcept -> VulkanResourceUsage;
+        [[nodiscard]] auto resolution_status() const noexcept -> VulkanResolutionStatus;
+        void set_scene_submission(VulkanSceneSubmission mode) noexcept;
+        [[nodiscard]] auto supports_gpu_culling() const noexcept -> bool;
+        [[nodiscard]] auto scene_submission() const noexcept -> VulkanSceneSubmission;
+        [[nodiscard]] auto draw_usage() const noexcept -> VulkanDrawUsage;
+        // Synchronous diagnostic readback; ordinary draw_usage reports candidate instance counts.
+        [[nodiscard]] auto capture_draw_usage() -> VulkanDrawUsage;
         VulkanMeshRenderer(const VulkanMeshRenderer&) = delete;
         auto operator=(const VulkanMeshRenderer&) -> VulkanMeshRenderer& = delete;
 
@@ -69,6 +142,10 @@ namespace RelayCore::render
         void set_irradiance_probes(std::shared_ptr<const IrradianceProbeVolume> probes);
         void set_spot_light(const SpotLight& light) noexcept;
         void set_scene_time(float seconds) noexcept;
+        void set_pass_input_view(PassInputView view);
+        // Scene switches, restores, respawns, teleports and camera cuts call this explicitly.
+        void reset_history() noexcept;
+        [[nodiscard]] auto capture_pass_inputs() -> VulkanPassInputCapture;
 
     private:
         friend class VulkanSwapchain;

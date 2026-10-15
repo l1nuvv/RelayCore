@@ -1,7 +1,6 @@
 # Архитектура RelayCore
 
-
-Отдельное направление 2026-10-11 — [модернизация renderer](RENDERER_MODERNIZATION_PLAN.md): снят технический baseline G-019, реализованы lifetime/scheduling VK14-03/04. С 2026-10-12 runtime требует Vulkan 1.4 без 1.3 fallback. Проверки и открытые gates записаны в плане; новые эффекты и зависимости пока не реализованы.
+Текущие runtime owners, update/frame flow, paths и failure policies. Планы и статусы — [roadmap](PLAYABLE_SLICE_ROADMAP.md) и [renderer-план](RENDERER_MODERNIZATION_PLAN.md); запуск и диагностика — [DEVELOPMENT](DEVELOPMENT.md).
 
 ## Player UI ownership (RmlUi 6.3)
 
@@ -16,11 +15,16 @@ before the optional developer overlay, on its existing Vulkan device and VMA.
 Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
 pipelines through their final GPU use. Presentation drains before device/allocator
 destruction; ImGui and readback remain synchronous.
+Authored BMP images are decoded through SDL within `VulkanRmlRenderer`, converted
+from straight to premultiplied RGBA and uploaded through the existing UI texture
+path. They share the same descriptor and snapshot retirement as font atlases.
+Renderer initialization and scene resource preparation also prepare the UI font
+atlases at the window's current pixel density. PlayerUi resolves font faces from
+the authored documents and a temporary damage-marker element, then prepares
+Latin/Cyrillic, numeric and HUD-symbol glyphs once per resolved face. The existing
+RmlUi font cache and Vulkan texture retirement still own their lifetime; no
+preparation document or draw snapshot is submitted.
 See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
-
-Этот документ описывает текущих владельцев и границы runtime; сверка с source выполнена 2026-10-10. Направление работы и evidence находятся в [действующем плане](PLAYABLE_SLICE_ROADMAP.md).
-
-**Реализация 2026-10-09:** RmlUi 6.3 обслуживает игровой HUD, меню и финал; ImGui сохраняется для editor/diagnostics. RelayCore-owned presentation data/actions, input/focus ownership и evidence описаны в [VIS-43–46](PLAYABLE_SLICE_ROADMAP.md#vis-43--переход-на-игровой-hud-и-ui). Авторская приёмка читаемости в движении остаётся отдельным gate.
 
 ## Bootstrap
 
@@ -82,6 +86,35 @@ SDL events
 
 Scene backend owns two slots with separate command pools/buffers, mutable UBOs, material/tone-mapping descriptor sets and color/depth targets. Scene, RmlUi and presentation copy signal the same serialized graphics timeline; slot reuse waits for its final copy. Shared shadows and pipelines remain ordered on that timeline. Mesh/material construction uses GPU upload dependencies, with 64 MiB/32-batch staging backpressure; readback, ImGui, reflection replacement, reload and shutdown retain deliberate waits. `frame_backend` retains the prepared backend through presentation during live reload; backend destruction drains both slots. There is no normal-frame `vkDeviceWaitIdle`.
 
+The slot light UBO includes conservative 64×36 screen-tile masks in selected-light
+index order. Both jittered and unjittered projections contribute; volume consumers
+use the complete projected influence sphere. Source radiance has a separate image
+and descriptor snapshot with black radiance/GI inputs. Its MSAA resolve writes
+directly to radiance; final opaque loads its stored depth. Viewmodel still clears
+depth independently. Diagnostic color history is allocated/copied only for its
+history visualizers, independently of radiance and TAA history.
+Opaque reordering preserves authored correspondence indices and only exchanges
+projected depth intervals separated by the attachment's quantization guard.
+
+SSR/SSGI share slot-owned min/max depth bounds reduced on the graphics compute
+queue, when available. That reduction also copies the exact input depth into an
+R32F sampled image; trace search/refinement read it without fetching normals.
+Normal/hit consumers retain the original RGBA32F input. Unsupported compute/R32F
+storage paths and uncertain intervals retain the original sample path.
+GI reconstruction uses a current-frame float32 target;
+different receiver normals or sample footprints retain per-fragment reconstruction.
+These resources and descriptors retire with their scene slot.
+
+Each shadow image owns per-layer validity, projection/light keys and ordered
+weak mesh identities/transforms after conservative caster culling. Unchanged
+layers remain sampled; changed layers transition, clear and render individually.
+Inactive layers clear on state changes. Successful shader reload invalidates all
+layers after the existing completion wait. Cached keys never retain CPU meshes.
+
+Optional GPU culling gives each scene slot its own input/metadata and instance/indirect output buffers. Its compute command buffer executes before raster in the same scene submission and completion token; slot reuse/growth/reload waits for final use. Technique and fallback contracts belong to [RENDERING](RENDERING.md#scene-submission--vk14-10abc).
+
+Material descriptor sets share renderer-owned persistent pools. Each material retains its two slot sets until scene/upload completion permits retirement; released sets can be reused, and collection reclaims empty extra pools while retaining one reusable block. Tone-mapping and UI descriptor ownership remain with their existing pass owners. The optional scene material table retains separate descriptor snapshots and surface buffers per slot; updates wait for slot completion and material indices retire with their final scene/upload use. [Technique contract](RENDERING.md#descriptor-indexing--vk14-11a).
+
 `WorldSceneRenderer` получает подготовленные данные и состояния объектов от игры. `GameWorldRuntime::build_hud_presentation` читает combat/mission/inventory/usable state напрямую и передаёт минимальный `HudPresentation`; HUD не читает diagnostics. Обычный HUD показывает здоровье, действие, цель, предметы и актуальное предупреждение; счётчики боя остаются в diagnostics. Сообщения задач не перекрашивают весь кадр; попадание и урон имеют отдельные краткие сигналы. Более тяжёлые runtime/audio/inspector diagnostics зависят от видимости соответствующих инструментов.
 
 ## Live reload
@@ -111,12 +144,57 @@ Direct Vulkan — единственный runtime backend после VK-013; с
 
 E-003 вводит первый native MeshAsset/ModelAsset product: GLB компилируется отдельным инструментом в `.rcmodel`, engine читает CPU geometry, opaque RGBA материалы и transforms частей. `StaticModelCache` разделяет неизменяемые ресурсы; game передаёт части в существующую очередь, backend владеет GPU uploads. OBJ/BMP остаются действующим путём прежних моделей.
 
+`VulkanDevice` owns the shared scene/HDR/UI pipeline cache and VMA allocator.
+The renderer persists the cache in its SDL preference directory; incompatible
+identity/shader data or corrupt files leave a fresh cache. The swapchain owner
+drains presentation and destroys its swapchain before asking the device to
+recreate the SDL surface and recheck present support. Device loss requires restart.
+Depth formats are selected once for the backend and shared by target allocation,
+pipeline declarations and normalized shadow readback. The current policy is:
+
+| Class | Capability | Alternative / failure |
+|---|---|---|
+| Required | Existing Vulkan 1.4 device/WSI contract above | Explicit startup rejection |
+| Required | Scene depth attachment at selected MSAA; sampled shadow attachment, linear filtering, transfer source/destination, 48 layers and authored extents | Explicit format/extent diagnostic |
+| Preferred | Scene D32 → D24 → D16; shadow D24 → D32 → D16, without stencil | Next compatible candidate; fail if none |
+| Preferred | samplerAnisotropy | 1x sampling when unavailable |
+| Optional | VK_EXT_memory_budget | Labelled VMA estimates; no device rejection |
+| Preferred | HDR compute tone mapping on the selected graphics queue, mutable RGBA8 UNORM storage target | Existing raster tone mapping when queue/format support is missing |
+
+HDR tone mapping uses an offline Slang compute shader with bounded 8x8 groups
+when supported. It shares display mapping with the raster pass, reads resolved
+FP16 color, writes encoded RGB through the UNORM view, then synchronizes UI and
+readback/presentation. Both scene slots retain their own targets/descriptors;
+there are no temporal inputs/history in this pass. Technique diagnostics and the
+raster verification override are in [Development](DEVELOPMENT.md#vulkan-capture-и-validation),
+with [06a evidence](renderer/VK14-06.md).
+
+VK14-06 pass inputs are renderer-owned, opt-in diagnostics: a single-sample
+geometry pass produces mapped world normals, view depth and previous-minus-current
+top-down UV velocity. Explicit previous model transforms cross the existing
+`RenderItem` boundary; missing/dynamic correspondence, transparents and viewmodels
+reject history. Two scene slots retain pre-UI color and geometry for GPU
+reprojection/acceptance views. Resize/projection/exposure, scene activation,
+restore/respawn/camera cuts and successful reload invalidate history. The full
+[input/history contract and evidence](renderer/VK14-06.md#06bc-contract--2026-10-12)
+define encodings, resets and limitations. [VK14-08](renderer/VK14-08.md) consumes
+them for HDR TAA and resolution scaling; [VK14-09](renderer/VK14-09.md) adds a
+renderer-owned half-resolution diffuse GI history and bounded lens output.
+Prepared reload owns quality changes. Current source radiance excludes screen
+lighting feedback; GI replaces covered diffuse, while SSR retains probe fallback.
+Lens output follows TAA and precedes bloom/tone mapping; UI remains outside it.
+
+Memory statistics and retention counters are explicit diagnostic snapshots, with
+no heap queries in the normal frame loop. [Development](DEVELOPMENT.md#vulkan-capture-и-validation)
+owns the UI procedure; [VK14-05 evidence](renderer/VK14-05.md) owns the fixtures and
+tested hardware limits.
+
 IMG-01–03 extend native v4 materials with linear metallic/roughness and AO maps,
 preserving v1–3 lighting. A game-owned prepared scene may supply one static
 reflection cube with bounds; the engine owns its validated CPU product, Vulkan
 upload and descriptors. Inside its bounds, box-projected GGX IBL replaces SH
 specular; material AO attenuates indirect illumination only. Capture/staleness
-inputs are documented in DEVELOPMENT.md. Lightmaps and dynamic reflections
+inputs are documented in [RENDERING](RENDERING.md#static-reflection-probes-img-02). Lightmaps and dynamic reflections
 remain separate capabilities. IMG-06 adds native v5 emissive
 textures/factors; the reader accepts products v1–5.
 

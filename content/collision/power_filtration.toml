@@ -1,0 +1,16 @@
+# F-04 supply and return, authored from the cylinder dimensions in the model exporter.
+version = 1
+units = "metres"
+axes = "right-handed-y-up"
+winding = "ccw"
+model = "models/power_filtration.rcmodel"
+
+[[boxes]]
+mins = [4.91,1.11,27.82]
+maxs = [5.09,1.29,30.85]
+surface = "metal"
+
+[[boxes]]
+mins = [1.64,0.46,26.91]
+maxs = [4.17,0.64,27.09]
+surface = "metal"

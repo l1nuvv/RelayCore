@@ -35,12 +35,12 @@ namespace RelayCore::render
         }
 
         template<typename... Args>
-        void log_info_if_available(spdlog::format_string_t<Args...> fmt, Args&&... args)
+        void log_debug_if_available(spdlog::format_string_t<Args...> fmt, Args&&... args)
         {
             RELAYCORE_PROFILE_FUNCTION();
             if (spdlog::default_logger_raw() != nullptr)
             {
-                log::info(fmt, std::forward<Args>(args)...);
+                log::debug(fmt, std::forward<Args>(args)...);
             }
         }
 
@@ -194,7 +194,7 @@ namespace RelayCore::render
         SDL_Surface* loaded_surface = SDL_LoadBMP(path.string().c_str());
         if (loaded_surface == nullptr)
         {
-            log_warn_if_available("Failed to load blockout atlas '{}': {}", path.string(), SDL_GetError());
+            log_warn_if_available("[assets] Failed to load blockout atlas '{}': {}", path.string(), SDL_GetError());
             return std::nullopt;
         }
 
@@ -202,7 +202,11 @@ namespace RelayCore::render
         SDL_DestroySurface(loaded_surface);
         if (rgba_surface == nullptr)
         {
-            log_warn_if_available("Failed to convert blockout atlas '{}' to RGBA32: {}", path.string(), SDL_GetError());
+            log_warn_if_available(
+                "[assets] Failed to convert blockout atlas '{}' to RGBA32: {}",
+                path.string(),
+                SDL_GetError()
+            );
             return std::nullopt;
         }
 
@@ -214,7 +218,8 @@ namespace RelayCore::render
         {
             RELAYCORE_PROFILE_FUNCTION();
             log_warn_if_available(
-                "Blockout atlas '{}' has unsupported dimensions {}x{} (expected dimensions divisible by {}x{})",
+                "[assets] Blockout atlas '{}' has unsupported dimensions {}x{} (expected dimensions divisible by "
+                "{}x{})",
                 path.string(),
                 atlas.width,
                 atlas.height,
@@ -236,7 +241,7 @@ namespace RelayCore::render
         }
 
         SDL_DestroySurface(rgba_surface);
-        log_info_if_available("Loaded blockout texture atlas: {}", path.string());
+        log_debug_if_available("[assets] Loaded blockout texture atlas: {}", path.string());
         return atlas;
     }
 
@@ -250,7 +255,7 @@ namespace RelayCore::render
             return *loaded_atlas;
         }
 
-        log_warn_if_available("Using generated fallback blockout atlas");
+        log_warn_if_available("[assets] Using generated fallback blockout atlas");
         return generate_blockout_texture_atlas(authoring_config);
     }
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 namespace RelayGame
 {
     auto GameWorldRuntime::build_hud_presentation(const RelayCore::render::PerspectiveCamera* camera)
@@ -19,6 +20,19 @@ namespace RelayGame
         hud.health = player.health;
         hud.max_health = player.max_health;
         hud.hurt = std::clamp(player.hurt_flash_remaining_seconds / 0.30F, 0.0F, 1.0F);
+        hud.damage_alert = std::clamp(player.damage_direction_remaining_seconds / 0.30F, 0.0F, 1.0F);
+        if (camera && player.damage_source_position_valid)
+        {
+            const auto direction = player.damage_source_position - camera->position();
+            const glm::vec3 flat{direction.x, 0.0F, direction.z};
+            const glm::vec3 forward{camera->forward().x, 0.0F, camera->forward().z};
+            const glm::vec3 right{camera->right().x, 0.0F, camera->right().z};
+            if (glm::length(flat) > 0.01F && glm::length(forward) > 0.01F && glm::length(right) > 0.01F)
+                hud.damage_direction_degrees = glm::degrees(std::atan2(
+                    glm::dot(glm::normalize(flat), glm::normalize(right)),
+                    glm::dot(glm::normalize(flat), glm::normalize(forward))
+                ));
+        }
         hud.hit = std::clamp(player.hit_confirmation_remaining_seconds / 0.16F, 0.0F, 1.0F);
         hud.reticle_radius = selected_weapon_ == PlayerWeapon::Shotgun ? 12.0F : 0.0F;
         hud.weapon = player.alive

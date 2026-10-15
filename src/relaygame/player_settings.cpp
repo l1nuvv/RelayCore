@@ -15,12 +15,69 @@ namespace RelayGame
                 if (!std::isfinite(value) || value < low || value > high)
                     throw std::runtime_error(std::string{"player_settings."} + key + " is out of range");
             };
+            if ((settings.bloom_enabled || settings.ssr_enabled) && !settings.hdr_enabled)
+                throw std::runtime_error("player_settings: bloom and SSR require HDR enabled");
+            if (settings.ssgi_quality < 0 || settings.ssgi_quality > 2)
+                throw std::runtime_error("player_settings.ssgi_quality must be 0, 1 or 2");
+            if (settings.reflection_quality < 0 || settings.reflection_quality > 2)
+                throw std::runtime_error("player_settings.reflection_quality must be 0, 1 or 2");
+            if (settings.dof_quality < 0 || settings.dof_quality > 2)
+                throw std::runtime_error("player_settings.dof_quality must be 0, 1 or 2");
+            if (settings.motion_blur_quality < 0 || settings.motion_blur_quality > 2)
+                throw std::runtime_error("player_settings.motion_blur_quality must be 0, 1 or 2");
+            if ((settings.ssgi_quality || settings.dof_quality || settings.motion_blur_quality)
+                && !settings.hdr_enabled)
+                throw std::runtime_error("player_settings: SSGI and lens effects require HDR enabled");
+            if (settings.reflection_quality && !settings.ssr_enabled)
+                throw std::runtime_error("player_settings: improved reflections require SSR enabled");
+            range("render_scale", settings.render_scale, .5F, 1);
+            if ((settings.taa_enabled || settings.render_scale != 1 || settings.dynamic_resolution_enabled)
+                && !settings.hdr_enabled)
+                throw std::runtime_error("player_settings: TAA and scaling require HDR enabled");
             range("volume", settings.volume, 0, 1);
             range("sensitivity", settings.sensitivity, 0.0003F, 0.008F);
             range("fov", settings.fov, 50, 100);
             range("camera_motion", settings.camera_motion, 0, 1);
         }
     } // namespace
+
+    void apply_graphics_preset(PlayerSettings& settings, GraphicsPreset preset)
+    {
+        if (preset == GraphicsPreset::Custom)
+            return;
+        if (preset != GraphicsPreset::Low && preset != GraphicsPreset::Balanced && preset != GraphicsPreset::High)
+            throw std::runtime_error("Unknown graphics preset");
+        const bool enhanced = preset != GraphicsPreset::Low;
+        const bool high = preset == GraphicsPreset::High;
+        settings.hdr_enabled = enhanced;
+        settings.bloom_enabled = settings.ssao_enabled = settings.taa_enabled = enhanced;
+        settings.ssr_enabled = settings.volumetrics_enabled = high;
+        settings.ssgi_quality = settings.reflection_quality = high ? 2 : 0;
+        settings.dof_quality = settings.motion_blur_quality = 0;
+        settings.render_scale = 1;
+        settings.dynamic_resolution_enabled = false;
+    }
+
+    auto graphics_preset(const PlayerSettings& settings) -> GraphicsPreset
+    {
+        if (settings.render_scale != 1 || settings.dynamic_resolution_enabled || settings.dof_quality
+            || settings.motion_blur_quality)
+            return GraphicsPreset::Custom;
+        if (!settings.hdr_enabled && !settings.bloom_enabled && !settings.ssao_enabled && !settings.taa_enabled
+            && !settings.ssr_enabled && !settings.volumetrics_enabled && !settings.ssgi_quality
+            && !settings.reflection_quality)
+            return GraphicsPreset::Low;
+        if (settings.hdr_enabled && settings.bloom_enabled && settings.ssao_enabled && settings.taa_enabled)
+        {
+            if (!settings.ssr_enabled && !settings.volumetrics_enabled && !settings.ssgi_quality
+                && !settings.reflection_quality)
+                return GraphicsPreset::Balanced;
+            if (settings.ssr_enabled && settings.volumetrics_enabled && settings.ssgi_quality == 2
+                && settings.reflection_quality == 2)
+                return GraphicsPreset::High;
+        }
+        return GraphicsPreset::Custom;
+    }
 
     auto load_player_settings(const std::filesystem::path& path, PlayerSettings defaults) -> PlayerSettings
     {
@@ -39,6 +96,36 @@ namespace RelayGame
         defaults.sensitivity = read_float("sensitivity", defaults.sensitivity);
         defaults.fov = read_float("fov", defaults.fov);
         defaults.camera_motion = read_float("camera_motion", defaults.camera_motion);
+        defaults.render_scale = read_float("render_scale", defaults.render_scale);
+        if (table.contains("ssgi_quality"))
+        {
+            const auto value = table["ssgi_quality"].value<int>();
+            if (!value)
+                throw std::runtime_error("player_settings.ssgi_quality must be an integer");
+            defaults.ssgi_quality = *value;
+        }
+        if (table.contains("reflection_quality"))
+        {
+            const auto value = table["reflection_quality"].value<int>();
+            if (!value)
+                throw std::runtime_error("player_settings.reflection_quality must be an integer");
+            defaults.reflection_quality = *value;
+        }
+        if (table.contains("dof_quality"))
+        {
+            const auto value = table["dof_quality"].value<int>();
+            if (!value)
+                throw std::runtime_error("player_settings.dof_quality must be an integer");
+            defaults.dof_quality = *value;
+        }
+        if (table.contains("motion_blur_quality"))
+        {
+            const auto value = table["motion_blur_quality"].value<int>();
+            if (!value)
+                throw std::runtime_error("player_settings.motion_blur_quality must be an integer");
+            defaults.motion_blur_quality = *value;
+        }
+
         if (table.contains("vsync"))
         {
             const auto value = table["vsync"].value<bool>();
@@ -53,6 +140,48 @@ namespace RelayGame
                 throw std::runtime_error("player_settings.hdr_enabled must be a boolean");
             defaults.hdr_enabled = *value;
         }
+        if (table.contains("bloom_enabled"))
+        {
+            const auto value = table["bloom_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.bloom_enabled must be a boolean");
+            defaults.bloom_enabled = *value;
+        }
+        if (table.contains("ssao_enabled"))
+        {
+            const auto value = table["ssao_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.ssao_enabled must be a boolean");
+            defaults.ssao_enabled = *value;
+        }
+        if (table.contains("ssr_enabled"))
+        {
+            const auto value = table["ssr_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.ssr_enabled must be a boolean");
+            defaults.ssr_enabled = *value;
+        }
+        if (table.contains("volumetrics_enabled"))
+        {
+            const auto value = table["volumetrics_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.volumetrics_enabled must be a boolean");
+            defaults.volumetrics_enabled = *value;
+        }
+        if (table.contains("taa_enabled"))
+        {
+            const auto value = table["taa_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.taa_enabled must be a boolean");
+            defaults.taa_enabled = *value;
+        }
+        if (table.contains("dynamic_resolution_enabled"))
+        {
+            const auto value = table["dynamic_resolution_enabled"].value<bool>();
+            if (!value)
+                throw std::runtime_error("player_settings.dynamic_resolution_enabled must be a boolean");
+            defaults.dynamic_resolution_enabled = *value;
+        }
         validate(defaults);
         return defaults;
     }
@@ -66,7 +195,18 @@ namespace RelayGame
             {"fov", settings.fov},
             {"camera_motion", settings.camera_motion},
             {"vsync", settings.vsync},
-            {"hdr_enabled", settings.hdr_enabled}
+            {"hdr_enabled", settings.hdr_enabled},
+            {"bloom_enabled", settings.bloom_enabled},
+            {"ssao_enabled", settings.ssao_enabled},
+            {"ssr_enabled", settings.ssr_enabled},
+            {"volumetrics_enabled", settings.volumetrics_enabled},
+            {"ssgi_quality", settings.ssgi_quality},
+            {"reflection_quality", settings.reflection_quality},
+            {"dof_quality", settings.dof_quality},
+            {"motion_blur_quality", settings.motion_blur_quality},
+            {"taa_enabled", settings.taa_enabled},
+            {"render_scale", settings.render_scale},
+            {"dynamic_resolution_enabled", settings.dynamic_resolution_enabled}
         };
         std::filesystem::create_directories(path.parent_path());
         auto temporary = path;

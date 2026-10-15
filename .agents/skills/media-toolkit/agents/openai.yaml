@@ -1,0 +1,4 @@
+interface:
+  display_name: "RelayCore Media Toolkit"
+  short_description: "Prepare audio and process gameplay recordings"
+  default_prompt: "Use $media-toolkit to process this audio or video for RelayCore."

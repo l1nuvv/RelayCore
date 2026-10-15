@@ -11,9 +11,11 @@
 #include "relaycore/render/vulkan_swapchain.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <glm/trigonometric.hpp>
 #include <imgui.h>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -61,6 +63,10 @@ namespace RelayCore
     struct Renderer::State {
         const Window* window = nullptr;
         std::unique_ptr<render::VulkanDevice> device;
+        std::filesystem::path pipeline_cache_file;
+        std::optional<render::VulkanMemoryUsage> memory_snapshot;
+        render::VulkanResourceUsage resource_snapshot{};
+        render::VulkanMaterialDescriptorUsage descriptor_snapshot{};
         std::unique_ptr<render::VulkanSwapchain> swapchain;
         std::shared_ptr<render::VulkanMeshRenderer> backend;
         // UI reload may replace backend after scene submission. Keep that frame alive through present.
@@ -82,6 +88,30 @@ namespace RelayCore
         imgui_overlay_(config.imgui), state_(std::make_unique<State>())
     {}
 
+    auto Renderer::presentation_mode_name() const noexcept -> std::string_view
+    {
+        if (!state_->swapchain)
+            return "unavailable";
+        switch (state_->swapchain->present_mode())
+        {
+            case VK_PRESENT_MODE_FIFO_KHR:
+                return "fifo";
+            case VK_PRESENT_MODE_IMMEDIATE_KHR:
+                return "immediate";
+            case VK_PRESENT_MODE_MAILBOX_KHR:
+                return "mailbox";
+            case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+                return "fifo_relaxed";
+            default:
+                return "unavailable";
+        }
+    }
+
+    auto Renderer::validation_enabled() const noexcept -> bool
+    {
+        return state_->device && state_->device->capabilities().validation_enabled;
+    }
+
     Renderer::~Renderer() noexcept
     {
         // Drain presentation before destroying descriptors, pipelines or the ImGui backend.
@@ -90,6 +120,19 @@ namespace RelayCore
         state_->backend.reset();
         player_ui_.reset();
         imgui_overlay_.shutdown();
+        try
+        {
+            if (state_->device && !state_->pipeline_cache_file.empty()
+                && !state_->device
+                        ->save_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan")))
+                log::error_noexcept(
+                    "[renderer] Could not persist Vulkan pipeline cache",
+                    state_->pipeline_cache_file.string().c_str()
+                );
+        } catch (const std::exception& error)
+        {
+            log::error_noexcept("[renderer] Could not persist Vulkan pipeline cache", error.what());
+        }
     }
 
     void Renderer::initialize(const Window& window)
@@ -98,16 +141,26 @@ namespace RelayCore
             return;
         state_->window = &window;
         state_->device = std::make_unique<render::VulkanDevice>(window);
+        if (auto* preferences = SDL_GetPrefPath("RelayCore", "RelayCore"))
+        {
+            state_->pipeline_cache_file = std::filesystem::path{preferences} / "vulkan-pipelines.cache";
+            SDL_free(preferences);
+            (void) state_->device->load_pipeline_cache(state_->pipeline_cache_file, core::asset_path("shaders/vulkan"));
+        } else
+            log::warn("[renderer] Vulkan pipeline cache unavailable: SDL_GetPrefPath failed: {}", SDL_GetError());
         state_->swapchain = std::make_unique<render::VulkanSwapchain>(*state_->device, window, window.vsync_enabled());
-        commit_live_content_reload(prepare_live_content_reload(config_, render::load_default_render_authoring_config())
+        commit_live_content_reload(
+            prepare_live_content_reload(config_, render::load_default_render_authoring_config(), "startup")
         );
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window, *state_->device);
         player_ui_ = std::make_unique<render::PlayerUi>(window.handle(), *state_->device);
+        const auto extent = window.pixel_extent();
+        player_ui_->prepare_fonts(extent.width, extent.height);
         initialized_ = true;
         const auto& capabilities = state_->device->capabilities();
         log::info(
-            "Renderer initialized: Vulkan {}.{}, {}",
+            "[renderer] Renderer initialized: Vulkan {}.{}, {}",
             VK_API_VERSION_MAJOR(capabilities.effective_api_version),
             VK_API_VERSION_MINOR(capabilities.effective_api_version),
             capabilities.device_name
@@ -116,18 +169,26 @@ namespace RelayCore
 
     auto Renderer::prepare_live_content_reload(
         const render::RendererConfig& config,
-        const render::RenderAuthoringConfig& authoring_config
+        const render::RenderAuthoringConfig& authoring_config,
+        const std::string_view reason
     ) -> PreparedLiveContentReload
     {
-        return prepare_live_content_reload(config, authoring_config, color_pipeline_mode_);
+        return prepare_live_content_reload(config, authoring_config, color_pipeline_mode_, reason);
     }
 
     auto Renderer::prepare_live_content_reload(
         const render::RendererConfig& config,
         const render::RenderAuthoringConfig& authoring_config,
-        const render::ColorPipelineMode color_pipeline_mode
+        const render::ColorPipelineMode color_pipeline_mode,
+        const std::string_view reason
     ) -> PreparedLiveContentReload
     {
+        const auto started = std::chrono::steady_clock::now();
+        log::info(
+            "[renderer] Backend preparation begin: operation={} reason={}",
+            initialized_ ? "recreate" : "initialize",
+            reason
+        );
         PreparedLiveContentReload staged_reload{};
         staged_reload.config = config;
         staged_reload.authoring_config = authoring_config;
@@ -154,6 +215,14 @@ namespace RelayCore
             config,
             color_pipeline_mode
         );
+        log::info(
+            "[renderer] Backend prepared: operation={} reason={} duration_ms={:.3f} atlas='{}' "
+            "pipeline_cache=attached (pipeline hits not measured)",
+            initialized_ ? "recreate" : "initialize",
+            reason,
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+            staged_reload.atlas_source_label
+        );
         return staged_reload;
     }
 
@@ -167,6 +236,8 @@ namespace RelayCore
     void Renderer::prepare_resources(std::span<const render::RenderItem> items)
     {
         state_->backend->prepare_resources(items);
+        const auto extent = state_->window->pixel_extent();
+        player_ui_->prepare_fonts(extent.width, extent.height);
     }
 
     void Renderer::commit_live_content_reload(PreparedLiveContentReload staged_reload)
@@ -175,6 +246,7 @@ namespace RelayCore
         static_assert(std::is_nothrow_move_assignable_v<render::RenderAuthoringConfig>);
         if (!staged_reload.backend)
             throw std::invalid_argument("Live content reload requires a prepared Vulkan backend");
+        log::info("[renderer] Backend commit: operation={}", initialized_ ? "replace" : "initialize");
         camera_.apply_projection_config(staged_reload.config.camera);
         state_->backend = std::move(staged_reload.backend);
         config_ = std::move(staged_reload.config);
@@ -198,6 +270,73 @@ namespace RelayCore
         viewport_width_ = width;
         viewport_height_ = height;
         camera_.set_viewport(width, height);
+        reset_render_history();
+    }
+
+    void Renderer::reset_render_history() noexcept
+    {
+        if (state_->backend)
+            state_->backend->reset_history();
+    }
+
+    void Renderer::refresh_memory_snapshot()
+    {
+        state_->memory_snapshot = state_->device->memory_usage();
+        state_->resource_snapshot = state_->backend->resource_usage();
+        state_->descriptor_snapshot = state_->backend->material_descriptor_usage();
+        if (state_->frame_backend && state_->frame_backend != state_->backend)
+        {
+            const auto previous = state_->frame_backend->resource_usage();
+            state_->resource_snapshot.staging_bytes += previous.staging_bytes;
+            state_->resource_snapshot.upload_batches += previous.upload_batches;
+            state_->resource_snapshot.upload_retirements += previous.upload_retirements;
+            state_->resource_snapshot.scene_retirements += previous.scene_retirements;
+            state_->resource_snapshot.material_retirements += previous.material_retirements;
+            const auto descriptors = state_->frame_backend->material_descriptor_usage();
+            state_->descriptor_snapshot.pools += descriptors.pools;
+            state_->descriptor_snapshot.materials += descriptors.materials;
+        }
+    }
+
+    void Renderer::log_memory_usage(const std::string_view reason)
+    {
+        RELAYCORE_PROFILE_ZONE_N("Renderer::memory_snapshot");
+        refresh_memory_snapshot();
+        for (size_t i = 0; i < state_->memory_snapshot->heaps.size(); ++i)
+        {
+            const auto& heap = state_->memory_snapshot->heaps[i];
+            log::info(
+                "[memory] reason={} heap={} local={} driver_budget={} usage={} budget={} allocations={} "
+                "allocation_bytes={} blocks={} block_bytes={}",
+                reason,
+                i,
+                heap.device_local,
+                state_->memory_snapshot->driver_budget,
+                heap.usage_bytes,
+                heap.budget_bytes,
+                heap.allocations,
+                heap.allocation_bytes,
+                heap.blocks,
+                heap.block_bytes
+            );
+        }
+        const auto& resources = state_->resource_snapshot;
+        const auto resolution = state_->backend->resolution_status();
+        log::info(
+            "[memory] reason={} staging={} upload_batches={} upload_retirements={} scene_retirements={} "
+            "material_retirements={} materials={} descriptor_pools={} render={}x{} scale={}",
+            reason,
+            resources.staging_bytes,
+            resources.upload_batches,
+            resources.upload_retirements,
+            resources.scene_retirements,
+            resources.material_retirements,
+            state_->descriptor_snapshot.materials,
+            state_->descriptor_snapshot.pools,
+            resolution.render_width,
+            resolution.render_height,
+            resolution.scale
+        );
     }
 
     void Renderer::begin_frame()
@@ -391,6 +530,59 @@ namespace RelayCore
                 audio_diagnostics_,
                 iteration_diagnostics_
             );
+            if (imgui_overlay_.advanced_diagnostics_visible() && ImGui::Begin("Vulkan memory"))
+            {
+                if (ImGui::Button("Refresh GPU memory"))
+                {
+                    refresh_memory_snapshot();
+                }
+                if (state_->memory_snapshot)
+                {
+                    ImGui::TextUnformatted(
+                        state_->memory_snapshot->driver_budget ? "Driver heap budgets (VK_EXT_memory_budget)"
+                                                               : "Estimated heap budgets (VMA fallback)"
+                    );
+                    constexpr double mib = 1024.0 * 1024.0;
+                    for (size_t i = 0; i < state_->memory_snapshot->heaps.size(); ++i)
+                    {
+                        const auto& heap = state_->memory_snapshot->heaps[i];
+                        ImGui::Text(
+                            "Heap %zu (%s): usage %.1f / budget %.1f MiB",
+                            i,
+                            heap.device_local ? "device local" : "host",
+                            heap.usage_bytes / mib,
+                            heap.budget_bytes / mib
+                        );
+                        ImGui::Text(
+                            "VMA: %u allocations, %.1f MiB; %u blocks, %.1f MiB",
+                            heap.allocations,
+                            heap.allocation_bytes / mib,
+                            heap.blocks,
+                            heap.block_bytes / mib
+                        );
+                    }
+                    const auto& resources = state_->resource_snapshot;
+                    ImGui::Text(
+                        "Retained staging: %.2f MiB, %zu batches",
+                        resources.staging_bytes / mib,
+                        resources.upload_batches
+                    );
+                    ImGui::Text(
+                        "Pending retirement: upload %zu, scene %zu, materials %zu",
+                        resources.upload_retirements,
+                        resources.scene_retirements,
+                        resources.material_retirements
+                    );
+                    ImGui::Text(
+                        "Materials: %zu; descriptor pools: %zu",
+                        state_->descriptor_snapshot.materials,
+                        state_->descriptor_snapshot.pools
+                    );
+                } else
+                    ImGui::TextUnformatted("Press Refresh GPU memory to capture a snapshot.");
+                ImGui::End();
+            } else if (imgui_overlay_.advanced_diagnostics_visible())
+                ImGui::End();
         }
         if (show_shadow_debug_banner)
         {

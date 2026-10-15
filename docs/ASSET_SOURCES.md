@@ -8,7 +8,7 @@ The owner intends the engine and game to remain private. Do not make licensing a
 
 Choose sources by visual fit, useful geometry, texture quality, editable formats, adaptation cost and price. Prefer free available downloads when they satisfy the task; this catalog does not authorize purchases, subscriptions or account changes. A site's listing here does not mean it has a connected tool or automated download API.
 
-[ART_DIRECTION.md](ART_DIRECTION.md) owns style: twentieth-century scientific-industrial and urban Art Deco spaces, late-1980s/1990s analog equipment, and the owner's overt ritual/infernal motifs. The [static-model section of DEVELOPMENT.md](DEVELOPMENT.md#статические-модели-glb--native-product) owns supported interchange and runtime materials. Use [relaycore-blender](../.agents/skills/relaycore-blender/SKILL.md) for Blender authoring and [relaycore-assets](../.agents/skills/relaycore-assets/SKILL.md) for native compilation/staging.
+[ART_DIRECTION.md](ART_DIRECTION.md) owns style: twentieth-century scientific-industrial and urban Art Deco spaces, late-1980s/1990s analog equipment, and the owner's overt ritual/infernal motifs. The [static-model section of DEVELOPMENT.md](MODEL_ASSETS.md#статические-модели-glb--native-product) owns supported interchange and runtime materials. Use [relaycore-blender](../.agents/skills/relaycore-blender/SKILL.md) for Blender authoring and [relaycore-assets](../.agents/skills/relaycore-assets/SKILL.md) for native compilation/staging.
 
 ## Agent workflow
 

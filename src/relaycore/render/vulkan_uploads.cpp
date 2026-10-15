@@ -1,11 +1,11 @@
 #include "relaycore/render/vulkan_uploads.h"
 
+#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/reflection_probe.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <deque>
 #include <limits>
 #include <stdexcept>
@@ -183,7 +183,7 @@ namespace RelayCore::render
                 wait(last_submission);
             } catch (const std::exception& error)
             {
-                std::fprintf(stderr, "Vulkan upload shutdown failed: %s\n", error.what());
+                log::error_noexcept("[renderer] Vulkan upload shutdown failed", error.what());
             }
             batches.clear();
             buffers.clear();
@@ -293,14 +293,19 @@ namespace RelayCore::render
     }
     VulkanUploads::~VulkanUploads() noexcept = default;
 
-    auto VulkanUploads::upload_mesh_buffer(const std::span<const std::byte> bytes, const VkBufferUsageFlagBits kind)
+    auto VulkanUploads::upload_mesh_buffer(const std::span<const std::byte> bytes, const VkBufferUsageFlags kind)
         -> VulkanBufferUpload
     {
         RELAYCORE_PROFILE_ZONE_N("Vulkan mesh upload");
+        RELAYCORE_PROFILE_PLOT("Vulkan/MeshUploadBytes", bytes.size_bytes());
         if (bytes.empty())
             throw std::invalid_argument("Vulkan mesh upload requires nonempty data");
-        if (kind != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT && kind != VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
-            throw std::invalid_argument("Vulkan mesh upload requires vertex or index buffer usage");
+        if (kind != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT && kind != VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+            && kind != VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+            && kind != (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+            throw std::invalid_argument(
+                "Vulkan mesh upload requires vertex, index, storage, or vertex/storage buffer usage"
+            );
         VulkanBuffer destination{
             state_->device,
             bytes.size_bytes(),
@@ -322,10 +327,12 @@ namespace RelayCore::render
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
             .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
-                                                                      : VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-            .dstAccessMask = kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT
-                                                                       : VK_ACCESS_2_INDEX_READ_BIT,
+            .dstStageMask = (kind & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+                            : kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
+                                                                        : VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+            .dstAccessMask = (kind & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) ? VK_ACCESS_2_MEMORY_READ_BIT
+                             : kind == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT
+                                                                         : VK_ACCESS_2_INDEX_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = destination.handle(),
@@ -352,6 +359,7 @@ namespace RelayCore::render
         const auto size = static_cast<uint64_t>(data.width) * static_cast<uint64_t>(data.height) * 4;
         if (data.pixels.size() != size)
             throw std::invalid_argument("Vulkan RGBA upload size mismatch");
+        RELAYCORE_PROFILE_PLOT("Vulkan/TextureUploadBytes", size);
         VulkanTexture texture{state_->device, data.width, data.height, encoding};
         auto batch = state_->begin_batch();
         state_->reserve_staging(data.pixels.size());
@@ -532,6 +540,16 @@ namespace RelayCore::render
         std::erase_if(state_->textures, [completed](const auto& entry) {
             return entry.completion <= completed;
         });
+    }
+    auto VulkanUploads::memory_usage() const noexcept -> VulkanUploadUsage
+    {
+        VulkanUploadUsage result{
+            .batches = state_->batches.size(),
+            .retirements = state_->buffers.size() + state_->textures.size()
+        };
+        for (const auto& batch : state_->batches)
+            result.staging_bytes += batch->transfer.size();
+        return result;
     }
     void VulkanUploads::retire(VulkanBuffer&& buffer, const uint64_t completion)
     {

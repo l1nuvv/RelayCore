@@ -28,7 +28,7 @@ namespace RelayGame
 {
     namespace
     {
-        constexpr std::size_t kMaxActiveLocalLights = 8;
+        constexpr std::size_t kMaxActiveLocalLights = RelayCore::render::kMaxLocalLights;
 
         [[nodiscard]] auto normalize_plane(const glm::vec4& plane) -> glm::vec4
         {
@@ -419,6 +419,8 @@ namespace RelayGame
             add_mesh(mesh);
         for (const auto& mesh : decal_meshes_)
             add_mesh(mesh);
+        for (const auto& mesh : bullet_impact_meshes_)
+            add_mesh(mesh);
         for (const auto& mesh : lamp_meshes_)
             add_mesh(mesh);
         for (const auto& mesh : rover_signal_meshes_)
@@ -432,7 +434,13 @@ namespace RelayGame
         for (const auto* model :
              {&enemy_model_, &destroyed_enemy_model_, &power_fuse_model_, &turret_model_, &destroyed_turret_model_})
             add_model(*model);
-        const auto add_asset = [&](const auto& asset) {
+        for (const auto* model : {&enemy_model_, &turret_model_})
+            if (*model)
+            {
+                add_model(*model);
+                resources.items().back().emissive_factor = actor_hit_emission;
+            }
+        const auto add_asset = [&](const auto& asset, const bool hit = false) {
             if (asset)
                 for (const auto& part : asset->parts)
                 {
@@ -449,8 +457,8 @@ namespace RelayGame
                         surface.metallic_roughness_map.valid() ? &surface.metallic_roughness_map : nullptr,
                         surface.occlusion.valid() ? &surface.occlusion : nullptr,
                         surface.occlusion_strength,
-                        surface.emissive.valid() ? &surface.emissive : nullptr,
-                        surface.emissive_factor
+                        !hit && surface.emissive.valid() ? &surface.emissive : nullptr,
+                        hit ? actor_hit_emission : surface.emissive_factor
                     );
                 }
         };
@@ -468,6 +476,7 @@ namespace RelayGame
             add_asset(model);
         for (const auto& model : shooter_models_)
             add_asset(model);
+        add_asset(shooter_models_[0], true);
         for (const auto& prop : props_)
         {
             if (prop.asset)
@@ -607,7 +616,7 @@ namespace RelayGame
                                       : RelayCore::render::TextureEncoding::linear;
             if (prop.model.extension() == ".rcmodel")
             {
-                props_.push_back({{}, prop.transform, models.load(prop.model, encoding)});
+                props_.push_back({{}, prop.transform, models.load(prop.model, encoding), prop.casts_shadow});
                 continue;
             }
             props_.push_back(
@@ -618,7 +627,9 @@ namespace RelayGame
                          ? RelayCore::render::TextureEncoding::srgb
                          : RelayCore::render::TextureEncoding::linear
                  ),
-                 prop.transform}
+                 prop.transform,
+                 {},
+                 prop.casts_shadow}
             );
         }
         RelayCore::render::CpuColorMeshData door_mesh_data = RelayCore::render::make_color_box_mesh_data();
@@ -666,6 +677,39 @@ namespace RelayGame
         inspector_hit_mesh_.initialize(inspector_hit_mesh_data);
         player_shot_mesh_.initialize(player_shot_mesh_data);
         pellet_mesh_.initialize(pellet_mesh_data);
+        for (std::size_t material = 0; material < bullet_impact_meshes_.size(); ++material)
+        {
+            RelayCore::render::CpuColorMeshData mark;
+            const auto core =
+                RelayCore::render::visual_rgb_for_pipeline({0.025F, 0.023F, 0.021F}, scene_data.color_pipeline_mode);
+            const auto rim = RelayCore::render::visual_rgb_for_pipeline(
+                material == 0 ? glm::vec3{0.38F, 0.35F, 0.31F} : glm::vec3{0.16F, 0.15F, 0.13F},
+                scene_data.color_pipeline_mode
+            );
+            mark.vertices.push_back({{0, 0, 0}, core, {0, 0, 1}, static_cast<float>(RelayCore::SurfaceMaterial::Matte)}
+            );
+            for (int ring = 0; ring < 2; ++ring)
+                for (int i = 0; i < 12; ++i)
+                {
+                    const float angle = static_cast<float>(i) * 6.2831853F / 12;
+                    const float radius = ring == 0 ? 0.42F : 0.88F + 0.12F * std::sin(static_cast<float>(i) * 2.7F);
+                    mark.vertices.push_back(
+                        {{radius * std::cos(angle), radius * std::sin(angle), 0},
+                         ring == 0 ? core : rim,
+                         {0, 0, 1},
+                         static_cast<float>(RelayCore::SurfaceMaterial::Matte)}
+                    );
+                }
+            for (std::uint32_t i = 0; i < 12; ++i)
+            {
+                const auto next = (i + 1) % 12;
+                mark.indices.insert(
+                    mark.indices.end(),
+                    {0, 1 + i, 1 + next, 1 + i, 13 + i, 13 + next, 1 + i, 13 + next, 1 + next}
+                );
+            }
+            bullet_impact_meshes_[material].initialize(mark);
+        }
         turret_shot_mesh_.initialize(turret_shot_mesh_data);
         constexpr std::array<glm::vec3, 4> containment_colors{
             {{.46F, .32F, .26F}, {.24F, .28F, .26F}, {.9F, .3F, .08F}, {.2F, .8F, .3F}}
@@ -773,6 +817,7 @@ namespace RelayGame
         inspector_hit_mesh_ = RelayCore::render::StaticColorMesh{};
         player_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         pellet_mesh_ = RelayCore::render::StaticColorMesh{};
+        bullet_impact_meshes_ = {};
         turret_shot_mesh_ = RelayCore::render::StaticColorMesh{};
         turret_warning_mesh_ = RelayCore::render::StaticColorMesh{};
         rover_signal_meshes_ = {};
@@ -813,7 +858,8 @@ namespace RelayGame
         const std::span<const RuntimeEnemy> enemies,
         const RelayCore::gameplay::PlayerCombatState* player_combat,
         const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces,
-        const ContainmentEncounter* containment
+        const ContainmentEncounter* containment,
+        const std::span<const BulletImpactMark> bullet_impact_marks
     )
     {
         prepare_render_queue(
@@ -831,7 +877,8 @@ namespace RelayGame
             enemies,
             player_combat,
             pellet_traces,
-            containment
+            containment,
+            bullet_impact_marks
         );
         renderer.set_local_lights(active_local_lights_);
         renderer.set_irradiance_probes(irradiance_);
@@ -854,7 +901,8 @@ namespace RelayGame
         const std::span<const RuntimeEnemy> enemies,
         const RelayCore::gameplay::PlayerCombatState* player_combat,
         const std::span<const RelayCore::gameplay::CombatShotTrace> pellet_traces,
-        const ContainmentEncounter* containment
+        const ContainmentEncounter* containment,
+        const std::span<const BulletImpactMark> bullet_impact_marks
     )
     {
         RELAYCORE_PROFILE_ZONE_N("WorldSceneRenderer::render");
@@ -910,7 +958,8 @@ namespace RelayGame
                         surface.occlusion.valid() ? &surface.occlusion : nullptr,
                         surface.occlusion_strength,
                         surface.emissive.valid() ? &surface.emissive : nullptr,
-                        surface.emissive_factor
+                        surface.emissive_factor,
+                        prop.casts_shadow
                     );
                     record_render_draw(
                         RelayCore::render::RenderPass::Opaque,
@@ -921,6 +970,7 @@ namespace RelayGame
             }
             render_queue_
                 .push(prop.model->mesh, prop.transform, RelayCore::render::RenderPass::Opaque, &prop.model->texture);
+            render_queue_.items().back().casts_shadow = prop.casts_shadow;
             record_render_draw(
                 RelayCore::render::RenderPass::Opaque,
                 static_cast<std::uint32_t>(prop.model->mesh.index_count() / 3)
@@ -971,6 +1021,10 @@ namespace RelayGame
             }
         }
 
+        // Authored props and level chunks do not move; dynamic submissions below require correspondence.
+        for (auto& item : render_queue_.items())
+            item.previous_model_matrix = item.model_matrix;
+
         render_doors(camera, doors);
         render_scientist(scientist);
         if (containment)
@@ -987,6 +1041,33 @@ namespace RelayGame
                 camera.position()
             );
         render_turrets(camera, turrets);
+        for (std::size_t i = 0; i < bullet_impact_marks.size(); ++i)
+        {
+            const auto& mark = bullet_impact_marks[i];
+            auto position = mark.hit.position;
+            if (mark.hit.object.kind == RelayCore::physics::WorldObjectKind::Door)
+            {
+                const auto& door = doors[mark.hit.object.index];
+                position += door.open_offset * door.open_fraction;
+            }
+            const auto normal = mark.hit.normal;
+            const auto tangent =
+                glm::normalize(glm::cross(std::abs(normal.y) < 0.9F ? glm::vec3{0, 1, 0} : glm::vec3{1, 0, 0}, normal));
+            const auto bitangent = glm::cross(normal, tangent);
+            const float angle = glm::dot(mark.hit.position, glm::vec3{17, 23, 31});
+            glm::mat4 transform{1};
+            transform[0] = glm::vec4{(tangent * std::cos(angle) + bitangent * std::sin(angle)) * mark.radius, 0};
+            transform[1] = glm::vec4{(bitangent * std::cos(angle) - tangent * std::sin(angle)) * mark.radius, 0};
+            transform[2] = glm::vec4{normal, 0};
+            transform[3] = glm::vec4{position + normal * 0.025F, 1};
+            const auto& mesh = bullet_impact_meshes_[weapon_impact_is_metal(mark.hit.surface) ? 1 : 0];
+            render_queue_.push(mesh, transform, RelayCore::render::RenderPass::Opaque, nullptr, false);
+            render_queue_.items().back().casts_shadow = false;
+            record_render_draw(
+                RelayCore::render::RenderPass::Opaque,
+                static_cast<std::uint32_t>(mesh.index_count() / 3)
+            );
+        }
         if (player_combat != nullptr)
             render_shot_trace(camera, player_combat->shot_trace, false);
         for (const auto& trace : pellet_traces)
@@ -999,19 +1080,35 @@ namespace RelayGame
             for (const auto& enemy : enemies)
             {
                 const auto& state = enemy.state;
+                const bool hit = state.mode != EnemyMode::Dead && enemy.hit_feedback.remaining_seconds > 0;
                 auto transform = glm::translate(glm::mat4{1}, state.position);
                 transform = glm::rotate(transform, glm::radians(state.yaw), glm::vec3{0, 1, 0});
                 if (enemy.ranged_attack)
-                    queue_interactive_model(*shooter_models_[state.mode == EnemyMode::Dead ? 1 : 0], transform, true);
+                    queue_interactive_model(
+                        *shooter_models_[state.mode == EnemyMode::Dead ? 1 : 0],
+                        transform,
+                        true,
+                        true,
+                        hit
+                    );
                 else
                 {
                     const auto& model = state.mode == EnemyMode::Dead ? destroyed_enemy_model_ : enemy_model_;
                     render_queue_.push(model->mesh, transform, RelayCore::render::RenderPass::Opaque, &model->texture);
+                    if (hit)
+                        render_queue_.items().back().emissive_factor = actor_hit_emission;
                     record_render_draw(
                         RelayCore::render::RenderPass::Opaque,
                         static_cast<std::uint32_t>(model->mesh.index_count() / 3)
                     );
                 }
+                if (hit)
+                    render_spark_burst(
+                        enemy.hit_feedback.position,
+                        enemy.hit_feedback.normal,
+                        RelayCore::gameplay::actor_hit_seconds - enemy.hit_feedback.remaining_seconds,
+                        RelayCore::gameplay::actor_hit_seconds
+                    );
                 if (enemy.ranged_attack && state.mode != EnemyMode::Dead)
                 {
                     if (state.mode == EnemyMode::Windup)
@@ -1057,7 +1154,7 @@ namespace RelayGame
         active_local_lights_.clear();
         if (!local_lights_.empty())
         {
-            std::vector<RelayCore::render::LocalLight> sorted_lights{};
+            auto& sorted_lights = active_local_lights_;
             sorted_lights.reserve(local_lights_.size());
             for (const WorldLocalLight& entry : local_lights_)
             {
@@ -1084,11 +1181,7 @@ namespace RelayGame
             });
 
             const std::size_t active_count = std::min(sorted_lights.size(), kMaxActiveLocalLights);
-            active_local_lights_.reserve(active_count);
-            for (std::size_t index = 0; index < active_count; ++index)
-            {
-                active_local_lights_.push_back(sorted_lights[index]);
-            }
+            sorted_lights.resize(active_count);
         }
 
         diagnostics_.local_light_count = static_cast<std::uint32_t>(active_local_lights_.size());
@@ -1107,7 +1200,7 @@ namespace RelayGame
         RELAYCORE_PROFILE_PLOT("Render/LocalLightsActive", diagnostics_.local_light_count);
         for (const RelayCore::render::RenderItem& item : render_queue_.items())
         {
-            if (item.mesh != nullptr && item.pass == RelayCore::render::RenderPass::Opaque)
+            if (item.mesh != nullptr && item.pass == RelayCore::render::RenderPass::Opaque && item.casts_shadow)
                 shadow_casters_.push(
                     *item.mesh,
                     item.model_matrix,

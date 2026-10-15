@@ -1,4 +1,5 @@
 #include "relaycore/app/engine_services.h"
+#include "relaycore/app/run_application.h"
 #include "relaycore/audio/audio_system.h"
 #include "relaycore/core/log.h"
 #include "relaycore/core/paths.h"
@@ -61,6 +62,156 @@ namespace
         const bool written = SDL_SaveBMP(surface, filename);
         SDL_DestroySurface(surface);
         require(written, "Capture save failed");
+    }
+
+    class DiagnosticsSmoke final : public RelayCore::AppDelegate {
+    public:
+        explicit DiagnosticsSmoke(std::filesystem::path player) : game_(std::move(player)) {}
+        void on_startup(RelayCore::EngineServices& services) override
+        {
+            game_.on_startup(services);
+            deadline_ = Clock::now() + std::chrono::milliseconds(250);
+        }
+        void on_event(const SDL_Event& event, RelayCore::EngineServices& services) override
+        {
+            game_.on_event(event, services);
+        }
+        void on_update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services) override
+        {
+            game_.on_update(frame, services);
+            if (Clock::now() < deadline_)
+                return;
+            SDL_Event escape{};
+            escape.type = SDL_EVENT_KEY_DOWN;
+            escape.key.scancode = SDL_SCANCODE_ESCAPE;
+            switch (phase_++)
+            {
+                case 0:
+                    game_.begin_episode(false, services);
+                    break;
+                case 1:
+                    game_.transition_to(
+                        {{}, RelayCore::core::asset_path("levels/missing-diagnostics.toml"), "arrival", false},
+                        services
+                    );
+                    break;
+                case 2:
+                    game_.on_event(escape, services);
+                    game_.transition_to(
+                        {{}, RelayCore::core::asset_path("levels/foundation_pump.toml"), "arrival", false},
+                        services
+                    );
+                    break;
+                case 3:
+                    require(SDL_SetWindowSize(services.window().handle(), 800, 600), "Smoke resize failed");
+                    game_.return_to_menu(services);
+                    break;
+                default:
+                    services.request_quit();
+                    break;
+            }
+            deadline_ = Clock::now() + (phase_ == 1 ? std::chrono::milliseconds(1100) : std::chrono::milliseconds(250));
+        }
+        void on_render(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services) override
+        {
+            game_.on_render(frame, services);
+        }
+        void on_ui(RelayCore::EngineServices& services) override
+        {
+            game_.on_ui(services);
+        }
+        auto has_custom_ui() const noexcept -> bool override
+        {
+            return game_.has_custom_ui();
+        }
+        void on_shutdown(RelayCore::EngineServices& services) noexcept override
+        {
+            game_.on_shutdown(services);
+        }
+
+    private:
+        using Clock = std::chrono::steady_clock;
+        RelayGame::DemoGame game_;
+        Clock::time_point deadline_{};
+        int phase_ = 0;
+    };
+
+    auto test_diagnostics_smoke(char* executable) -> int
+    {
+        RelayCore::test::ScopedTempDirectory directory;
+        const auto config_path = directory.path() / "engine.toml";
+        std::ofstream(config_path) << "[window]\nwidth=640\nheight=480\nvsync=false\n"
+                                      "[audio]\nenabled=false\n[game]\nlevel_path=\"levels/foundation_intake.toml\"\n";
+        const auto player = directory.path() / "player";
+        RelayGame::PlayerSettings settings;
+        settings.vsync = true;
+        RelayGame::save_player_settings(player / "player_settings.toml", settings);
+        RelayCore::log::init({.logs_directory = (directory.path() / "logs").string(), .level = spdlog::level::info});
+        const auto log_path = RelayCore::log::latest_log_path();
+        std::string argument = "--config", path = config_path.string();
+        char* arguments[]{executable, argument.data(), path.data()};
+        const int result = RelayCore::run_application(std::make_unique<DiagnosticsSmoke>(player), 3, arguments);
+        if (result != 0)
+            return result;
+        try
+        {
+            const auto log = read_file(log_path);
+            for (const auto needle :
+                 {"Session executable:",
+                  "asset_root:",
+                  "Session build: version=",
+                  "Effective settings session:",
+                  "vsync_requested=true",
+                  "Effective settings changed: pixels=800x600",
+                  "present_mode=fifo",
+                  "Frame summary: mode=menu",
+                  "Frame summary: mode=game",
+                  "Frame summary: mode=pause",
+                  "Frame summary: mode=loading",
+                  "Level transition success:",
+                  "Level transition failed:",
+                  "DemoGame shutdown"})
+                require(log.find(needle) != std::string::npos, needle);
+            const auto loaded_config = log.find("[config] Loaded engine config:");
+            require(
+                loaded_config != std::string::npos
+                    && log.find(
+                           "Loaded engine config:",
+                           loaded_config + std::string_view{"[config] Loaded engine config:"}.size()
+                       ) == std::string::npos,
+                "Startup config load was logged more than once"
+            );
+            for (const auto needle :
+                 {"[renderer] Backend preparation begin: operation=initialize reason=startup",
+                  "[renderer] Backend prepared:",
+                  "[renderer] Presentation preparation begin: operation=recreate",
+                  "reason=pixel_extent",
+                  "[gameplay] Level transition",
+                  "duration_ms="})
+                require(log.find(needle) != std::string::npos, needle);
+            require(
+                log.find("Vulkan enabled device extension:") == std::string::npos,
+                "Info log contains debug extension details"
+            );
+            require(
+                log.find("Vulkan scene materials:") == std::string::npos,
+                "Info log contains debug material details"
+            );
+            require(log.find("FPS:") == std::string::npos, "Legacy single-frame FPS stream remains");
+            require(log.find("Campaign completed:") == std::string::npos, "Normal shutdown completed the campaign");
+            std::size_t count = 0;
+            for (const auto& entry : std::filesystem::directory_iterator(directory.path() / "logs"))
+                if (entry.is_regular_file())
+                    ++count;
+            require(count == 1, "Smoke session created extra log files");
+            std::cout << "diagnostics_smoke=passed (real application loop, menu/game/pause/loading, effective player "
+                         "settings, one log)\n";
+        } catch (const std::exception& error)
+        {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+        return 0;
     }
 
     auto test_hdr_settings() -> int
@@ -137,6 +288,16 @@ namespace
                 game.on_update({}, services);
                 (void) draw();
             };
+            const auto choose_preset = [&](const char* value) {
+                auto* control = dynamic_cast<Rml::ElementFormControl*>(
+                    Rml::GetContext("player")->GetDocument("menu")->GetElementById("graphics-preset")
+                );
+                require(control != nullptr, "RmlUi graphics preset selector was unavailable");
+                control->SetValue(value);
+                control->DispatchEvent("change", {});
+                game.on_update({}, services);
+                (void) draw();
+            };
             const auto key = [&](SDL_Scancode code) {
                 SDL_Event event{};
                 event.type = SDL_EVENT_KEY_DOWN;
@@ -195,6 +356,14 @@ namespace
             (void) draw();
             (void) shadow_contrast("SDR");
             const auto original_sdr = scene_image();
+            RelayCore::log::flush();
+            const auto initial_settings_log = read_file(RelayCore::log::latest_log_path());
+            require(
+                initial_settings_log.find("Session build: version=") != std::string::npos
+                    && initial_settings_log.find("Effective settings session: pixels=800x900") != std::string::npos
+                    && initial_settings_log.find("validation=") != std::string::npos,
+                "Session header lacks build or effective graphics context"
+            );
             activate_menu("Настройки");
             const auto before = draw();
             const auto camera = renderer.camera().position();
@@ -202,9 +371,23 @@ namespace
             auto backup = tone_shader;
             backup += ".settings-test";
             std::filesystem::rename(tone_shader, backup);
+            const auto compute_shader = RelayCore::core::asset_path("shaders/vulkan/tone_mapping.comp.spv");
+            auto compute_backup = compute_shader;
+            compute_backup += ".settings-test";
+            bool compute_moved = false;
             try
             {
+                std::filesystem::rename(compute_shader, compute_backup);
+                compute_moved = true;
+                const auto settings_log_before_failure = read_file(RelayCore::log::latest_log_path());
                 choose_range("HDR");
+                choose_preset("3");
+                const auto settings_log_after_failure = read_file(RelayCore::log::latest_log_path());
+                require(
+                    settings_log_after_failure.find("Effective settings changed:", settings_log_before_failure.size())
+                        == std::string::npos,
+                    "Failed graphics reconfiguration was logged as applied settings"
+                );
                 require(
                     !renderer.config().hdr_enabled && !config.renderer.hdr_enabled,
                     "Failed HDR switch changed the active configuration"
@@ -213,12 +396,20 @@ namespace
                     renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
                     "Failed HDR switch changed the color pipeline"
                 );
+                require(
+                    !renderer.config().bloom_enabled && !renderer.config().taa_enabled
+                        && renderer.config().ssgi_quality == 0 && renderer.config().reflection_quality == 0,
+                    "Failed High preset changed the active effects"
+                );
             } catch (...)
             {
+                if (compute_moved)
+                    std::filesystem::rename(compute_backup, compute_shader);
                 std::filesystem::rename(backup, tone_shader);
                 throw;
             }
             std::filesystem::rename(backup, tone_shader);
+            std::filesystem::rename(compute_backup, compute_shader);
             choose_range("HDR");
             require(
                 renderer.config().hdr_enabled && config.renderer.hdr_enabled,
@@ -279,6 +470,13 @@ namespace
                 scene_image().pixels == original_sdr.pixels,
                 "SDR -> HDR -> SDR changed the original scene colors or shadows"
             );
+            RelayCore::log::flush();
+            const auto changed_settings_log = read_file(RelayCore::log::latest_log_path());
+            require(
+                changed_settings_log.find("Effective settings changed:") != std::string::npos
+                    && changed_settings_log.find("hdr_scene=true") != std::string::npos,
+                "Applied HDR settings changes were not logged"
+            );
             game.begin_episode(false, services);
             key(SDL_SCANCODE_ESCAPE);
             (void) draw();
@@ -312,7 +510,12 @@ namespace
                 renderer.color_pipeline_mode() == RelayCore::render::ColorPipelineMode::legacy_gamma,
                 "Editor did not restore the SDR color pipeline"
             );
-            choose_range("HDR");
+            choose_preset("3");
+            require(
+                renderer.config().ssgi_quality == 2 && renderer.config().reflection_quality == 2
+                    && renderer.config().taa_enabled,
+                "High preset did not apply while the editor was suspended"
+            );
             key(SDL_SCANCODE_ESCAPE);
             key(SDL_SCANCODE_ESCAPE);
             (void) draw();
@@ -324,6 +527,16 @@ namespace
                 !game.has_custom_ui() && renderer.config().hdr_enabled,
                 "HDR switch prevented restoring the suspended game"
             );
+            key(SDL_SCANCODE_ESCAPE);
+            (void) draw();
+            activate_menu("Настройки");
+            choose_preset("1");
+            require(
+                !renderer.config().hdr_enabled && !renderer.config().taa_enabled && renderer.config().ssgi_quality == 0
+                    && renderer.config().reflection_quality == 0,
+                "Low preset retained advanced effects after the editor return"
+            );
+            choose_range("HDR");
             game.return_to_menu(services);
             game.on_shutdown(services);
 
@@ -568,14 +781,33 @@ namespace
             }
             game.return_to_menu(services);
             game.on_shutdown(services);
+            RelayCore::log::flush();
+            require(
+                read_file(RelayCore::log::latest_log_path()).find("Campaign completed:") == std::string::npos,
+                "Normal map visits or shutdown incorrectly completed the campaign"
+            );
             auto final_save = RelayGame::load_saved_game(progress);
             const auto final_session = builder.build(final_save.world.level_path);
             final_save.world
-                .mission = {true, true, static_cast<std::uint32_t>(final_session.mission_definition.steps.size())};
+                .mission = {true, false, static_cast<std::uint32_t>(final_session.mission_definition.steps.size() - 1)};
+            const auto& final_step = final_session.mission_definition.steps.back();
+            final_save.player.position = (final_step.bounds.mins + final_step.bounds.maxs) * .5F;
+            final_save.player.position.y = .01F;
             RelayGame::write_saved_game(progress, final_save);
             game.on_startup(services);
             game.begin_episode(true, services);
+            require(!game.has_custom_ui(), "Campaign completed before the final zone was reached");
+            game.on_update(frame, services);
+            game.on_update(frame, services);
             require(game.has_custom_ui(), "The final Guardian chapter did not finish the campaign");
+            RelayCore::log::flush();
+            const auto completion_log = read_file(RelayCore::log::latest_log_path());
+            const auto event = completion_log.find("Campaign completed:");
+            require(
+                event != std::string::npos
+                    && completion_log.find("Campaign completed:", event + 1) == std::string::npos,
+                "Runtime campaign completion was missing or repeated"
+            );
             renderer.begin_frame();
             game.on_render(frame, services);
             require(renderer.begin_ui(frame, audio, game.has_custom_ui()), "Completion UI unavailable");
@@ -600,6 +832,19 @@ namespace
                 "Completion action did not return to main menu"
             );
             game.on_shutdown(services);
+            game.on_startup(services);
+            game.begin_episode(true, services);
+            game.on_shutdown(services);
+            RelayCore::log::flush();
+            const auto restored_log = read_file(RelayCore::log::latest_log_path());
+            require(
+                restored_log.find("Campaign completion restored:") != std::string::npos,
+                "Continue did not distinguish restored completion from current-session achievement"
+            );
+            require(
+                restored_log.find("Campaign completed:", event + 1) == std::string::npos,
+                "Continue or shutdown emitted a false runtime completion"
+            );
             std::cout << "campaign_route=passed (seven chapters, six transitions, disk continue, carried player state, "
                          "final completion)\n";
         } catch (const std::exception& error)
@@ -615,6 +860,8 @@ namespace
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--diagnostics-smoke")
+        return test_diagnostics_smoke(argv[0]);
     if (argc == 2 && std::string_view{argv[1]} == "--campaign-route")
         return test_campaign_route();
     if (argc == 2 && std::string_view{argv[1]} == "--hdr-settings")
@@ -1381,6 +1628,21 @@ int main(int argc, char** argv)
                     && transition_error.find("вход 'arrival'") != std::string::npos,
                 "Failed transition lost its source, destination, or entry"
             );
+            const auto transitions = read_file(RelayCore::log::latest_log_path());
+            require(
+                transitions.find("Level transition success: reason=level_exit") != std::string::npos,
+                "Committed transition has no success event"
+            );
+            const auto failed_event = transitions.rfind("Level transition failed: reason=completion_exit");
+            require(failed_event != std::string::npos, "Failed transition has no failure event");
+            const auto failed_line =
+                transitions.substr(failed_event, transitions.find('\n', failed_event) - failed_event);
+            require(
+                failed_line.find("active='" + returned.world.level_path + "'") != std::string::npos
+                    && failed_line.find("duration_ms=") != std::string::npos
+                    && failed_line.find("absent-map.toml") != std::string::npos,
+                "Failed transition lost retained runtime, duration, or destination"
+            );
             campaign.on_shutdown(services);
 
             const auto save_failure_dir = directory.path() / "save_failure";
@@ -1394,6 +1656,13 @@ int main(int argc, char** argv)
             std::filesystem::create_directory(blocked_temp_path);
             save_failure.transition_to({{}, b, "arrival", false}, services);
             require(!save_failure.has_custom_ui(), "Failed progress write incorrectly cancelled the level transition");
+            const auto write_failure_log = read_file(RelayCore::log::latest_log_path());
+            const auto committed = write_failure_log.rfind("Level transition success: reason=level_exit");
+            require(
+                committed != std::string::npos
+                    && write_failure_log.find("active='" + b.string() + "'", committed) != std::string::npos,
+                "Save write failure hid the committed destination"
+            );
             require(window.relative_mouse_mode(), "Failed progress write lost input capture on the new level");
             require(
                 std::filesystem::path(RelayGame::load_saved_game(save_failure_path).world.level_path) == a,

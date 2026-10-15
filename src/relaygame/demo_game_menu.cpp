@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL_filesystem.h>
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <glm/trigonometric.hpp>
 #include <stdexcept>
@@ -24,6 +25,17 @@ namespace RelayGame
         settings_.fov = glm::degrees(services.config().renderer.camera.vertical_fov_radians);
         settings_.vsync = services.window().vsync_enabled();
         settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+        settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+        settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+        settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+        settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+        settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+        settings_.reflection_quality = services.renderer().config().reflection_quality;
+        settings_.dof_quality = services.renderer().config().dof_quality;
+        settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
+        settings_.taa_enabled = services.renderer().config().taa_enabled;
+        settings_.render_scale = services.renderer().config().render_scale;
+        settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
         sdr_color_pipeline_ = services.renderer().color_pipeline_mode();
         if (user_data_directory_.empty())
         {
@@ -52,7 +64,7 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             settings_message_ = error.what();
-            RelayCore::log::warn("Player settings: {}", error.what());
+            RelayCore::log::warn("[gameplay] Player settings: {}", error.what());
         }
         try
         {
@@ -60,19 +72,53 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+            settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+            settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+            settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+            settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+            settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+            settings_.reflection_quality = services.renderer().config().reflection_quality;
+            settings_.dof_quality = services.renderer().config().dof_quality;
+            settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
+            settings_.taa_enabled = services.renderer().config().taa_enabled;
+            settings_.render_scale = services.renderer().config().render_scale;
+            settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
             settings_message_ = error.what();
-            RelayCore::log::warn("Player settings: {}", error.what());
+            RelayCore::log::warn("[gameplay] Player settings: {}", error.what());
         }
     }
 
     void DemoGame::apply_player_settings(RelayCore::EngineServices& services)
     {
         auto& renderer = services.renderer();
-        if (settings_.hdr_enabled != renderer.config().hdr_enabled)
+        if (settings_.hdr_enabled != renderer.config().hdr_enabled
+            || settings_.bloom_enabled != renderer.config().bloom_enabled
+            || settings_.ssao_enabled != renderer.config().ssao_enabled
+            || settings_.ssr_enabled != renderer.config().ssr_enabled
+            || settings_.volumetrics_enabled != renderer.config().volumetrics_enabled
+            || settings_.ssgi_quality != renderer.config().ssgi_quality
+            || settings_.reflection_quality != renderer.config().reflection_quality
+            || settings_.dof_quality != renderer.config().dof_quality
+            || settings_.motion_blur_quality != renderer.config().motion_blur_quality
+            || settings_.taa_enabled != renderer.config().taa_enabled
+            || settings_.render_scale != renderer.config().render_scale
+            || settings_.dynamic_resolution_enabled != renderer.config().dynamic_resolution_enabled)
         {
+            services.frame_diagnostics().mark_loading();
             auto config = services.config();
             config.renderer = renderer.config();
             config.renderer.hdr_enabled = settings_.hdr_enabled;
+            config.renderer.bloom_enabled = settings_.bloom_enabled;
+            config.renderer.ssao_enabled = settings_.ssao_enabled;
+            config.renderer.ssr_enabled = settings_.ssr_enabled;
+            config.renderer.volumetrics_enabled = settings_.volumetrics_enabled;
+            config.renderer.ssgi_quality = settings_.ssgi_quality;
+            config.renderer.reflection_quality = settings_.reflection_quality;
+            config.renderer.dof_quality = settings_.dof_quality;
+            config.renderer.motion_blur_quality = settings_.motion_blur_quality;
+            config.renderer.taa_enabled = settings_.taa_enabled;
+            config.renderer.render_scale = settings_.render_scale;
+            config.renderer.dynamic_resolution_enabled = settings_.dynamic_resolution_enabled;
             const auto pipeline =
                 settings_.hdr_enabled ? RelayCore::render::ColorPipelineMode::hardware_srgb : sdr_color_pipeline_;
             auto backend = renderer.prepare_live_content_reload(config.renderer, renderer.authoring_config(), pipeline);
@@ -190,8 +236,13 @@ namespace RelayGame
                     settings_message_ = error.what();
                 }
             } else if (name == "volume" || name == "sensitivity" || name == "fov" || name == "camera-motion"
-                       || name == "vsync" || name == "hdr")
+                       || name == "vsync" || name == "hdr" || name == "bloom" || name == "ssao" || name == "ssr"
+                       || name == "volumetrics" || name == "taa" || name == "render-scale"
+                       || name == "dynamic-resolution" || name == "ssgi-quality" || name == "reflection-quality"
+                       || name == "dof-quality" || name == "motion-blur-quality" || name == "graphics-preset")
             {
+                if (name == "graphics-preset")
+                    apply_graphics_preset(settings_, static_cast<GraphicsPreset>(std::stoi(action.value)));
                 if (name == "volume")
                     settings_.volume = std::stof(action.value);
                 if (name == "sensitivity")
@@ -203,7 +254,49 @@ namespace RelayGame
                 if (name == "vsync")
                     settings_.vsync = action.value == "1";
                 if (name == "hdr")
+                {
                     settings_.hdr_enabled = action.value == "1";
+                    if (!settings_.hdr_enabled)
+                    {
+                        settings_.bloom_enabled = settings_.ssr_enabled = settings_.taa_enabled = false;
+                        settings_.ssgi_quality = 0;
+                        settings_.reflection_quality = 0;
+                        settings_.dof_quality = 0;
+                        settings_.motion_blur_quality = 0;
+                        settings_.render_scale = 1;
+                        settings_.dynamic_resolution_enabled = false;
+                    }
+                }
+                if (name == "bloom")
+                    settings_.bloom_enabled = action.value == "1";
+                if (name == "ssao")
+                    settings_.ssao_enabled = action.value == "1";
+                if (name == "ssr")
+                    settings_.ssr_enabled = action.value == "1";
+                if (name == "volumetrics")
+                    settings_.volumetrics_enabled = action.value == "1";
+                if (name == "ssgi-quality")
+                    settings_.ssgi_quality = std::stoi(action.value);
+                if (name == "reflection-quality")
+                    settings_.reflection_quality = std::stoi(action.value);
+                if (name == "dof-quality")
+                    settings_.dof_quality = std::stoi(action.value);
+                if (name == "motion-blur-quality")
+                    settings_.motion_blur_quality = std::stoi(action.value);
+                if (!settings_.ssr_enabled && name == "ssr")
+                    settings_.reflection_quality = 0;
+                if (settings_.reflection_quality)
+                    settings_.ssr_enabled = true;
+                if (name == "taa")
+                    settings_.taa_enabled = action.value == "1";
+                if (name == "render-scale")
+                    settings_.render_scale = std::stof(action.value);
+                if (name == "dynamic-resolution")
+                    settings_.dynamic_resolution_enabled = action.value == "1";
+                if (settings_.bloom_enabled || settings_.ssr_enabled || settings_.taa_enabled
+                    || settings_.render_scale != 1 || settings_.dynamic_resolution_enabled || settings_.ssgi_quality
+                    || settings_.dof_quality || settings_.motion_blur_quality)
+                    settings_.hdr_enabled = true;
                 settings_dirty_ = true;
                 try
                 {
@@ -212,6 +305,17 @@ namespace RelayGame
                 } catch (const std::exception& error)
                 {
                     settings_.hdr_enabled = services.renderer().config().hdr_enabled;
+                    settings_.bloom_enabled = services.renderer().config().bloom_enabled;
+                    settings_.ssao_enabled = services.renderer().config().ssao_enabled;
+                    settings_.ssr_enabled = services.renderer().config().ssr_enabled;
+                    settings_.volumetrics_enabled = services.renderer().config().volumetrics_enabled;
+                    settings_.ssgi_quality = services.renderer().config().ssgi_quality;
+                    settings_.reflection_quality = services.renderer().config().reflection_quality;
+                    settings_.dof_quality = services.renderer().config().dof_quality;
+                    settings_.motion_blur_quality = services.renderer().config().motion_blur_quality;
+                    settings_.taa_enabled = services.renderer().config().taa_enabled;
+                    settings_.render_scale = services.renderer().config().render_scale;
+                    settings_.dynamic_resolution_enabled = services.renderer().config().dynamic_resolution_enabled;
                     settings_message_ = error.what();
                 }
             } else if (name == "check-update" && !update_check_.valid() && can_update_game())
@@ -362,7 +466,23 @@ namespace RelayGame
         ui.set_value("fov", std::to_string(settings_.fov));
         ui.set_value("camera-motion", std::to_string(settings_.camera_motion));
         ui.set_value("vsync", settings_.vsync ? "1" : "0");
+        ui.set_value("graphics-preset", std::to_string(static_cast<int>(graphics_preset(settings_))));
         ui.set_value("hdr", settings_.hdr_enabled ? "1" : "0");
+        ui.set_value("bloom", settings_.bloom_enabled ? "1" : "0");
+        ui.set_value("ssao", settings_.ssao_enabled ? "1" : "0");
+        ui.set_value("ssr", settings_.ssr_enabled ? "1" : "0");
+        ui.set_value("volumetrics", settings_.volumetrics_enabled ? "1" : "0");
+        ui.set_value("ssgi-quality", std::to_string(settings_.ssgi_quality));
+        ui.set_value("reflection-quality", std::to_string(settings_.reflection_quality));
+        ui.set_value("dof-quality", std::to_string(settings_.dof_quality));
+        ui.set_value("motion-blur-quality", std::to_string(settings_.motion_blur_quality));
+        ui.set_value("taa", settings_.taa_enabled ? "1" : "0");
+        ui.set_value("dynamic-resolution", settings_.dynamic_resolution_enabled ? "1" : "0");
+        ui.set_value("render-scale", std::to_string(settings_.render_scale));
+        ui.set_text(
+            "render-scale-label",
+            std::to_string(static_cast<int>(std::lround(settings_.render_scale * 100))) + "%"
+        );
         ui.set_text("settings-message", settings_message_);
         ui.set_visible("controls", !complete);
         ui.set_visible("update-notice", main && update_notification_);

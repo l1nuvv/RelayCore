@@ -9,7 +9,7 @@ Use RmlUi for player-facing UI work requested by the owner. RmlUi 6.3 and the VI
 
 ## Scope and evidence
 
-Read the introduction, status table and selected VIS-43–46 ticket in `docs/PLAYABLE_SLICE_ROADMAP.md`. For integration read the game UI sections in `docs/DEPENDENCY_STACK.md` and `docs/ENGINE_ARCHITECTURE_REFERENCE.md`. For visual decisions use `relaycore-art-direction` and `docs/ART_DIRECTION.md`. Repository paths here are relative to the repository root.
+For routine HUD/RML/RCSS corrections start with the affected authored files, player UI source, direct callers and nearest tests; read the UI authoring/staging section of `docs/DEVELOPMENT.md` as needed. For ownership, rendering or input changes read the relevant `docs/ARCHITECTURE.md` and `docs/DEVELOPMENT.md` sections plus [references/integration.md](references/integration.md). Read the roadmap introduction/status and `docs/tickets/VIS-43-46.md` with its linked protocol for VIS-43–46 migration regressions, acceptance or changes to those contracts; routine layout edits do not require the migration history. Read `docs/DEPENDENCY_STACK.md` for dependency changes, and `docs/ENGINE_ARCHITECTURE_REFERENCE.md` for new capability boundaries. For visual decisions use `relaycore-art-direction` and `docs/ART_DIRECTION.md` when needed. Repository paths here are relative to the repository root.
 
 Start at the affected screen and direct callers. Current ownership anchors, to recheck against source:
 

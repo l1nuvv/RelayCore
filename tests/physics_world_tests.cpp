@@ -84,6 +84,25 @@ TEST_CASE("Jolt fixture box casts and overlaps distinguish doorway clearance fro
     const std::array meshes{doorway_mesh(triangles)};
     const auto boxes = build_static_world_colliders(tool::physics_fixture_level());
     const PhysicsWorld physics{boxes, meshes};
+    const std::array doors{WorldCollider{.bounds = {{-.5F, 0, 2}, {.5F, 2, 2.2F}}, .object = {WorldObjectKind::Door}}};
+    const std::array actors{WorldCollider{.bounds = {{-.5F, 0, 1}, {.5F, 2, 1.2F}}, .object = {WorldObjectKind::Enemy}}
+    };
+    const WorldQuery live{physics, doors, actors};
+    const auto immutable = live.static_only();
+    CHECK(live.move_axis({}, {}, 2, 1).hit);
+    CHECK_FALSE(immutable.move_axis({}, {}, 2, 1).hit);
+    CHECK(immutable.move_axis({1, 0, 0}, {}, 2, 3).hit);
+    CHECK(probe_ground(immutable, {}, {}));
+    CHECK(live.dynamic_overlap({{-.3F, 0, .8F}, {.3F, 1, 1.5F}}));
+    CHECK(live.dynamic_overlap({{-.3F, 0, 1.8F}, {.3F, 1, 2.5F}}));
+    CHECK_FALSE(live.dynamic_overlap({{2, 0, 1}, {3, 1, 3}}));
+    CHECK_FALSE(immutable.dynamic_overlap({{-10, -10, -10}, {10, 10, 10}}));
+    std::vector<WorldCollider> candidates;
+    const auto local = live.local_static({{-.5F, -.2F, -.5F}, {.5F, 2, 1.5F}}, candidates);
+    CHECK(local.move_axis({}, {}, 2, 1).position_axis == live.move_axis({}, {}, 2, 1).position_axis);
+    CHECK(local.move_axis({1, 0, 0}, {}, 2, 3).hit);
+    CHECK(probe_ground(local, {}, {}));
+    CHECK(local.raycast({0, 1, 0}, {0, 0, 1}, 3)->object.kind == WorldObjectKind::Door);
     CHECK_FALSE(physics.cast_box({0, 1, 0}, {.3F, .8F, .3F}, {0, 0, 6}));
     const auto wall = physics.cast_box({1, 1, 0}, {.3F, .8F, .3F}, {0, 0, 6});
     REQUIRE(wall);

@@ -57,6 +57,7 @@ namespace RelayCore::debug
             info.Instance = device.instance();
             info.PhysicalDevice = device.physical_device();
             info.Device = device.handle();
+            info.PipelineCache = device.pipeline_cache();
             info.QueueFamily = device.capabilities().graphics_queue_family;
             info.Queue = device.graphics_queue();
             info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
@@ -100,7 +101,6 @@ namespace RelayCore::debug
         ImGui::DestroyContext();
 
         window_ = nullptr;
-        fps_log_accumulator_ = 0.0F;
         frame_time_sample_count_ = 0;
         frame_time_sample_cursor_ = 0;
         frame_time_samples_.fill(0.0F);
@@ -389,28 +389,11 @@ namespace RelayCore::debug
 
     void ImGuiOverlay::update_diagnostics(const FrameInfo& frame) noexcept
     {
-        frame_time_ms_ = static_cast<float>(frame.delta_seconds) * 1000.0F;
+        frame_time_ms_ = static_cast<float>(frame.wall_delta_seconds) * 1000.0F;
         push_frame_time_sample(frame_time_ms_);
 
         avg_frame_time_ms_ = average_frame_time_ms();
-        fps_ = frame.delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.delta_seconds) : 0.0F;
+        fps_ = frame.wall_delta_seconds > 0.0 ? static_cast<float>(1.0 / frame.wall_delta_seconds) : 0.0F;
         avg_fps_ = avg_frame_time_ms_ > 0.0F ? (1000.0F / avg_frame_time_ms_) : 0.0F;
-
-        if (config_.log_fps_to_console)
-        {
-            fps_log_accumulator_ += static_cast<float>(frame.delta_seconds);
-
-            const float interval = config_.fps_log_interval_seconds > 0.1F ? config_.fps_log_interval_seconds : 0.1F;
-            if (fps_log_accumulator_ >= interval)
-            {
-                fps_log_accumulator_ = std::fmod(fps_log_accumulator_, interval);
-                log::info(
-                    "FPS: {:.1f} | Frame time: {:.3f} ms | Frame time avg: {:.3f} ms",
-                    fps_,
-                    frame_time_ms_,
-                    avg_frame_time_ms_
-                );
-            }
-        }
     }
 } // namespace RelayCore::debug

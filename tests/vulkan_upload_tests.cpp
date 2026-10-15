@@ -126,11 +126,21 @@ namespace
         uploads.collect();
         if (allocated != 6 || allocation_count(device) != allocated)
             throw std::runtime_error("GPU-pending resources or staging allocations were released before completion");
+        const auto pending = uploads.memory_usage();
+        const auto expected_staging = mesh.vertices.size() * sizeof(ColorVertex)
+                                      + mesh.indices.size() * sizeof(uint32_t) + checkerboard().pixels.size();
+        if (pending.staging_bytes != expected_staging || pending.batches != 3 || pending.retirements != 3)
+            throw std::runtime_error("Upload telemetry lost blocked staging bytes/batches/retirements");
         gate.release();
         uploads.wait(texture.completion);
         uploads.collect();
         if (allocation_count(device) != 0)
             throw std::runtime_error("Completed upload retirement did not release all VMA allocations");
+        const auto settled = uploads.memory_usage();
+        if (settled.staging_bytes || settled.batches || settled.retirements)
+            throw std::runtime_error("Upload telemetry retained collected allocations");
+        std::cout << "upload_memory: blocked_bytes=" << pending.staging_bytes << "; batches=" << pending.batches
+                  << "; retirements=" << pending.retirements << "; settled=0\n";
     }
 
     void check_scene_retirement(const VulkanDevice& device, const CpuColorMeshData& mesh)
@@ -250,11 +260,15 @@ namespace
             scene.collect();
             if (allocation_count(device) != 4)
                 throw std::runtime_error("Scene retirement freed GPU-pending resources");
+            if (scene.pending_retirements() != 4)
+                throw std::runtime_error("Scene telemetry lost GPU-pending retirements");
             gate.release();
             scene.wait(last);
             scene.collect();
             if (allocation_count(device) != 0)
                 throw std::runtime_error("Scene retirement retained completed resources");
+            if (scene.pending_retirements() != 0)
+                throw std::runtime_error("Scene telemetry retained collected resources");
         }
         {
             auto uploaded =

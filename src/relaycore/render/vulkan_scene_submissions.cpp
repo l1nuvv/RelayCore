@@ -1,11 +1,11 @@
 #include "relaycore/render/vulkan_scene_submissions.h"
 
+#include "relaycore/core/log.h"
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/vulkan_device.h"
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -66,7 +66,7 @@ namespace RelayCore::render
             wait(last_submission());
         } catch (const std::exception& error)
         {
-            std::fprintf(stderr, "Vulkan scene shutdown failed: %s\n", error.what());
+            log::error_noexcept("[renderer] Vulkan scene shutdown failed", error.what());
         }
         state_->buffers.clear();
         state_->textures.clear();
@@ -77,7 +77,8 @@ namespace RelayCore::render
         const VkCommandBuffer commands,
         const VkSemaphoreSubmitInfo dependency,
         const VkSemaphoreSubmitInfo extra_signal,
-        const VkFence fence
+        const VkFence fence,
+        const VkCommandBuffer before
     ) -> VulkanSceneCompletion
     {
         if (!commands)
@@ -85,9 +86,9 @@ namespace RelayCore::render
         if (state_->submitted == std::numeric_limits<uint64_t>::max())
             throw std::overflow_error("Vulkan scene timeline exhausted");
         const VulkanSceneCompletion next{state_->timeline, state_->submitted + 1};
-        const VkCommandBufferSubmitInfo command{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = commands
+        const std::array command_buffers{
+            VkCommandBufferSubmitInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = before},
+            VkCommandBufferSubmitInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = commands}
         };
         const VkSemaphoreSubmitInfo signal{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -109,15 +110,20 @@ namespace RelayCore::render
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
             .waitSemaphoreInfoCount = count,
             .pWaitSemaphoreInfos = waits.data() + first,
-            .commandBufferInfoCount = 1,
-            .pCommandBufferInfos = &command,
+            .commandBufferInfoCount = before ? 2U : 1U,
+            .pCommandBufferInfos = command_buffers.data() + (before ? 0 : 1),
             .signalSemaphoreInfoCount = extra_signal.semaphore ? 2U : 1U,
             .pSignalSemaphoreInfos = signals.data()
         };
-        require_scene_vk(
-            vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, fence),
-            "Failed to submit Vulkan scene"
-        );
+        {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan queue submit");
+            RELAYCORE_PROFILE_PLOT("Vulkan/SubmitTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+            RELAYCORE_PROFILE_PLOT("Vulkan/SubmitValue", next.value);
+            require_scene_vk(
+                vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, fence),
+                "Failed to submit Vulkan scene"
+            );
+        }
         state_->submitted = next.value;
         return next;
     }
@@ -134,6 +140,8 @@ namespace RelayCore::render
             vkGetSemaphoreCounterValue(state_->device.handle(), state_->timeline, &value),
             "Failed to query Vulkan scene completion"
         );
+        RELAYCORE_PROFILE_PLOT("Vulkan/CompletedTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+        RELAYCORE_PROFILE_PLOT("Vulkan/CompletedValue", value);
         return value;
     }
 
@@ -143,6 +151,8 @@ namespace RelayCore::render
         if (!completion.value)
             return;
         RELAYCORE_PROFILE_ZONE_N("Vulkan scene completion wait");
+        RELAYCORE_PROFILE_PLOT("Vulkan/WaitTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+        RELAYCORE_PROFILE_PLOT("Vulkan/WaitValue", completion.value);
         const VkSemaphoreWaitInfo info{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .semaphoreCount = 1,
@@ -173,6 +183,11 @@ namespace RelayCore::render
         if (buffer.allocator_ != state_->device.allocator() || !buffer.handle())
             throw std::invalid_argument("Vulkan scene retirement requires a nonempty buffer from this device");
         state_->buffers.emplace_back(last_use.value, std::move(buffer));
+    }
+
+    auto VulkanSceneSubmissions::pending_retirements() const noexcept -> size_t
+    {
+        return state_->buffers.size() + state_->textures.size();
     }
 
     void VulkanSceneSubmissions::retire(VulkanTexture&& texture, const VulkanSceneCompletion last_use)
