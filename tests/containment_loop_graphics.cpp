@@ -12,6 +12,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -21,6 +22,13 @@
 
 int main(int argc, char** argv)
 {
+    auto phase_started = std::chrono::steady_clock::now();
+    const auto phase = [&](const char* name) {
+        const auto now = std::chrono::steady_clock::now();
+        std::cout << "test_phase=" << name
+                  << "; wall_ms=" << std::chrono::duration<double, std::milli>(now - phase_started).count() << '\n';
+        phase_started = now;
+    };
     if (!SDL_Init(SDL_INIT_VIDEO))
         return 77;
     int result = 0;
@@ -41,22 +49,30 @@ int main(int argc, char** argv)
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{config.renderer, RelayCore::render::ColorPipelineMode::hardware_srgb};
         renderer.initialize(window);
+        phase("startup_renderer");
         auto session = RelayGame::LevelSessionBuilder{config.gameplay}.build(
             RelayCore::core::asset_path("levels/containment_loop.toml")
         );
+        phase("level_session");
         RelayGame::WorldSceneRenderer scene;
         const auto standby_usables = session.usables;
-        scene.initialize(
-            RelayGame::build_prepared_world_scene_data(
-                session.level,
-                renderer.authoring_config(),
-                renderer.color_pipeline_mode()
-            ),
-            renderer.static_models()
+        const auto scene_data = RelayGame::build_prepared_world_scene_data(
+            session.level,
+            renderer.authoring_config(),
+            renderer.color_pipeline_mode()
         );
+        phase("world_cpu");
+        scene.initialize(scene_data, renderer.static_models());
+        phase("scene_assets");
         renderer.prepare_resources(scene.resource_items());
+        phase("gpu_resources");
+        double capture_ms = 0, bmp_ms = 0;
+        size_t capture_count = 0;
         const auto save_capture = [&](const std::string& name) {
+            const auto started = std::chrono::steady_clock::now();
             auto pixels = renderer.capture_frame();
+            const auto captured = std::chrono::steady_clock::now();
+            capture_ms += std::chrono::duration<double, std::milli>(captured - started).count();
             auto* surface = SDL_CreateSurfaceFrom(
                 pixels.width,
                 pixels.height,
@@ -71,6 +87,8 @@ int main(int argc, char** argv)
             SDL_DestroySurface(surface);
             if (!written)
                 throw std::runtime_error(SDL_GetError());
+            bmp_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - captured).count();
+            ++capture_count;
             return pixels;
         };
         struct View {
@@ -177,6 +195,7 @@ int main(int argc, char** argv)
         RelayCore::EngineServices services{config, window, renderer, audio, running};
         RelayGame::GameWorldRuntime runtime;
         runtime.load_level_session(config, std::move(session));
+        phase("environment_views");
         RelayCore::test::ScopedTempDirectory isolated;
         for (int i = 1; i < argc; ++i)
         {
@@ -489,6 +508,9 @@ int main(int argc, char** argv)
         combat.restore_saved_game(combat_save);
         combat_capture("shooter-destroyed");
 
+        phase("gameplay_views_and_checks");
+        std::cout << "test_captures=" << capture_count << "; render_or_readback_ms=" << capture_ms
+                  << "; bmp_ms=" << bmp_ms << '\n';
         scene.shutdown();
         std::cout << "containment gameplay/environment/state views, shooter warning/shot/recovery/death, "
                      "pause/resume, disk continuation and exit "

@@ -330,6 +330,171 @@ live_content_reload и graphics_settings. Повторный полный руч
 Время этой проверки не является baseline производительности; прежние VUID и
 ускорение G-009/G-019 остаются отдельными этапами общего плана.
 
+## Продолжение — свежий inventory и время G-009/G-019, 2026-10-15
+
+Исходная ревизия — `461d8a7`, рабочее дерево было чистым. Работа относится к
+оставшимся пунктам этого ticket: актуальному inventory, восстановлению проверок
+и измеренному времени тестов. Полный runtime-аудит H-008 этим не выполняется.
+
+Свежая сборка с validation и согласованными staged assets:
+
+```powershell
+cmake --build --preset graphics-debug --target relaycore_power_restoration_graphics relaycore_containment_loop_graphics relaycore_vulkan_device_tests -j 2
+ctest --preset graphics-debug -R '^graphics\.(power_restoration|containment_loop|containment_loop_hdr|vulkan_device)$' --output-on-failure --no-tests=error --output-log build/vulkan-diagnostics-fresh-2026-10-15.log
+```
+
+Реестр подтверждённого результата, RTX 4060 Ti, API loader 1.4.357 / GPU 1.4.341:
+
+| Сообщение / проверка | Свежий результат и статус |
+| --- | --- |
+| `VUID-vkCmdDrawIndexed-None-08600` | В свежих проверенных draw paths не воспроизведён; не подавляется. |
+| `VUID-VkGraphicsPipelineCreateInfo-layout-07988` (set 2/binding 0 и set 0/bindings 12–16) | В свежей согласованной сборке не воспроизведён; отдельный shader/layout patch по старому логу не нужен. |
+| `Point light occluder did not darken the floor` | Свежий G-009 прошёл эту проверку и дошёл до следующих assertions. |
+| RmlUi: загрузка `branding/relaycore-menu.bmp` | На свежих assets прежнее сообщение не воспроизведено; текстура не отключалась и fallback не добавлялся. |
+| Точное OBS loader warning | Свежий CTest его не отклоняет; прежний узкий фильтр сохранён. |
+| `Unpowered sector must use emergency lights only` | Воспроизведён устаревший literal 8: текущий бюджет 32 и текущая карта содержат больше источников. Заменён проверкой количества и состава относительно авторских power gates; powered brightness assertion сохранён. |
+| `Small viewport HUD is missing` и UI text log | Проверка искала HUD в ImGui после миграции в RmlUi. Проверяются видимость и bounds status/objective/reticle; evidence содержит видимый RmlUi text, исключая hidden elements. Кадр `small-gameplay.bmp` просмотрен: HUD находится внутри 960×540. |
+| `Final scene failed to reach its authored camera` | Завершённая campaign map теперь имеет completion exit. Retained cinematic проверяется на временной standalone-копии без links, с прежними ending/camera assertions. Кампания проверяется отдельно штатным `campaign_route`. Исходные карты не менялись. |
+| `Menu weapon input leaked into gameplay` | Старое ожидаемое имя «Точное оружие» заменено текущим «Пистолет». Проверки pause/text/death/editor input и cooldown сохранены. Viewmodel count сверяется с подготовленными текущими частями оружия, а не отсутствием pistol viewmodel. |
+
+Первый fresh run: device **passed 4,57 с**, G-019 SDR **passed 40,86 с**,
+HDR **passed 40,36 с**; G-009 остановился на устаревшем light-count assertion,
+**7,06 с**. Это время отказавшего G-009 не является baseline полного теста.
+После включения stage measurements G-019 SDR/HDR прошли за **40,25/40,22 с**.
+До изменений loader сняты hashes **86 BMP** (43 SDR + 43 HDR); после одной
+инструментации все 86 совпали. Отдельные dated runtime logs/архивы не создавались.
+
+### Границы измерений и локальные изменения
+
+G-019 печатает steady-clock wall time последовательных фаз startup/renderer,
+level session, world CPU preparation, scene assets, GPU resource preparation,
+environment views, gameplay views/checks. Startup включает SDL/log/config/device/UI;
+GPU preparation включает host work и waits, а не измерение GPU time.
+Вложенные counters `render_or_readback_ms` и `bmp_ms` относятся к capture helper:
+первый может включать lazy scene rendering, второй — SDL surface/BMP write.
+Их нельзя добавлять к уже включающим их view phases. G-009 отдельно печатает
+capture render/readback/RGB conversion, brightness reduction и BMP wall times.
+Simulation по-прежнему продвигается программно; реальные ожидания не добавлялись.
+
+Два исходных Debug G-019 дали world CPU **10,59/10,53 с**, scene assets
+**24,66/24,70 с**, GPU resource preparation **0,56/0,58 с**; render/readback всех
+43 captures **1,64/1,67 с**, BMP **0,31/0,32 с**. Следовательно, причина основной
+задержки находится в CPU preparation, а не в сохранении captures или pipeline cache.
+
+Первый локальный эксперимент заменил per-texel GLM normal length на эквивалентную
+byte-domain проверку; Debug G-019 SDR/HDR **passed 19,07/18,85 с**. Все **86 BMP**
+совпали с baseline по SHA-256. Native/model/meshlet/probe unit checks **15/15 passed**.
+Второй шаг убирает вызовы доступа к vector и success-only validation function
+из byte loops, а также per-pixel GLM temporaries при усреднении reflectance.
+Порядок float additions по каждому каналу сохраняется: bake signatures не должны
+измениться. Проверяются все texels; schema, данные, stale checks и лимиты сохранены.
+
+Оптимизированный baseline до loader patch снят отдельно в `msvc-dev`, validation=false,
+1280×720, VSync request=false, hardware_srgb, SDR: три последовательных процесса,
+`build/containment-before-dev{,-2,-3}.log`. Первый использовал несовместимый shader
+cache после Debug, следующие два — warm cache. OS/driver caches не очищались.
+Это отдельное сравнение внутри optimized configuration, не способ выдать выключение
+validation за ускорение Debug тестов.
+
+### Финальный результат
+
+Оставшаяся работа этого ticket выполнена. Старые Vulkan VUID и RmlUi asset error
+не воспроизведены в свежих выбранных сценариях; shader/layout fixes без воспроизведения
+не вносились. Исправлены устаревшие fixtures/assertions G-009, а не runtime input,
+HUD или campaign semantics. Для text input fixture явно выставляет оба ImGui-флага
+владения keyboard/text, как требует текущий input contract.
+
+Дополнительно к byte loops:
+
+- Bake подготавливает неизменные рёбра треугольников один раз, отбрасывает misses
+  до оставшихся barycentric/distance вычислений. Исходный порядок и строгое `<`
+  сохраняют первый hit при равной дистанции; это защищено отдельным unit-тестом.
+- G-009 использует штатный `SDL_ConvertPixels` для RGBA32 → RGB24 вместо
+  per-pixel `std::copy_n`. Rendering, readback, brightness assertions и BMP сохранены.
+- Native-lab fixture по-прежнему реально rebake-ит 48 probes × **64 rays** после
+  изменения материала. Authored продукт остаётся 48 × **1024 rays**; ни samples,
+  ни геометрия, ни validation ради ускорения не сокращались.
+
+Debug / validation=true, RTX 4060 Ti, прежние staged assets/settings, 1280×720,
+hardware_srgb; viewport subtests сохраняют прежние размеры. Процессы запускались
+последовательно, без параллельной сборки/GPU workload. Первый fresh запуск и повторы
+не считаются cold-cache: OS/driver caches не очищались, pipeline cache не менялся.
+
+| Исправный сценарий | До, с | После, с |
+| --- | --- | --- |
+| G-019 SDR, Debug | 40,86; 40,25 | 14,65; 14,84 |
+| G-019 HDR, Debug | 40,36; 40,22 | 14,61; 15,12 |
+| G-009 SDR, Debug | 105,62 (один полный baseline) | 62,14; 63,19 |
+| G-009 HDR, Debug | Полного исправного baseline не было | 62,38 |
+
+G-009 baseline 105,62 с уже содержит исправленные fixtures и loader byte loops:
+это сравнение до/после SDL conversion и visibility preparation, а не с неработавшим
+исходным executable. Прежние 7,06 с на раннем assertion не участвуют в сравнении.
+
+В двух итоговых SDR G-019 world CPU занимает **3,05/3,02 с**, scene assets
+**6,32/6,56 с** против исходных **10,59/10,53** и **24,66/24,70 с**.
+G-009 native probe rebake (включая подготовку bake scene внутри измеряемого вызова)
+занимает **26,65/26,70 с**; прежний log gap этого участка был около 57 с,
+но отдельного baseline timer там не было. Сумма распознанных capture
+render/readback/RGB intervals: **12,51 → 4,16 с** в первом сравнении.
+stdout может перемежать строки capture timing и logger: baseline/первый итог содержат
+113 распознанных записей, повтор — 114 (113 уникальных имён, `native-lab.bmp` дважды).
+Поэтому эта сумма — диагностическая оценка, а не точный total всех capture calls.
+Ни один вызов capture не удалён.
+
+Отдельное optimized сравнение G-019 в `msvc-dev`, validation=false, те же SDR настройки:
+
+| Сумма последовательных фаз, мс | До | После |
+| --- | --- | --- |
+| Первый процесс, incompatible pipeline cache после Debug | 4482,71 | 3812,93 |
+| Warm повтор 2 | 4285,87 | 3689,28 |
+| Warm повтор 3 | 4445,85 | 3668,60 |
+
+Уменьшение warm phase sum — около **14–17%**. World CPU стал **519–521 мс**
+вместо **680–684 мс**, scene assets **1419–1422 мс** вместо **1925–2001 мс**.
+Полное время трёх новых процессов, включая завершение: **4,37/4,10/4,10 с**;
+эквивалентного process stopwatch baseline нет, поэтому эти числа не смешиваются
+с phase sums. В каждом процессе 43 captures. Это время автоматического теста,
+не FPS, frame-time distribution или оценка ручного прохождения. Пример бюджета
+3 с из запроса не достигнут и не является доказанным требованием этого workload.
+Логи: `build/containment-{before,after}-dev{,-2,-3}.log`.
+
+### Сохранность результата и проверки
+
+- Все **86/86** baseline BMP G-019 (43 SDR + 43 HDR) совпали по SHA-256 после
+  финальной сборки и повторного Debug run. Все **112/112** имеющихся baseline BMP
+  G-009 совпали после SDR повтора; это объём сохранённого manifest, не заявление
+  о byte comparison дополнительных кадров, отсутствующих в baseline manifest.
+  `small-gameplay.bmp` повторно просмотрен: RmlUi HUD находится внутри 960×540.
+- Полный authored `native_lab` заново baked оптимизированным инструментом на тех же
+  Debug staged inputs: **48 probes, 13796 triangles, 3 static lights, 1024 rays**,
+  signature **14886341886457994988**. Входной output path ранее отсутствовал, это
+  именно `baked`, не `reused`. SHA-256 всего `.rcprobe` совпал с прежним продуктом:
+  `632562EFA4794C7B4E901896D59E7B0D578A7D0148B22345E63D6407F5F8BC6D`.
+  Команда: `$env:RELAYCORE_ASSET_ROOT='E:/Code/C++/RelayCore/build/msvc-debug/src/relaygame/assets'; & ./build/msvc-dev/src/relaygame/relaycore_irradiance_bake.exe assets/levels/native_lab.toml assets/config/render_authoring.toml build/native-lab-visibility-dev-after-2026-10-15.rcprobe`.
+  Она завершилась за 15,62 с по session timestamps; дублирующий Debug bake остановлен
+  без результата и не учитывается как successful check или timing baseline.
+- Debug build: `cmake --build --preset graphics-debug --target relaycore_power_restoration_graphics relaycore_containment_loop_graphics relaycore_tests relaycore_vulkan_mesh_tests relaycore_game_lifecycle relaycore_irradiance_bake -j2`.
+  Dev build: `cmake --build --preset demo-dev --target relaycore_demo relaycore_containment_loop_graphics relaycore_power_restoration_graphics -j2`.
+  MSVC developer environment импортирован через `scripts/release-functions.ps1`.
+- `ctest --preset test-debug -R '^relaycore\.(native|meshlet|irradiance)' --output-on-failure --no-tests=error --output-log build/vulkan-diagnostics-units-final-2026-10-15.log`:
+  **20/20 passed**, 3,12 с. Включает normal-map boundary/last-texel, opacity,
+  meshlets, deterministic/stale/malformed probes, blockers и equal-distance hits.
+- `ctest --preset graphics-debug -R '^graphics\.(power_restoration|hdr_episode|containment_loop|containment_loop_hdr|resource_preparation|irradiance_probes|material_maps_reflections|game_lifecycle|campaign_route|vulkan_device)$' --output-on-failure --no-tests=error --output-log build/vulkan-diagnostics-final-2026-10-15.log`:
+  **10/10 passed**, без skip, 227,44 с. Device 4,47 с; resource preparation 4,97 с;
+  probes 2,45 с; maps/reflections 1,45 с; lifecycle 18,93 с; campaign route 41,34 с.
+- `ctest --preset graphics-debug -R '^graphics\.(power_restoration|containment_loop|containment_loop_hdr)$' --output-on-failure --no-tests=error --output-log build/vulkan-diagnostics-repeat-2026-10-15.log`:
+  **3/3 passed**, без skip, 93,19 с. Parsed phase evidence:
+  `build/vulkan-diagnostics-{final,repeat}-details-2026-10-15.json`.
+- В обеих финальных graphics сериях нет Vulkan validation warning/error;
+  строгий CTest gate не менялся. `[error]` для намеренно испорченной config/model
+  и stale probes, а также предупреждения negative lifecycle fixtures ожидаемы:
+  сценарии проверяют отказ, сохранение рабочей сцены и recovery. Это не новые
+  Vulkan/runtime failures. Вывод ограничен выполненными сценариями.
+- `clang-format --dry-run --Werror` для семи изменённых C++ файлов и
+  `git diff --check` прошли. Исходные maps/assets, schemas, cache policy,
+  CMake/CTest registration и logger configuration не менялись. ZIP и push не нужны.
+
 ## План выполнения
 
 1. **Согласовать и сохранить evidence.** Зафиксировать revision, рабочий diff,
@@ -371,8 +536,9 @@ live_content_reload и graphics_settings. Повторный полный руч
 
 Первый ручной проход и оба захода улучшений диагностики завершены;
 [проверки захода 2](#заход-2--реализация-и-проверки-2026-10-15) выполнены агентом.
-Дополнительных запусков пользователя сейчас не требуется. Исправление прежних
-Vulkan ошибок и измерение/ускорение G-009/G-019 требуют отдельного этапа.
+Дополнительных запусков пользователя сейчас не требуется. Свежая проверка прежних
+сообщений, восстановление G-009 и измерение/ускорение G-009/G-019 завершены;
+результаты и границы проверки приведены в разделе продолжения выше.
 Для будущего прохода файл остаётся тем же: путь печатается строкой `Latest log`,
 стандартный каталог — `%APPDATA%\l1nuvv\RelayCore\logs`.
 После нового прохода нужно закрыть игру и сообщить агенту до следующего запуска,

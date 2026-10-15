@@ -145,8 +145,10 @@ namespace RelayCore::render
                 image.pixels.size() == static_cast<std::size_t>(image.width) * image.height * 4,
                 "model base-color RGBA byte count differs from dimensions"
             );
-            for (std::size_t i = 3; i < image.pixels.size(); i += 4)
-                require(image.pixels[i] == 255, "model base-color must be opaque");
+            const auto* image_end = image.pixels.data() + image.pixels.size();
+            for (const auto* pixel = image.pixels.data(); pixel < image_end; pixel += 4)
+                if (pixel[3] != 255)
+                    throw std::runtime_error("model base-color must be opaque");
             bytes += 72 + image.pixels.size();
             for (const auto factor :
                  {material.emissive_factor.x, material.emissive_factor.y, material.emissive_factor.z})
@@ -197,14 +199,13 @@ namespace RelayCore::render
                     normal.pixels.size() == static_cast<std::size_t>(normal.width) * normal.height * 4,
                     "model normal-map RGBA byte count differs from dimensions"
                 );
-                for (std::size_t i = 0; i < normal.pixels.size(); i += 4)
+                const auto* normal_end = normal.pixels.data() + normal.pixels.size();
+                for (const auto* pixel = normal.pixels.data(); pixel < normal_end; pixel += 4)
                 {
-                    const auto n =
-                        glm::vec3{normal.pixels[i], normal.pixels[i + 1], normal.pixels[i + 2]} / 127.5F - 1.0F;
-                    require(
-                        glm::length(n) > .5F && n.z > 0,
-                        "normal-map texel must encode a nonzero +Z tangent-space normal"
-                    );
+                    const int x = 2 * pixel[0] - 255, y = 2 * pixel[1] - 255, z = 2 * pixel[2] - 255;
+                    // Decoded n = (2*RGB - 255)/255: |n| > 1/2 iff 4*dot(numerator,numerator) > 255^2.
+                    if (4 * (x * x + y * y + z * z) <= 255 * 255 || z <= 0)
+                        throw std::runtime_error("normal-map texel must encode a nonzero +Z tangent-space normal");
                 }
                 bytes += normal.pixels.size();
             }

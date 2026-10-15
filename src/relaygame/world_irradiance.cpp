@@ -175,13 +175,17 @@ namespace RelayGame
                 model.reflectance.reserve(model.asset.materials.size());
                 for (const auto& material : model.asset.materials)
                 {
-                    glm::vec3 mean{};
-                    for (std::size_t pixel = 0; pixel < material.base_color.pixels.size(); pixel += 4)
-                        mean += glm::vec3{
-                            srgb_bytes[material.base_color.pixels[pixel]],
-                            srgb_bytes[material.base_color.pixels[pixel + 1]],
-                            srgb_bytes[material.base_color.pixels[pixel + 2]]
-                        };
+                    float red = 0, green = 0, blue = 0;
+                    const auto* lookup = srgb_bytes.data();
+                    const auto* end = material.base_color.pixels.data() + material.base_color.pixels.size();
+                    for (const auto* pixel = material.base_color.pixels.data(); pixel < end; pixel += 4)
+                    {
+                        red += lookup[pixel[0]];
+                        green += lookup[pixel[1]];
+                        blue += lookup[pixel[2]];
+                    }
+                    // Preserve each channel's float addition order: bake signatures include this mean.
+                    glm::vec3 mean{red, green, blue};
                     mean /= static_cast<float>(material.base_color.pixels.size() / 4);
                     if (material.metallic_roughness)
                     {

@@ -366,3 +366,42 @@ TEST_CASE("native v6 meshlets round trip and retain v5 indexed products")
     CHECK(legacy.meshes[0].geometry.indices == source.meshes[0].geometry.indices);
     CHECK_NOTHROW(validate_meshlets(legacy.meshes[0].geometry, build_meshlets(legacy.meshes[0].geometry)));
 }
+
+TEST_CASE("native normal map validation preserves decoded length and positive Z boundaries")
+{
+    auto model = triangle_model();
+    model.meshes[0].has_tangents = true;
+    for (auto& vertex : model.meshes[0].geometry.vertices)
+        vertex.tangent = {1, 0, 0, 1};
+    model.materials[0].normal = CpuRgbaTextureData{1, 1, {128, 128, 255, 0}};
+    for (const int r : {0, 63, 64, 127, 128, 191, 192, 255})
+        for (const int g : {0, 63, 64, 127, 128, 191, 192, 255})
+            for (const int b : {0, 63, 64, 127, 128, 191, 192, 255})
+            {
+                CAPTURE(r);
+                CAPTURE(g);
+                CAPTURE(b);
+                model.materials[0]
+                    .normal->pixels = {static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b), 0};
+                const auto decoded = glm::vec3{r, g, b} / 127.5F - 1.0F;
+                if (glm::length(decoded) > .5F && decoded.z > 0)
+                    CHECK_NOTHROW(validate_model_asset(model));
+                else
+                    CHECK_THROWS_WITH_AS(
+                        validate_model_asset(model),
+                        doctest::Contains("normal-map texel"),
+                        std::runtime_error
+                    );
+            }
+    model.materials[0].normal = CpuRgbaTextureData{2, 1, {128, 128, 255, 0, 128, 128, 128, 255}};
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("normal-map texel"), std::runtime_error);
+}
+
+TEST_CASE("native base color validation checks opacity through the final texel")
+{
+    auto model = triangle_model();
+    model.materials[0].base_color = CpuRgbaTextureData{2, 1, {40, 80, 160, 255, 40, 80, 160, 255}};
+    CHECK_NOTHROW(validate_model_asset(model));
+    model.materials[0].base_color.pixels.back() = 254;
+    CHECK_THROWS_WITH_AS(validate_model_asset(model), doctest::Contains("must be opaque"), std::runtime_error);
+}
