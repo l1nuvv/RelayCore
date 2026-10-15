@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | Запустить игру / узнать управление | [README](../README.md), [инструкция игроку](PLAYTEST_GUIDE.txt) | [Editor/campaign](EDITOR_AND_CAMPAIGN.md) для переходов и сохранений |
 | Собрать, проверить или диагностировать | [DEVELOPMENT](DEVELOPMENT.md) | [Build timing](BUILD_TIME_ANALYSIS.md), [verify skill](../.agents/skills/relaycore-verify/SKILL.md) |
+| Оптимизация всего проекта, FPS и frame pacing | [H-008: полный поэтапный план](tickets/H-008.md#h-008-remaining) | [Измерения и эксперименты](profiling/H-008-2026-10-14.md), [profile skill](../.agents/skills/relaycore-profile/SKILL.md) |
 | Gameplay/content ticket | [Roadmap: статусы и ссылки на карточки](PLAYABLE_SLICE_ROADMAP.md) | [Стратегия](PROJECT_PLAN.md), соответствующий playtest/report |
 | VK14 milestone | [Renderer plan: очередь и gates](RENDERER_MODERNIZATION_PLAN.md) | [Execution reports](renderer/), нужные runtime owners и graphics checks |
 | Текущие runtime owners / порядок кадра / paths | [ARCHITECTURE](ARCHITECTURE.md) | [DEVELOPMENT](DEVELOPMENT.md) для запуска и диагностики |
