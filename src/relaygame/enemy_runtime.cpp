@@ -174,8 +174,12 @@ namespace RelayGame
                         const auto player_hit =
                             RelayCore::physics::ray_intersection_distance(eye, ray, player_bounds, distance);
                         if (player_hit && *player_hit <= distance)
-                            static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 12, "Мобильный стрелок")
-                            );
+                            static_cast<void>(RelayCore::gameplay::apply_player_damage(
+                                player,
+                                12,
+                                "Мобильный стрелок",
+                                enemy.state.position
+                            ));
                         enemy.shot_trace = {.start = eye, .end = eye + ray * distance, .remaining_seconds = .08F};
                         ++result.shots;
                     }
@@ -189,7 +193,9 @@ namespace RelayGame
                 {
                     ++result.strikes;
                     if (sees && in_range)
-                        static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
+                        static_cast<void>(
+                            RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот", enemy.state.position)
+                        );
                     state.mode = EnemyMode::Recovery;
                     state.timer = .95F;
                 }
@@ -239,7 +245,9 @@ namespace RelayGame
                 {
                     ++result.strikes;
                     if (sees && in_range)
-                        static_cast<void>(RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот"));
+                        static_cast<void>(
+                            RelayCore::gameplay::apply_player_damage(player, 14, "Охранный робот", enemy.state.position)
+                        );
                     state.mode = EnemyMode::Recovery;
                     state.timer = .95F;
                 } else

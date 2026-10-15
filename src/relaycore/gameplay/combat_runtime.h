@@ -85,6 +85,9 @@ namespace RelayCore::gameplay
         float weapon_range = 24.0F;
         float weapon_damage = 25.0F;
         float hurt_flash_remaining_seconds = 0.0F;
+        float damage_direction_remaining_seconds = 0.0F;
+        glm::vec3 damage_source_position{};
+        bool damage_source_position_valid = false;
         float hit_confirmation_remaining_seconds = 0.0F;
         CombatShotTrace shot_trace{};
         float respawn_delay_seconds = 1.20F;
@@ -139,7 +142,12 @@ namespace RelayCore::gameplay
     };
 
     [[nodiscard]] auto build_runtime_combat(const BlockoutLevel& level) -> CombatBuildResult;
-    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, float amount, std::string_view source) -> float;
+    [[nodiscard]] auto apply_player_damage(
+        PlayerCombatState& player,
+        float amount,
+        std::string_view source,
+        std::optional<glm::vec3> source_position = std::nullopt
+    ) -> float;
 
     void reset_player_combat_state(PlayerCombatState& state) noexcept;
 

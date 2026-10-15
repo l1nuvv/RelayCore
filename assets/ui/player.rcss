@@ -34,6 +34,7 @@ button, input, select { tab-index: auto; }
 #reticle.ready #focus-ring { border-color: #9edca1; }
 #hit { position: absolute; width: 24px; height: 24px; margin-left: -12px; margin-top: -17px; font-size: 28px; text-align: center; }
 #hurt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; box-sizing: border-box; border: 8dp #c6372d; opacity: 0; }
+#damage-direction { position: absolute; left: 50%; top: 50%; width: 48dp; height: 32dp; margin-left: -24dp; margin-top: -86dp; text-align: center; color: #c6372d; font-size: 26dp; opacity: 0; transform-origin: 50% 86dp; }
 #world-markers { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .world-marker { position: absolute; width: 180dp; margin-left: -90dp; margin-top: -36dp; text-align: center; font-size: 13dp; color: #e7e5d4; }
 .world-marker .marker-text { display: inline-block; padding: 2dp 5dp; background-color: #0c1411df; }

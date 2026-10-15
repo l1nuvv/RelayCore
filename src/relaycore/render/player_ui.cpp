@@ -360,6 +360,12 @@ namespace RelayCore::render
         reticle->SetClass("focused", !data.prompt.empty());
         state_->element("status")->SetClass("danger", !data.alive || data.health < data.max_health * 0.35F);
         state_->property("hurt", "opacity", std::to_string(data.hurt));
+        state_->property("damage-direction", "opacity", std::to_string(data.damage_alert));
+        state_->property(
+            "damage-direction",
+            "transform",
+            "rotate(" + std::to_string(data.damage_direction_degrees) + "deg)"
+        );
         state_->property("hit", "opacity", std::to_string(data.hit));
         state_->property("spread", "width", std::to_string(data.reticle_radius * 2) + "px");
         state_->property("spread", "height", std::to_string(data.reticle_radius * 2) + "px");

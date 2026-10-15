@@ -16,6 +16,7 @@ namespace RelayCore::render
     struct HudPresentation {
         bool visible = false, alive = true, interaction_ready = false;
         float health = 0, max_health = 0, hurt = 0, hit = 0, reticle_radius = 0;
+        float damage_alert = 0, damage_direction_degrees = 0;
         std::string weapon, hint, objective_header, objective_title, objective_detail, inventory, prompt, prompt_detail,
             event;
         float event_strength = 0;

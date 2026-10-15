@@ -81,8 +81,12 @@ namespace RelayCore::gameplay
 
     } // namespace
 
-    [[nodiscard]] auto apply_player_damage(PlayerCombatState& player, const float amount, const std::string_view source)
-        -> float
+    [[nodiscard]] auto apply_player_damage(
+        PlayerCombatState& player,
+        const float amount,
+        const std::string_view source,
+        const std::optional<glm::vec3> source_position
+    ) -> float
     {
         if (!player.alive || amount <= 0.0F)
         {
@@ -93,6 +97,10 @@ namespace RelayCore::gameplay
         player.health = std::max(0.0F, player.health - amount);
         player.damage_taken += applied_damage;
         player.hurt_flash_remaining_seconds = std::max(player.hurt_flash_remaining_seconds, 0.30F);
+        player.damage_direction_remaining_seconds = 0.30F;
+        player.damage_source_position_valid = source_position.has_value();
+        if (source_position)
+            player.damage_source_position = *source_position;
         player.last_damage_source = std::string{source};
         if (player.health <= 0.0F)
         {
@@ -236,6 +244,9 @@ namespace RelayCore::gameplay
         state.health = state.max_health;
         state.weapon_cooldown_remaining_seconds = 0.0F;
         state.hurt_flash_remaining_seconds = 0.0F;
+        state.damage_direction_remaining_seconds = 0.0F;
+        state.damage_source_position = {};
+        state.damage_source_position_valid = false;
         state.hit_confirmation_remaining_seconds = 0.0F;
         state.shot_trace = {};
         state.respawn_remaining_seconds = 0.0F;
@@ -254,6 +265,9 @@ namespace RelayCore::gameplay
         state.health = state.max_health;
         state.weapon_cooldown_remaining_seconds = 0.0F;
         state.hurt_flash_remaining_seconds = 0.0F;
+        state.damage_direction_remaining_seconds = 0.0F;
+        state.damage_source_position = {};
+        state.damage_source_position_valid = false;
         state.hit_confirmation_remaining_seconds = 0.0F;
         state.shot_trace = {};
         state.respawn_remaining_seconds = 0.0F;
@@ -267,6 +281,9 @@ namespace RelayCore::gameplay
         player.weapon_cooldown_remaining_seconds = std::max(0.0F, player.weapon_cooldown_remaining_seconds - step);
         player.hurt_flash_remaining_seconds = std::max(0.0F, player.hurt_flash_remaining_seconds - step);
         player.hit_confirmation_remaining_seconds = std::max(0.0F, player.hit_confirmation_remaining_seconds - step);
+        player.damage_direction_remaining_seconds = std::max(0.0F, player.damage_direction_remaining_seconds - step);
+        if (player.damage_direction_remaining_seconds == 0.0F)
+            player.damage_source_position_valid = false;
         player.shot_trace.remaining_seconds = std::max(0.0F, player.shot_trace.remaining_seconds - step);
         if (!player.alive)
         {
@@ -480,8 +497,12 @@ namespace RelayCore::gameplay
             turret.warmup_remaining_seconds = turret.warmup_seconds;
             turret.warming_up = false;
             ++result.turret_shots;
-            result.damage_taken +=
-                apply_player_damage(player, turret.damage, turret.label.empty() ? turret.name : turret.label);
+            result.damage_taken += apply_player_damage(
+                player,
+                turret.damage,
+                turret.label.empty() ? turret.name : turret.label,
+                turret.origin
+            );
             if (!player.alive)
             {
                 result.player_died = true;

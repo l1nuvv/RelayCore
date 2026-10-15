@@ -399,8 +399,12 @@ TEST_CASE("combat threats apply hazard damage, turret warmup, and lethal respawn
     CHECK(second_tick.player_died);
     CHECK_FALSE(player.alive);
     CHECK(player.health == doctest::Approx(0.0F));
+    CHECK(player.damage_source_position_valid);
+    CHECK(player.damage_source_position == turrets[0].origin);
+    CHECK(player.damage_direction_remaining_seconds > 0.0F);
 
     RelayCore::gameplay::tick_combat_state(0.60F, player, turrets);
     CHECK(turrets[0].shot_trace.remaining_seconds == 0.0F);
     CHECK(player.respawn_remaining_seconds == doctest::Approx(0.90F));
+    CHECK_FALSE(player.damage_source_position_valid);
 }
