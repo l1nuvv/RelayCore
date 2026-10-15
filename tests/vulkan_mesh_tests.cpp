@@ -4035,6 +4035,45 @@ namespace
                 }
             }
         }
+        if (!profile)
+        {
+            auto config = base;
+            config.shadow_enabled = config.volumetrics_enabled = true;
+            config.shadow_contact_strength = config.shadow_light_intensity = 0;
+            auto zero_intensity = make_renderer(config);
+            config.shadow_light_color = {};
+            config.shadow_light_intensity = 1;
+            auto zero_color = make_renderer(config);
+            const std::array lights{
+                LocalLight{{0, 1, 2}, {.8F, .2F, .05F}, 4},
+                LocalLight{{-.5F, .2F, 1}, {.05F, .3F, .8F}, 1},
+                LocalLight{{20, 20, 20}, {.2F, .8F, .1F}, .5F}
+            };
+            zero_intensity->set_local_lights(lights);
+            zero_color->set_local_lights(lights);
+            const auto intensity_image = zero_intensity->render_image(items, camera, w, h);
+            const auto color_image = zero_color->render_image(items, camera, w, h);
+            require(
+                intensity_image.pixels == color_image.pixels,
+                "Zero-intensity directional volume differs from zero-radiance shadowed control"
+            );
+            save(intensity_image, captures / "effects-volume-zero-directional.bmp");
+            config.shadow_light_color = base.shadow_light_color;
+            config.shadow_light_intensity = .8F;
+            auto lit_volume = make_renderer(config);
+            lit_volume->set_local_lights(lights);
+            lit_volume->set_spot_light(
+                SpotLight{{0, 2, 5}, glm::normalize(glm::vec3{0, -.3F, -1}), {1, .75F, .5F}, 18, true}
+            );
+            const auto lit_image = lit_volume->render_image(items, camera, w, h);
+            require(lit_image.pixels != intensity_image.pixels, "Directional/spot volume made no scene contribution");
+            save(lit_image, captures / "effects-volume-all-lights.bmp");
+            zero_intensity->set_local_lights({});
+            require(
+                zero_intensity->render_image(items, camera, w, h).pixels != intensity_image.pixels,
+                "Colored point lights made no volumetric scene contribution"
+            );
+        }
         if (analytic_only)
             return;
         // A plane reflecting behind the camera has no screen hit: preserve its probe exactly.

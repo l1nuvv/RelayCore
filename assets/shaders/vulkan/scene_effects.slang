@@ -185,28 +185,51 @@ float3 volumetric_color(float3 surface, float3 position, float3 normal, float fo
     float segment = 1 - exp(-frame.effects.z * stepLength);
     float transmission = 1;
     float3 scatter = 0;
+    float3 directionalColor = linearColor ? mr_linear(materials.directionalColor.rgb) : materials.directionalColor.rgb;
     for (int step = 0; step < 8; ++step)
     {
         float distance = (step + .5) * stepLength;
         float3 p = frame.cameraPosition.xyz + ray * (distance / max(lengthRay, .0001));
         float3 incident = fogColor;
         if (shadows.flags.x != 0)
-            incident += (linearColor ? mr_linear(materials.directionalColor.rgb) : materials.directionalColor.rgb) * materials.direction.w
-                      * directional_visibility(normal, p, distance) * .25;
-        for (int light = 0; light < lights.count.x; ++light)
-        {
-            float3 delta = lights.positionRadius[light].xyz - p;
-            float d = length(delta);
-            float attenuation = saturate(1 - d / max(lights.positionRadius[light].w, .001));
-            if (attenuation == 0) continue;
-            float visibility = (shadows.flags.w & (1 << light)) == 0 || d <= .05 ? 1
-                : float((d - .025) / lights.positionRadius[light].w <= point_depth(-delta / d, light));
-            incident += (linearColor ? mr_linear(lights.color[light].rgb) : lights.color[light].rgb) * attenuation * attenuation * visibility * .25;
-        }
+            incident += directionalColor * materials.direction.w * directional_visibility(normal, p, distance) * .25;
         float3 spotRay;
         incident += spot_radiance(p, normal, spotRay, linearColor) * .25;
         scatter += transmission * segment * incident;
         transmission *= 1 - segment;
+    }
+    float3 volumeDirection = ray / max(lengthRay, .0001);
+    // Integrate scalar light weights before applying the sample-invariant color.
+    for (int light = 0; light < lights.count.x; ++light)
+    {
+        float4 positionRadius = lights.positionRadius[light];
+        float radius = max(positionRadius.w, .001);
+        float3 toLight = positionRadius.xyz - frame.cameraPosition.xyz;
+        float closestDistance = clamp(dot(toLight, volumeDirection), 0, lengthVolume);
+        float3 closestDelta = toLight - volumeDirection * closestDistance;
+        // The full segment encloses all eight samples; the margin retains boundary lights.
+        float conservativeRadius = radius + .001;
+        if (dot(closestDelta, closestDelta) > conservativeRadius * conservativeRadius) continue;
+        bool shadowed = (shadows.flags.w & (1 << light)) != 0;
+        float lightScatter = 0;
+        float lightTransmission = 1;
+        for (int step = 0; step < 8; ++step)
+        {
+            float distance = (step + .5) * stepLength;
+            float3 p = frame.cameraPosition.xyz + ray * (distance / max(lengthRay, .0001));
+            float3 delta = positionRadius.xyz - p;
+            float d = length(delta);
+            float attenuation = saturate(1 - d / radius);
+            if (attenuation > 0)
+            {
+                float visibility = !shadowed || d <= .05 ? 1
+                    : float((d - .025) / positionRadius.w <= point_depth(-delta / d, light));
+                lightScatter += lightTransmission * segment * attenuation * attenuation * visibility * .25;
+            }
+            lightTransmission *= 1 - segment;
+        }
+        float3 color = linearColor ? mr_linear(lights.color[light].rgb) : lights.color[light].rgb;
+        scatter += color * lightScatter;
     }
     return surface * transmission + scatter;
 }

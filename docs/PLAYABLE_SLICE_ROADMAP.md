@@ -58,7 +58,7 @@ P0 — crash/UB/broken build/corrupt state; P1 — приёмка slice; P2 — 
 | G-009 | Второе оружие с отдельной боевой ролью | P2 | `done` | [Детали](tickets/G-009.md) |
 | G-010 | Один новый противник по результатам испытаний | P2 | `awaiting_playtest` | [Детали](tickets/G-010.md) |
 | G-011 | Следующий короткий игровой эпизод | P2 | `awaiting_playtest` | [Детали](tickets/G-011.md) |
-| H-008 | Полный аудит производительности и очередь оптимизаций | P1 | `in_progress` | [Детали](tickets/H-008.md), [H-008-01](profiling/H-008-2026-10-14.md#h-008-01-implementation), [H-008-02](profiling/H-008-2026-10-14.md#h-008-02-implementation) |
+| H-008 | Полный аудит производительности и очередь оптимизаций | P1 | `in_progress` | [Детали](tickets/H-008.md), [H-008-01](profiling/H-008-2026-10-14.md#h-008-01-implementation), [H-008-02](profiling/H-008-2026-10-14.md#h-008-02-implementation), [H-008-03](profiling/H-008-2026-10-14.md#h-008-03-implementation) |
 | H-009 | Проверяемый кандидат следующего эпизода | P2 | `pending` | [Детали](tickets/H-009.md) |
 | VK-014 | Ревью архитектуры после Vulkan cutover | P2 | `done` | [Детали](VULKAN_MIGRATION_PLAN.md) |
 | VK-F01 | Диагностические строки Vulkan mesh backend | P3 | `done` | [Детали](VULKAN_MIGRATION_PLAN.md) |
