@@ -123,6 +123,8 @@ namespace RelayCore
         camera_.set_viewport(viewport_width_, viewport_height_);
         imgui_overlay_.initialize(window, *state_->device);
         player_ui_ = std::make_unique<render::PlayerUi>(window.handle(), *state_->device);
+        const auto extent = window.pixel_extent();
+        player_ui_->prepare_fonts(extent.width, extent.height);
         initialized_ = true;
         const auto& capabilities = state_->device->capabilities();
         log::info(
@@ -186,6 +188,8 @@ namespace RelayCore
     void Renderer::prepare_resources(std::span<const render::RenderItem> items)
     {
         state_->backend->prepare_resources(items);
+        const auto extent = state_->window->pixel_extent();
+        player_ui_->prepare_fonts(extent.width, extent.height);
     }
 
     void Renderer::commit_live_content_reload(PreparedLiveContentReload staged_reload)

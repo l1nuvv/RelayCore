@@ -64,6 +64,40 @@ int main(int argc, char** argv)
         SDL_HideWindow(window.handle());
         RelayCore::Renderer renderer{config.renderer};
         renderer.initialize(window);
+        const auto check_prepared_fonts = [&] {
+            auto* context = Rml::GetContext("player");
+            auto* engine = Rml::GetFontEngineInterface();
+            const Rml::String language = "ru";
+            const Rml::TextShapingContext shaping{language};
+            const auto check = [&](const auto& self, Rml::Element* element) -> void {
+                if (const auto face = element->GetFontFaceHandle())
+                {
+                    const auto version = engine->GetVersion(face);
+                    const Rml::String text = "Ёжик: здоровье 97 / 100; ВОЗВРАЩЕНИЕ × — … −20 · Броня";
+                    engine->GetStringWidth(face, text, shaping);
+                    Rml::TexturedMeshList meshes;
+                    engine->GenerateString(
+                        context->GetRenderManager(),
+                        face,
+                        0,
+                        text,
+                        {},
+                        Rml::ColourbPremultiplied{255},
+                        1,
+                        shaping,
+                        meshes
+                    );
+                    require(engine->GetVersion(face) == version, "First-use Cyrillic/numbers rebuilt a prepared atlas");
+                }
+                for (int i = 0; i < element->GetNumChildren(); ++i)
+                    self(self, element->GetChild(i));
+            };
+            for (const char* name : {"hud", "menu", "finale"})
+                check(check, context->GetDocument(name));
+        };
+        check_prepared_fonts();
+        renderer.player_ui().prepare_fonts(1280, 720);
+        check_prepared_fonts();
         RelayCore::AudioSystem audio{config.audio};
         bool running = true;
         RelayCore::EngineServices services{config, window, renderer, audio, running};
@@ -217,6 +251,8 @@ int main(int argc, char** argv)
             require(SDL_SetWindowSize(window.handle(), size.x, size.y), "Player UI resize failed");
             SDL_PumpEvents();
             renderer.on_resize(size.x, size.y);
+            renderer.player_ui().prepare_fonts(size.x, size.y);
+            check_prepared_fonts();
             (void) draw("menu-" + std::to_string(size.x));
             require(control("new-game")->IsVisible(true), "Resize hid the main action");
         }

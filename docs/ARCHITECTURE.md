@@ -15,6 +15,12 @@ before the optional developer overlay, on its existing Vulkan device and VMA.
 Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
 pipelines through their final GPU use. Presentation drains before device/allocator
 destruction; ImGui and readback remain synchronous.
+Renderer initialization and scene resource preparation also prepare the UI font
+atlases at the window's current pixel density. PlayerUi resolves font faces from
+the authored documents and a temporary damage-marker element, then prepares
+Latin/Cyrillic, numeric and HUD-symbol glyphs once per resolved face. The existing
+RmlUi font cache and Vulkan texture retirement still own their lifetime; no
+preparation document or draw snapshot is submitted.
 See [authoring and verification](DEVELOPMENT.md#игровой-ui-rmlui-63).
 
 ## Bootstrap
