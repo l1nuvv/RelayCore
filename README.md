@@ -1,5 +1,7 @@
 # RelayCore
 
+![RelayCore](content/graphics/branding/relaycore-wordmark.svg)
+
 Собственный C++20-движок и GoldSource-inspired indoor FPS для Windows 11. SDL3/Vulkan, статические native assets, встроенный редактор, сохранения и переходы между картами. Игровой HUD/меню — RmlUi; диагностика и editor UI — ImGui.
 
 [Скачать сборку](https://github.com/l1nuvv/RelayCore-releases/releases/latest) · [Документация](docs/README.md) · [Выпуск и обновления](docs/UPDATES.md)

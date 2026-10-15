@@ -1,6 +1,6 @@
 <rml><head><title>RelayCore</title><link type="text/rcss" href="player.rcss" /></head><body id="menu">
 <div id="menu-panel" class="card">
-<div id="identity"><div id="seal"><div class="seal-ring"></div><div class="seal-inner"></div><div class="seal-spine"></div><div class="seal-crossbar"></div><div class="seal-core"></div></div><div id="identity-copy"><div id="brand">RELAYCORE</div><div id="identity-caption">ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС</div></div><span id="version"></span></div>
+<div id="identity"><img id="seal" src="../branding/relaycore-menu.bmp" /><div id="identity-copy"><div id="brand">RELAYCORE</div><div id="identity-caption">ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС</div></div><span id="version"></span></div>
 <div id="menu-title" class="label"></div><div id="description" class="secondary"></div>
 <div id="update-notice"><span id="update-notice-text"></span><button data-action="notice">Понятно</button></div>
 <div id="main-actions"><button id="continue" class="primary" data-action="continue">Продолжить [Enter]</button><div id="save-summary" class="secondary"></div>

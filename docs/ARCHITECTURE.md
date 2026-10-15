@@ -15,6 +15,9 @@ before the optional developer overlay, on its existing Vulkan device and VMA.
 Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
 pipelines through their final GPU use. Presentation drains before device/allocator
 destruction; ImGui and readback remain synchronous.
+Authored BMP images are decoded through SDL within `VulkanRmlRenderer`, converted
+from straight to premultiplied RGBA and uploaded through the existing UI texture
+path. They share the same descriptor and snapshot retirement as font atlases.
 Renderer initialization and scene resource preparation also prepare the UI font
 atlases at the window's current pixel density. PlayerUi resolves font faces from
 the authored documents and a temporary damage-marker element, then prepares

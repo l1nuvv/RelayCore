@@ -202,7 +202,27 @@ int main(int argc, char** argv)
             element->DispatchEvent("change", {});
             game.on_update({}, services);
         };
-        (void) draw("");
+        const auto branded_menu = draw("branding");
+        Rml::Rectanglef seal_bounds;
+        require(
+            Rml::ElementUtilities::GetBoundingBox(seal_bounds, control("seal"), Rml::BoxArea::Content),
+            "Brand image has no projected bounds"
+        );
+        const auto seal_pixel = [&](float x, float y) {
+            const auto point = seal_bounds.TopLeft() + seal_bounds.Size() * Rml::Vector2f{x / 128, y / 128};
+            const auto offset = (size_t(point.y) * branded_menu.width + size_t(point.x)) * 4;
+            return std::array{
+                branded_menu.pixels.at(offset),
+                branded_menu.pixels.at(offset + 1),
+                branded_menu.pixels.at(offset + 2)
+            };
+        };
+        const auto axis = seal_pixel(64, 16), aperture = seal_pixel(64, 60), gap = seal_pixel(64, 30);
+        require(axis[0] > 150 && axis[1] > 130 && axis[2] < 140, "Brand BMP did not render in the menu palette");
+        require(
+            aperture[0] + 70 < axis[0] && gap[0] + 70 < axis[0],
+            "Brand BMP lost its transparent counter or axis gap"
+        );
         for (const auto lost : {SDL_EVENT_WINDOW_FOCUS_LOST, SDL_EVENT_WINDOW_MINIMIZED})
         {
             auto* button = control("settings-button");

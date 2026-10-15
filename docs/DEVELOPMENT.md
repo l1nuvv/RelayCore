@@ -385,7 +385,7 @@ assets and restart the game: persistent documents are loaded at UI initializatio
 
 Runtime ownership, action application and GPU lifetime are described in [ARCHITECTURE](ARCHITECTURE.md#player-ui-ownership-rmlui-63).
 
-The adapter supports geometry, generated font textures, premultiplied alpha, rectangular scissor and transforms. Images, filters, layers, transformed clipping and rounded overflow are outside its current authored contract. The font and upstream license are staged with RML/RCSS; RmlUi implementation types do not enter gameplay presentation/action contracts.
+The adapter supports geometry, generated font textures, BMP images, premultiplied alpha, rectangular scissor and transforms. Authored images resolve relative to their RML document; SDL decodes BMP RGBA and the adapter premultiplies it before the existing texture upload. Invalid images fail with the source path and SDL diagnostic. PNG/SVG remain authoring formats, not runtime UI formats. Filters, layers, transformed clipping and rounded overflow are outside the current authored contract. The font and upstream license are staged with RML/RCSS; RmlUi implementation types do not enter gameplay presentation/action contracts.
 
 Context dimensions, geometry and scissor use framebuffer pixels; the official SDL translator converts mouse coordinates by window pixel density. Authored `dp` layout scales from a 1280×720 reference with a 0.75 compatibility minimum. Menus scroll on short windows. Escape DOM text and retain unchanged text; screen changes clear stale UI actions and held gameplay inputs.
 

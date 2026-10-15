@@ -204,6 +204,12 @@ foreach(development_target IN ITEMS relaycore_level_check relaycore_sandbox)
 endforeach()
 
 if(WIN32)
+    enable_language(RC)
+    configure_file(relaycore.rc.in generated/relaycore.rc @ONLY)
+    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc PROPERTIES
+        OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/branding/relaycore.ico")
+    target_sources(relaycore_demo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc)
+    target_sources(relaycore_sandbox PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/relaycore.rc)
     set(RELAYCORE_UPDATE_REPOSITORY "l1nuvv/RelayCore-releases" CACHE STRING "Public GitHub repository for game releases")
     if(NOT RELAYCORE_UPDATE_REPOSITORY MATCHES "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
         message(FATAL_ERROR "RELAYCORE_UPDATE_REPOSITORY must be owner/repository")
@@ -212,14 +218,20 @@ if(WIN32)
     find_program(RELAYCORE_CSC NAMES csc.exe HINTS "$ENV{WINDIR}/Microsoft.NET/Framework64/v4.0.30319" REQUIRED)
     file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs" updater_source)
     file(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe" updater_output)
+    file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/assets/branding/relaycore.ico" updater_icon)
+    file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/assets/branding/relaycore-wordmark.png" updater_wordmark)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe
         COMMAND "${RELAYCORE_CSC}" /nologo /target:winexe /optimize+
             /reference:System.Net.Http.dll /reference:System.IO.Compression.dll
             /reference:System.IO.Compression.FileSystem.dll /reference:System.Web.Extensions.dll
             /reference:System.Windows.Forms.dll /reference:System.Drawing.dll
             "/out:${updater_output}"
+            "/win32icon:${updater_icon}"
+            "/resource:${updater_wordmark},RelayCore.Wordmark"
             "${updater_source}"
-        DEPENDS ${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs VERBATIM)
+        DEPENDS ${PROJECT_SOURCE_DIR}/tools/updater/RelayCoreUpdater.cs
+            ${PROJECT_SOURCE_DIR}/assets/branding/relaycore.ico
+            ${PROJECT_SOURCE_DIR}/assets/branding/relaycore-wordmark.png VERBATIM)
     add_custom_target(relaycore_updater DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/RelayCoreUpdater.exe)
     add_dependencies(relaycore_demo relaycore_updater)
 endif()

@@ -6,8 +6,10 @@
 #include "relaycore/render/vulkan_uploads.h"
 
 #include <RmlUi/Core/Matrix4.h>
+#include <SDL3/SDL_surface.h>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/mat4x4.hpp>
@@ -324,10 +326,30 @@ namespace RelayCore::render
     {
         state_->geometries.erase(geometry);
     }
-    auto VulkanRmlRenderer::LoadTexture(Rml::Vector2i&, const Rml::String& source) -> Rml::TextureHandle
+    auto VulkanRmlRenderer::LoadTexture(Rml::Vector2i& dimensions, const Rml::String& source) -> Rml::TextureHandle
     {
-        log::error("RmlUi image loading is unsupported by the current authored UI: {}", source);
-        return 0;
+        using Surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
+        Surface loaded(SDL_LoadBMP(source.c_str()), SDL_DestroySurface);
+        if (!loaded)
+            throw std::runtime_error("Cannot load player UI BMP '" + source + "': " + SDL_GetError());
+        Surface rgba(SDL_ConvertSurface(loaded.get(), SDL_PIXELFORMAT_RGBA32), SDL_DestroySurface);
+        if (!rgba)
+            throw std::runtime_error("Cannot convert player UI BMP '" + source + "': " + SDL_GetError());
+        dimensions = {rgba->w, rgba->h};
+        const auto row_size = static_cast<size_t>(rgba->w) * 4;
+        std::vector<Rml::byte> pixels(row_size * rgba->h);
+        for (int y = 0; y < rgba->h; ++y)
+            std::memcpy(
+                pixels.data() + y * row_size,
+                static_cast<const Rml::byte*>(rgba->pixels) + y * rgba->pitch,
+                row_size
+            );
+        // File pixels are straight alpha; UI blending and generated atlases use premultiplied alpha.
+        for (size_t i = 0; i < pixels.size(); i += 4)
+            for (size_t channel = 0; channel < 3; ++channel)
+                pixels[i + channel] =
+                    static_cast<Rml::byte>((unsigned(pixels[i + channel]) * pixels[i + 3] + 127) / 255);
+        return GenerateTexture({pixels.data(), pixels.size()}, dimensions);
     }
     auto VulkanRmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> pixels, Rml::Vector2i dimensions)
         -> Rml::TextureHandle
