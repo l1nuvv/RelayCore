@@ -3,6 +3,7 @@
 #include "relaycore/core/log.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 namespace RelayGame
 {
@@ -15,6 +16,7 @@ namespace RelayGame
         }
         runtime_.set_paused(screen != Screen::Playing || !window_focused_, services);
         screen_ = screen;
+        update_frame_context(services);
         services.renderer().player_ui().set_screen(
             screen == Screen::Playing  ? RelayCore::render::PlayerUiScreen::Hud
             : screen == Screen::Editor ? RelayCore::render::PlayerUiScreen::Hidden
@@ -48,6 +50,7 @@ namespace RelayGame
             std::move(prepared),
             services
         );
+        update_frame_context(services);
     }
 
     void DemoGame::enter_editor(RelayCore::EngineServices& services)
@@ -97,6 +100,8 @@ namespace RelayGame
     {
         if (screen_ != Screen::Editor || !editor_return_)
             return;
+        detail::LevelTransitionDiagnostics
+            transition{services, runtime_, "editor_preview", editor_.save_path().string()};
         try
         {
             auto prepared = detail::prepare_level_session(
@@ -109,6 +114,7 @@ namespace RelayGame
             editor_camera_position_ = services.camera().position();
             editor_camera_angles_ = {services.camera().yaw_radians(), services.camera().pitch_radians()};
             install_level_session(std::move(prepared), services, window_focused_);
+            transition.succeeded();
             visited_levels_.clear();
             editor_.leave_scene();
             played_seconds_ = 0;
@@ -118,6 +124,7 @@ namespace RelayGame
             change_screen(Screen::Playing, services);
         } catch (const std::exception& error)
         {
+            transition.failed(error.what());
             editor_.report_error(error.what());
         }
     }
@@ -126,6 +133,8 @@ namespace RelayGame
     {
         if (!editor_return_)
             return;
+        detail::LevelTransitionDiagnostics
+            transition{services, runtime_, "editor_return", editor_return_->session.runtime.level_path()};
         const auto played = editor_return_->played_seconds;
         const auto scene_time = editor_return_->scene_time;
         const auto flashlight = editor_return_->flashlight;
@@ -141,10 +150,12 @@ namespace RelayGame
         } catch (const std::exception& error)
         {
             progress_message_ = error.what();
+            transition.failed(error.what());
             editor_.report_error(progress_message_);
             RelayCore::log::error("Return from editor: {}", error.what());
             return;
         }
+        transition.succeeded();
         visited_levels_ = std::move(editor_return_->visited_levels);
         editor_return_.reset();
         editor_.leave_scene();

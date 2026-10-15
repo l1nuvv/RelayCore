@@ -100,9 +100,10 @@ runtime ownership — [ARCHITECTURE](../ARCHITECTURE.md). Здесь храня�
 
 ## Изменения диагностики к выполнению
 
-Все пункты ниже запланированы, но ещё не реализованы. Сохранить один
-перезаписываемый файл и текущую основу spdlog. Сначала выполнить приоритет 1,
-затем приоритет 2; порядок внутри приоритета уточнять по прямым зависимостям.
+Приоритет 1 реализован в первом заходе; результаты приведены в
+[evidence захода 1](#заход-1--реализация-и-проверки-2026-10-15).
+Приоритет 2 остаётся следующим заходом. Сохранены один перезаписываемый файл
+и текущая основа spdlog. Порядок внутри приоритета уточнять по прямым зависимостям.
 
 | Приоритет | Изменение | Критерий проверки |
 | --- | --- | --- |
@@ -178,6 +179,82 @@ simulation delta. Выполнить узкие build/tests, diff check и от�
 запуском: приведённые выше результаты — уже прочитанная сводка, не обещание
 неизменности файла. Копии и архивы автоматически не создавать.
 
+## Заход 1 — реализация и проверки 2026-10-15
+
+Выполнены все пять пунктов приоритета 1. Исходная ревизия — `c17fee0`, рабочее
+дерево перед задачей было чистым. Изменения относятся только к диагностике;
+shader/assets, правила simulation, сохранений и активации карт не изменялись.
+Заход 2, исправление прежних Vulkan ошибок и ускорение G-009/G-019 остаются
+отдельными этапами; ускорение этим коммитом не заявляется.
+
+- `FrameTimer` сохраняет необрезанный steady-clock интервал в `wall_delta_seconds`;
+  прежний `delta_seconds` и его предел 100 мс сохранены, включая первый кадр.
+  Overlay и Tracy frame-time plot используют необрезанное значение.
+- Сводки собирает цикл приложения независимо от видимости ImGui. Они содержат
+  все завершённые циклы группы, mean/p95/p99/max и явный wall-clock интервал.
+  Игровые, меню, пауза, редактор, финал, suspended и пограничные/loading циклы
+  разделены. Подготовка карты и графическая реконфигурация не попадают в обычный
+  игровой bucket. Формат и границы измерений принадлежат
+  [DEVELOPMENT](../DEVELOPMENT.md#vulkan-capture-и-validation).
+- Startup, новая игра, Continue, переходы через выходы, live reload,
+  editor preview/return получили begin/success/failed. Записываются причина,
+  source/destination/entry, длительность и фактически активная карта. Success
+  отмечает commit runtime до записи прогресса; отказ сохранения не превращает
+  успешную смену карты в отказ перехода. Сохранены прежние сообщения ошибок.
+- Авторитетный финал штатной `levels/containment_loop.toml` создаёт однократное
+  `Campaign completed`; восстановление завершённого save обозначено отдельно
+  `Campaign completion restored`. Закрытие игры и посещение карты не создают финал.
+- Заголовок содержит version, build configuration и compile timestamp,
+  executable и asset root. Снимки фактического renderer/window после player
+  settings показывают pixel extent, VSync request и текущий present mode,
+  определённый по эффективным эффектам preset, HDR сцены/SDR выхода, scale,
+  dynamic resolution, color pipeline, validation и эффекты. Изменения пишутся
+  при изменении применённых значений, включая debug-реконфигурацию и resize.
+
+Проверки выполнены вне sandbox, в Visual Studio Developer PowerShell x64:
+
+```powershell
+cmake --build --preset tests-debug --target relaycore_tests relaycore_game_lifecycle relaycore_window_lifetime_tests -j 2
+ctest --preset test-debug -R '^relaycore\.(frame |logger |fixed simulation)' --output-on-failure --no-tests=error
+ctest --preset graphics-debug -R '^graphics\.(game_lifecycle|campaign_route|hdr_settings|diagnostics_smoke|window_lifetime)$' --output-on-failure --no-tests=error --output-log build/diagnostics-pass1-graphics-2026-10-15.log
+cmake --build --preset demo-dev -j 2
+git diff --check
+```
+
+Unit: **8/8 passed**, включая известную последовательность 1…100 мс
+(mean 50,5 / p95 95 / p99 99 / max 100), интервал 350 мс при simulation delta
+100 мс, границы/хвосты/переключения сводок, suspended, отключение вывода,
+перезапись latest и отказ файлового sink с явным console fallback.
+
+Graphics: **5/5 passed, 0 skips**, validation=true (RTX 4060 Ti); строгий Vulkan warning/error gate сохранён.
+`game_lifecycle` проверяет commit, отказ с сохранённой активной картой, отказ
+записи прогресса после commit и редакторские переходы. `campaign_route` проверяет
+восемь глав, реальное завершение последней zone, отсутствие дубля/ложного финала
+при shutdown и Continue завершённого save. `hdr_settings` проверяет заголовок,
+изменения применённых настроек и отсутствие ложной записи при отказе применения.
+`window_lifetime` проверяет нормальное и аварийное завершение приложения.
+
+`diagnostics_smoke` — короткий проход настоящего `Application::run` со staged
+Debug assets: menu → game → несуществующая карта → pause → успешный переход
+foundation_intake → foundation_pump → resize → menu → штатный shutdown.
+Финальный smoke отдельно повторён после уточнения fixture-конфига: `cmake --build --preset graphics-debug --target relaycore_game_lifecycle -j 2`, затем `ctest --preset graphics-debug -R '^graphics\.diagnostics_smoke$' --output-on-failure --no-tests=error --output-log build/diagnostics-pass1-smoke-2026-10-15.log`: **1/1 passed, 0 skips**.
+Временный профиль player settings переопределяет config VSync=false на true;
+лог проверяет эффективный запрос, FIFO, 800×600 после resize, все нужные сводки,
+события переходов и единственный `RelayCore_latest.log`. Профиль/лог теста
+изолированы; пользовательский progress не меняется. В сравнении с ручным логом
+теперь видны распределения всех кадров и commit/отказ переходов, воспроизводимый
+контекст сборки/настроек и отдельное доказательство финала. Полный новый ручной
+проход пользователя для этого захода не требуется.
+
+`demo-dev` собран для обычного **RelayCore — Play**. Форматирование task-owned
+C++ (`clang-format --dry-run --Werror`) и `git diff --check` прошли.
+При сборке оставались предупреждения в не менявшихся
+`demo_game_source_debug_commands.cpp` и `pipeline_authoring_overlay_tests.cpp`;
+новых предупреждений в добавленной диагностике не наблюдалось.
+Сборочные asset targets переиспользовали существующие probe/reflection products.
+ZIP, release, push и отдельные датированные копии логов не создавались.
+Времена этой верификации не являются новым performance baseline.
+
 ## План выполнения
 
 1. **Согласовать и сохранить evidence.** Зафиксировать revision, рабочий diff,
@@ -217,9 +294,10 @@ simulation delta. Выполнить узкие build/tests, diff check и от�
 
 ## Что делать пользователю сейчас
 
-Первый проход завершён, файл прочитан. Сейчас от пользователя дополнительных
-запусков не требуется. Следующий этап — реализация согласованных улучшений
-диагностики по отдельному запросу, затем её узкая проверка агентом.
+Первый ручной проход и первый заход улучшений диагностики завершены;
+[проверки захода 1](#заход-1--реализация-и-проверки-2026-10-15) выполнены агентом.
+Сейчас дополнительных запусков пользователя не требуется. Следующий этап —
+заход 2 по отдельному запросу.
 Для будущего прохода файл остаётся тем же: путь печатается строкой `Latest log`,
 стандартный каталог — `%APPDATA%\l1nuvv\RelayCore\logs`.
 После нового прохода нужно закрыть игру и сообщить агенту до следующего запуска,

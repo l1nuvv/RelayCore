@@ -10,6 +10,7 @@ set(RELAYCORE_DEMO_SOURCES
         demo_game_menu.cpp
         game_updates.cpp
         demo_game_progress.cpp
+        demo_game_diagnostics.cpp
         save_game.cpp
         player_feedback.cpp
         scientist_pose.cpp
@@ -48,6 +49,7 @@ set(RELAYCORE_DEMO_SOURCES
 
 set(RELAYCORE_DEMO_HEADERS
         demo_game.h
+        level_transition_diagnostics.h
         game_updates.h
         containment_encounter.h
         mission_runtime.h

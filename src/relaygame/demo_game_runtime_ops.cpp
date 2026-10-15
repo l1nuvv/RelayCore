@@ -6,6 +6,7 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 #include <exception>
 #include <stdexcept>
@@ -186,6 +187,7 @@ namespace RelayGame::detail
     auto reload_live_content(DemoGameRuntimeState state, RelayCore::EngineServices& services) -> bool
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::reload_live_content");
+        LevelTransitionDiagnostics transition{services, state.runtime, "live_reload", state.runtime.level_path()};
         const std::string level_name = services.renderer().runtime_diagnostics().level_name;
         RelayCore::log::info(
             "Reloading live content for {}",
@@ -216,12 +218,14 @@ namespace RelayGame::detail
             services.renderer().set_world_diagnostics(state.world_scene.diagnostics());
             state.runtime.publish_diagnostics(services.renderer());
             publish_iteration_diagnostics(state, services);
+            transition.failed(error.what());
             RelayCore::log::error("Live content reload failed: {}", error.what());
             return false;
         }
 
         replace_level_session(state, std::move(staged.session), services);
         services.commit_live_reload_config(std::move(staged.config));
+        transition.succeeded();
         try
         {
             publish_reload_result(

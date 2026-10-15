@@ -1,6 +1,7 @@
 set(RELAYCORE_ENGINE_SOURCES
     app/application.cpp
     app/engine_services.cpp
+    app/frame_diagnostics.cpp
     app/frame_timer.cpp
     app/run_application.cpp
     app/startup_options.cpp
@@ -72,6 +73,7 @@ set(RELAYCORE_ENGINE_HEADERS
     app/app_delegate.h
     app/application.h
     app/engine_services.h
+    app/frame_diagnostics.h
     app/frame_timer.h
     app/run_application.h
     app/startup_options.h

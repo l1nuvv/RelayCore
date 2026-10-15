@@ -638,6 +638,11 @@ namespace RelayCore::render
         }
     }
 
+    auto VulkanSwapchain::present_mode() const noexcept -> VkPresentModeKHR
+    {
+        return state_->active ? state_->active->swapchain.present_mode : VK_PRESENT_MODE_MAX_ENUM_KHR;
+    }
+
     auto VulkanSwapchain::extent() const noexcept -> VkExtent2D
     {
         return state_->active ? state_->active->swapchain.extent : VkExtent2D{};

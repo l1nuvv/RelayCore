@@ -8,12 +8,20 @@
 #include "relaycore/platform/window.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game_runtime_ops.h"
+#include "relaygame/game_version.h"
 #include "relaygame/level_session_builder.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 namespace RelayGame
 {
     void DemoGame::start_level_session(RelayCore::EngineServices& services)
     {
+        detail::LevelTransitionDiagnostics transition{
+            services,
+            runtime_,
+            "startup",
+            development_sandbox_ ? "levels/development_sandbox.toml" : services.config().gameplay.level_path
+        };
         if (development_sandbox_)
         {
             install_level_session(
@@ -29,6 +37,7 @@ namespace RelayGame
                 services,
                 window_focused_
             );
+            transition.succeeded();
             return;
         }
         detail::start_level_session(
@@ -43,6 +52,7 @@ namespace RelayGame
             },
             services
         );
+        transition.succeeded();
     }
 
     void DemoGame::reload_live_content(RelayCore::EngineServices& services)
@@ -111,7 +121,17 @@ namespace RelayGame
     void DemoGame::on_startup(RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_startup");
+        logged_settings_.reset();
+        campaign_completion_logged_ = false;
+        RelayCore::log::info(
+            "Session build: version={} compiled={} {} configuration={} timing_clock=steady_since_engine_services",
+            RELAYCORE_GAME_VERSION,
+            __DATE__,
+            __TIME__,
+            RELAYCORE_BUILD_CONFIGURATION
+        );
         initialize_player_settings(services);
+        log_effective_settings(services);
         initialize_progress();
         try
         {
@@ -121,6 +141,7 @@ namespace RelayGame
             if (!services.renderer().ui_available())
                 throw;
             progress_message_ = error.what();
+            RelayCore::log::error("Startup level failed: {}", error.what());
         }
         change_screen(services.renderer().ui_available() ? Screen::MainMenu : Screen::Playing, services);
         services.renderer().set_diagnostics_visible(false);
@@ -210,7 +231,9 @@ namespace RelayGame
     void DemoGame::on_update(const RelayCore::FrameInfo& frame, RelayCore::EngineServices& services)
     {
         RELAYCORE_PROFILE_ZONE_N("DemoGame::on_update");
+        log_effective_settings(services);
         apply_ui_actions(services);
+        log_effective_settings(services);
         if (screen_ == Screen::Finale)
         {
             if (window_focused_)
@@ -326,6 +349,11 @@ namespace RelayGame
     void DemoGame::on_shutdown(RelayCore::EngineServices& services) noexcept
     {
         RELAYCORE_PROFILE_FUNCTION();
+        try
+        {
+            log_effective_settings(services);
+        } catch (...)
+        {}
         if (screen_ == Screen::Playing || screen_ == Screen::Paused)
             static_cast<void>(save_progress());
         runtime_.shutdown(services);

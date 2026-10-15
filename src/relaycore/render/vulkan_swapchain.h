@@ -54,6 +54,7 @@ namespace RelayCore::render
         // Explicit recovery after a failed recreation; never acquires from a retired swapchain.
         void recreate();
         [[nodiscard]] auto extent() const noexcept -> VkExtent2D;
+        [[nodiscard]] auto present_mode() const noexcept -> VkPresentModeKHR;
 
     private:
         struct State;

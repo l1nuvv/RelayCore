@@ -37,6 +37,11 @@ namespace RelayCore
              */
             ~AppShutdownGuard() noexcept
             {
+                try
+                {
+                    services_.frame_diagnostics().flush();
+                } catch (...)
+                {}
                 delegate_.on_shutdown(services_);
             }
 
@@ -88,10 +93,16 @@ namespace RelayCore
         EngineServices services{*config_, *window_, *renderer_, *audio_system_, is_running_};
         AppShutdownGuard shutdown_guard(*app_delegate_, services);
         app_delegate_->on_startup(services);
+        auto& diagnostics = services.frame_diagnostics();
 
         while (is_running_)
         {
             RELAYCORE_PROFILE_ZONE_N("Application::run_frame");
+            diagnostics.begin_frame();
+            const auto finish_diagnostics = [&] {
+                const auto& settings = renderer_->config().imgui;
+                diagnostics.end_frame(settings.log_fps_to_console, settings.fps_log_interval_seconds);
+            };
 
             {
                 RELAYCORE_PROFILE_ZONE_N("process_events");
@@ -116,6 +127,8 @@ namespace RelayCore
 
             if (!can_present(presentation_state))
             {
+                diagnostics.mark_suspended();
+                finish_diagnostics();
                 RELAYCORE_PROFILE_FRAME();
                 continue;
             }
@@ -149,12 +162,14 @@ namespace RelayCore
             [[maybe_unused]] const auto present_ms =
                 std::chrono::duration<double, std::milli>(present_end - present_start).count();
 
-            RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.delta_seconds * 1000.0);
+            RELAYCORE_PROFILE_PLOT("frame_time_ms", frame.wall_delta_seconds * 1000.0);
             RELAYCORE_PROFILE_PLOT("cpu_work_ms", cpu_work_ms);
             RELAYCORE_PROFILE_PLOT("present_ms", present_ms);
 
+            finish_diagnostics();
             RELAYCORE_PROFILE_FRAME();
         }
+        diagnostics.flush();
 
         return 0;
     }

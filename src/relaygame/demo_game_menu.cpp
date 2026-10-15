@@ -104,6 +104,7 @@ namespace RelayGame
             || settings_.render_scale != renderer.config().render_scale
             || settings_.dynamic_resolution_enabled != renderer.config().dynamic_resolution_enabled)
         {
+            services.frame_diagnostics().mark_loading();
             auto config = services.config();
             config.renderer = renderer.config();
             config.renderer.hdr_enabled = settings_.hdr_enabled;

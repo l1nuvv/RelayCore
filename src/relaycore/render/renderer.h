@@ -74,6 +74,8 @@ namespace RelayCore
         ~Renderer() noexcept;
 
         void initialize(const Window& window);
+        [[nodiscard]] auto validation_enabled() const noexcept -> bool;
+        [[nodiscard]] auto presentation_mode_name() const noexcept -> std::string_view;
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,

@@ -12,6 +12,7 @@ namespace RelayGame
     };
 
     struct PlayerSettings {
+        bool operator==(const PlayerSettings&) const = default;
         float volume = 1.0F;
         float sensitivity = 0.0022F;
         float fov = 70.0F;

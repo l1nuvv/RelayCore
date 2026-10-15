@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "scoped_temp_directory.h"
+#include "scoped_test_logger.h"
 
 namespace
 {
@@ -128,4 +129,28 @@ TEST_CASE("logger keeps only the latest session file by default")
     CHECK(contents.find("current session payload") != std::string::npos);
     CHECK(contents.find("previous session payload") == std::string::npos);
     CHECK(std::distance(std::filesystem::directory_iterator(temp.path()), std::filesystem::directory_iterator{}) == 1);
+}
+
+TEST_CASE("logger reports unavailable file output and retains explicit console fallback")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger guard{temp.path() / "valid"};
+    RelayCore::log::shutdown();
+    const auto blocked = temp.path() / "not-a-directory";
+    write_text_file(blocked, "blocked");
+    RelayCore::log::Config config;
+    config.logs_directory = (blocked / "logs").string();
+    config.enable_console_sink = false;
+    CHECK_THROWS_WITH_AS(
+        RelayCore::log::init(config),
+        doctest::Contains("Failed to initialize file logging"),
+        std::runtime_error
+    );
+    CHECK(RelayCore::log::latest_log_path().empty());
+    config.enable_console_sink = true;
+    CHECK_NOTHROW(RelayCore::log::init(config));
+    CHECK(RelayCore::log::latest_log_path().empty());
+    CHECK(RelayCore::log::run_log_path().empty());
+    CHECK_NOTHROW(RelayCore::log::info("File output unavailable; console remains usable"));
+    CHECK(read_text_file(blocked) == "blocked");
 }

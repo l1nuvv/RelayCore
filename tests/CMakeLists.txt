@@ -127,6 +127,7 @@ target_sources(
         blockout_mesh_tests.cpp
         blockout_texture_atlas_tests.cpp
         fixed_simulation_loop_tests.cpp
+        frame_diagnostics_tests.cpp
         gameplay_input_ownership_tests.cpp
         inspector_source_reference_tests.cpp
         level_session_builder_tests.cpp
@@ -399,6 +400,7 @@ set_tests_properties(graphics.vulkan_window PROPERTIES
 )
 add_test(NAME graphics.game_lifecycle COMMAND relaycore_game_lifecycle)
 add_test(NAME graphics.campaign_route COMMAND relaycore_game_lifecycle --campaign-route)
+add_test(NAME graphics.diagnostics_smoke COMMAND relaycore_game_lifecycle --diagnostics-smoke)
 add_test(NAME graphics.bench_relay COMMAND relaycore_bench_relay_run)
 add_test(NAME graphics.pressure_transfer COMMAND relaycore_bench_relay_run --pressure-transfer)
 add_test(NAME graphics.cooling_loop COMMAND relaycore_bench_relay_run --cooling-loop)
@@ -431,7 +433,7 @@ if(WIN32)
             ENVIRONMENT "RELAYCORE_ASSET_ROOT=$<TARGET_FILE_DIR:relaycore_demo>/assets")
     endforeach()
 endif()
-set_tests_properties(graphics.game_lifecycle graphics.campaign_route graphics.hdr_settings PROPERTIES
+set_tests_properties(graphics.game_lifecycle graphics.campaign_route graphics.hdr_settings graphics.diagnostics_smoke PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77
@@ -518,7 +520,7 @@ set_tests_properties(
 )
 
 
-set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.campaign_route graphics.hdr_settings graphics.power_restoration graphics.hdr_episode graphics.bench_relay graphics.pressure_transfer PROPERTIES
+set_tests_properties(graphics.window_lifetime graphics.game_lifecycle graphics.campaign_route graphics.hdr_settings graphics.diagnostics_smoke graphics.power_restoration graphics.hdr_episode graphics.bench_relay graphics.pressure_transfer PROPERTIES
     FAIL_REGULAR_EXPRESSION "Vulkan validation (error|warning);Vulkan .* shutdown failed")
 
 doctest_discover_tests(

@@ -116,6 +116,30 @@ Java-проверка интерпретатора CLion остаётся руч
 
 Graphics job выполняет configure/build с validation=ON, проверяет loader/layers через существующий `relaycore_vulkan_toolchain_check`, затем результат CTest/JUnit: report должен содержать хотя бы один test case, без failure/error/skipped. Количество тестов не фиксировано. Доступность features, создание instance/device, presentation, uploads и validation проверяются самими Vulkan-тестами. Локальная полная выборка:
 
+`Frame summary` охватывает все завершённые циклы приложения в указанном
+`wall_interval`: от начала обработки событий до окончания попытки presentation.
+Отсчёт интервала — steady clock с момента создания EngineServices (указан в заголовке).
+Циклы без presentation выделены как `suspended`; незавершённый цикл выхода или
+исключения не считается кадром. `mean_ms`, `p95_ms`, `p99_ms`, `max_ms` считаются
+по всем выборкам группы; percentile использует nearest rank. `mode` разделяет
+игру, меню, паузу, редактор и финал. Кадр со сменой контекста получает `boundary`,
+с подготовкой карты или графической реконфигурацией — `loading`; `map_scope=loop_start` обозначает карту на
+начало цикла. Длительность `loading` включает весь цикл, а длительность подготовки
+до активации указана отдельно в `Level transition begin/success/failed`.
+Начальная подготовка карты находится вне кадровой сводки; её длительность
+записана событием перехода с reason=startup.
+Значения не являются отдельными CPU/GPU timings или частотой обновления дисплея.
+Игровой `delta_seconds` по-прежнему ограничен 100 мс; `wall_delta_seconds` для
+overlay и Tracy сохраняет полный интервал между началами кадров.
+
+Заголовок записывает версию/тип/время сборки, executable, asset root и эффективные
+графические настройки после player settings. `vsync_requested` — применённый
+запрос, `present_mode` — текущий режим swapchain; после его пересоздания возможна
+дополнительная запись. HDR относится к сцене, вывод остаётся SDR. Изменения
+настроек записываются по фактическому состоянию renderer/window. Событие
+`Campaign completed` относится к достижению финала в текущей сессии;
+`Campaign completion restored` — к загрузке уже завершённого сохранения.
+
 ```powershell
 cmake --build --preset graphics-debug
 cmake --build --preset graphics-debug --target relaycore_player_ui_graphics relaycore_containment_loop_graphics

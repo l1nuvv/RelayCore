@@ -87,6 +87,30 @@ namespace RelayCore
         imgui_overlay_(config.imgui), state_(std::make_unique<State>())
     {}
 
+    auto Renderer::presentation_mode_name() const noexcept -> std::string_view
+    {
+        if (!state_->swapchain)
+            return "unavailable";
+        switch (state_->swapchain->present_mode())
+        {
+            case VK_PRESENT_MODE_FIFO_KHR:
+                return "fifo";
+            case VK_PRESENT_MODE_IMMEDIATE_KHR:
+                return "immediate";
+            case VK_PRESENT_MODE_MAILBOX_KHR:
+                return "mailbox";
+            case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+                return "fifo_relaxed";
+            default:
+                return "unavailable";
+        }
+    }
+
+    auto Renderer::validation_enabled() const noexcept -> bool
+    {
+        return state_->device && state_->device->capabilities().validation_enabled;
+    }
+
     Renderer::~Renderer() noexcept
     {
         // Drain presentation before destroying descriptors, pipelines or the ImGui backend.

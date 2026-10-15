@@ -2,6 +2,7 @@
 #include "relaycore/core/profiling.h"
 #include "relaycore/render/renderer.h"
 #include "relaygame/demo_game.h"
+#include "relaygame/level_transition_diagnostics.h"
 
 #include <algorithm>
 #include <string>
@@ -13,6 +14,13 @@ namespace RelayGame
         RELAYCORE_PROFILE_ZONE_N("DemoGame::transition_to");
         if (screen_ != Screen::Playing || !runtime_.player_combat_state().alive)
             return;
+        detail::LevelTransitionDiagnostics transition{
+            services,
+            runtime_,
+            exit.requires_completion ? "completion_exit" : "level_exit",
+            exit.destination.string(),
+            exit.entry
+        };
         const std::string source_level_path = runtime_.level_path();
         std::vector<SavedGame> history;
         SavedGame arrival;
@@ -65,6 +73,7 @@ namespace RelayGame
                 history.push_back(std::move(previous));
             arrival.visited_levels = history;
             install_level_session(std::move(prepared), services);
+            transition.succeeded();
         } catch (const std::exception& error)
         {
             progress_message_.clear();
@@ -74,6 +83,7 @@ namespace RelayGame
                                 + exit.entry + "' не выполнен: " + error.what();
             if (!save_error.empty())
                 progress_message_ += "\n" + save_error;
+            transition.failed(error.what());
             RelayCore::log::error("{}", progress_message_);
             return;
         }
