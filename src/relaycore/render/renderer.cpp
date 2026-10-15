@@ -279,6 +279,66 @@ namespace RelayCore
             state_->backend->reset_history();
     }
 
+    void Renderer::refresh_memory_snapshot()
+    {
+        state_->memory_snapshot = state_->device->memory_usage();
+        state_->resource_snapshot = state_->backend->resource_usage();
+        state_->descriptor_snapshot = state_->backend->material_descriptor_usage();
+        if (state_->frame_backend && state_->frame_backend != state_->backend)
+        {
+            const auto previous = state_->frame_backend->resource_usage();
+            state_->resource_snapshot.staging_bytes += previous.staging_bytes;
+            state_->resource_snapshot.upload_batches += previous.upload_batches;
+            state_->resource_snapshot.upload_retirements += previous.upload_retirements;
+            state_->resource_snapshot.scene_retirements += previous.scene_retirements;
+            state_->resource_snapshot.material_retirements += previous.material_retirements;
+            const auto descriptors = state_->frame_backend->material_descriptor_usage();
+            state_->descriptor_snapshot.pools += descriptors.pools;
+            state_->descriptor_snapshot.materials += descriptors.materials;
+        }
+    }
+
+    void Renderer::log_memory_usage(const std::string_view reason)
+    {
+        RELAYCORE_PROFILE_ZONE_N("Renderer::memory_snapshot");
+        refresh_memory_snapshot();
+        for (size_t i = 0; i < state_->memory_snapshot->heaps.size(); ++i)
+        {
+            const auto& heap = state_->memory_snapshot->heaps[i];
+            log::info(
+                "[memory] reason={} heap={} local={} driver_budget={} usage={} budget={} allocations={} "
+                "allocation_bytes={} blocks={} block_bytes={}",
+                reason,
+                i,
+                heap.device_local,
+                state_->memory_snapshot->driver_budget,
+                heap.usage_bytes,
+                heap.budget_bytes,
+                heap.allocations,
+                heap.allocation_bytes,
+                heap.blocks,
+                heap.block_bytes
+            );
+        }
+        const auto& resources = state_->resource_snapshot;
+        const auto resolution = state_->backend->resolution_status();
+        log::info(
+            "[memory] reason={} staging={} upload_batches={} upload_retirements={} scene_retirements={} "
+            "material_retirements={} materials={} descriptor_pools={} render={}x{} scale={}",
+            reason,
+            resources.staging_bytes,
+            resources.upload_batches,
+            resources.upload_retirements,
+            resources.scene_retirements,
+            resources.material_retirements,
+            state_->descriptor_snapshot.materials,
+            state_->descriptor_snapshot.pools,
+            resolution.render_width,
+            resolution.render_height,
+            resolution.scale
+        );
+    }
+
     void Renderer::begin_frame()
     {
         irradiance_probes_.reset();
@@ -474,21 +534,7 @@ namespace RelayCore
             {
                 if (ImGui::Button("Refresh GPU memory"))
                 {
-                    state_->memory_snapshot = state_->device->memory_usage();
-                    state_->resource_snapshot = state_->backend->resource_usage();
-                    state_->descriptor_snapshot = state_->backend->material_descriptor_usage();
-                    if (state_->frame_backend && state_->frame_backend != state_->backend)
-                    {
-                        const auto previous = state_->frame_backend->resource_usage();
-                        state_->resource_snapshot.staging_bytes += previous.staging_bytes;
-                        state_->resource_snapshot.upload_batches += previous.upload_batches;
-                        state_->resource_snapshot.upload_retirements += previous.upload_retirements;
-                        state_->resource_snapshot.scene_retirements += previous.scene_retirements;
-                        state_->resource_snapshot.material_retirements += previous.material_retirements;
-                        const auto descriptors = state_->frame_backend->material_descriptor_usage();
-                        state_->descriptor_snapshot.pools += descriptors.pools;
-                        state_->descriptor_snapshot.materials += descriptors.materials;
-                    }
+                    refresh_memory_snapshot();
                 }
                 if (state_->memory_snapshot)
                 {

@@ -480,6 +480,7 @@ namespace RelayCore::render
             }
             auto load(const std::filesystem::path& path, const char* entry) const -> VkShaderModule
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan shader file/module");
                 const auto diagnostic = path.string() + " (entry " + entry + ")";
                 std::ifstream stream(path, std::ios::binary | std::ios::ate);
                 const auto size = stream.tellg();
@@ -565,6 +566,7 @@ namespace RelayCore::render
             }
             auto create_pipeline(const std::filesystem::path& directory) const -> VkPipeline
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan culling pipeline creation");
                 MeshShaders shader{device};
                 shader.vertex = shader.load(directory / "scene_culling.comp.spv", "compute_main");
                 const VkComputePipelineCreateInfo info{
@@ -783,6 +785,7 @@ namespace RelayCore::render
             }
             auto create_pipeline(const std::filesystem::path& directory, const bool bright = false) const -> VkPipeline
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan tone pipeline creation");
                 MeshShaders shaders{device};
                 if (compute && !bright)
                 {
@@ -1858,6 +1861,7 @@ namespace RelayCore::render
             const bool mesh_shader = false
         ) const -> VkPipeline
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan mesh pipeline creation");
             MeshShaders shaders{device.handle()};
             const bool inputs = shadow_kind == -2, ao = shadow_kind == -4, temporal = shadow_kind == -5;
             const bool gi = shadow_kind == -6, lens = shadow_kind == -7;
@@ -4321,12 +4325,24 @@ namespace RelayCore::render
                 .pColorAttachments = &color
             };
             vkCmdBeginRendering(frame().commands, &rendering);
-            ImGui_ImplVulkan_RenderDrawData(ui, frame().commands);
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan ImGui backend recording");
+#if defined(TRACY_ENABLE)
+                size_t pending_textures = 0;
+                if (ui->Textures)
+                    for (const auto* texture : *ui->Textures)
+                        pending_textures += texture->Status == ImTextureStatus_WantCreate
+                                            || texture->Status == ImTextureStatus_WantUpdates;
+                RELAYCORE_PROFILE_PLOT("ImGui/PendingTextureUploads", pending_textures);
+#endif
+                ImGui_ImplVulkan_RenderDrawData(ui, frame().commands);
+            }
             vkCmdEndRendering(frame().commands);
         }
 
         void append_ui(ImDrawData* ui, PlayerUi* player_ui = nullptr)
         {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan UI recording/submission");
             if (!frame().target)
                 throw std::logic_error("Vulkan UI requires a prepared scene");
             if (!ui && !player_ui)
@@ -4593,20 +4609,23 @@ namespace RelayCore::render
                  renderer_config.dof_focus_distance}
             };
             frame().frame_data.write(std::as_bytes(std::span{&frame_parameters, 1}));
-            collect_expired_resources();
-            prepare(items);
-            if ((renderer_config.ssao_enabled || renderer_config.ssgi_quality || renderer_config.dof_quality
-                 || renderer_config.motion_blur_quality)
-                && materials.empty())
-                static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
-            // Opaque shadow pipelines consume geometry only.
-            for (const auto& caster : shadow_casters)
-                if (caster.mesh)
-                    static_cast<void>(mesh(*caster.mesh));
-            prepare(viewmodel);
-            uploads.collect();
-            if (material_table)
-                material_table->update(frame_index);
+            {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan resource preparation");
+                collect_expired_resources();
+                prepare(items);
+                if ((renderer_config.ssao_enabled || renderer_config.ssgi_quality || renderer_config.dof_quality
+                     || renderer_config.motion_blur_quality)
+                    && materials.empty())
+                    static_cast<void>(material(atlas_source, nullptr, 1, {}, nullptr, nullptr, 1, nullptr, {}));
+                // Opaque shadow pipelines consume geometry only.
+                for (const auto& caster : shadow_casters)
+                    if (caster.mesh)
+                        static_cast<void>(mesh(*caster.mesh));
+                prepare(viewmodel);
+                uploads.collect();
+                if (material_table)
+                    material_table->update(frame_index);
+            }
             const bool replace_target = !frame().target || frame().target->extent.width != display_extent.width
                                         || frame().target->extent.height != display_extent.height
                                         || frame().target->render_extent.width != extent.width
@@ -4616,6 +4635,7 @@ namespace RelayCore::render
                 && (!frame().inputs || history_extent.width != extent.width || history_extent.height != extent.height);
             if (replace_target)
             {
+                RELAYCORE_PROFILE_ZONE_N("Vulkan target allocation");
                 frame().target = std::make_unique<MeshTarget>(
                     device,
                     display_extent,
@@ -5111,6 +5131,7 @@ namespace RelayCore::render
 
     void VulkanMeshRenderer::append_player_ui(PlayerUi& ui)
     {
+        RELAYCORE_PROFILE_ZONE_N("Vulkan player UI");
         const auto extent = state_->frame().target->extent;
         ui.prepare(int(extent.width), int(extent.height));
         state_->append_ui(nullptr, &ui);

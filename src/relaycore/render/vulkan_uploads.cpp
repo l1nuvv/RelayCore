@@ -297,6 +297,7 @@ namespace RelayCore::render
         -> VulkanBufferUpload
     {
         RELAYCORE_PROFILE_ZONE_N("Vulkan mesh upload");
+        RELAYCORE_PROFILE_PLOT("Vulkan/MeshUploadBytes", bytes.size_bytes());
         if (bytes.empty())
             throw std::invalid_argument("Vulkan mesh upload requires nonempty data");
         if (kind != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT && kind != VK_BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -358,6 +359,7 @@ namespace RelayCore::render
         const auto size = static_cast<uint64_t>(data.width) * static_cast<uint64_t>(data.height) * 4;
         if (data.pixels.size() != size)
             throw std::invalid_argument("Vulkan RGBA upload size mismatch");
+        RELAYCORE_PROFILE_PLOT("Vulkan/TextureUploadBytes", size);
         VulkanTexture texture{state_->device, data.width, data.height, encoding};
         auto batch = state_->begin_batch();
         state_->reserve_staging(data.pixels.size());

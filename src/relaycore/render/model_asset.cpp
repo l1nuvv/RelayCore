@@ -1,5 +1,7 @@
 #include "relaycore/render/model_asset.h"
 
+#include "relaycore/core/profiling.h"
+
 #include <bit>
 #include <cmath>
 #include <fstream>
@@ -351,14 +353,19 @@ namespace RelayCore::render
     {
         try
         {
-            std::ifstream input(path, std::ios::binary | std::ios::ate);
-            require(static_cast<bool>(input), "cannot open model product");
-            const auto size = input.tellg();
-            require(size >= 20 && size <= static_cast<std::streamoff>(kMaxBytes), "invalid model product size");
-            std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-            input.seekg(0);
-            input.read(reinterpret_cast<char*>(bytes.data()), size);
-            require(static_cast<bool>(input), "cannot read model product");
+            std::vector<std::uint8_t> bytes;
+            {
+                RELAYCORE_PROFILE_ZONE_N("Native model file read");
+                std::ifstream input(path, std::ios::binary | std::ios::ate);
+                require(static_cast<bool>(input), "cannot open model product");
+                const auto size = input.tellg();
+                require(size >= 20 && size <= static_cast<std::streamoff>(kMaxBytes), "invalid model product size");
+                bytes.resize(static_cast<std::size_t>(size));
+                input.seekg(0);
+                input.read(reinterpret_cast<char*>(bytes.data()), size);
+                require(static_cast<bool>(input), "cannot read model product");
+            }
+            RELAYCORE_PROFILE_ZONE_N("Native model decode");
             ProductReader reader{bytes};
             require(reader.integer() == kMagic, "invalid model product magic");
             const auto version = reader.integer();

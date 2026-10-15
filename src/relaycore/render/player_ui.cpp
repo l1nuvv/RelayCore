@@ -240,8 +240,14 @@ namespace RelayCore::render
         // Documents use dp; pointer input and viewport use framebuffer pixels, converted by the SDL backend.
         const float fit = std::min(float(width) / 1280.0F, float(height) / 720.0F);
         state_->context->SetDensityIndependentPixelRatio(std::max(0.75F, fit));
-        state_->context->Update();
-        state_->context->Render();
+        {
+            RELAYCORE_PROFILE_ZONE_N("RmlUi context update");
+            state_->context->Update();
+        }
+        {
+            RELAYCORE_PROFILE_ZONE_N("RmlUi context render");
+            state_->context->Render();
+        }
     }
     void PlayerUi::prepare_fonts(int width, int height)
     {

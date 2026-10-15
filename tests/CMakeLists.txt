@@ -74,8 +74,17 @@ add_executable(relaycore_episode_profile EXCLUDE_FROM_ALL episode_profile.cpp)
 target_link_libraries(relaycore_episode_profile PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
 set_target_properties(relaycore_episode_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
 add_executable(relaycore_containment_profile EXCLUDE_FROM_ALL containment_profile.cpp)
-target_link_libraries(relaycore_containment_profile PRIVATE RelayGame::runtime RelayCore::project_options RelayCore::warnings)
+target_link_libraries(relaycore_containment_profile PRIVATE RelayGame::runtime RmlUi::RmlUi RelayCore::project_options RelayCore::warnings)
 set_target_properties(relaycore_containment_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+add_executable(relaycore_containment_memory_profile EXCLUDE_FROM_ALL containment_profile.cpp profile_allocations.cpp)
+target_compile_definitions(relaycore_containment_memory_profile PRIVATE RELAYCORE_PROFILE_ALLOCATIONS=1)
+target_link_libraries(relaycore_containment_memory_profile PRIVATE RelayGame::runtime RmlUi::RmlUi RelayCore::project_options RelayCore::warnings)
+set_target_properties(relaycore_containment_memory_profile PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+add_executable(relaycore_profile_allocations_tests EXCLUDE_FROM_ALL profile_allocations_tests.cpp profile_allocations.cpp)
+target_link_libraries(relaycore_profile_allocations_tests PRIVATE RelayCore::project_options RelayCore::warnings)
+set_target_properties(relaycore_profile_allocations_tests PROPERTIES FOLDER "tests" UNITY_BUILD OFF)
+add_test(NAME relaycore.profile_allocations COMMAND relaycore_profile_allocations_tests)
+add_dependencies(relaycore_tests relaycore_profile_allocations_tests)
 add_executable(relaycore_window_lifetime_tests window_lifetime_tests.cpp)
 add_executable(relaycore_vulkan_window_tests vulkan_window_tests.cpp)
 add_executable(relaycore_vulkan_device_tests vulkan_device_tests.cpp)
@@ -233,6 +242,7 @@ foreach(test_target IN ITEMS
     relaycore_player_ui_graphics
     relaycore_episode_profile
     relaycore_containment_profile
+    relaycore_containment_memory_profile
     relaycore_bench_relay_run
     relaycore_containment_loop_graphics
 )
@@ -264,7 +274,7 @@ set_tests_properties(relaycore.audio_lifetime PROPERTIES
 foreach(runtime_graphics_target IN ITEMS relaycore_tests relaycore_content_validation relaycore_audio_lifetime
     relaycore_vulkan_mesh_tests relaycore_window_lifetime_tests relaycore_game_lifecycle
     relaycore_player_ui_graphics
-    relaycore_power_restoration_graphics relaycore_episode_profile relaycore_containment_profile relaycore_bench_relay_run relaycore_containment_loop_graphics)
+    relaycore_power_restoration_graphics relaycore_episode_profile relaycore_containment_profile relaycore_containment_memory_profile relaycore_bench_relay_run relaycore_containment_loop_graphics)
     add_dependencies(${runtime_graphics_target} relaycore_demo_assets)
 endforeach()
 

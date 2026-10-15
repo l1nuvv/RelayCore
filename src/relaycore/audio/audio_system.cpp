@@ -109,7 +109,15 @@ namespace RelayCore
         }
 
         auto engine = std::make_unique<ma_engine>();
-        const ma_result result = ma_engine_init(nullptr, engine.get());
+        auto engine_config = ma_engine_config_init();
+#if defined(TRACY_ENABLE)
+        engine_config.dataCallback = [](ma_device* device, void* output, const void*, ma_uint32 frames) {
+            RELAYCORE_PROFILE_ZONE_N("Audio device mix");
+            // Same engine read as miniaudio's default device callback.
+            ma_engine_read_pcm_frames(static_cast<ma_engine*>(device->pUserData), output, frames, nullptr);
+        };
+#endif
+        const ma_result result = ma_engine_init(&engine_config, engine.get());
         if (result != MA_SUCCESS)
         {
             log::warn(

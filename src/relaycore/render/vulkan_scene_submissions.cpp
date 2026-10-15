@@ -115,10 +115,15 @@ namespace RelayCore::render
             .signalSemaphoreInfoCount = extra_signal.semaphore ? 2U : 1U,
             .pSignalSemaphoreInfos = signals.data()
         };
-        require_scene_vk(
-            vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, fence),
-            "Failed to submit Vulkan scene"
-        );
+        {
+            RELAYCORE_PROFILE_ZONE_N("Vulkan queue submit");
+            RELAYCORE_PROFILE_PLOT("Vulkan/SubmitTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+            RELAYCORE_PROFILE_PLOT("Vulkan/SubmitValue", next.value);
+            require_scene_vk(
+                vkQueueSubmit2(state_->device.graphics_queue(), 1, &info, fence),
+                "Failed to submit Vulkan scene"
+            );
+        }
         state_->submitted = next.value;
         return next;
     }
@@ -135,6 +140,8 @@ namespace RelayCore::render
             vkGetSemaphoreCounterValue(state_->device.handle(), state_->timeline, &value),
             "Failed to query Vulkan scene completion"
         );
+        RELAYCORE_PROFILE_PLOT("Vulkan/CompletedTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+        RELAYCORE_PROFILE_PLOT("Vulkan/CompletedValue", value);
         return value;
     }
 
@@ -144,6 +151,8 @@ namespace RelayCore::render
         if (!completion.value)
             return;
         RELAYCORE_PROFILE_ZONE_N("Vulkan scene completion wait");
+        RELAYCORE_PROFILE_PLOT("Vulkan/WaitTimeline", reinterpret_cast<uintptr_t>(state_->timeline));
+        RELAYCORE_PROFILE_PLOT("Vulkan/WaitValue", completion.value);
         const VkSemaphoreWaitInfo info{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .semaphoreCount = 1,

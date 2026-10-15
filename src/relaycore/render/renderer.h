@@ -76,6 +76,8 @@ namespace RelayCore
         void initialize(const Window& window);
         [[nodiscard]] auto validation_enabled() const noexcept -> bool;
         [[nodiscard]] auto presentation_mode_name() const noexcept -> std::string_view;
+        // Explicit diagnostic sampling; heap budget queries stay outside ordinary timing runs.
+        void log_memory_usage(std::string_view reason);
 
         [[nodiscard]] auto prepare_live_content_reload(
             const render::RendererConfig& config,
@@ -210,6 +212,7 @@ namespace RelayCore
         [[nodiscard]] auto consume_iteration_command_requests() noexcept -> IterationCommandRequests;
 
     private:
+        void refresh_memory_snapshot();
         render::RendererConfig config_{};
         render::ColorPipelineMode color_pipeline_mode_ = render::ColorPipelineMode::legacy_gamma;
         render::RenderAuthoringConfig authoring_config_{};
