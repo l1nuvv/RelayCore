@@ -4,6 +4,15 @@
 [[vk::binding(2, 1)]] Sampler2D effectVelocity;
 [[vk::binding(7, 1)]] Sampler2D reflectionSource;
 [[vk::binding(10, 1)]] Sampler2D diffuseGI;
+[[vk::binding(13, 1)]] StructuredBuffer<float2> screenDepthBounds;
+[[vk::binding(14, 1)]] Sampler2D reconstructedGI;
+[[vk::binding(15, 1)]] Sampler2D traceDepth;
+
+float trace_depth(float2 uv)
+{
+    return frame.depthHierarchy[0].y != 0 ? traceDepth.SampleLevel(uv, 0).r
+                                        : effectNormalDepth.SampleLevel(uv, 0).w;
+}
 
 float3 effect_world(float2 uv, float depth)
 {
@@ -32,6 +41,36 @@ float screen_ao(float2 pixel, float3 normal, float depth)
     return total > 0 ? result / total : 1;
 }
 
+int empty_depth_range(float4 firstClip, float4 lastClip, float thickness)
+{
+    if (frame.depthHierarchy[0].y == 0 || min(firstClip.w, lastClip.w) <= .05) return 0;
+    float2 firstUV = effect_uv(firstClip), lastUV = effect_uv(lastClip);
+    float2 lowUV = min(firstUV, lastUV), highUV = max(firstUV, lastUV);
+    if (any(lowUV <= 0) || any(highUV >= 1)) return 0;
+    // Positive clip.w makes both projected coordinates monotone along this ray segment.
+    float2 lowPixel = lowUV * frame.viewportTimeDebug.xy;
+    float2 highPixel = highUV * frame.viewportTimeDebug.xy;
+    uint blocks = uint(ceil(max(highPixel.x - lowPixel.x, highPixel.y - lowPixel.y) / frame.depthHierarchy[0].w));
+    uint level = blocks > 1 ? uint(firstbithigh(blocks - 1) + 1) : 0;
+    level = min(level, 11u);
+    uint4 grid = frame.depthHierarchy[level];
+    uint2 first = min(uint2(max(lowPixel - .001, 0) / grid.w), grid.yz - 1);
+    uint2 last = min(uint2((highPixel + .001) / grid.w), grid.yz - 1);
+    float minimum = 3.402823466e+38, maximum = 0;
+    bool complete = true;
+    for (uint y = first.y; y <= last.y; ++y)
+        for (uint x = first.x; x <= last.x; ++x)
+        {
+            float2 bounds = screenDepthBounds[grid.x + y * grid.y + x];
+            minimum = min(minimum, bounds.x);
+            maximum = max(maximum, abs(bounds.y));
+            complete = complete && bounds.y > 0;
+        }
+    if (maximum == 0 || max(firstClip.w, lastClip.w) < minimum - .0005) return -1;
+    if (complete && min(firstClip.w, lastClip.w) > maximum + thickness + .0005) return 1;
+    return 0;
+}
+
 float4 legacy_screen_reflection(float3 position, float3 normal, float3 direction, float roughness)
 {
     if (frame.effects.y == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0 || roughness >= .65) return 0;
@@ -44,7 +83,18 @@ float4 legacy_screen_reflection(float3 position, float3 normal, float3 direction
         float4 clip = mul(frame.viewProjection, float4(origin + direction * distance, 1));
         float2 uv = effect_uv(clip);
         if (clip.w <= .05 || any(uv <= 0) || any(uv >= 1)) return 0;
-        float4 nd = effectNormalDepth.SampleLevel(uv, 0);
+        int lastStep = min(step + 7, 40);
+        float lastDistance = .06 * lastStep + .004 * lastStep * lastStep;
+        int empty = lastStep > step ? empty_depth_range(clip,
+            mul(frame.viewProjection, float4(origin + direction * lastDistance, 1)), .15) : 0;
+        if (empty != 0)
+        {
+            previousDelta = empty;
+            previousDistance = lastDistance;
+            step = lastStep;
+            continue;
+        }
+        float4 nd = float4(0, 0, 0, trace_depth(uv));
         if (nd.w <= 0) { previousDelta = -1; previousDistance = distance; continue; }
         float delta = clip.w - nd.w;
         if (previousDelta < 0 && delta >= 0 && delta < .15 && distance > .15)
@@ -55,7 +105,7 @@ float4 legacy_screen_reflection(float3 position, float3 normal, float3 direction
                 float mid = (low + high) * .5;
                 clip = mul(frame.viewProjection, float4(origin + direction * mid, 1));
                 uv = effect_uv(clip);
-                nd = effectNormalDepth.SampleLevel(uv, 0);
+                nd = float4(0, 0, 0, trace_depth(uv));
                 if (nd.w > 0 && clip.w >= nd.w) high = mid; else low = mid;
             }
             clip = mul(frame.viewProjection, float4(origin + direction * high, 1));
@@ -86,7 +136,20 @@ float4 trace_screen(float3 position, float3 normal, float3 direction, float thic
         float4 clip = mul(frame.viewProjection, float4(origin + direction * distance, 1));
         float2 uv = effect_uv(clip);
         if (clip.w <= .05 || any(uv <= 0) || any(uv >= 1)) return 0;
-        float4 nd = effectNormalDepth.SampleLevel(uv, 0);
+        int lastStep = min(step + 7, steps);
+        float lastDistance = .06 * lastStep + .004 * lastStep * lastStep;
+        if (lastDistance > range) lastStep = step;
+        lastDistance = .06 * lastStep + .004 * lastStep * lastStep;
+        int empty = lastStep > step ? empty_depth_range(clip,
+            mul(frame.viewProjection, float4(origin + direction * lastDistance, 1)), thickness) : 0;
+        if (empty != 0)
+        {
+            previousDelta = empty;
+            previousDistance = lastDistance;
+            step = lastStep;
+            continue;
+        }
+        float4 nd = float4(0, 0, 0, trace_depth(uv));
         if (nd.w <= 0) { previousDelta = -1; previousDistance = distance; continue; }
         float delta = clip.w - nd.w;
         if (previousDelta < 0 && delta >= 0 && delta < thickness && distance > .15)
@@ -97,7 +160,7 @@ float4 trace_screen(float3 position, float3 normal, float3 direction, float thic
                 float mid = (low + high) * .5;
                 clip = mul(frame.viewProjection, float4(origin + direction * mid, 1));
                 uv = effect_uv(clip);
-                nd = effectNormalDepth.SampleLevel(uv, 0);
+                nd = float4(0, 0, 0, trace_depth(uv));
                 if (nd.w > 0 && clip.w >= nd.w) high = mid; else low = mid;
             }
             clip = mul(frame.viewProjection, float4(origin + direction * high, 1));
@@ -140,13 +203,8 @@ float4 screen_reflection(float3 position, float3 normal, float3 direction, float
                   confidence / rays * (1 - smoothstep(.45, .85, roughness)));
 }
 
-float3 screen_diffuse(float3 fallback, float3 base, float3 position, float3 normal)
+float4 reconstruct_diffuse(float2 uv, float3 normal, float4 nd)
 {
-    if (frame.lighting.x == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0) return fallback;
-    float4 clip = mul(frame.viewProjection, float4(position,1));
-    float2 uv = effect_uv(clip);
-    float4 nd = effectNormalDepth.SampleLevel(uv,0);
-    if (nd.w <= 0 || abs(nd.w-clip.w) > max(.03, clip.w*.005) || dot(nd.xyz,normal) < .9) return fallback;
     uint width, height;
     diffuseGI.GetDimensions(width,height);
     int2 size = int2(width,height), center = int2(uv * float2(size));
@@ -168,13 +226,32 @@ float3 screen_diffuse(float3 fallback, float3 base, float3 position, float3 norm
             coverage += gi.a * weight;
             total += weight;
         }
-    if (total <= 0) return fallback;
-    return fallback * (1 - coverage/total) + base * radiance/total;
+    return total > 0 ? float4(radiance / total, coverage / total) : float4(0, 0, 0, -1);
+}
+
+float3 screen_diffuse(float3 fallback, float3 base, float3 position, float3 normal, float2 pixel)
+{
+    if (frame.lighting.x == 0 || (draw.flags & (2 | 4 | 32 | 64)) != 0) return fallback;
+    float4 clip = mul(frame.viewProjection, float4(position,1));
+    float2 uv = effect_uv(clip);
+    float4 nd = effectNormalDepth.SampleLevel(uv,0);
+    if (nd.w <= 0 || abs(nd.w-clip.w) > max(.03, clip.w*.005) || dot(nd.xyz,normal) < .9) return fallback;
+    uint width, height;
+    diffuseGI.GetDimensions(width, height);
+    float2 centerUV = (floor(pixel) + .5) / frame.viewportTimeDebug.xy;
+    float4 gi;
+    // A different MSAA receiver, sample footprint or mapped normal retains the original reconstruction.
+    if (all(int2(uv * frame.viewportTimeDebug.xy) == int2(pixel)) && all(nd.xyz == normal)
+        && all(int2(uv * float2(width,height)) == int2(centerUV * float2(width,height))))
+        gi = reconstructedGI.Load(int3(int2(pixel), 0));
+    else gi = reconstruct_diffuse(uv, normal, nd);
+    if (gi.a < 0) return fallback;
+    return fallback * (1 - gi.a) + base * gi.rgb;
 }
 
 #endif
 
-float3 volumetric_color(float3 surface, float3 position, float3 normal, float fogAmount, bool linearColor)
+float3 volumetric_color(float3 surface, float3 position, float3 normal, float fogAmount, bool linearColor, uint lightMask)
 {
     float3 fogColor = linearColor ? mr_linear(materials.fog.rgb) : materials.fog.rgb;
     if (frame.effects.z == 0 || (draw.flags & (2 | 4 | 32)) != 0) return lerp(surface, fogColor, fogAmount);
@@ -200,8 +277,9 @@ float3 volumetric_color(float3 surface, float3 position, float3 normal, float fo
     }
     float3 volumeDirection = ray / max(lengthRay, .0001);
     // Integrate scalar light weights before applying the sample-invariant color.
-    for (int light = 0; light < lights.count.x; ++light)
+    for (uint mask = lightMask; mask != 0; mask &= mask - 1)
     {
+        uint light = firstbitlow(mask);
         float4 positionRadius = lights.positionRadius[light];
         float radius = max(positionRadius.w, .001);
         float3 toLight = positionRadius.xyz - frame.cameraPosition.xyz;

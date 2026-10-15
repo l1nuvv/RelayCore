@@ -2,6 +2,17 @@
 
 Current authority is per sample: reviewed replacements below supersede the original VK-012 bytes for that sample. Dated failures refer to the recorded runs; VIS-49 closes the selected power/weapon mismatch, while broader unverified paths are not declared green. This directory stores regression references, not a claim of a fresh full graphics run.
 
+2026-10-15, H-008: `--shadows-only` freezes both `render_authoring.toml` and
+`shadow_atlas.bmp`. The bitmap is byte-identical to
+`d57f8d3:assets/textures/blockout_atlas.bmp` (Git blob
+`8541fa66bac291195c8452e6f8d3e4350fd15ff6`). The current game atlas caused the
+legacy directional RGB failure; all six directional/cascade/reload comparisons
+pass with these original inputs. Reference RCG1 files and tolerances are unchanged.
+Historical point-shadow RGB comparisons still differ after the pre-existing
+point-map resolution/receiver-plane PCF changes. Current shadow cache mutation
+parity has a separate `graphics.shadow_cache` fixture; it does not declare those
+historical RGB gates passed. [Current evidence](../../docs/profiling/H-008-07-2026-10-15.md).
+
 2026-10-09, VIS-49: the four `power_restoration-{0,1}{,-shotgun}` samples now
 represent the accumulated art and weapon pass. The recorded first scene failure
 was reproduced exactly. All 13 coverage and 1,325 over-threshold color tiles lie

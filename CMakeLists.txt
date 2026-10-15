@@ -119,6 +119,15 @@ add_custom_command(OUTPUT "${output}"
             "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/scene_instances.slang" "${SLANGC_EXECUTABLE}"
     COMMENT "Compiling scene culling to SPIR-V" VERBATIM)
 list(APPEND RELAYCORE_MESH_SPIRV "${output}")
+set(output "${RELAYCORE_SPIRV_DIRECTORY}/depth_hierarchy.comp.spv")
+add_custom_command(OUTPUT "${output}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RELAYCORE_SPIRV_DIRECTORY}"
+    COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/depth_hierarchy.slang"
+        -entry compute_main -stage compute -target spirv -profile spirv_1_5
+        -matrix-layout-column-major -fvk-use-entrypoint-name -o "${output}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/assets/shaders/vulkan/depth_hierarchy.slang" "${SLANGC_EXECUTABLE}"
+    COMMENT "Compiling depth hierarchy to SPIR-V" VERBATIM)
+list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 foreach(stage IN ITEMS vert frag comp bloom)
     if(stage STREQUAL "comp")
         set(entry compute_main)
@@ -182,7 +191,7 @@ foreach(stage IN ITEMS vertex fragment)
         COMMENT "Compiling temporal.slang (${stage}) to SPIR-V" VERBATIM)
     list(APPEND RELAYCORE_MESH_SPIRV "${output}")
 endforeach()
-foreach(entry IN ITEMS advanced_vertex gi_fragment lens_fragment)
+foreach(entry IN ITEMS advanced_vertex gi_fragment lens_fragment reconstruct_fragment)
     if(entry MATCHES "vertex$")
         set(shader_stage vertex)
         set(output "${RELAYCORE_SPIRV_DIRECTORY}/advanced.vert.spv")

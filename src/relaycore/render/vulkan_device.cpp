@@ -254,7 +254,8 @@ namespace RelayCore::render
              limits.maxDescriptorSetSampledImages,
              limits.maxPerStageResources}
         );
-        const uint32_t capacity = descriptor_limit > 32 ? std::min(512U, (descriptor_limit - 32) / 5) : 0;
+        // Mesh/effect layouts and the indexed surface buffer reserve 33 fragment resources.
+        const uint32_t capacity = descriptor_limit > 33 ? std::min(512U, (descriptor_limit - 33) / 5) : 0;
         const bool indexed = capacity >= 128 && !std::getenv("RELAYCORE_VULKAN_DISABLE_DESCRIPTOR_INDEXING")
                              && physical.enable_extension_features_if_present(indexing);
         VkPhysicalDeviceMeshShaderPropertiesEXT mesh_properties{

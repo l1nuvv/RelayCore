@@ -1033,6 +1033,57 @@ namespace
                         max_depth_delta <= 2.0F / 65535.0F,
                         "Shadow depth fallback exceeded D16 quantization tolerance"
                     );
+                    if (!shadow && samples == 1 && format == VK_FORMAT_D16_UNORM)
+                    {
+                        PerspectiveCamera tiny_camera{{.position = {0, 0, 0}, .target = {0, 0, -1}}};
+                        tiny_camera.set_viewport(641, 361);
+                        const auto& projection = tiny_camera.projection_matrix();
+                        const auto clip = projection * glm::vec4{0, 0, -45, 1};
+                        const float quantized = std::round((clip.z + clip.w) * .5F / clip.w * 65535) / 65535;
+                        const auto view = glm::inverse(projection) * glm::vec4{0, 0, quantized * 2 - 1, 1};
+                        const float distance = -view.z / view.w;
+                        auto quad = make_color_double_sided_quad_mesh_data();
+                        for (auto& vertex : quad.vertices)
+                        {
+                            vertex.color = {0, 1, 0};
+                            vertex.material_kind = 100;
+                        }
+                        StaticColorMesh green, red;
+                        green.initialize(quad);
+                        for (auto& vertex : quad.vertices)
+                            vertex.color = {1, 0, 0};
+                        red.initialize(quad);
+                        RenderQueue tiny_queue;
+                        tiny_queue.push(
+                            green,
+                            glm::translate(glm::mat4{1}, {0, 0, -distance - .05F})
+                                * glm::scale(glm::mat4{1}, {.01F, .01F, 1})
+                        );
+                        tiny_queue.push(
+                            red,
+                            glm::translate(glm::mat4{1}, {0, 0, -distance + .05F})
+                                * glm::scale(glm::mat4{1}, {.01F, .01F, 1})
+                        );
+                        RendererConfig tiny_config{};
+                        tiny_config.shadow_enabled = false;
+                        VulkanMeshRenderer tiny_renderer{
+                            device,
+                            RELAYCORE_TEST_SPIRV_DIRECTORY,
+                            authoring,
+                            atlas,
+                            TextureEncoding::linear,
+                            tiny_config,
+                            ColorPipelineMode::legacy_gamma,
+                            {.scene = format}
+                        };
+                        const auto tiny = tiny_renderer.render_image(tiny_queue.items(), tiny_camera, 641, 361);
+                        save(tiny, captures / "depth-order-d16.bmp");
+                        const auto pixel = size_t(180 * 641 + 320) * 4;
+                        require(
+                            tiny.pixels[pixel] > 240 && tiny.pixels[pixel + 1] < 10,
+                            "Opaque ordering changed the winner of quantized equal-depth fragments"
+                        );
+                    }
                 }
             }
         }
@@ -1170,11 +1221,18 @@ namespace
     void check_shadows(
         const VulkanDevice& device,
         const RelayCore::Window& window,
-        const RenderAuthoringConfig& authoring,
-        const CpuRgbaTextureData& atlas,
+        const RenderAuthoringConfig&,
+        const CpuRgbaTextureData&,
         const std::filesystem::path& captures
     )
     {
+        const auto authoring = load_render_authoring_config(
+            std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "render_authoring.toml"
+        );
+        const auto frozen_atlas =
+            load_blockout_texture_atlas(std::filesystem::path{RELAYCORE_TEST_BASELINE_DIRECTORY} / "shadow_atlas.bmp");
+        require(frozen_atlas.has_value(), "Missing frozen VK-012 shadow atlas");
+        const auto& atlas = *frozen_atlas;
         auto box = make_color_box_mesh_data();
         for (auto& vertex : box.vertices)
         {
@@ -1381,6 +1439,96 @@ namespace
                 );
             }
         }
+    }
+
+    void check_shadow_cache(
+        const VulkanDevice& device,
+        const RenderAuthoringConfig& authoring,
+        const CpuRgbaTextureData& atlas
+    )
+    {
+        StaticColorMesh mesh, replacement;
+        auto data = make_color_box_mesh_data();
+        mesh.initialize(data);
+        replacement.initialize(data);
+        RenderQueue queue;
+        queue.push(mesh, glm::scale(glm::mat4{1}, {8, .2F, 8}));
+        queue.push(mesh, glm::translate(glm::mat4{1}, {0, 1, 0}));
+        std::vector<RenderItem> items{queue.items().begin(), queue.items().end()};
+        PerspectiveCamera camera{{.position = {4, 3, 8}, .target = {0, 0, 0}}};
+        camera.set_viewport(width, height);
+        for (const auto submission :
+             {VulkanSceneSubmission::direct,
+              VulkanSceneSubmission::instanced,
+              VulkanSceneSubmission::indirect,
+              VulkanSceneSubmission::gpu_culled})
+        {
+            RendererConfig config{};
+            config.shadow_map_resolution = 256;
+            std::array lights{LocalLight{{0, 3, 2}, {1, .7F, .3F}, 8}};
+            SpotLight spot{};
+            VulkanMeshRenderer
+                cached{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::linear, config};
+            VulkanMeshRenderer
+                fresh{device, RELAYCORE_TEST_SPIRV_DIRECTORY, authoring, atlas, TextureEncoding::linear, config};
+            cached.set_scene_submission(submission);
+            fresh.set_scene_submission(submission);
+            const auto check = [&](const char* mutation) {
+                for (auto* renderer : {&cached, &fresh})
+                {
+                    renderer->set_config(config);
+                    renderer->set_local_lights(lights);
+                    renderer->set_spot_light(spot);
+                }
+                fresh.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+                const auto a = cached.render_image(items, camera, width, height);
+                const auto b = fresh.render_image(items, camera, width, height);
+                require(a.pixels == b.pixels, mutation);
+                std::cout << "shadow_cache mutation=" << mutation
+                          << " rebuilt=" << cached.draw_usage().shadow_rebuilt_faces
+                          << " reused=" << cached.draw_usage().shadow_reused_faces << '\n';
+            };
+            check("initial");
+            check("unchanged");
+            require(
+                cached.draw_usage().shadow_rebuilt_faces == 0 && cached.draw_usage().shadow_reused_faces >= 6,
+                "Unchanged point faces were rebuilt"
+            );
+            items.back().model_matrix = glm::translate(glm::mat4{1}, {1, 1, 0});
+            check("moved caster");
+            items.pop_back();
+            check("removed caster");
+            auto changed = queue.items().back();
+            changed.mesh = &replacement;
+            items.push_back(changed);
+            check("replaced caster");
+            lights[0].position.x += 1;
+            check("moved light");
+            lights[0].radius = 6;
+            check("light radius");
+            config.shadow_enabled = false;
+            check("shadows off");
+            config.shadow_enabled = true;
+            check("shadows on");
+            spot = {
+                .position = {0, 3, 4},
+                .direction = glm::normalize(glm::vec3{0, -1, -1}),
+                .color = {1, 1, 1},
+                .range = 12,
+                .enabled = true
+            };
+            check("spot enabled");
+            spot.enabled = false;
+            check("spot disabled");
+            camera.set_position({-4, 3, 8});
+            check("camera cut");
+            cached.reload_shaders(RELAYCORE_TEST_SPIRV_DIRECTORY);
+            check("shader reload");
+            require(cached.draw_usage().shadow_rebuilt_faces > 0, "Shader reload retained stale shadow faces");
+            items.assign(queue.items().begin(), queue.items().end());
+            camera.set_position({4, 3, 8});
+        }
+        std::cout << "shadow_cache=passed\n";
     }
 
     void check_point_shadow_receiver(
@@ -6149,6 +6297,7 @@ int main(int argc, char** argv)
     const bool culling_only = argc == 2 && std::string_view{argv[1]} == "--scene-culling";
     const bool culling_profile = argc == 2 && std::string_view{argv[1]} == "--scene-culling-profile";
     const bool submission_profile = argc == 2 && std::string_view{argv[1]} == "--scene-submission-profile";
+    const bool shadow_cache = argc == 2 && std::string_view{argv[1]} == "--shadow-cache";
     const bool shadows_only = argc == 2 && std::string_view{argv[1]} == "--shadows-only";
     const bool light_selection_only = argc == 2 && std::string_view{argv[1]} == "--light-selection";
     const bool point_receiver_only = argc == 2 && std::string_view{argv[1]} == "--point-receiver-only";
@@ -6182,8 +6331,8 @@ int main(int argc, char** argv)
     const bool depth_only = argc == 2 && std::string_view{argv[1]} == "--depth-formats";
     const bool native_hdr = argc == 2 && std::string_view{argv[1]} == "--profile-native-hdr";
     if (argc > 1 && !meshlets_only && !meshlets_profile && !indexing_only && !indexing_profile && !submission_only
-        && !submission_profile && !shadows_only && !color_baseline && !profiling && !native_view && !mr_only
-        && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only
+        && !submission_profile && !shadow_cache && !shadows_only && !color_baseline && !profiling && !native_view
+        && !mr_only && !emission_only && !hdr_only && !msaa_only && !native_hdr && !probes_only && !point_receiver_only
         && !resources_only && !pressure_slice_only && !ui_only && !pipeline_only && !power_slice_only && !pistol_only
         && !shotgun_only && !descriptors_only && !depth_only && !inputs_only && !effects_only && !effects_profile
         && !effects_analytic && !advanced_only && !advanced_profile && !temporal_only && !temporal_profile
@@ -6209,7 +6358,9 @@ int main(int argc, char** argv)
         const auto loaded_atlas =
             load_blockout_texture_atlas(RelayCore::core::asset_path("textures/blockout_atlas.bmp"));
         const auto atlas = loaded_atlas ? *loaded_atlas : build_blockout_texture_atlas(authoring);
-        if (meshlets_only || meshlets_profile)
+        if (shadow_cache)
+            check_shadow_cache(device, authoring, atlas);
+        else if (meshlets_only || meshlets_profile)
             check_optional_gpu(device, authoring, atlas, captures, meshlets_profile, true);
         else if (indexing_only || indexing_profile)
             check_optional_gpu(device, authoring, atlas, captures, indexing_profile);

@@ -54,6 +54,7 @@ namespace RelayCore::render
         size_t culling_draws = 0, culled_instances = 0;
         size_t material_binds = 0;
         size_t mesh_draws = 0, mesh_workgroups = 0;
+        size_t shadow_rebuilt_faces = 0, shadow_reused_faces = 0;
     };
 
     enum class PassInputView {

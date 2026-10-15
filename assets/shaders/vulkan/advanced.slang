@@ -65,6 +65,14 @@ float4 gi_fragment(float4 pixel : SV_Position) : SV_Target
 }
 
 [shader("fragment")]
+float4 reconstruct_fragment(float4 pixel : SV_Position) : SV_Target
+{
+    float4 nd = effectNormalDepth.Load(int3(int2(pixel.xy), 0));
+    if (nd.w <= 0) return float4(0,0,0,-1);
+    return reconstruct_diffuse(pixel.xy / frame.viewportTimeDebug.xy, nd.xyz, nd);
+}
+
+[shader("fragment")]
 float4 lens_fragment(float4 pixel : SV_Position) : SV_Target
 {
     int2 size = int2(frame.viewportTimeDebug.xy), p = int2(pixel.xy);

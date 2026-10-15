@@ -58,6 +58,8 @@ set(RELAYCORE_ENGINE_SOURCES
 
     render/renderer.cpp
     render/shadow_math.cpp
+    render/light_tiles.cpp
+    render/light_tiles.h
     render/vulkan_gpu_profiler.cpp
     render/texture2d.cpp
     world/blockout_loader.cpp

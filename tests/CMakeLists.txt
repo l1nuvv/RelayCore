@@ -141,6 +141,7 @@ target_sources(
         inspector_source_reference_tests.cpp
         level_session_builder_tests.cpp
         local_light_order_tests.cpp
+        light_tiles_tests.cpp
         log_tests.cpp
         mission_runtime_tests.cpp
         player_motion_tests.cpp
@@ -341,8 +342,9 @@ add_test(NAME graphics.pass_inputs COMMAND relaycore_vulkan_mesh_tests --pass-in
 add_test(NAME graphics.irradiance_probes COMMAND relaycore_vulkan_mesh_tests --irradiance)
 add_test(NAME graphics.material_maps_reflections COMMAND relaycore_vulkan_mesh_tests --metallic-roughness)
 add_test(NAME graphics.emissive_maps COMMAND relaycore_vulkan_mesh_tests --emission)
+add_test(NAME graphics.shadow_cache COMMAND relaycore_vulkan_mesh_tests --shadow-cache)
 add_test(NAME graphics.point_shadow_receiver COMMAND relaycore_vulkan_mesh_tests --point-receiver-only)
-set_tests_properties(graphics.mesh_shaders graphics.mesh_shaders_fallback graphics.descriptor_indexing graphics.descriptor_indexing_fallback graphics.scene_culling_fallback graphics.scene_culling graphics.scene_submission graphics.local_light_selection graphics.advanced_effects graphics.advanced_effects_raster graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
+set_tests_properties(graphics.shadow_cache graphics.mesh_shaders graphics.mesh_shaders_fallback graphics.descriptor_indexing graphics.descriptor_indexing_fallback graphics.scene_culling_fallback graphics.scene_culling graphics.scene_submission graphics.local_light_selection graphics.advanced_effects graphics.advanced_effects_raster graphics.dynamic_resolution graphics.temporal_scene graphics.temporal graphics.temporal_raster graphics.visual_effects graphics.visual_effects_raster graphics.pass_inputs graphics.depth_formats graphics.msaa graphics.vulkan_mesh graphics.mesh_pipeline graphics.power_restoration_slice graphics.game_hud graphics.resource_preparation graphics.material_descriptors graphics.pistol_viewmodel graphics.shotgun_viewmodel graphics.vulkan_color_baseline graphics.hdr_pipeline graphics.irradiance_probes graphics.material_maps_reflections graphics.emissive_maps graphics.point_shadow_receiver PROPERTIES
     LABELS "integration;graphics"
     RUN_SERIAL TRUE
     SKIP_RETURN_CODE 77

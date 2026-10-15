@@ -86,6 +86,31 @@ SDL events
 
 Scene backend owns two slots with separate command pools/buffers, mutable UBOs, material/tone-mapping descriptor sets and color/depth targets. Scene, RmlUi and presentation copy signal the same serialized graphics timeline; slot reuse waits for its final copy. Shared shadows and pipelines remain ordered on that timeline. Mesh/material construction uses GPU upload dependencies, with 64 MiB/32-batch staging backpressure; readback, ImGui, reflection replacement, reload and shutdown retain deliberate waits. `frame_backend` retains the prepared backend through presentation during live reload; backend destruction drains both slots. There is no normal-frame `vkDeviceWaitIdle`.
 
+The slot light UBO includes conservative 64×36 screen-tile masks in selected-light
+index order. Both jittered and unjittered projections contribute; volume consumers
+use the complete projected influence sphere. Source radiance has a separate image
+and descriptor snapshot with black radiance/GI inputs. Its MSAA resolve writes
+directly to radiance; final opaque loads its stored depth. Viewmodel still clears
+depth independently. Diagnostic color history is allocated/copied only for its
+history visualizers, independently of radiance and TAA history.
+Opaque reordering preserves authored correspondence indices and only exchanges
+projected depth intervals separated by the attachment's quantization guard.
+
+SSR/SSGI share slot-owned min/max depth bounds reduced on the graphics compute
+queue, when available. That reduction also copies the exact input depth into an
+R32F sampled image; trace search/refinement read it without fetching normals.
+Normal/hit consumers retain the original RGBA32F input. Unsupported compute/R32F
+storage paths and uncertain intervals retain the original sample path.
+GI reconstruction uses a current-frame float32 target;
+different receiver normals or sample footprints retain per-fragment reconstruction.
+These resources and descriptors retire with their scene slot.
+
+Each shadow image owns per-layer validity, projection/light keys and ordered
+weak mesh identities/transforms after conservative caster culling. Unchanged
+layers remain sampled; changed layers transition, clear and render individually.
+Inactive layers clear on state changes. Successful shader reload invalidates all
+layers after the existing completion wait. Cached keys never retain CPU meshes.
+
 Optional GPU culling gives each scene slot its own input/metadata and instance/indirect output buffers. Its compute command buffer executes before raster in the same scene submission and completion token; slot reuse/growth/reload waits for final use. Technique and fallback contracts belong to [RENDERING](RENDERING.md#scene-submission--vk14-10abc).
 
 Material descriptor sets share renderer-owned persistent pools. Each material retains its two slot sets until scene/upload completion permits retirement; released sets can be reused, and collection reclaims empty extra pools while retaining one reusable block. Tone-mapping and UI descriptor ownership remain with their existing pass owners. The optional scene material table retains separate descriptor snapshots and surface buffers per slot; updates wait for slot completion and material indices retire with their final scene/upload use. [Technique contract](RENDERING.md#descriptor-indexing--vk14-11a).
