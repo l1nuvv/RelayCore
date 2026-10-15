@@ -37,6 +37,7 @@
 | [history](history/) | Прежние стратегии D/N/M, исходный slice scope, baseline и журнал |
 | [art](art/), [art-references](art-references/) | Before/after, технические отчёты и авторские visual references |
 | [playtests](playtests/), [profiling](profiling/), [audits](audits/) | Человеческие протоколы, измерения и датированные обзоры |
+| [Combat hit feedback: оценка](audits/combat-hit-feedback-2026-10-16.md), [исходный brief](COMBAT_HIT_FEEDBACK_BRIEF.md) | Предложение доработки боевой реакции и оценка существующего локального кода; не новая очередь реализации |
 | [VULKAN_MIGRATION_PLAN](VULKAN_MIGRATION_PLAN.md) | Завершённые gates OpenGL → Vulkan; прежние GL-команды исторические |
 | [VISUAL_REVAMP_AUDIT](VISUAL_REVAMP_AUDIT.md) | Визуальные observations и исходный scope; текущие статусы берутся из roadmap |
 | [Assessment 2026-10-11](ASSESSMENT_SCOPE_2026-10-11.md), [handoff 2026-10-11](NEXT_STEPS_2026-10-11.md) | Границы исходного статического обзора и ссылки на продолжение |
