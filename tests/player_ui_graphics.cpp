@@ -460,6 +460,18 @@ int main(int argc, char** argv)
         require(renderer.begin_ui(frame, audio), "Combat HUD unavailable");
         renderer.end_ui();
         save(renderer.capture_frame(), captures / "enemy-health-damage.bmp");
+        combat_hud.world_markers.clear();
+        combat_hud.hurt = 1;
+        combat_hud.damage_alert = 1;
+        for (const float angle : {0.0F, 90.0F, 180.0F, -90.0F})
+        {
+            combat_hud.damage_direction_degrees = angle;
+            renderer.player_ui().set_hud(combat_hud);
+            renderer.begin_frame();
+            require(renderer.begin_ui(frame, audio), "Damage direction HUD unavailable");
+            renderer.end_ui();
+            save(renderer.capture_frame(), captures / ("damage-direction-" + std::to_string(int(angle)) + ".bmp"));
+        }
         renderer.player_ui().set_hud({.visible = true, .health = 100, .max_health = 100});
         std::array<uint8_t, 3> reference{};
         int mode_index = 0;

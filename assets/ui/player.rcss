@@ -35,7 +35,7 @@ button, input, select { tab-index: auto; }
 #hit { position: absolute; width: 24px; height: 24px; margin-left: -12px; margin-top: -17px; font-size: 28px; text-align: center; }
 #hurt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
 #damage-direction { position: absolute; left: 50%; top: 50%; width: 28dp; height: 24dp; margin-left: -14dp; margin-top: -86dp; opacity: 0; transform-origin: 50% 86dp; }
-#damage-direction .edge { position: absolute; left: 12dp; bottom: 0; width: 3dp; height: 22dp; background-color: #c6372d; transform-origin: 50% 100%; }
+#damage-direction .edge { position: absolute; left: 12dp; top: 0; width: 3dp; height: 22dp; background-color: #c6372d; transform-origin: 50% 0%; }
 #damage-direction .edge.left { transform: rotate(-32deg); }
 #damage-direction .edge.right { transform: rotate(32deg); }
 #world-markers { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
