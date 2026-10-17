@@ -1,0 +1,80 @@
+# RelayCore ripgrep ignore rules
+# Automatically used by rg/rg --files, alongside .gitignore.
+# This reduces broad-search noise; explicit file paths remain accessible.
+# Keep code, tests, scripts, authored text, docs and .agents/skills searchable.
+
+# Git metadata and vendor code are not normally relevant to broad searches.
+/.git/
+
+# Vendor code is not normally relevant to RelayCore-wide searches.
+/extern/
+/third_party/
+/external/
+/vendor/
+/deps/
+/submodules/
+
+# Generated/attached data; keep broad searches quiet even outside Git.
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/logs/
+/.codex-remote-attachments/
+/docs/doxygen/
+
+# Binary asset sources and deliveries: searchable via explicit paths when needed.
+
+# assets/ binary resources
+/assets/**/*.png
+/assets/**/*.jpg
+/assets/**/*.jpeg
+/assets/**/*.webp
+/assets/**/*.dds
+/assets/**/*.ktx
+/assets/**/*.ktx2
+/assets/**/*.tga
+/assets/**/*.bmp
+/assets/**/*.psd
+/assets/**/*.blend
+/assets/**/*.fbx
+/assets/**/*.obj
+/assets/**/*.gltf
+/assets/**/*.glb
+/assets/**/*.wav
+/assets/**/*.mp3
+/assets/**/*.ogg
+/assets/**/*.flac
+/assets/**/*.mp4
+/assets/**/*.avi
+/assets/**/*.mov
+/assets/**/*.zip
+/assets/**/*.7z
+/assets/**/*.rar
+
+# content/ binary resources
+/content/**/*.png
+/content/**/*.jpg
+/content/**/*.jpeg
+/content/**/*.webp
+/content/**/*.dds
+/content/**/*.ktx
+/content/**/*.ktx2
+/content/**/*.tga
+/content/**/*.bmp
+/content/**/*.psd
+/content/**/*.blend
+/content/**/*.fbx
+/content/**/*.obj
+/content/**/*.gltf
+/content/**/*.glb
+/content/**/*.wav
+/content/**/*.mp3
+/content/**/*.ogg
+/content/**/*.flac
+/content/**/*.mp4
+/content/**/*.avi
+/content/**/*.mov
+/content/**/*.zip
+/content/**/*.7z
+/content/**/*.rar

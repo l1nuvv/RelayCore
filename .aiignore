@@ -7,6 +7,7 @@
 # VCS / IDE / OS noise
 # -----------------------------
 .git/
+/.codex-remote-attachments/
 .gitmodules
 .gitattributes
 .idea/
@@ -160,6 +161,33 @@ coverage-*/
 /assets/**/*.zip
 /assets/**/*.7z
 /assets/**/*.rar
+
+# Same binary exclusions for authored files under content/.
+/content/**/*.png
+/content/**/*.jpg
+/content/**/*.jpeg
+/content/**/*.webp
+/content/**/*.dds
+/content/**/*.ktx
+/content/**/*.ktx2
+/content/**/*.tga
+/content/**/*.bmp
+/content/**/*.psd
+/content/**/*.blend
+/content/**/*.fbx
+/content/**/*.obj
+/content/**/*.gltf
+/content/**/*.glb
+/content/**/*.wav
+/content/**/*.mp3
+/content/**/*.ogg
+/content/**/*.flac
+/content/**/*.mp4
+/content/**/*.avi
+/content/**/*.mov
+/content/**/*.zip
+/content/**/*.7z
+/content/**/*.rar
 
 # -----------------------------
 # Re-include useful source/config/text assets
