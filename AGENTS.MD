@@ -25,12 +25,12 @@
 - For complex, multi-session work, keep scope, milestones, decisions and verification in the existing owning plan/ticket. Add a task-specific plan only when no existing document fits; do not duplicate roadmap statuses or create plans for routine fixes.
 
 - Start with the files named by the task, their nearest tests, and direct call sites.
-- Expand scope only to answer a concrete unresolved question. Do not scan the whole repository, Git history, docs, or web by default.
+- Expand scope only to answer a concrete unresolved question. Start searches in the known owning directory and widen only when it does not answer that question. Reuse known paths and symbols instead of rediscovering them. Do not scan the whole repository, Git history, docs, or web by default.
 - Treat current source, CMake presets, tests, runtime output, and profiler captures as primary evidence. README/comments are secondary and may be stale.
 - Use `docs/README.md` to select the owning document; read only relevant sections. Gameplay/content statuses live in `docs/PLAYABLE_SLICE_ROADMAP.md`, detailed tickets in `docs/tickets/`, and VK14 statuses/evidence in the renderer plan and `docs/renderer/`.
 - Keep a fact, contract, status or procedure in one owning document. Overview/index/handoff files should link to it; put dated commands, metrics and failures in the selected ticket/report, not repeated summaries. Historical plans in `docs/history/` are evidence, not current instructions.
 - When moving documentation, update relative links and anchors, preserve useful old section redirects, and check local links. Do not turn shortening into removal of acceptance criteria, decisions, provenance or verification limits.
-- Reuse evidence already gathered in the current task. Do not reread unchanged large files or rerun an expensive command without a reason.
+- Reuse evidence already gathered in the current task, including after context compaction. Reread only the needed ranges when a file changed, prior output was incomplete, or a specific fact is missing. Do not repeat searches or expensive commands merely to regain confidence.
 - Prefer targeted search (`rg`, specific paths, specific symbols) over broad dumps. Summarize large logs; quote only the lines needed to establish the cause.
 - Separate confirmed facts, likely risks, hypotheses, and taste. Do not convert a suspicion into a patch without evidence.
 - Analysis/review-only requests are read-only unless the user explicitly asks for changes.
@@ -79,7 +79,9 @@
 - Routine verification ends with the relevant build/tests. Create or recreate a ZIP/standalone package only when the user directly asks for packaging or a release; do not do it automatically because an older plan or ticket mentions delivery. Reuse existing artifacts when sufficient and avoid spending time, compute, or tokens on unnecessary archives.
 - Use only presets/targets that exist in the current `CMakePresets.json` and CMake files. Never invent a command when the repository can provide the exact one.
 - Use `.agents/skills/relaycore-verify/SKILL.md` when selecting nontrivial verification scope or diagnosing build/test failures. Run `git diff --check` after edits.
-- Start with the narrowest relevant build/test. Run broader workflows only when the change crosses build/config/runtime boundaries or the user requests full validation.
+- Use the existing configured build tree and incremental builds of the affected targets. Reconfigure only when required by configuration/dependency changes or an actionable build diagnostic; do not routinely configure before every build. Never use clean/rebuild-all as routine verification.
+- Complete a coherent patch before building; do not build after each small edit. Start with the narrowest relevant build/test. After it passes, repeat only if subsequent edits affect that check or new evidence requires it. Run broader workflows only when the change crosses build/config/runtime boundaries or the user requests full validation.
+- Documentation-only and agent-instruction changes need diff/link checks as applicable, not engine compilation or runtime tests. For tool configuration changes, validate the affected configuration without rebuilding unrelated targets.
 - Known baseline flow is preset-based, for example `cmake --preset msvc-debug`, targeted `cmake --build --preset ...`, and matching `ctest --preset ... --output-on-failure`; verify current preset names before use.
 - MSVC presets require a Visual Studio developer environment and valid `VCPKG_ROOT`.
 - Do not delete build directories, caches, user presets, or generated data as a first troubleshooting step.
