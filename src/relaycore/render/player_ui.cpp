@@ -39,6 +39,11 @@ namespace RelayCore::render
         std::unordered_map<std::string, std::string> property_cache;
         std::unordered_set<Rml::FontFaceHandle> prepared_fonts;
         bool initialized = false;
+        struct HealthFeedback {
+            float previous = 0, maximum = 0, target = 0, shown = 0, ghost = 0;
+            float speed = 0, ghost_speed = 0, hold = 0, flash = 0;
+            bool initialized = false, alive = false;
+        } health;
         State(SDL_Window* target, const VulkanDevice& device) :
             window(target), system(target), renderer(device, core::asset_path("shaders/vulkan"))
         {}
@@ -127,6 +132,7 @@ namespace RelayCore::render
         if (state_->screen == screen)
             return;
         state_->screen = screen;
+        reset_hud_feedback();
         for (int button = 0; button < 3; ++button)
             state_->context->ProcessMouseButtonUp(button, 0);
         state_->hud->Hide();
@@ -300,8 +306,53 @@ namespace RelayCore::render
     {
         state_->renderer.record(commands);
     }
+    void PlayerUi::reset_hud_feedback()
+    {
+        state_->health.initialized = false;
+    }
+    void PlayerUi::advance_hud(double seconds)
+    {
+        auto& h = state_->health;
+        if (!h.initialized || state_->screen != PlayerUiScreen::Hud)
+            return;
+        const float dt = std::isfinite(seconds) && seconds > 0 ? float(std::min(seconds, 10.0)) : 0;
+        h.shown = std::max(h.target, h.shown - h.speed * dt);
+        const float drain_dt = std::max(0.0F, dt - h.hold);
+        h.hold = std::max(0.0F, h.hold - dt);
+        h.ghost = std::max(h.shown, h.ghost - h.ghost_speed * drain_dt);
+        h.flash = std::max(0.0F, h.flash - dt);
+        state_->property("health-main", "width", std::to_string(h.shown * 100) + "%");
+        state_->property("health-ghost", "width", std::to_string(h.ghost * 100) + "%");
+        state_->property("health-flash", "opacity", std::to_string(h.flash / 0.08F * 0.45F));
+    }
     void PlayerUi::set_hud(const HudPresentation& data)
     {
+        auto& h = state_->health;
+        const bool valid = std::isfinite(data.health) && std::isfinite(data.max_health) && data.max_health > 0;
+        const float target = valid && data.alive ? std::clamp(data.health / data.max_health, 0.0F, 1.0F) : 0;
+        const bool snap = !h.initialized || !data.visible || state_->screen != PlayerUiScreen::Hud || !valid
+                          || data.max_health != h.maximum || data.alive != h.alive || !data.alive;
+        if (snap || data.health > h.previous)
+        {
+            h.shown = h.ghost = target;
+            h.hold = h.flash = 0;
+        } else if (data.health < h.previous)
+        {
+            h.ghost = std::max(h.ghost, h.shown);
+            h.hold = 0.15F;
+            h.flash = 0.08F;
+            h.speed = std::abs(h.shown - target) / 0.15F;
+            h.ghost_speed = std::abs(h.ghost - target) / 0.32F;
+        }
+        h.target = target;
+        h.previous = data.health;
+        h.maximum = data.max_health;
+        h.alive = data.alive;
+        h.initialized = data.visible && valid && state_->screen == PlayerUiScreen::Hud;
+        set_visible("health-track", valid);
+        state_->property("health-main", "width", std::to_string(h.shown * 100) + "%");
+        state_->property("health-ghost", "width", std::to_string(h.ghost * 100) + "%");
+        state_->property("health-flash", "opacity", std::to_string(h.flash / 0.08F * 0.45F));
         while (state_->world_markers.size() < data.world_markers.size())
         {
             auto root = state_->hud->CreateElement("div");
@@ -359,7 +410,6 @@ namespace RelayCore::render
         reticle->SetClass("ready", data.interaction_ready);
         reticle->SetClass("focused", !data.prompt.empty());
         state_->element("status")->SetClass("danger", !data.alive || data.health < data.max_health * 0.35F);
-        state_->property("hurt", "opacity", std::to_string(data.hurt));
         state_->property("damage-direction", "opacity", std::to_string(data.damage_alert));
         state_->property(
             "damage-direction",

@@ -12,6 +12,11 @@ at the next game update, before session changes. The single SDL loop routes menu
 to RmlUi, gameplay to the controller, and developer tools to ImGui. Passive HUD
 does not capture input. Renderer appends UI after scene display conversion and
 before the optional developer overlay, on its existing Vulkan device and VMA.
+PlayerUi owns health fill/ghost/flash presentation state. Renderer passes frame wall
+elapsed time at begin_ui and advances it once at end_ui, after the game supplies its
+HUD snapshot and before RmlUi Update/Render. Screen changes and installed level
+sessions reset feedback; HP text remains authoritative and immediate. Healing,
+maximum changes, death and respawn snap both fills. Visual timers never enter saves.
 Two scene slots retain RmlUi draw snapshots, geometry, atlases, descriptors and
 pipelines through their final GPU use. Presentation drains before device/allocator
 destruction; ImGui and readback remain synchronous.

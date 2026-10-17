@@ -17,6 +17,8 @@ namespace RelayCore::render
         auto operator=(const PlayerUi&) -> PlayerUi& = delete;
         void set_screen(PlayerUiScreen screen);
         void set_hud(const HudPresentation& hud);
+        void reset_hud_feedback();
+        void advance_hud(double seconds);
         void set_text(const std::string& id, const std::string& text);
         void set_visible(const std::string& id, bool visible);
         void set_disabled(const std::string& id, bool disabled);

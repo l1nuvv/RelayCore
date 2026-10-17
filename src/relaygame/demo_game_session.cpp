@@ -50,6 +50,7 @@ namespace RelayGame
             std::move(prepared),
             services
         );
+        services.renderer().player_ui().reset_hud_feedback();
         update_frame_context(services);
     }
 

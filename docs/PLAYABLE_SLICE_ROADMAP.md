@@ -166,7 +166,7 @@ P0 — crash/UB/broken build/corrupt state; P1 — приёмка slice; P2 — 
 | VIS-40 | Боевые эффекты | `awaiting_playtest` | [Отчёт](art/vis40-41-combat-environment-effects.md) |
 | VIS-41 | Эффекты окружения | `awaiting_playtest` | [Отчёт](art/vis40-41-combat-environment-effects.md) |
 | VIS-42 | Состояния оборудования | `awaiting_playtest` | [Отчёт](art/vis42-equipment-states.md) |
-| VIS-43 | Player HUD / RmlUi integration | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
+| VIS-43 | Player HUD / RmlUi integration | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md), [health feedback](tickets/VIS-43-46.md#health-hud-feedback--2026-10-18) |
 | VIS-44 | Меню и настройки | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
 | VIS-45 | Игровые экраны | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |
 | VIS-46 | Разделение игры и developer UI | `awaiting_playtest` | [Отчёт](tickets/VIS-43-46.md) |

@@ -33,7 +33,6 @@ button, input, select { tab-index: auto; }
 #reticle.focused #focus-ring { display: block; border-color: #e5b05c; }
 #reticle.ready #focus-ring { border-color: #9edca1; }
 #hit { position: absolute; width: 24px; height: 24px; margin-left: -12px; margin-top: -17px; font-size: 28px; text-align: center; }
-#hurt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
 #damage-direction { position: absolute; left: 50%; top: 50%; width: 28dp; height: 24dp; margin-left: -14dp; margin-top: -86dp; opacity: 0; transform-origin: 50% 86dp; }
 #damage-direction .edge { position: absolute; left: 12dp; top: 0; width: 3dp; height: 22dp; background-color: #c6372d; transform-origin: 50% 0%; }
 #damage-direction .edge.left { transform: rotate(-32deg); }
@@ -88,3 +87,10 @@ input:focus sliderbar { background-color: #dfd09e; }
 #letterbox-bottom { position: absolute; bottom: 0; width: 100%; height: 17%; background-color: #080c0b; border-top: 1dp #9b8d61; padding: 16dp; box-sizing: border-box; text-align: center; }
 #finale-text { color: #dfd09e; margin-bottom: 10dp; }
 @media (max-width: 850px) { #objective { width: 272dp; } #right-status { width: 208dp; } #status { width: 224dp; } #prompt-card { left: 39%; width: 52%; } }
+
+#health-track { position: relative; height: 6dp; margin: 5dp 0; background-color: #18231c; border: 1dp #69634c; }
+#health-ghost, #health-main, #health-flash { position: absolute; left: 0; top: 0; height: 100%; }
+#health-ghost { background-color: #bd8654; }
+#health-main { background-color: #a7b18a; }
+#health-flash { width: 100%; background-color: #e7d8b1; opacity: 0; }
+#status.danger #health-main { background-color: #be6857; }

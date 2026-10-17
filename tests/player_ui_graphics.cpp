@@ -11,9 +11,11 @@
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -454,6 +456,156 @@ int main(int argc, char** argv)
         renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hud);
         renderer.player_ui().set_hud({.visible = true, .health = 100, .max_health = 100});
         RelayCore::render::HudPresentation combat_hud{.visible = true, .health = 100, .max_health = 100};
+        auto* hud_document = Rml::GetContext("player")->GetDocument("hud");
+        const auto hud_property = [&](const char* id, const char* property) {
+            return hud_document->GetElementById(id)->GetLocalProperty(property)->Get<float>();
+        };
+        const auto fraction = [&](const char* id) {
+            return hud_property(id, "width") / 100.0F;
+        };
+        const auto set_health = [&](float hp) {
+            combat_hud.health = hp;
+            renderer.player_ui().set_hud(combat_hud);
+        };
+        for (const float hp : {35.0F, 34.0F})
+        {
+            set_health(hp);
+            require(
+                hud_document->GetElementById("status")->IsClassSet("danger") == (hp < 35),
+                "Health warning threshold changed"
+            );
+        }
+        set_health(100);
+        set_health(75);
+        require(
+            hud_document->GetElementById("health")->GetInnerRML().find("75") != Rml::String::npos,
+            "Health text must update before animation"
+        );
+        require(fraction("health-main") == 1 && fraction("health-ghost") == 1, "Damage did not retain previous fill");
+        renderer.player_ui().advance_hud(0.075);
+        require(
+            fraction("health-main") > 0.75F && fraction("health-main") < 1 && fraction("health-ghost") == 1,
+            "Main drain or ghost hold failed"
+        );
+        set_health(50);
+        set_health(20);
+        renderer.player_ui().advance_hud(1);
+        require(
+            std::abs(fraction("health-main") - 0.2F) < 0.001F && std::abs(fraction("health-ghost") - 0.2F) < 0.001F
+                && hud_property("health-flash", "opacity") == 0,
+            "Rapid hits failed to settle"
+        );
+        for (const int fps : {30, 60, 144})
+        {
+            renderer.player_ui().reset_hud_feedback();
+            set_health(100);
+            set_health(25);
+            for (int i = 0; i < fps; ++i)
+            {
+                renderer.player_ui().advance_hud(1.0 / fps);
+                const float elapsed = float(i + 1) / float(fps);
+                const float expected = std::max(0.25F, 1.0F - 0.75F * elapsed / 0.15F);
+                require(
+                    std::abs(fraction("health-main") - expected) < 0.001F
+                        && fraction("health-ghost") >= fraction("health-main"),
+                    "Health interpolation or layer ordering depends on frame rate"
+                );
+            }
+            require(
+                std::abs(fraction("health-main") - 0.25F) < 0.001F
+                    && std::abs(fraction("health-ghost") - 0.25F) < 0.001F,
+                "Health feedback depends on frame rate"
+            );
+        }
+        set_health(80);
+        require(
+            fraction("health-main") == 0.8F && fraction("health-ghost") == 0.8F
+                && hud_property("health-flash", "opacity") == 0,
+            "Healing left stale damage feedback"
+        );
+        combat_hud.max_health = 200;
+        set_health(80);
+        require(fraction("health-main") == 0.4F, "Maximum health change did not snap");
+        combat_hud.alive = false;
+        set_health(0);
+        require(fraction("health-main") == 0 && fraction("health-ghost") == 0, "Death did not empty health");
+        combat_hud.alive = true;
+        combat_hud.max_health = 100;
+        set_health(100);
+        set_health(50);
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Menu);
+        renderer.player_ui().set_screen(RelayCore::render::PlayerUiScreen::Hud);
+        set_health(50);
+        require(
+            fraction("health-main") == 0.5F && hud_property("health-flash", "opacity") == 0,
+            "Pause/resume replayed damage"
+        );
+        renderer.player_ui().reset_hud_feedback();
+        set_health(25);
+        require(
+            fraction("health-main") == 0.25F && hud_property("health-flash", "opacity") == 0,
+            "Session restore replayed damage"
+        );
+        set_health(20);
+        const float before_invalid_dt = fraction("health-main");
+        renderer.player_ui().advance_hud(-1);
+        renderer.player_ui().advance_hud(std::numeric_limits<double>::quiet_NaN());
+        require(fraction("health-main") == before_invalid_dt, "Invalid dt advanced health feedback");
+        renderer.player_ui().advance_hud(10);
+        combat_hud.max_health = 0;
+        set_health(20);
+        require(
+            hud_document->GetElementById("health-track")->GetLocalProperty("display")->ToString() == "none",
+            "Invalid health scale is visible"
+        );
+        combat_hud.max_health = 100;
+        set_health(100);
+        set_health(100);
+        set_health(50);
+        renderer.begin_frame();
+        const RelayCore::FrameInfo feedback_frame{.wall_delta_seconds = 0.075};
+        require(renderer.begin_ui(feedback_frame, audio), "Health dt handoff unavailable");
+        renderer.end_ui();
+        require(
+            std::abs(fraction("health-main") - 0.75F) < 0.001F && fraction("health-ghost") == 1,
+            "Renderer must advance health exactly once after the snapshot without ImGui"
+        );
+        for (const auto size : {Rml::Vector2i{800, 600}, {1280, 720}, {2560, 1440}})
+        {
+            require(SDL_SetWindowSize(window.handle(), size.x, size.y), "Health HUD resize failed");
+            SDL_PumpEvents();
+            renderer.on_resize(size.x, size.y);
+            for (const float hp : {100.0F, 50.0F, 25.0F, 0.0F})
+            {
+                renderer.player_ui().reset_hud_feedback();
+                combat_hud.alive = hp > 0;
+                set_health(hp);
+                renderer.begin_frame();
+                require(renderer.begin_ui(frame, audio), "Health HUD unavailable");
+                renderer.end_ui();
+                save(
+                    renderer.capture_frame(),
+                    captures / ("health-" + std::to_string(size.x) + "-" + std::to_string(int(hp)) + ".bmp")
+                );
+            }
+        }
+        require(SDL_SetWindowSize(window.handle(), 1280, 720), "Restore health HUD size failed");
+        SDL_PumpEvents();
+        renderer.on_resize(1280, 720);
+        combat_hud.alive = true;
+        set_health(100);
+        set_health(50);
+        renderer.player_ui().advance_hud(0.04);
+        renderer.begin_frame();
+        require(renderer.begin_ui(frame, audio), "Health feedback capture unavailable");
+        renderer.end_ui();
+        save(renderer.capture_frame(), captures / "health-hit.bmp");
+        renderer.player_ui().advance_hud(0.18);
+        renderer.begin_frame();
+        require(renderer.begin_ui(frame, audio), "Health ghost capture unavailable");
+        renderer.end_ui();
+        save(renderer.capture_frame(), captures / "health-ghost.bmp");
+        set_health(100);
         combat_hud.world_markers = {{50, 40, .58F, 1, true, false, "35 / 60"}, {50, 34, 0, 1, false, true, "−25"}};
         renderer.player_ui().set_hud(combat_hud);
         renderer.begin_frame();

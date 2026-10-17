@@ -1,10 +1,9 @@
 <rml><head><title>HUD</title><link type="text/rcss" href="player.rcss" /></head><body id="hud">
 <div id="world-markers"></div>
-<div id="hurt"></div>
 <div id="damage-direction"><div class="edge left"></div><div class="edge right"></div></div>
 <div id="objective" class="card"><div id="objective-header" class="label"></div><div id="objective-title"></div><div id="objective-detail" class="secondary"></div></div>
 <div id="right-status"><div id="inventory" class="label"></div><div id="event-card" class="card"><div id="event-text"></div></div></div>
-<div id="status" class="card"><div id="vitals"><div id="status-label" class="label">ЗДОРОВЬЕ</div><div id="health"></div></div><div id="weapon"></div><div id="hint" class="secondary"></div></div>
+<div id="status" class="card"><div id="vitals"><div id="status-label" class="label">ЗДОРОВЬЕ</div><div id="health"></div></div><div id="health-track"><div id="health-ghost"></div><div id="health-main"></div><div id="health-flash"></div></div><div id="weapon"></div><div id="hint" class="secondary"></div></div>
 <div id="reticle"><div id="dot"></div><div id="focus-ring"></div><div id="spread"></div><div id="hit">×</div></div>
 <div id="prompt-card" class="card"><div id="prompt"></div><div id="prompt-detail" class="secondary"></div></div>
 </body></rml>

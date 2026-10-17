@@ -223,6 +223,7 @@ namespace RelayCore
         debug::ImGuiOverlay imgui_overlay_{};
         std::unique_ptr<render::PlayerUi> player_ui_;
         bool developer_frame_active_ = false;
+        double player_ui_delta_seconds_ = 0;
         render::WorldDiagnostics world_diagnostics_{};
         render::RuntimeDiagnostics runtime_diagnostics_{};
         render::PlayerDiagnostics player_diagnostics_{};

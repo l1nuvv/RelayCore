@@ -495,6 +495,7 @@ namespace RelayCore
         RELAYCORE_PROFILE_FUNCTION();
         finish_scene();
         developer_frame_active_ = false;
+        player_ui_delta_seconds_ = frame.wall_delta_seconds;
         if (!developer_ui_available())
             return ui_available();
 
@@ -596,7 +597,10 @@ namespace RelayCore
     {
         finish_scene();
         if (player_ui_ && player_ui_->visible())
+        {
+            player_ui_->advance_hud(player_ui_delta_seconds_);
             state_->frame_backend->append_player_ui(*player_ui_);
+        }
         if (developer_frame_active_)
             state_->frame_backend->append_ui(imgui_overlay_.finish_frame());
     }
