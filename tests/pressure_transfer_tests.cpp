@@ -196,7 +196,7 @@ TEST_CASE("pressure transfer objective first route disables a live turret and su
     CHECK(route.player.damage_taken > 0);
     CHECK_FALSE(route.session.combat.turrets[1].destroyed);
     CHECK_FALSE(route.session.combat.turrets[1].enabled);
-    CHECK(route.session.combat.turrets[1].health == 60);
+    CHECK(route.session.combat.turrets[1].health == route.session.combat.turrets[1].max_health);
     CHECK(route.session.enemies[1].state.mode != RelayGame::EnemyMode::Dead);
     const auto control =
         std::ranges::find(route.session.usables, "transfer_control", &RelayCore::gameplay::RuntimeUsable::name);
@@ -368,8 +368,8 @@ TEST_CASE("pressure transfer close rover rewards shotgun timing while distant fi
     const auto close_shotgun = fight(2.2F, RelayGame::PlayerWeapon::Shotgun);
     const auto close_pistol = fight(2.2F, RelayGame::PlayerWeapon::Precise);
     CHECK(close_shotgun.first < close_pistol.first);
-    CHECK(close_shotgun.second == 1);
-    CHECK(close_pistol.second == 3);
+    CHECK(close_shotgun.second == 2);
+    CHECK(close_pistol.second == 5);
     const auto distant_shotgun = fight(8, RelayGame::PlayerWeapon::Shotgun);
     const auto distant_pistol = fight(8, RelayGame::PlayerWeapon::Precise);
     CHECK(distant_pistol.first < distant_shotgun.first);

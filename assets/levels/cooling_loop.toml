@@ -129,7 +129,7 @@ success_message = "Дробовик взят. 1/2 — выбор оружия. �
 classname = "enemy_rover"
 origin = [-4,0.01,14]
 angles = [180,0,0]
-health = 60
+health = 120
 speed = 2.3
 detection_range = 9
 
@@ -141,7 +141,7 @@ origin = [4.3,1.55,18]
 angles = [180,0,0]
 size = [0.78,0.92,0.78]
 label = "Охрана контура охлаждения"
-health = 60
+health = 95
 damage = 10
 attack_range = 18
 warmup = 0.9

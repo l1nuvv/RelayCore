@@ -151,7 +151,7 @@ angles = [0, 0, 0]
 [[entity]]
 classname = "enemy_rover"
 origin = [-21, 0.01, 23]
-health = 84
+health = 120
 speed = 2.6
 detection_range = 11
 attack_style = "lunge"
@@ -188,12 +188,12 @@ pickup_surface_y = 1.25
 size = [1.08, 0.21, 0.14]
 use_radius = 1.8
 label = "Взять дробовик"
-success_message = "Дробовик взят. 1/2 — выбор оружия. На близкой дистанции остановите рывок робота."
+success_message = "Дробовик взят. 1/2 — выбор оружия. Вблизи дробовик быстрее уничтожает робота. Уклоняйтесь от рывка."
 
 [[entity]]
 classname = "enemy_rover"
 origin = [-17.5, 0.01, 43]
-health = 84
+health = 120
 speed = 2.6
 detection_range = 13
 attack_style = "lunge"
@@ -202,7 +202,7 @@ route = "archive"
 [[entity]]
 classname = "enemy_shooter"
 origin = [-13, 0.01, 51.5]
-health = 84
+health = 140
 speed = 2.0
 detection_range = 16
 route = "archive"
@@ -265,7 +265,7 @@ route = "archive"
 [[entity]]
 classname = "enemy_shooter"
 origin = [24, 0.01, 48]
-health = 84
+health = 140
 speed = 2.0
 detection_range = 16
 route = "laboratory"

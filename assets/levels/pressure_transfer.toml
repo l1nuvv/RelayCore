@@ -235,7 +235,7 @@ success_message = "Служебный зал открыт. За ним гале�
 [[entity]]
 classname = "enemy_rover"
 origin = [4,0.01,15]
-health = 60
+health = 120
 speed = 2.6
 detection_range = 10
 
@@ -247,7 +247,7 @@ size = [0.78,0.92,0.78]
 targetname = "gallery_turret"
 angles = [180,0,0]
 label = "Турель перепускной галереи"
-health = 60
+health = 95
 damage = 6
 attack_range = 20
 warmup = 0.9
@@ -257,7 +257,7 @@ fire_interval = 1.1
 classname = "enemy_rover"
 origin = [28,0.01,37]
 attack_style = "lunge"
-health = 60
+health = 120
 speed = 2.3
 detection_range = 12
 
@@ -270,7 +270,7 @@ targetname = "relay_turret"
 stop_target = "transfer_running"
 angles = [180,0,0]
 label = "Турель перепускного зала"
-health = 60
+health = 95
 damage = 12
 attack_range = 17
 warmup = 0.9

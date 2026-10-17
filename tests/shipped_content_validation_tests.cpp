@@ -5,6 +5,7 @@
 #include "relaycore/physics/collision.h"
 #include "relaycore/physics/player_motion.h"
 #include "relaycore/world/blockout_loader.h"
+#include "relaygame/enemy_runtime.h"
 #include "relaygame/game_world_runtime.h"
 #include "relaygame/level_session_builder.h"
 #include "relaygame/mission_runtime.h"
@@ -181,12 +182,14 @@ namespace
         CHECK(first_shot.hit_turret);
         CHECK_FALSE(first_shot.killed_turret);
 
-        runtime.debug_tick_combat(0.30F);
-
-        const auto second_shot = runtime.debug_apply_player_fire(shot_origin, shot_direction);
-        CHECK(second_shot.fired);
-        CHECK(second_shot.hit_turret);
-        CHECK(second_shot.killed_turret);
+        for (int shot = 0; shot < 3; ++shot)
+        {
+            runtime.debug_tick_combat(0.30F);
+            const auto hit = runtime.debug_apply_player_fire(shot_origin, shot_direction);
+            CHECK(hit.fired);
+            CHECK(hit.hit_turret);
+            CHECK(hit.killed_turret == (shot == 2));
+        }
     }
 
 } // namespace
@@ -355,7 +358,7 @@ TEST_CASE("power restoration repeated death and disk continue preserve progress 
         if (phase > 0)
         {
             const glm::vec3 eye{7.5F, 1.62F, 26};
-            for (int shot = 0; shot < 3; ++shot)
+            for (int shot = 0; shot < 4; ++shot)
             {
                 runtime.debug_tick_combat(.3F);
                 REQUIRE(
@@ -732,7 +735,7 @@ TEST_CASE("power restoration filtration threatens the player past the spill")
     );
     CHECK(safe.turret_shots == 0);
     CHECK_FALSE(turrets[1].warming_up);
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         RelayCore::gameplay::tick_combat_state(.3F, player, turrets);
         const glm::vec3 eye{7.5F, 1.62F, 26};
@@ -1212,9 +1215,9 @@ TEST_CASE("test_room preserves the combat acceptance slice")
     CHECK(shots.first_shot.fired);
     CHECK(shots.first_shot.hit_turret);
     CHECK_FALSE(shots.first_shot.killed_turret);
-    CHECK(shots.second_shot.fired);
-    CHECK(shots.second_shot.hit_turret);
-    CHECK(shots.second_shot.killed_turret);
+    CHECK(shots.lethal_shot.fired);
+    CHECK(shots.lethal_shot.hit_turret);
+    CHECK(shots.lethal_shot.killed_turret);
     CHECK(scenario.turrets[0].destroyed);
     CHECK_FALSE(scenario.find_terminal()->locked);
     CHECK(
@@ -1328,7 +1331,7 @@ TEST_CASE("test_room snapshot restore preserves mid-slice runtime progress")
     CHECK(scenario.turrets[0].destroyed);
     CHECK(scenario.player_combat.alive);
     CHECK(scenario.player_combat.kills == 1);
-    CHECK(scenario.player_combat.shots_fired == 2);
+    CHECK(scenario.player_combat.shots_fired == 4);
     CHECK(scenario.mission_runtime.status().title == "Стабилизировать ядро ретранслятора");
     CHECK(scenario.mission_runtime.status().current_step == 5);
 
@@ -1364,7 +1367,7 @@ TEST_CASE("test_room snapshot restore preserves the completed acceptance slice")
     CHECK(scenario.turrets[0].destroyed);
     CHECK(scenario.player_combat.alive);
     CHECK(scenario.player_combat.kills == 1);
-    CHECK(scenario.player_combat.shots_fired == 2);
+    CHECK(scenario.player_combat.shots_fired == 4);
     REQUIRE(scenario.inventory_items.size() == 1);
     CHECK(scenario.inventory_items[0] == "lab_keycard");
 
@@ -1409,7 +1412,7 @@ TEST_CASE("test_room game world runtime preserves the golden path progression")
     CHECK(runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
     CHECK(runtime.turrets()[0].destroyed);
     CHECK_FALSE(runtime.usables()[terminal_index].locked);
-    CHECK(runtime.player_combat_state().shots_fired == 2);
+    CHECK(runtime.player_combat_state().shots_fired == 4);
     CHECK(runtime.player_combat_state().kills == 1);
     CHECK(
         std::find(runtime.inventory_item_ids().begin(), runtime.inventory_item_ids().end(), "lab_keycard")
@@ -1486,7 +1489,7 @@ TEST_CASE("test_room game world runtime snapshot restore preserves mid-slice pro
     CHECK(restored_runtime.turrets()[0].destroyed);
     CHECK(restored_runtime.player_combat_state().alive);
     CHECK(restored_runtime.player_combat_state().kills == 1);
-    CHECK(restored_runtime.player_combat_state().shots_fired == 2);
+    CHECK(restored_runtime.player_combat_state().shots_fired == 4);
     CHECK(restored_runtime.mission_status().title == "Стабилизировать ядро ретранслятора");
     CHECK(restored_runtime.mission_status().current_step == 5);
     CHECK(
@@ -1582,4 +1585,80 @@ TEST_CASE("test_room game world runtime respawn preserves mid-slice progression"
     );
 
     RelayCore::log::shutdown();
+}
+
+TEST_CASE("shipped combat balance preserves weapon roles and enemy survival thresholds")
+{
+    RelayCore::test::ScopedTempDirectory temp;
+    RelayCore::test::ScopedTestLogger logger{temp.path() / "logs"};
+    for (const auto* map :
+         {"power_restoration.toml",
+          "foundation_intake.toml",
+          "foundation_pump.toml",
+          "bench_relay.toml",
+          "pressure_transfer.toml",
+          "cooling_loop.toml",
+          "test_room.toml",
+          "containment_loop.toml",
+          "development_sandbox.toml"})
+    {
+        INFO(map);
+        const auto level = RelayCore::load_blockout_level(repo_root() / "assets" / "levels" / map);
+        const auto enemies = RelayGame::build_enemies(level);
+        const auto combat = RelayCore::gameplay::build_runtime_combat(level);
+        // Isolate authored targets from map occlusion to measure actual weapon rays, not an HP formula.
+        const auto kill_time = [](auto mobile, auto turrets, const RelayGame::PlayerWeapon weapon) {
+            PlayerCombatState player;
+            float elapsed = 0;
+            for (int shots = 0; shots < 20; ++shots)
+            {
+                const auto attack =
+                    RelayGame::fire_player_weapon({}, {0, .45F, 0}, {0, 0, 1}, player, turrets, mobile, weapon);
+                REQUIRE(attack.combat.fired);
+                if (player.kills == 1)
+                    return elapsed;
+                const float cooldown = player.weapon_cooldown_remaining_seconds;
+                RelayCore::gameplay::tick_combat_state(cooldown, player, turrets);
+                elapsed += cooldown;
+            }
+            FAIL("authored target survived twenty centered shots");
+            return elapsed;
+        };
+        for (auto enemy : enemies)
+        {
+            CAPTURE(enemy.state.entity_index);
+            const int pistol_hits = enemy.ranged_attack ? 6 : 5;
+            for (const float distance : {2.F, 12.F})
+            {
+                CAPTURE(distance);
+                enemy.state.position = {0, 0, distance};
+                const std::vector mobile{enemy};
+                const float pistol = kill_time(mobile, std::vector<RuntimeTurret>{}, RelayGame::PlayerWeapon::Precise);
+                const float shotgun = kill_time(mobile, std::vector<RuntimeTurret>{}, RelayGame::PlayerWeapon::Shotgun);
+                CHECK(pistol == doctest::Approx((pistol_hits - 1) * .24F));
+                if (distance == 2)
+                {
+                    CHECK(shotgun == doctest::Approx(.85F));
+                    CHECK(shotgun < pistol);
+                } else
+                    CHECK(pistol < shotgun);
+            }
+        }
+        for (auto turret : combat.turrets)
+        {
+            CAPTURE(turret.name);
+            const bool introductory = turret.max_health == 75;
+            const auto half_size = (turret.bounds.maxs - turret.bounds.mins) * .5F;
+            turret.origin = {0, .45F, 2};
+            turret.bounds = {turret.origin - half_size, turret.origin + half_size};
+            CHECK(
+                kill_time(std::vector<RelayGame::RuntimeEnemy>{}, std::vector{turret}, RelayGame::PlayerWeapon::Precise)
+                == doctest::Approx((introductory ? 2 : 3) * .24F)
+            );
+            CHECK(
+                kill_time(std::vector<RelayGame::RuntimeEnemy>{}, std::vector{turret}, RelayGame::PlayerWeapon::Shotgun)
+                == doctest::Approx(0)
+            );
+        }
+    }
 }

@@ -20,7 +20,7 @@ namespace AcceptanceHarness
 {
     struct TurretKillSequence {
         RelayCore::gameplay::CombatFireResult first_shot{};
-        RelayCore::gameplay::CombatFireResult second_shot{};
+        RelayCore::gameplay::CombatFireResult lethal_shot{};
     };
 
     inline auto make_actor_bounds(const glm::vec3& center, const glm::vec3& half_extents) -> RelayCore::physics::Aabb
@@ -229,17 +229,20 @@ namespace AcceptanceHarness
                 turrets
             );
 
-            RelayCore::gameplay::tick_combat_state(0.30F, player_combat, turrets);
+            for (int shot = 0; shot < 3; ++shot)
+            {
+                RelayCore::gameplay::tick_combat_state(0.30F, player_combat, turrets);
 
-            sequence.second_shot = RelayCore::gameplay::apply_player_fire(
-                RelayCore::test::WorldQueryFixture{session.level, doors},
-                shot_origin,
-                shot_direction,
-                player_combat,
-                turrets
-            );
+                sequence.lethal_shot = RelayCore::gameplay::apply_player_fire(
+                    RelayCore::test::WorldQueryFixture{session.level, doors},
+                    shot_origin,
+                    shot_direction,
+                    player_combat,
+                    turrets
+                );
+            }
             apply_combat_target_event(
-                sequence.second_shot.target_event,
+                sequence.lethal_shot.target_event,
                 doors,
                 usables,
                 activated_targets,

@@ -369,20 +369,20 @@ TEST_CASE("enemy routes reject missing oversized and nonflat authoring")
     );
 }
 
-TEST_CASE("chapter rover close attack outlasts stationary pistol fire while shotgun or lateral dodge stops it")
+TEST_CASE("chapter rover survives one shotgun blast and requires a dodge during close attack")
 {
     for (int choice = 0; choice < 3; ++choice)
     {
         CAPTURE(choice);
         auto level = room();
         level.entities[0].origin.z = 1.6F;
-        level.entities[0].properties = {{"health", "84"}, {"speed", "2.6"}, {"attack_style", "lunge"}};
+        level.entities[0].properties = {{"health", "120"}, {"speed", "2.6"}, {"attack_style", "lunge"}};
         auto enemies = RelayGame::build_enemies(level);
         RelayCore::gameplay::PlayerCombatState player;
         glm::vec3 position{0, .01F, 0};
         const RelayCore::test::WorldQueryFixture world{level};
         std::vector<RelayCore::physics::WorldCollider> scratch;
-        for (int i = 0; i < 100; ++i)
+        for (int i = 0; i < 165; ++i)
         {
             RelayCore::gameplay::tick_combat_state(1.F / 120, player, {});
             if (choice == 2 && i > 15 && i < 65)
@@ -408,7 +408,7 @@ TEST_CASE("chapter rover close attack outlasts stationary pistol fire while shot
             );
         }
         CHECK(enemies[0].state.mode == RelayGame::EnemyMode::Dead);
-        CHECK(player.health == (choice == 0 ? 86 : 100));
+        CHECK(player.health == (choice == 2 ? 100 : 86));
     }
 }
 

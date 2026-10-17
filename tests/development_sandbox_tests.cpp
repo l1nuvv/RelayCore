@@ -265,7 +265,7 @@ TEST_CASE("sandbox mixed encounter repeats health targets and attack preparation
         }
         REQUIRE(shots == 1);
         CHECK(runtime.player_combat_state().health < initial.game.world.player_combat.health);
-        for (int shot = 0; shot < 3; ++shot)
+        for (int shot = 0; shot < 5; ++shot)
         {
             runtime.debug_tick_combat(.3F);
             REQUIRE(runtime.debug_apply_player_fire(eye, {0, 0, 1}).fired);
@@ -324,6 +324,10 @@ TEST_CASE("sandbox shotgun pickup switching death and both save paths preserve w
         )
         == 7
     );
+    CHECK(runtime.player_combat_state().kills == 0);
+    CHECK(runtime.enemies()[0].state.health == doctest::Approx(22));
+    runtime.debug_tick_combat(.85F);
+    REQUIRE(runtime.debug_apply_player_fire({11, .45F, 18}, {0, 0, 1}).fired);
     CHECK(runtime.player_combat_state().kills == 1);
     CHECK(runtime.shotgun_cycle_remaining_seconds() == doctest::Approx(.85F));
     REQUIRE(runtime.select_weapon(RelayGame::PlayerWeapon::Precise));

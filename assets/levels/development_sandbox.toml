@@ -166,7 +166,7 @@ classname = "gameplay_entity"
 kind = "turret"
 size = [0.75,0.9,0.75]
 angles = [180,0,0]
-health = 60
+health = 95
 damage = 4
 warmup = 0.8
 fire_interval = 1.8
@@ -181,7 +181,7 @@ entries = [
 
 [[entity_group]]
 classname = "enemy_rover"
-health = 60
+health = 120
 speed = 1.6
 detection_range = 12
 entries = [
