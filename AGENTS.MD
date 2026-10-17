@@ -1,5 +1,12 @@
 # RelayCore
 
+## Token economy
+
+- Work with one agent by default. Spawn subagents only when the user explicitly requests delegation or parallel agent work; avoid duplicating the same investigation across agents.
+- Keep tool output focused: use specific paths, `rg -n`/`rg -l`, and relevant line ranges. Request about 2000 output tokens per ordinary call; expand only to recover necessary evidence. Save long build/test logs to a file and return failures plus the result.
+- Reuse findings from this chat. Stop investigation when the requested change and relevant checks are complete; do not add unsolicited audits, alternative implementations, or repeated review passes.
+- Keep progress updates and final handoffs concise. For complex work spanning chats, record only the necessary continuation facts in its existing owning ticket.
+
 ## Project contract
 
 - RelayCore is a custom C++20 engine and GoldSource-inspired indoor FPS product, not a historical recreation or a general-purpose framework. Keep it understandable, debuggable, profileable, and shippable under one-developer direction even when implementation is agent-assisted.
