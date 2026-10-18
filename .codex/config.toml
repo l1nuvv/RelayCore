@@ -1,3 +1,2 @@
-# Economical defaults for new RelayCore sessions; raise effort for difficult tasks.
-model_reasoning_effort = "low"
+# Limit tool output retained in history; choose reasoning effort in Codex.
 tool_output_token_limit = 2000
