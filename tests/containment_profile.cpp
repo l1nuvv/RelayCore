@@ -51,11 +51,13 @@ namespace
             int passes,
             double stage_seconds,
             bool diagnostics,
-            bool health_feedback
+            bool health_feedback,
+            bool native_2k
         ) :
             output_(std::move(output)), preset_(preset), motion_captures_(motion_captures),
             settings_path_(std::move(settings)), captures_(captures), scripted_input_(scripted_input), passes_(passes),
-            stage_seconds_(stage_seconds), diagnostics_(diagnostics), health_feedback_(health_feedback)
+            stage_seconds_(stage_seconds), diagnostics_(diagnostics), health_feedback_(health_feedback),
+            native_2k_(native_2k)
         {}
 
         void on_startup(RelayCore::EngineServices& services) override
@@ -365,6 +367,15 @@ namespace
         }
         void start_stage(RelayCore::EngineServices& services)
         {
+            if (native_2k_ && (stage_ == 0 || stage_ == 6))
+            {
+                if (!SDL_SetWindowFullscreen(services.window().handle(), stage_ == 0)
+                    || !SDL_SyncWindow(services.window().handle()))
+                    throw std::runtime_error(SDL_GetError());
+                const auto extent = services.window().pixel_extent();
+                if (stage_ == 0 && (extent.width != 2560 || extent.height != 1440))
+                    throw std::runtime_error("Native 2K profile requires a 2560x1440 drawable");
+            }
             RELAYCORE_PROFILE_ZONE_N("ContainmentProfile::prepare_stage");
             const auto beginning = Clock::now();
             RelayGame::GameWorldRuntime seed;
@@ -476,6 +487,7 @@ namespace
         double stage_seconds_;
         bool diagnostics_, memory_pending_ = false;
         bool health_feedback_;
+        bool native_2k_;
         std::unique_ptr<RelayGame::DemoGame> game_;
         std::vector<double> frames_;
         Clock::time_point stage_beginning_{}, previous_update_{};
@@ -493,6 +505,7 @@ int main(int argc, char** argv)
     auto preset = RelayGame::GraphicsPreset::Custom;
     std::string preset_name = "baseline";
     bool motion_captures = false, captures = true, scripted_input = false, diagnostics = false, health_feedback = false;
+    bool native_2k = false;
     int passes = 2;
     double stage_seconds = 4;
     std::filesystem::path settings_path, config_path;
@@ -520,6 +533,8 @@ int main(int argc, char** argv)
             scripted_input = true;
         else if (option == "--health-feedback")
             health_feedback = true;
+        else if (option == "--native-2k")
+            native_2k = true;
         else if ((option == "--settings-file" || option == "--config-file") && argument + 1 < argc)
         {
             auto& path = option == "--settings-file" ? settings_path : config_path;
@@ -587,7 +602,8 @@ int main(int argc, char** argv)
                 passes,
                 stage_seconds,
                 diagnostics,
-                health_feedback
+                health_feedback,
+                native_2k
             ),
             path,
             RelayCore::render::ColorPipelineMode::hardware_srgb

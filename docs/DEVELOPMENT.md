@@ -214,6 +214,12 @@ use a separate run without that flag for performance measurements. These short
 camera-sweep/combat sequences do not constitute a continuous human playthrough.
 Commands, local budgets and hardware limits: [VK14-14](renderer/VK14-14.md).
 
+Для native-2K timing добавьте `--native-2k --no-captures --scripted-input-only`.
+Fixture переключается в desktop fullscreen в начале каждого pass и требует
+фактический drawable 2560×1440; другой размер завершает запуск с ошибкой.
+Resize-stage возвращает оконный режим и остаётся отдельной диагностической
+выборкой. `--passes 1` исключает следующий повтор, но сохраняет все семь stages.
+
 For a controlled player-health HUD comparison, add `--health-feedback --no-captures
 --scripted-input-only`. This replaces only the gameplay HUD snapshot with repeated
 100→75→50→20→100 presentation changes; simulation health is unchanged. Separate
