@@ -156,9 +156,10 @@ hardware/scenario do not prove zero overhead or non-regression on every system.
 
 The requested optimized CPU/GPU comparison is complete. The evidence supports a
 small measured CPU cost, bounded UI geometry activity and no demonstrated stable
-whole-frame slowdown here. Sound-on human combat readability/visual acceptance
-remains a separate open requirement; this synthetic presentation sequence is not
-a continuous player route and does not close H-008 or VIS-43–46.
+whole-frame slowdown here. Human playtest acceptance is recorded in the
+[owning ticket](../tickets/VIS-43-46.md#health-hud-feedback--2026-10-18).
+This synthetic presentation sequence is not a continuous player route and does
+not by itself close H-008 or VIS-43–46.
 
 Validation for this profiling change: both targeted optimized builds, all four
 full fixture executions/captures, asset/config/variant identity comparisons,
