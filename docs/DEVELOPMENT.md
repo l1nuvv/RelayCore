@@ -214,6 +214,12 @@ use a separate run without that flag for performance measurements. These short
 camera-sweep/combat sequences do not constitute a continuous human playthrough.
 Commands, local budgets and hardware limits: [VK14-14](renderer/VK14-14.md).
 
+For a controlled player-health HUD comparison, add `--health-feedback --no-captures
+--scripted-input-only`. This replaces only the gameplay HUD snapshot with repeated
+100→75→50→20→100 presentation changes; simulation health is unchanged. Separate
+the fixture's resolutions using its extent plots. [Reproduction, CPU/GPU scopes
+and measured results](profiling/HEALTH_HUD-2026-10-18.md) document the before/after run.
+
 Для диагностики H-008-06 есть отдельный target
 `relaycore_containment_memory_profile`: тот же workload с подсчётом вызовов C++
 `new` и запрошенных bytes в executable. CSV `containment-profile/allocations.csv`

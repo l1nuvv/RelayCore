@@ -50,11 +50,12 @@ namespace
             bool scripted_input,
             int passes,
             double stage_seconds,
-            bool diagnostics
+            bool diagnostics,
+            bool health_feedback
         ) :
             output_(std::move(output)), preset_(preset), motion_captures_(motion_captures),
             settings_path_(std::move(settings)), captures_(captures), scripted_input_(scripted_input), passes_(passes),
-            stage_seconds_(stage_seconds), diagnostics_(diagnostics)
+            stage_seconds_(stage_seconds), diagnostics_(diagnostics), health_feedback_(health_feedback)
         {}
 
         void on_startup(RelayCore::EngineServices& services) override
@@ -213,7 +214,25 @@ namespace
 #if defined(RELAYCORE_PROFILE_ALLOCATIONS)
             const auto before = RelayCore::test::allocation_sample();
 #endif
-            game_->on_ui(services);
+            if (health_feedback_ && stage_ != 5)
+            {
+                RELAYCORE_PROFILE_ZONE_N("HUD profile snapshot");
+                const double phase = std::fmod(elapsed_, 2.0);
+                const float health = phase < .6 ? 100.0F : phase < .7 ? 75.0F : phase < .8 ? 50.0F : 20.0F;
+                RELAYCORE_PROFILE_PLOT("health_feedback_active", phase >= .6 && phase < 1.4);
+                RELAYCORE_PROFILE_PLOT("health_feedback_target", health);
+                services.renderer().player_ui().set_hud(
+                    {.visible = true,
+                     .health = health,
+                     .max_health = 100,
+                     .weapon = "ПИСТОЛЕТ",
+                     .hint = "1 / 2 — сменить оружие",
+                     .objective_header = "ПЕРЕПУСК ДАВЛЕНИЯ",
+                     .objective_title = "Восстановить контур",
+                     .objective_detail = "Проверить оборудование и открыть обратный маршрут."}
+                );
+            } else
+                game_->on_ui(services);
 #if defined(RELAYCORE_PROFILE_ALLOCATIONS)
             const auto after = RelayCore::test::allocation_sample();
             ui_allocations_ = {.count = after.count - before.count, .bytes = after.bytes - before.bytes};
@@ -456,6 +475,7 @@ namespace
         int passes_;
         double stage_seconds_;
         bool diagnostics_, memory_pending_ = false;
+        bool health_feedback_;
         std::unique_ptr<RelayGame::DemoGame> game_;
         std::vector<double> frames_;
         Clock::time_point stage_beginning_{}, previous_update_{};
@@ -472,7 +492,7 @@ int main(int argc, char** argv)
 {
     auto preset = RelayGame::GraphicsPreset::Custom;
     std::string preset_name = "baseline";
-    bool motion_captures = false, captures = true, scripted_input = false, diagnostics = false;
+    bool motion_captures = false, captures = true, scripted_input = false, diagnostics = false, health_feedback = false;
     int passes = 2;
     double stage_seconds = 4;
     std::filesystem::path settings_path, config_path;
@@ -498,6 +518,8 @@ int main(int argc, char** argv)
             captures = false;
         else if (option == "--scripted-input-only")
             scripted_input = true;
+        else if (option == "--health-feedback")
+            health_feedback = true;
         else if ((option == "--settings-file" || option == "--config-file") && argument + 1 < argc)
         {
             auto& path = option == "--settings-file" ? settings_path : config_path;
@@ -553,7 +575,7 @@ int main(int argc, char** argv)
                   << "; height=" << window["height"].value_or(0) << "; quality=" << preset_name
                   << "; settings=" << settings_path << "; config=" << config_path << "; captures=" << captures
                   << "; motion_captures=" << motion_captures << "; scripted_input=" << scripted_input
-                  << "; camera_sweeps_only\n";
+                  << "; health_feedback=" << health_feedback << "; camera_sweeps_only\n";
         RelayCore::Application app{
             std::make_unique<ContainmentProfile>(
                 output,
@@ -564,7 +586,8 @@ int main(int argc, char** argv)
                 scripted_input,
                 passes,
                 stage_seconds,
-                diagnostics
+                diagnostics,
+                health_feedback
             ),
             path,
             RelayCore::render::ColorPipelineMode::hardware_srgb
