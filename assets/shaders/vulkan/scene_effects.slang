@@ -58,14 +58,30 @@ int empty_depth_range(float4 firstClip, float4 lastClip, float thickness)
     uint2 last = min(uint2((highPixel + .001) / grid.w), grid.yz - 1);
     float minimum = 3.402823466e+38, maximum = 0;
     bool complete = true;
-    for (uint y = first.y; y <= last.y; ++y)
-        for (uint x = first.x; x <= last.x; ++x)
-        {
-            float2 bounds = screenDepthBounds[grid.x + y * grid.y + x];
-            minimum = min(minimum, bounds.x);
-            maximum = max(maximum, abs(bounds.y));
-            complete = complete && bounds.y > 0;
-        }
+    if (all(last - first <= 1))
+    {
+        // The selected level normally covers at most 2x2 cells. Repeated corners
+        // for a one-cell axis preserve the same extrema and coverage predicate.
+        float2 a = screenDepthBounds[grid.x + first.y * grid.y + first.x];
+        float2 b = screenDepthBounds[grid.x + first.y * grid.y + last.x];
+        float2 c = screenDepthBounds[grid.x + last.y * grid.y + first.x];
+        float2 d = screenDepthBounds[grid.x + last.y * grid.y + last.x];
+        minimum = min(min(a.x, b.x), min(c.x, d.x));
+        maximum = max(max(abs(a.y), abs(b.y)), max(abs(c.y), abs(d.y)));
+        complete = min(min(a.y, b.y), min(c.y, d.y)) > 0;
+    }
+    else
+    {
+        // The pixel padding can include another cell at exact grid boundaries.
+        for (uint y = first.y; y <= last.y; ++y)
+            for (uint x = first.x; x <= last.x; ++x)
+            {
+                float2 bounds = screenDepthBounds[grid.x + y * grid.y + x];
+                minimum = min(minimum, bounds.x);
+                maximum = max(maximum, abs(bounds.y));
+                complete = complete && bounds.y > 0;
+            }
+    }
     if (maximum == 0 || max(firstClip.w, lastClip.w) < minimum - .0005) return -1;
     if (complete && min(firstClip.w, lastClip.w) > maximum + thickness + .0005) return 1;
     return 0;

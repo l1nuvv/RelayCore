@@ -236,7 +236,7 @@ float sample_directional(Sampler2D map, float4x4 projection, float3 normal, floa
         if (abs(x)>halfWidth || abs(y)>halfWidth) continue;
         float weight=float(halfWidth+1-abs(x))*float(halfWidth+1-abs(y));
         float2 offset=rotate_vec2(float2(x,y),angle*max(jitter,0.0));
-        float depth=map.Sample(coord.xy+offset*texel*max(parameters.z,0.0001)).r;
+        float depth=map.SampleLevel(coord.xy+offset*texel*max(parameters.z,0.0001), 0).r;
         visibility+=(coord.z-bias<=depth ? 1.0 : 1-shadows.strengths.x)*weight;
         weightSum+=weight;
     }
@@ -272,7 +272,7 @@ float point_depth(float3 ray,int light)
         face=ray.z>=0 ? 4 : 5;
         uv=float2(ray.z>=0 ? ray.x : -ray.x,-ray.y)/a.z;
     }
-    return shadowPoints.Sample(float3(uv*0.5+0.5,float(light*6+face))).r;
+    return shadowPoints.SampleLevel(float3(uv*0.5+0.5,float(light*6+face)), 0).r;
 }
 float local_visibility(int index,float3 lightVector,float distanceToLight,float radius,float3 normal,float3 receiverPlaneNormal,float3 direction,float attenuation)
 {
@@ -316,7 +316,7 @@ float3 spot_radiance(float3 position,float3 geometricNormal,out float3 ray, bool
         float2 texel=1.0/float2(width,height);
         float bias=max(0.00005,0.0003*(1-max(dot(geometricNormal,-ray),0.0)));
         for (int y=-1;y<=1;++y) for (int x=-1;x<=1;++x)
-            visibility+=coord.z-bias<=shadowSpot.Sample(coord.xy+float2(x,y)*texel).r ? 1.0/9 : 0;
+            visibility+=coord.z-bias<=shadowSpot.SampleLevel(coord.xy+float2(x,y)*texel, 0).r ? 1.0/9 : 0;
     }
     float3 color = shadows.spotColor.rgb;
     if (linearColor && surfaceData.parameters.w == 0)

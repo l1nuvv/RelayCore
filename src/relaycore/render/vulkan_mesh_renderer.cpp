@@ -4279,7 +4279,12 @@ namespace RelayCore::render
                     sizeof(push),
                     push.data()
                 );
-                vkCmdDispatch(frame().commands, (level.y + 7) / 8, (level.z + 7) / 8, 1);
+                vkCmdDispatch(
+                    frame().commands,
+                    previous.w == 0 ? level.y : (level.y + 7) / 8,
+                    previous.w == 0 ? level.z : (level.z + 7) / 8,
+                    1
+                );
                 const VkMemoryBarrier2 barrier{
                     .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
                     .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
