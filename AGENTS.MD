@@ -32,6 +32,7 @@
 - When moving documentation, update relative links and anchors, preserve useful old section redirects, and check local links. Do not turn shortening into removal of acceptance criteria, decisions, provenance or verification limits.
 - Reuse evidence already gathered in the current task, including after context compaction. Reread only the needed ranges when a file changed, prior output was incomplete, or a specific fact is missing. Do not repeat searches or expensive commands merely to regain confidence.
 - Prefer targeted search (`rg`, specific paths, specific symbols) over broad dumps. Summarize large logs; quote only the lines needed to establish the cause.
+- Respect `.gitignore` and `.rgignore` during general discovery. Do not use repository-wide `rg --no-ignore`/`rg -uuu` or recursive PowerShell enumeration from the repository root. When ignored build/generated/vendor files are needed, inspect the specific file or narrow directory explicitly; keep any ignore bypass scoped to that directory.
 - Separate confirmed facts, likely risks, hypotheses, and taste. Do not convert a suspicion into a patch without evidence.
 - Analysis/review-only requests are read-only unless the user explicitly asks for changes.
 
