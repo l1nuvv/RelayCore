@@ -102,4 +102,3 @@ Keep necessary paths/commands and evidence links, not full logs or copied docume
 - MSVC presets require a Visual Studio developer environment and valid `VCPKG_ROOT`.
 - Do not delete build directories, caches, user presets, or generated data as a first troubleshooting step.
 - If a check cannot run, report the exact command, blocker, and what remains unverified. Never claim success from code inspection alone.
-
